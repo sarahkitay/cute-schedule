@@ -119,7 +119,12 @@ function CoachPanel({ open, onClose, onAskCoach, loading, error, result, context
           </button>
         </div>
 
-        {error ? <div className="coach-error">{error}</div> : null}
+      {error ? (
+  <div className="coach-error">
+    <div className="coach-error-title">Coach error</div>
+    <div className="coach-error-text">{error}</div>
+  </div>
+) : null}
 
         {!result ? (
           <div className="coach-empty">
