@@ -1,20 +1,21 @@
 export default async function handler(req, res) {
   if (req.method !== "POST") {
+    res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "POST only" });
   }
 
   try {
     const key = process.env.OPENAI_API_KEY;
+
     if (!key) {
       return res.status(500).json({
-        error: "Missing OPENAI_API_KEY env var",
+        error: "Missing OPENAI_API_KEY in Vercel env vars",
+        hint: "Add an OpenAI key that starts with sk- or sk-proj-",
       });
     }
 
     const { dayKey, today, monthly, progress } = req.body || {};
-    if (!dayKey) {
-      return res.status(400).json({ error: "Missing dayKey" });
-    }
+    if (!dayKey) return res.status(400).json({ error: "Missing dayKey" });
 
     const prompt = `
 You are a calm, direct productivity coach for Sarah.
@@ -43,41 +44,43 @@ Return JSON EXACTLY in this schema:
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
+        temperature: 0.4,
         messages: [
-          { role: "system", content: "Return valid JSON only. No markdown." },
+          { role: "system", content: "Return valid JSON only. No markdown. No code fences." },
           { role: "user", content: prompt },
         ],
-        temperature: 0.4,
       }),
     });
 
-    const raw = await response.json();
+    const raw = await response.json().catch(() => ({}));
 
     if (!response.ok) {
       return res.status(response.status).json({
         error: "OpenAI request failed",
         status: response.status,
         detail: raw?.error?.message || raw,
+        hint:
+          response.status === 401
+            ? "Your OPENAI_API_KEY is invalid or not an OpenAI key (should start with sk- or sk-proj-)."
+            : undefined,
       });
     }
 
     const text = raw?.choices?.[0]?.message?.content || "{}";
+    const cleaned = String(text).replace(/```json|```/g, "").trim();
 
     let parsed;
     try {
-      parsed = JSON.parse(text);
+      parsed = JSON.parse(cleaned);
     } catch {
       return res.status(500).json({
         error: "Model did not return valid JSON",
-        raw: text,
+        raw: cleaned,
       });
     }
 
     return res.status(200).json(parsed);
   } catch (e) {
-    return res.status(500).json({
-      error: "Server error",
-      detail: String(e),
-    });
+    return res.status(500).json({ error: "Server error", detail: String(e) });
   }
 }
