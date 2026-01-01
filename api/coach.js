@@ -36,32 +36,51 @@ Return JSON EXACTLY in this schema:
 }
 `.trim();
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        temperature: 0.4,
-        messages: [
-          { role: "system", content: "Return valid JSON only. No markdown. No code fences." },
-          { role: "user", content: prompt },
-        ],
-      }),
-    });
+    async function callOpenAI(tryNum) {
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: 0.4,
+          messages: [
+            { role: "system", content: "Return valid JSON only. No markdown. No code fences." },
+            { role: "user", content: prompt },
+          ],
+        }),
+      });
 
-    const raw = await response.json().catch(() => ({}));
+      const raw = await r.json().catch(() => ({}));
+      console.log("OpenAI status:", r.status);
+      if (raw?.error) console.log("OpenAI error:", raw.error);
+
+      // Retry 429s with exponential backoff
+      if (r.status === 429 && tryNum < 3) {
+        const wait = 800 * Math.pow(2, tryNum); // 0.8s, 1.6s, 3.2s
+        await new Promise((res) => setTimeout(res, wait));
+        return callOpenAI(tryNum + 1);
+      }
+
+      return { r, raw };
+    }
+
+    const { r: response, raw } = await callOpenAI(0);
 
     if (!response.ok) {
       return res.status(response.status).json({
         error: "OpenAI request failed",
         status: response.status,
         detail: raw?.error?.message || raw,
+        type: raw?.error?.type,
+        code: raw?.error?.code,
         hint:
           response.status === 401
-            ? "Your OPENAI_API_KEY is invalid or not an OpenAI key (should start with sk- or sk-proj-)."
+            ? "Invalid API key"
+            : response.status === 429
+            ? "Rate limit or quota. Check OpenAI Platform billing + limits."
             : undefined,
       });
     }
@@ -81,6 +100,7 @@ Return JSON EXACTLY in this schema:
 
     return res.status(200).json(parsed);
   } catch (e) {
+    console.error("Server error:", e);
     return res.status(500).json({ error: "Server error", detail: String(e) });
   }
 }

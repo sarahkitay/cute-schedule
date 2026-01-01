@@ -261,7 +261,7 @@ body::before {
 /* Quick add - spacious grid */
 .quick {
   display: grid;
-  grid-template-columns: 130px 140px 1fr auto;
+  grid-template-columns: 140px 140px 1fr auto;
   gap: 12px;
   align-items: end;
 }
@@ -431,6 +431,10 @@ body::before {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.card-body-simple {
+  padding: 4px 8px 8px;
 }
 
 /* Categories - minimal containers */
@@ -609,6 +613,16 @@ body::before {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.task-time {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Item actions */
@@ -851,322 +865,4 @@ html {
 ::selection {
   background: rgba(201, 184, 228, 0.2);
   color: var(--text-primary);
-}
-/* =========================
-   Cute Schedule - Quiet Luxury
-   Coach modal polish + elegant errors
-   Paste this at the BOTTOM of your existing CSS
-   (it overrides any older coach styles)
-   ========================= */
-
-/* Make the overlay feel like glass, not gray fog */
-.coach-overlay{
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 28px 16px;
-  background: rgba(20, 18, 22, 0.22);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  z-index: 9999;
-}
-
-/* Modal = premium stationery card */
-.coach-modal{
-  width: min(760px, 96vw);
-  max-height: 84vh;
-  overflow: auto;
-
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid var(--border-whisper);
-  border-radius: var(--radius-xl);
-
-  box-shadow: var(--shadow-medium);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
-
-  animation: coachPop 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-@keyframes coachPop{
-  from{ transform: translateY(10px) scale(0.98); opacity: 0; }
-  to{ transform: translateY(0) scale(1); opacity: 1; }
-}
-
-/* Header */
-.coach-top{
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 18px 18px 14px;
-  border-bottom: 1px solid var(--border-whisper);
-}
-
-.coach-title{
-  min-width: 0;
-}
-
-.coach-kicker{
-  font-size: 10px;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  font-weight: 700;
-  margin-bottom: 6px;
-}
-
-.coach-h2{
-  margin: 0;
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--text-primary);
-  line-height: 1.2;
-}
-
-.coach-meta{
-  margin-top: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  font-variant-numeric: tabular-nums;
-}
-
-/* Close button (top right) */
-.coach-modal .icon-btn.danger{
-  width: 38px;
-  height: 38px;
-  border-radius: 12px;
-  border: 1px solid var(--border-whisper);
-  background: rgba(255,255,255,0.65);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0.9;
-  transition: all 0.18s ease;
-}
-.coach-modal .icon-btn.danger:hover{
-  background: rgba(255,255,255,0.9);
-  box-shadow: var(--shadow-minimal);
-  transform: translateY(-1px);
-}
-
-/* Actions row */
-.coach-actions{
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 14px 18px 0;
-}
-
-.coach-actions .btn{
-  height: 42px;
-}
-
-/* Coach body */
-.coach-body{
-  padding: 14px 18px 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-/* Empty state inside modal */
-.coach-empty{
-  padding: 14px 18px 18px;
-  color: var(--text-secondary);
-  font-weight: 600;
-  font-size: 14px;
-  line-height: 1.6;
-}
-
-/* Message bubble */
-.coach-message{
-  padding: 14px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(201, 184, 228, 0.18);
-  background: linear-gradient(
-    135deg,
-    rgba(232, 180, 184, 0.10) 0%,
-    rgba(201, 184, 228, 0.10) 100%
-  );
-  color: var(--text-primary);
-  font-weight: 600;
-  line-height: 1.6;
-}
-
-/* Blocks */
-.coach-block{
-  border: 1px solid var(--border-whisper);
-  background: rgba(255,255,255,0.58);
-  border-radius: 18px;
-  padding: 14px;
-}
-
-.coach-block-title{
-  font-weight: 800;
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-  margin-bottom: 10px;
-}
-
-/* Lists */
-.coach-list{
-  margin: 0;
-  padding-left: 18px;
-  color: var(--text-primary);
-  font-weight: 600;
-  line-height: 1.7;
-}
-.coach-list li{
-  margin: 6px 0;
-  color: var(--text-primary);
-}
-.coach-list li::marker{
-  color: rgba(201, 184, 228, 0.65);
-}
-
-/* Suggestions grid */
-.coach-suggest-grid{
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.coach-suggest{
-  border: 1px solid rgba(42, 42, 46, 0.07);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.72);
-  padding: 12px 12px 12px;
-  box-shadow: var(--shadow-minimal);
-  transition: all 0.18s ease;
-}
-.coach-suggest:hover{
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: var(--shadow-soft);
-  transform: translateY(-1px);
-}
-
-.coach-suggest-top{
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-/* Chips */
-.coach-chip{
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(42, 42, 46, 0.70);
-  background: rgba(42, 42, 46, 0.05);
-  border: 1px solid rgba(42, 42, 46, 0.06);
-}
-
-.coach-chip-soft{
-  color: rgba(42, 42, 46, 0.55);
-  background: rgba(201, 184, 228, 0.12);
-  border-color: rgba(201, 184, 228, 0.18);
-}
-
-.coach-suggest-text{
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.5;
-  margin-bottom: 12px;
-}
-
-.coach-suggest-actions{
-  display: flex;
-  gap: 8px;
-}
-
-.coach-suggest-actions .btn{
-  height: 40px;
-  padding: 0 14px;
-  font-size: 14px;
-}
-
-/* Snapshot mono */
-.coach-mono{
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
-  color: rgba(42, 42, 46, 0.70);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* Elegant error block */
-.coach-error{
-  margin: 12px 18px 0;
-  padding: 12px 14px;
-  border-radius: 16px;
-
-  background: linear-gradient(
-    135deg,
-    rgba(232, 180, 184, 0.16) 0%,
-    rgba(255, 255, 255, 0.62) 100%
-  );
-  border: 1px solid rgba(201, 123, 132, 0.25);
-  box-shadow: var(--shadow-minimal);
-}
-
-.coach-error::before{
-  content: "Coach error";
-  display: block;
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: rgba(201, 123, 132, 0.9);
-  margin-bottom: 6px;
-}
-
-.coach-error{
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  color: rgba(42, 42, 46, 0.82);
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-/* Prevent ugly hover inversion on buttons in modal */
-.coach-modal .btn:hover{
-  background: white;
-  color: var(--text-primary);
-}
-
-/* Make primary gradient stay readable on hover */
-.coach-modal .btn-primary:hover{
-  color: white;
-}
-
-/* Responsive */
-@media (max-width: 720px){
-  .coach-modal{
-    width: 100%;
-    border-radius: 22px;
-  }
-
-  .coach-suggest-grid{
-    grid-template-columns: 1fr;
-  }
-
-  .coach-actions{
-    flex-wrap: wrap;
-  }
 }

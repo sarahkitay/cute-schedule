@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 
 /** ====== Config ====== **/
 const CATEGORIES = ["RHEA", "EPC", "Personal"];
-const STORAGE_KEY = "cute_schedule_v2";
+const STORAGE_KEY = "cute_schedule_v3";
 
 const BEDTIME_ROUTINE = [
   { id: "skincare", text: "Skincare routine" },
@@ -15,12 +15,14 @@ const BEDTIME_ROUTINE = [
 function pad2(n) {
   return String(n).padStart(2, "0");
 }
+
 function todayKey(d = new Date()) {
   const y = d.getFullYear();
   const m = pad2(d.getMonth() + 1);
   const day = pad2(d.getDate());
   return `${y}-${m}-${day}`;
 }
+
 function prettyToday(d = new Date()) {
   return d.toLocaleDateString(undefined, {
     weekday: "long",
@@ -28,9 +30,11 @@ function prettyToday(d = new Date()) {
     day: "numeric",
   });
 }
+
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -40,30 +44,54 @@ function loadState() {
     return null;
   }
 }
+
 function saveState(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
-function allTasks(tasksByCat) {
-  return CATEGORIES.flatMap((c) => tasksByCat?.[c] || []);
+
+function normalizeText(s) {
+  return String(s || "").trim();
 }
+
+// Convert 24-hour to 12-hour time
+function to12Hour(time24) {
+  const [h, m] = time24.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return time24;
+  
+  const period = h >= 12 ? 'PM' : 'AM';
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+function allTasksInDay(hours) {
+  const hourEntries = Object.entries(hours || {});
+  return hourEntries.flatMap(([hourKey, tasksByCat]) => {
+    return CATEGORIES.flatMap((cat) => {
+      return (tasksByCat[cat] || []).map(task => ({
+        ...task,
+        hour: hourKey,
+        category: cat
+      }));
+    });
+  });
+}
+
 function hourIsComplete(tasksByCat) {
-  const tasks = allTasks(tasksByCat);
+  const tasks = CATEGORIES.flatMap((c) => tasksByCat?.[c] || []);
   if (tasks.length === 0) return false;
   return tasks.every((t) => t.done);
 }
+
 function dayProgress(hours) {
-  const hourEntries = Object.entries(hours || {});
-  const tasks = hourEntries.flatMap(([, byCat]) => allTasks(byCat));
+  const tasks = allTasksInDay(hours);
   const total = tasks.length;
   const done = tasks.filter((t) => t.done).length;
   return { total, done, pct: total === 0 ? 0 : Math.round((done / total) * 100) };
 }
+
 function dayIsStarred(hours) {
   const { total, done } = dayProgress(hours);
   return total > 0 && done === total;
-}
-function normalizeText(s) {
-  return String(s || "").trim();
 }
 
 /** ====== UI Components ====== **/
@@ -93,130 +121,38 @@ function ProgressBar({ pct }) {
   );
 }
 
-function CoachPanel({ open, onClose, onAskCoach, loading, error, result, contextSummary }) {
-  if (!open) return null;
-
-  return (
-    <div className="coach-overlay" role="dialog" aria-modal="true">
-      <div className="coach-modal">
-        <div className="coach-top">
-          <div className="coach-title">
-            <div className="coach-kicker">front end coach</div>
-            <div className="coach-h2">Daily nudge + smart suggestions</div>
-            <div className="coach-meta">{contextSummary}</div>
-          </div>
-          <button type="button" className="icon-btn danger" onClick={onClose} title="Close">
-            ✕
-          </button>
-        </div>
-
-        <div className="coach-actions">
-          <button type="button" className="btn btn-primary" onClick={onAskCoach} disabled={loading}>
-            {loading ? "Thinking…" : "Ask Coach"}
-          </button>
-          <button type="button" className="btn" onClick={onClose}>
-            Close
-          </button>
-        </div>
-
-      {error ? (
-  <div className="coach-error">
-    <div className="coach-error-title">Coach error</div>
-    <div className="coach-error-text">{error}</div>
-  </div>
-) : null}
-
-        {!result ? (
-          <div className="coach-empty">
-            Tap <b>Ask Coach</b> to get a little plan, spot ignored monthlies, and pull 2–4 tasks into Today.
-          </div>
-        ) : (
-          <div className="coach-body">
-            {result.message ? <div className="coach-message">{result.message}</div> : null}
-
-            {Array.isArray(result.highlights) && result.highlights.length > 0 ? (
-              <div className="coach-block">
-                <div className="coach-block-title">Today’s focus</div>
-                <ul className="coach-list">
-                  {result.highlights.map((h, i) => (
-                    <li key={`${i}-${h}`}>{h}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {Array.isArray(result.suggestions) && result.suggestions.length > 0 ? (
-              <div className="coach-block">
-                <div className="coach-block-title">Suggested tasks</div>
-                <div className="coach-suggest-grid">
-                  {result.suggestions.map((s, idx) => (
-                    <div key={s.id || idx} className="coach-suggest">
-                      <div className="coach-suggest-top">
-                        <span className="coach-chip">{s.category || "Personal"}</span>
-                        <span className="coach-chip coach-chip-soft">{s.hour || "09:00"}</span>
-                      </div>
-                      <div className="coach-suggest-text">{s.text}</div>
-                      <div className="coach-suggest-actions">
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={() => result.onAcceptSuggestion?.(s)}
-                        >
-                          Add to Today
-                        </button>
-                        <button type="button" className="btn" onClick={() => result.onDismissSuggestion?.(s)}>
-                          Skip
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            {Array.isArray(result.ignoredMonthlies) && result.ignoredMonthlies.length > 0 ? (
-              <div className="coach-block">
-                <div className="coach-block-title">Monthlies you might be ignoring</div>
-                <ul className="coach-list">
-                  {result.ignoredMonthlies.map((m) => (
-                    <li key={m.id || m.text}>{m.text}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-
-            {result.percentSummary ? (
-              <div className="coach-block">
-                <div className="coach-block-title">Completion snapshot</div>
-                <div className="coach-mono">{result.percentSummary}</div>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function HourCard({ hourKey, tasksByCat, onAddTask, onToggleTask, onTogglePriority, onDeleteTask, onDeleteHour }) {
+// Ultra-minimal hour card - just shows tasks, no category dropdowns at all
+function HourCard({ hourKey, tasksByCat, onToggleTask, onTogglePriority, onDeleteTask, onDeleteHour }) {
   const complete = hourIsComplete(tasksByCat);
   const [open, setOpen] = useState(true);
 
-  const totals = useMemo(() => {
-    const tasks = allTasks(tasksByCat);
-    const total = tasks.length;
-    const done = tasks.filter((t) => t.done).length;
-    return { total, done };
+  const allTasks = useMemo(() => {
+    return CATEGORIES.flatMap((cat) => 
+      (tasksByCat?.[cat] || []).map(t => ({ ...t, category: cat }))
+    ).sort((a, b) => {
+      if (a.priority && !b.priority) return -1;
+      if (!a.priority && b.priority) return 1;
+      return 0;
+    });
   }, [tasksByCat]);
+
+  const totals = useMemo(() => {
+    const total = allTasks.length;
+    const done = allTasks.filter((t) => t.done).length;
+    return { total, done };
+  }, [allTasks]);
+
+  // Don't show hour card if no tasks
+  if (totals.total === 0) return null;
 
   return (
     <div className={complete ? "card card-complete" : "card"}>
       <div className="card-top">
         <button type="button" className="hour-title" onClick={() => setOpen((v) => !v)}>
           <div className="hour-left">
-            <span className="hour-time">{hourKey}</span>
+            <span className="hour-time">{to12Hour(hourKey)}</span>
             <span className="hour-meta">
-              {totals.done}/{totals.total} done
+              {totals.done}/{totals.total}
             </span>
           </div>
           <span className="chev">{open ? "▾" : "▸"}</span>
@@ -228,106 +164,40 @@ function HourCard({ hourKey, tasksByCat, onAddTask, onToggleTask, onTogglePriori
       </div>
 
       {open && (
-        <div className="card-body">
-          {CATEGORIES.map((cat) => (
-            <CategoryBlock
-              key={cat}
-              category={cat}
-              tasks={tasksByCat?.[cat] || []}
-              onAdd={(text) => onAddTask(hourKey, cat, text)}
-              onToggle={(taskId) => onToggleTask(hourKey, cat, taskId)}
-              onTogglePriority={(taskId) => onTogglePriority(hourKey, cat, taskId)}
-              onDelete={(taskId) => onDeleteTask(hourKey, cat, taskId)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+        <div className="card-body-simple">
+          <ul className="list">
+            {allTasks.map((t) => (
+              <li
+                key={t.id}
+                className={["item", t.done ? "item-done" : "", t.priority ? "item-priority" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <label className="check">
+                  <input type="checkbox" checked={!!t.done} onChange={() => onToggleTask(hourKey, t.category, t.id)} />
+                  <span className="checkmark" />
+                  <span className="item-text">
+                    <Pill label={t.category} /> {t.text}
+                  </span>
+                </label>
 
-function CategoryBlock({ category, tasks, onAdd, onToggle, onTogglePriority, onDelete }) {
-  const [open, setOpen] = useState(true);
-  const [text, setText] = useState("");
+                <div className="item-actions">
+                  <button
+                    type="button"
+                    className={t.priority ? "priority-btn priority-active" : "priority-btn"}
+                    title={t.priority ? "Remove priority" : "Mark as priority"}
+                    onClick={() => onTogglePriority(hourKey, t.category, t.id)}
+                  >
+                    {t.priority ? "★" : "☆"}
+                  </button>
 
-  const sortedTasks = useMemo(() => {
-    return [...(tasks || [])].sort((a, b) => {
-      if (a.priority && !b.priority) return -1;
-      if (!a.priority && b.priority) return 1;
-      return 0;
-    });
-  }, [tasks]);
-
-  return (
-    <div className="cat">
-      <button type="button" className="cat-head" onClick={() => setOpen((v) => !v)}>
-        <div className="cat-left">
-          <Pill label={category} />
-          <span className="cat-count">
-            {(tasks || []).filter((t) => t.done).length}/{(tasks || []).length}
-          </span>
-        </div>
-        <span className="chev">{open ? "▾" : "▸"}</span>
-      </button>
-
-      {open && (
-        <div className="cat-body">
-          <form
-            className="add-row"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const clean = normalizeText(text);
-              if (!clean) return;
-              onAdd(clean);
-              setText("");
-            }}
-          >
-            <input
-              className="input"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder={`Add a ${category} task…`}
-            />
-            <button className="btn" type="submit">
-              Add
-            </button>
-          </form>
-
-          {(tasks || []).length === 0 ? (
-            <div className="empty">No tasks here yet.</div>
-          ) : (
-            <ul className="list">
-              {sortedTasks.map((t) => (
-                <li
-                  key={t.id}
-                  className={["item", t.done ? "item-done" : "", t.priority ? "item-priority" : ""]
-                    .filter(Boolean)
-                    .join(" ")}
-                >
-                  <label className="check">
-                    <input type="checkbox" checked={!!t.done} onChange={() => onToggle(t.id)} />
-                    <span className="checkmark" />
-                    <span className="item-text">{t.text}</span>
-                  </label>
-
-                  <div className="item-actions">
-                    <button
-                      type="button"
-                      className={t.priority ? "priority-btn priority-active" : "priority-btn"}
-                      title={t.priority ? "Remove priority" : "Mark as priority"}
-                      onClick={() => onTogglePriority(t.id)}
-                    >
-                      {t.priority ? "★" : "☆"}
-                    </button>
-
-                    <button type="button" className="icon-btn" title="Delete task" onClick={() => onDelete(t.id)}>
-                      🗑
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+                  <button type="button" className="icon-btn" title="Delete task" onClick={() => onDeleteTask(hourKey, t.category, t.id)}>
+                    🗑
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>
@@ -380,12 +250,6 @@ export default function App() {
       bedtimeRoutine: BEDTIME_ROUTINE.map((r) => ({ ...r, done: false })),
     };
   });
-
-  // Coach
-  const [coachOpen, setCoachOpen] = useState(false);
-  const [coachLoading, setCoachLoading] = useState(false);
-  const [coachError, setCoachError] = useState("");
-  const [coachResult, setCoachResult] = useState(null);
 
   useEffect(() => {
     setState((prev) => {
@@ -479,9 +343,6 @@ export default function App() {
       const nextByCat = { ...byCat, [category]: list };
       hours[hourKey] = nextByCat;
 
-      const totalAfter = allTasks(nextByCat).length;
-      if (totalAfter === 0) delete hours[hourKey];
-
       return { ...prev, days: { ...prev.days, [tKey]: { hours } } };
     });
   }
@@ -531,77 +392,14 @@ export default function App() {
     }));
   }
 
-  const monthliesDone = useMemo(() => (state.monthly || []).filter((m) => m.done).length, [state.monthly]);
-
-  const contextSummary = useMemo(() => {
-    const t = prog.total;
-    const d = prog.done;
-    const m = state.monthly?.length || 0;
-    return `${d}/${t} done today · ${monthliesDone}/${m} monthlies completed`;
-  }, [prog.total, prog.done, state.monthly, monthliesDone]);
-
-  function acceptCoachSuggestion(s) {
-    const hour = s?.hour || "09:00";
-    const cat = CATEGORIES.includes(s?.category) ? s.category : "Personal";
-    const text = normalizeText(s?.text);
-    if (!text) return;
-    ensureHour(hour);
-    addTask(hour, cat, text);
-  }
-
-  async function askCoach() {
-    setCoachError("");
-    setCoachLoading(true);
-
-    try {
-      const payload = {
-        dayKey: tKey,
-        prettyDate: prettyToday(),
-        progress: prog,
-        today: todayHours,
-        monthly: state.monthly || [],
-        categories: CATEGORIES,
-      };
-
-      const res = await fetch("/api/coach", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        const msg = data?.error || data?.message || `Coach error (${res.status})`;
-        throw new Error(msg);
-      }
-
-      const shaped = {
-        message: data?.message || data?.summary || "",
-        highlights: data?.highlights || data?.focus || [],
-        suggestions: (data?.suggestions || []).map((x) => ({
-          id: x.id || uid(),
-          hour: x.hour || x.time || "09:00",
-          category: x.category || x.cat || "Personal",
-          text: x.text || x.task || "",
-        })),
-        ignoredMonthlies: (data?.ignoredMonthlies || data?.ignoredMonthly || []).map((x) => ({
-          id: x.id || uid(),
-          text: x.text || x.task || String(x),
-        })),
-        percentSummary: data?.percentSummary || data?.completion || "",
-      };
-
-      shaped.onAcceptSuggestion = (s) => acceptCoachSuggestion(s);
-      shaped.onDismissSuggestion = () => {};
-
-      setCoachResult(shaped);
-    } catch (err) {
-      setCoachError(err?.message || "Coach failed. Check your /api/coach function logs.");
-    } finally {
-      setCoachLoading(false);
-    }
-  }
+  // List view - all incomplete tasks for today
+  const incompleteTasks = useMemo(() => {
+    return allTasksInDay(todayHours).filter(t => !t.done).sort((a, b) => {
+      if (a.priority && !b.priority) return -1;
+      if (!a.priority && b.priority) return 1;
+      return a.hour.localeCompare(b.hour);
+    });
+  }, [todayHours]);
 
   return (
     <div className="app">
@@ -610,8 +408,8 @@ export default function App() {
           <div>
             <div className="kicker">cute schedule</div>
             <h1 className="h1">
-              {tab === "today" ? "Today" : "Monthly"}{" "}
-              <span className="sub">{tab === "today" ? prettyToday() : "Objectives"}</span>
+              {tab === "today" ? "Today" : tab === "monthly" ? "Monthly" : "Categories"}{" "}
+              <span className="sub">{tab === "today" ? prettyToday() : tab === "monthly" ? "Objectives" : "Manage"}</span>
             </h1>
           </div>
 
@@ -619,12 +417,15 @@ export default function App() {
             <TabButton active={tab === "today"} onClick={() => setTab("today")}>
               Today
             </TabButton>
+            <TabButton active={tab === "list"} onClick={() => setTab("list")}>
+              List
+            </TabButton>
             <TabButton active={tab === "monthly"} onClick={() => setTab("monthly")}>
               Monthly
             </TabButton>
-            <button type="button" className="tab" onClick={() => (setCoachOpen(true), setCoachError(""))} title="Front end coach">
-              Coach
-            </button>
+            <TabButton active={tab === "categories"} onClick={() => setTab("categories")}>
+              Categories
+            </TabButton>
           </div>
         </header>
 
@@ -640,15 +441,12 @@ export default function App() {
                     </span>
                   </div>
                   <div className="meta">
-                    {prog.total === 0 ? "Add your first task and we’ll start counting ✨" : `${prog.done}/${prog.total} tasks done`}
+                    {prog.total === 0 ? "Add your first task and we'll start counting ✨" : `${prog.done}/${prog.total} tasks done`}
                   </div>
                 </div>
 
-                <div className="panel-right" style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <div className="panel-right">
                   <div className="pct">{prog.pct}%</div>
-                  <button type="button" className="btn" onClick={() => setCoachOpen(true)} title="Open coach">
-                    Coach
-                  </button>
                 </div>
               </div>
 
@@ -661,7 +459,7 @@ export default function App() {
                 </div>
 
                 <div className="quick-row">
-                  <label className="label">Objective</label>
+                  <label className="label">Category</label>
                   <select className="input" value={quickCat} onChange={(e) => setQuickCat(e.target.value)}>
                     {CATEGORIES.map((c) => (
                       <option key={c} value={c}>
@@ -673,7 +471,7 @@ export default function App() {
 
                 <div className="quick-row quick-grow">
                   <label className="label">Task</label>
-                  <input className="input" value={quickText} onChange={(e) => setQuickText(e.target.value)} placeholder="Add a task for that hour…" />
+                  <input className="input" value={quickText} onChange={(e) => setQuickText(e.target.value)} placeholder="Add a task…" />
                 </div>
 
                 <button className="btn btn-primary" type="submit">
@@ -694,7 +492,6 @@ export default function App() {
                     key={hourKey}
                     hourKey={hourKey}
                     tasksByCat={todayHours[hourKey]}
-                    onAddTask={addTask}
                     onToggleTask={toggleTask}
                     onTogglePriority={togglePriority}
                     onDeleteTask={deleteTask}
@@ -710,7 +507,55 @@ export default function App() {
               </section>
             )}
           </>
-        ) : (
+        ) : tab === "list" ? (
+          <section className="panel">
+            <div className="panel-top">
+              <div className="panel-title">
+                <div className="panel-title-row">
+                  <span className="title">To-Do List</span>
+                </div>
+                <div className="meta">
+                  {incompleteTasks.length === 0 ? "All done for today! 🎉" : `${incompleteTasks.length} task${incompleteTasks.length === 1 ? '' : 's'} remaining`}
+                </div>
+              </div>
+            </div>
+
+            {incompleteTasks.length === 0 ? (
+              <div className="empty">All tasks complete!</div>
+            ) : (
+              <ul className="list">
+                {incompleteTasks.map((t) => (
+                  <li
+                    key={`${t.hour}-${t.category}-${t.id}`}
+                    className={["item", t.priority ? "item-priority" : ""].filter(Boolean).join(" ")}
+                  >
+                    <label className="check">
+                      <input type="checkbox" checked={false} onChange={() => toggleTask(t.hour, t.category, t.id)} />
+                      <span className="checkmark" />
+                      <span className="item-text">
+                        <span className="task-time">{to12Hour(t.hour)}</span> <Pill label={t.category} /> {t.text}
+                      </span>
+                    </label>
+
+                    <div className="item-actions">
+                      <button
+                        type="button"
+                        className={t.priority ? "priority-btn priority-active" : "priority-btn"}
+                        onClick={() => togglePriority(t.hour, t.category, t.id)}
+                      >
+                        {t.priority ? "★" : "☆"}
+                      </button>
+
+                      <button type="button" className="icon-btn" onClick={() => deleteTask(t.hour, t.category, t.id)}>
+                        🗑
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : tab === "monthly" ? (
           <section className="panel">
             <div className="panel-top">
               <div className="panel-title">
@@ -718,7 +563,7 @@ export default function App() {
                   <span className="title">Monthly Objectives</span>
                   <span className="sparkle">✨</span>
                 </div>
-                <div className="meta">Big picture goals that don’t clutter Today.</div>
+                <div className="meta">Big picture goals that don't clutter Today.</div>
               </div>
             </div>
 
@@ -749,6 +594,19 @@ export default function App() {
               </ul>
             )}
           </section>
+        ) : (
+          <section className="panel">
+            <div className="panel-top">
+              <div className="panel-title">
+                <div className="panel-title-row">
+                  <span className="title">Manage Categories</span>
+                </div>
+                <div className="meta">View and organize tasks by category</div>
+              </div>
+            </div>
+
+            <div className="empty">Category management coming soon!</div>
+          </section>
         )}
 
         <footer className="foot">
@@ -757,16 +615,6 @@ export default function App() {
           <span>Next upgrade: cloud sync + phone install.</span>
         </footer>
       </div>
-
-      <CoachPanel
-        open={coachOpen}
-        onClose={() => setCoachOpen(false)}
-        onAskCoach={askCoach}
-        loading={coachLoading}
-        error={coachError}
-        result={coachResult}
-        contextSummary={contextSummary}
-      />
     </div>
   );
 }
