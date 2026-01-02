@@ -3,6 +3,8 @@ import React, { useEffect, useMemo, useState } from "react";
 /** ====== Config ====== **/
 const CATEGORIES = ["RHEA", "EPC", "Personal"];
 const STORAGE_KEY = "cute_schedule_v3";
+const COACH_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+const COACH_STORAGE_KEY = "cute_schedule_coach_meta_v1";
 
 const BEDTIME_ROUTINE = [
   { id: "skincare", text: "Skincare routine" },
@@ -63,6 +65,22 @@ function to12Hour(time24) {
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
+function formatDateInput(key) {
+  // key is YYYY-MM-DD already
+  return key;
+}
+
+function addDaysKey(dayKeyStr, deltaDays) {
+  const [y, m, d] = dayKeyStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + deltaDays);
+  return todayKey(dt);
+}
+
+function isSameDayKey(a, b) {
+  return String(a) === String(b);
+}
+
 function allTasksInDay(hours) {
   const hourEntries = Object.entries(hours || {});
   return hourEntries.flatMap(([hourKey, tasksByCat]) => {
@@ -121,8 +139,8 @@ function ProgressBar({ pct }) {
   );
 }
 
-// Ultra-minimal hour card - just shows tasks, no category dropdowns at all
-function HourCard({ hourKey, tasksByCat, onToggleTask, onTogglePriority, onDeleteTask, onDeleteHour }) {
+// Ultra-minimal hour card with Do/Plan mode
+function HourCard({ hourKey, tasksByCat, onToggleTask, onTogglePriority, onDeleteTask, onDeleteHour, mode = "do" }) {
   const complete = hourIsComplete(tasksByCat);
   const [open, setOpen] = useState(true);
 
@@ -158,9 +176,11 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onTogglePriority, onDelet
           <span className="chev">{open ? "▾" : "▸"}</span>
         </button>
 
-        <button type="button" className="icon-btn danger" title="Remove this hour" onClick={() => onDeleteHour(hourKey)}>
-          ✕
-        </button>
+        {mode === "plan" && (
+          <button type="button" className="icon-btn danger" title="Remove this hour" onClick={() => onDeleteHour(hourKey)}>
+            ✕
+          </button>
+        )}
       </div>
 
       {open && (
@@ -177,24 +197,26 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onTogglePriority, onDelet
                   <input type="checkbox" checked={!!t.done} onChange={() => onToggleTask(hourKey, t.category, t.id)} />
                   <span className="checkmark" />
                   <span className="item-text">
-                    <Pill label={t.category} /> {t.text}
+                    {mode === "plan" ? <Pill label={t.category} /> : null} {t.text}
                   </span>
                 </label>
 
-                <div className="item-actions">
-                  <button
-                    type="button"
-                    className={t.priority ? "priority-btn priority-active" : "priority-btn"}
-                    title={t.priority ? "Remove priority" : "Mark as priority"}
-                    onClick={() => onTogglePriority(hourKey, t.category, t.id)}
-                  >
-                    {t.priority ? "★" : "☆"}
-                  </button>
+                {mode === "plan" && (
+                  <div className="item-actions">
+                    <button
+                      type="button"
+                      className={t.priority ? "priority-btn priority-active" : "priority-btn"}
+                      title={t.priority ? "Remove priority" : "Mark as priority"}
+                      onClick={() => onTogglePriority(hourKey, t.category, t.id)}
+                    >
+                      {t.priority ? "★" : "☆"}
+                    </button>
 
-                  <button type="button" className="icon-btn" title="Delete task" onClick={() => onDeleteTask(hourKey, t.category, t.id)}>
-                    🗑
-                  </button>
-                </div>
+                    <button type="button" className="icon-btn" title="Delete task" onClick={() => onDeleteTask(hourKey, t.category, t.id)}>
+                      🗑
+                    </button>
+                  </div>
+                )}
               </li>
             ))}
           </ul>
@@ -239,7 +261,10 @@ function BedtimeRoutine({ routine, onToggle }) {
 /** ====== Main App ====== **/
 export default function App() {
   const [tab, setTab] = useState("today");
-  const tKey = todayKey();
+  const realTodayKey = todayKey();
+  const [selectedDayKey, setSelectedDayKey] = useState(realTodayKey);
+  const tKey = selectedDayKey;
+  const [mode, setMode] = useState("do"); // "do" | "plan"
 
   const [state, setState] = useState(() => {
     const saved = loadState();
@@ -250,6 +275,25 @@ export default function App() {
       bedtimeRoutine: BEDTIME_ROUTINE.map((r) => ({ ...r, done: false })),
     };
   });
+
+  // Coach meta for cooldown and auto-run
+  const [coachMeta, setCoachMeta] = useState(() => {
+    try {
+      const raw = localStorage.getItem(COACH_STORAGE_KEY);
+      return raw ? JSON.parse(raw) : { lastCoachAt: 0, lastProgressAt: Date.now(), lastAutoDayKey: "" };
+    } catch {
+      return { lastCoachAt: 0, lastProgressAt: Date.now(), lastAutoDayKey: "" };
+    }
+  });
+
+  const [coachOpen, setCoachOpen] = useState(false);
+  const [coachLoading, setCoachLoading] = useState(false);
+  const [coachError, setCoachError] = useState("");
+  const [coachResult, setCoachResult] = useState(null);
+
+  useEffect(() => {
+    localStorage.setItem(COACH_STORAGE_KEY, JSON.stringify(coachMeta));
+  }, [coachMeta]);
 
   useEffect(() => {
     setState((prev) => {
@@ -277,6 +321,33 @@ export default function App() {
       return () => clearTimeout(t);
     }
   }, [starred]);
+
+  // Update lastProgressAt whenever tasks change
+  useEffect(() => {
+    setCoachMeta((prev) => ({ ...prev, lastProgressAt: Date.now() }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prog.done, prog.total]);
+
+  // Coach cooldown calculations
+  const now = Date.now();
+  const coachReadyAt = coachMeta.lastCoachAt + COACH_COOLDOWN_MS;
+  const coachLocked = now < coachReadyAt;
+  const minsLeft = coachLocked ? Math.ceil((coachReadyAt - now) / 60000) : 0;
+
+  // Auto-run coach on first open of day OR if stuck for 3 hours
+  useEffect(() => {
+    if (!isSameDayKey(tKey, realTodayKey)) return;
+
+    const firstOpenToday = coachMeta.lastAutoDayKey !== realTodayKey;
+    const stuck = Date.now() - coachMeta.lastProgressAt > 3 * 60 * 60 * 1000 && prog.total > 0 && prog.done < prog.total;
+
+    if ((firstOpenToday || stuck) && !coachLocked && tab === "today") {
+      setCoachMeta((prev) => ({ ...prev, lastAutoDayKey: realTodayKey, lastCoachAt: Date.now() }));
+      setCoachOpen(true);
+      askCoach();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tKey, realTodayKey, prog.total, prog.done, tab]);
 
   function ensureHour(hourKey) {
     setState((prev) => {
@@ -392,6 +463,70 @@ export default function App() {
     }));
   }
 
+  async function askCoach() {
+    if (coachLocked) return;
+    
+    setCoachError("");
+    setCoachLoading(true);
+
+    try {
+      const payload = {
+        dayKey: tKey,
+        prettyDate: new Date(tKey + "T00:00:00").toLocaleDateString(),
+        progress: prog,
+        today: todayHours,
+        monthly: state.monthly || [],
+        categories: CATEGORIES,
+      };
+
+      const res = await fetch("/api/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        const msg = data?.error || data?.message || `Coach error (${res.status})`;
+        throw new Error(msg);
+      }
+
+      const shaped = {
+        message: data?.message || "",
+        highlights: data?.highlights || [],
+        suggestions: (data?.suggestions || []).map((x) => ({
+          id: x.id || uid(),
+          hour: x.hour || "09:00",
+          category: x.category || "Personal",
+          text: x.text || "",
+        })),
+        ignoredMonthlies: (data?.ignoredMonthlies || []).map((x) => ({
+          id: x.id || uid(),
+          text: x.text || String(x),
+        })),
+        percentSummary: data?.percentSummary || "",
+      };
+
+      setCoachResult(shaped);
+      setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
+    } catch (err) {
+      setCoachError(err?.message || "Coach failed. Check your API setup.");
+    } finally {
+      setCoachLoading(false);
+    }
+  }
+
+  function acceptCoachSuggestion(s) {
+    const hour = s?.hour || "09:00";
+    const cat = CATEGORIES.includes(s?.category) ? s.category : "Personal";
+    const text = normalizeText(s?.text);
+    if (!text) return;
+    ensureHour(hour);
+    addTask(hour, cat, text);
+    setCoachOpen(false);
+  }
+
   // List view - all incomplete tasks for today
   const incompleteTasks = useMemo(() => {
     return allTasksInDay(todayHours).filter(t => !t.done).sort((a, b) => {
@@ -408,8 +543,18 @@ export default function App() {
           <div>
             <div className="kicker">cute schedule</div>
             <h1 className="h1">
-              {tab === "today" ? "Today" : tab === "monthly" ? "Monthly" : "Categories"}{" "}
-              <span className="sub">{tab === "today" ? prettyToday() : tab === "monthly" ? "Objectives" : "Manage"}</span>
+              {tab === "today" ? "Today" : tab === "monthly" ? "Monthly" : tab === "list" ? "List" : "Coach"}{" "}
+              <span className="sub">
+                {tab === "today" || tab === "list"
+                  ? new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })
+                  : tab === "monthly"
+                  ? "Objectives"
+                  : "AI Assistant"}
+              </span>
             </h1>
           </div>
 
@@ -423,11 +568,50 @@ export default function App() {
             <TabButton active={tab === "monthly"} onClick={() => setTab("monthly")}>
               Monthly
             </TabButton>
-            <TabButton active={tab === "categories"} onClick={() => setTab("categories")}>
-              Categories
+            <TabButton active={tab === "coach"} onClick={() => setTab("coach")}>
+              Coach
             </TabButton>
           </div>
         </header>
+
+        {(tab === "today" || tab === "list") && (
+          <div className="date-controls">
+            <button className="btn" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, -1))}>
+              ←
+            </button>
+
+            <input
+              className="input date-input"
+              type="date"
+              value={formatDateInput(selectedDayKey)}
+              onChange={(e) => setSelectedDayKey(e.target.value)}
+            />
+
+            <button className="btn" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, 1))}>
+              →
+            </button>
+
+            <button
+              className="btn"
+              type="button"
+              onClick={() => setSelectedDayKey(realTodayKey)}
+              disabled={isSameDayKey(selectedDayKey, realTodayKey)}
+            >
+              Today
+            </button>
+
+            {tab === "today" && (
+              <button
+                className={mode === "do" ? "btn btn-primary" : "btn"}
+                type="button"
+                onClick={() => setMode((m) => (m === "do" ? "plan" : "do"))}
+                title="Do mode = clean checkboxes. Plan mode = edit + organize."
+              >
+                {mode === "do" ? "Do" : "Plan"}
+              </button>
+            )}
+          </div>
+        )}
 
         {tab === "today" ? (
           <>
@@ -452,32 +636,34 @@ export default function App() {
 
               <ProgressBar pct={prog.pct} />
 
-              <form className="quick" onSubmit={quickAdd}>
-                <div className="quick-row">
-                  <label className="label">Hour</label>
-                  <input className="input" type="time" value={newHour} onChange={(e) => setNewHour(e.target.value)} />
-                </div>
+              {mode === "plan" && (
+                <form className="quick" onSubmit={quickAdd}>
+                  <div className="quick-row">
+                    <label className="label">Hour</label>
+                    <input className="input" type="time" value={newHour} onChange={(e) => setNewHour(e.target.value)} />
+                  </div>
 
-                <div className="quick-row">
-                  <label className="label">Category</label>
-                  <select className="input" value={quickCat} onChange={(e) => setQuickCat(e.target.value)}>
-                    {CATEGORIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                  <div className="quick-row">
+                    <label className="label">Category</label>
+                    <select className="input" value={quickCat} onChange={(e) => setQuickCat(e.target.value)}>
+                      {CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <div className="quick-row quick-grow">
-                  <label className="label">Task</label>
-                  <input className="input" value={quickText} onChange={(e) => setQuickText(e.target.value)} placeholder="Add a task…" />
-                </div>
+                  <div className="quick-row quick-grow">
+                    <label className="label">Task</label>
+                    <input className="input" value={quickText} onChange={(e) => setQuickText(e.target.value)} placeholder="Add a task…" />
+                  </div>
 
-                <button className="btn btn-primary" type="submit">
-                  Add
-                </button>
-              </form>
+                  <button className="btn btn-primary" type="submit">
+                    Add
+                  </button>
+                </form>
+              )}
             </section>
 
             <section className="stack">
@@ -496,6 +682,7 @@ export default function App() {
                     onTogglePriority={togglePriority}
                     onDeleteTask={deleteTask}
                     onDeleteHour={deleteHour}
+                    mode={mode}
                   />
                 ))
               )}
@@ -594,20 +781,113 @@ export default function App() {
               </ul>
             )}
           </section>
-        ) : (
+        ) : tab === "coach" ? (
           <section className="panel">
             <div className="panel-top">
               <div className="panel-title">
                 <div className="panel-title-row">
-                  <span className="title">Manage Categories</span>
+                  <span className="title">AI Coach</span>
+                  <span className="sparkle">✨</span>
                 </div>
-                <div className="meta">View and organize tasks by category</div>
+                <div className="meta">{prog.done}/{prog.total} tasks done · {state.monthly?.length || 0} monthly objectives</div>
               </div>
             </div>
 
-            <div className="empty">Category management coming soon!</div>
+            <div className="coach-actions">
+              <button
+                className="btn btn-primary"
+                type="button"
+                disabled={coachLocked || coachLoading}
+                onClick={() => {
+                  if (!coachLocked) askCoach();
+                }}
+              >
+                {coachLoading ? "Thinking…" : coachLocked ? `Coach in ${minsLeft}m` : "Ask Coach"}
+              </button>
+              {coachResult && (
+                <button className="btn" type="button" onClick={() => setCoachResult(null)}>
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {coachError && (
+              <div className="coach-error">
+                {coachError}
+              </div>
+            )}
+
+            {!coachResult && !coachError && !coachLoading && (
+              <div className="empty">
+                Tap <b>Ask Coach</b> to get personalized suggestions, spot ignored monthlies, and pull tasks into Today.
+                <br /><br />
+                <small style={{ opacity: 0.7 }}>Auto-runs on first open each day and when you're stuck for 3+ hours.</small>
+              </div>
+            )}
+
+            {coachResult && (
+              <div className="coach-body">
+                {coachResult.message && (
+                  <div className="coach-message">{coachResult.message}</div>
+                )}
+
+                {coachResult.highlights && coachResult.highlights.length > 0 && (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Today's Focus</div>
+                    <ul className="coach-list">
+                      {coachResult.highlights.map((h, i) => (
+                        <li key={i}>{h}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {coachResult.suggestions && coachResult.suggestions.length > 0 && (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Suggested Tasks</div>
+                    <div className="coach-suggest-grid">
+                      {coachResult.suggestions.map((s) => (
+                        <div key={s.id} className="coach-suggest">
+                          <div className="coach-suggest-top">
+                            <Pill label={s.category} />
+                            <span className="coach-time">{to12Hour(s.hour)}</span>
+                          </div>
+                          <div className="coach-suggest-text">{s.text}</div>
+                          <button
+                            className="btn btn-primary"
+                            type="button"
+                            style={{ width: '100%', marginTop: 8 }}
+                            onClick={() => acceptCoachSuggestion(s)}
+                          >
+                            Add to Today
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {coachResult.ignoredMonthlies && coachResult.ignoredMonthlies.length > 0 && (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Monthlies You Might Be Ignoring</div>
+                    <ul className="coach-list">
+                      {coachResult.ignoredMonthlies.map((m) => (
+                        <li key={m.id || m.text}>{m.text}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {coachResult.percentSummary && (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Completion Snapshot</div>
+                    <div className="coach-mono">{coachResult.percentSummary}</div>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
-        )}
+        ) : null}
 
         <footer className="foot">
           <span>Saved automatically on this device.</span>
