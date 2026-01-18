@@ -1308,7 +1308,6 @@ export default function App() {
               <div className="panel-title">
                 <div className="panel-title-row">
                   <span className="title">Monthly Objectives</span>
-                  <span className="sparkle"><SparkleIcon style={{ display: 'inline-block' }} /></span>
                 </div>
                 <div className="meta">Big picture goals that don't clutter Today.</div>
               </div>
@@ -1347,7 +1346,6 @@ export default function App() {
               <div className="panel-title">
                 <div className="panel-title-row">
                   <span className="title">AI Coach</span>
-                  <span className="sparkle"><SparkleIcon style={{ display: 'inline-block' }} /></span>
                 </div>
                 <div className="meta">{prog.done}/{prog.total} tasks done · {state.monthly?.length || 0} monthly objectives</div>
               </div>
@@ -1453,7 +1451,6 @@ export default function App() {
               <div className="panel-title">
                 <div className="panel-title-row">
                   <span className="title">Notes & Ideas</span>
-                  <span className="sparkle"><SparkleIcon style={{ display: 'inline-block' }} /></span>
                 </div>
                 <div className="meta">Jot down thoughts, ideas, and reminders</div>
               </div>
