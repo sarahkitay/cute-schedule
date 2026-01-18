@@ -1240,7 +1240,7 @@ export default function App() {
             <div className="panel-top">
               <div className="panel-title">
                 <div className="panel-title-row">
-                  <span className="title">To-Do List</span>
+                  <span className="title">List</span>
                 </div>
                 <div className="meta">
                   {incompleteTasks.length === 0 ? (
