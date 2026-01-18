@@ -1,1 +1,34 @@
-if(!self.define){let e,i={};const s=(s,n)=>(s=new URL(s+".js",n).href,i[s]||new Promise(i=>{if("document"in self){const e=document.createElement("script");e.src=s,e.onload=i,document.head.appendChild(e)}else e=s,importScripts(s),i()}).then(()=>{let e=i[s];if(!e)throw new Error(`Module ${s} didn’t register its module`);return e}));self.define=(n,r)=>{const t=e||("document"in self?document.currentScript.src:"")||location.href;if(i[t])return;let o={};const l=e=>s(e,t),d={module:{uri:t},exports:o,require:l};i[t]=Promise.all(n.map(e=>d[e]||l(e))).then(e=>(r(...e),o))}}define(["./workbox-8c29f6e4"],function(e){"use strict";self.skipWaiting(),e.clientsClaim(),e.precacheAndRoute([{url:"registerSW.js",revision:"1872c500de691dce40960bb85481de07"},{url:"index.html",revision:"4c49ed330ac472fdd5053c1902a0c6bd"},{url:"assets/index-D2l8wyRM.js",revision:null},{url:"assets/index-B409h8aL.css",revision:null},{url:"pwa-192.png",revision:"e93ae55ba9352551ee5a8e97e2f17be0"},{url:"pwa-512.png",revision:"46260f94a6a895431a8131d0b28babe0"},{url:"manifest.webmanifest",revision:"87923b8fd5a85f80a9f58be9dc6e6381"}],{}),e.cleanupOutdatedCaches(),e.registerRoute(new e.NavigationRoute(e.createHandlerBoundToURL("index.html")))});
+// Service Worker for Push Notifications
+const CACHE_NAME = 'cute-schedule-v1';
+
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.openWindow('/')
+  );
+});
+
+// Handle push notifications
+self.addEventListener('push', (event) => {
+  const data = event.data ? event.data.json() : {};
+  const title = data.title || 'Schedule Notification';
+  const options = {
+    body: data.body || 'You have a new notification',
+    icon: '/vite.svg',
+    badge: '/vite.svg',
+    tag: data.tag || 'schedule-notification',
+    requireInteraction: false
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
