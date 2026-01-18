@@ -440,6 +440,9 @@ export default function App() {
   const [windDownMode, setWindDownMode] = useState(false);
   const [rescheduleModal, setRescheduleModal] = useState(null);
   
+  // Define todayHours before useEffects that use it
+  const todayHours = state.days?.[tKey]?.hours || {};
+  
   // Check for missed tasks periodically
   useEffect(() => {
     if (!isSameDayKey(tKey, realTodayKey)) return;
@@ -527,7 +530,6 @@ export default function App() {
     notificationService.checkPermission();
   }, []);
 
-  const todayHours = state.days?.[tKey]?.hours || {};
   const sortedHourKeys = useMemo(() => Object.keys(todayHours).sort(), [todayHours]);
 
   const prog = useMemo(() => dayProgress(todayHours), [todayHours]);
