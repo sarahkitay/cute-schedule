@@ -287,7 +287,7 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
             {allTasks.map((t) => (
               <li
                 key={t.id}
-                className={["item", t.done ? "item-done" : "", t.priority ? "item-priority" : ""]
+                className={["item", t.done ? "item-done" : ""]
                   .filter(Boolean)
                   .join(" ")}
                 onClick={(e) => {
@@ -301,7 +301,7 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
                 <label className="check">
                   <input type="checkbox" checked={!!t.done} onChange={() => onToggleTask(hourKey, t.category, t.id)} />
                   <span className="checkmark" />
-                  <span className="item-text">
+                  <span className={`item-text ${t.done ? 'item-text-done' : ''}`}>
                     {mode === "plan" ? <Pill label={t.category} /> : null}
                     {mode === "plan" && (
                       <span className="energy-badge" style={{ 
@@ -373,7 +373,7 @@ function BedtimeRoutine({ routine, onToggle, allTasksDone }) {
             <label className="check">
               <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} />
               <span className="checkmark" />
-              <span className="item-text">{item.text}</span>
+              <span className={`item-text ${item.done ? 'item-text-done' : ''}`}>{item.text}</span>
             </label>
           </li>
         ))}
@@ -434,6 +434,7 @@ export default function App() {
   const [noteSearch, setNoteSearch] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [completionCelebration, setCompletionCelebration] = useState(null);
+  const [toastNotification, setToastNotification] = useState(null);
   const [taskFeeling, setTaskFeeling] = useState(null);
   const [missedTasks, setMissedTasks] = useState([]);
   const [windDownMode, setWindDownMode] = useState(false);
@@ -671,15 +672,17 @@ export default function App() {
             // Generate contextual completion message using Gentle Anchor
             const message = generateCompletionMessage(t, category, completedToday, energyLevel, state);
             
-            // Show celebration with micro-animation
+            // Show toast notification that auto-dismisses
+            setToastNotification({
+              message,
+              taskText: t.text,
+              type: 'completion'
+            });
+            
+            // Auto-dismiss after 3 seconds
             setTimeout(() => {
-              setCompletionCelebration({
-                task: t,
-                message,
-                category,
-                taskId
-              });
-            }, 100);
+              setToastNotification(null);
+            }, 3000);
             
             // Update task with completion time
             return { 
@@ -788,6 +791,18 @@ export default function App() {
     if (!clean) return;
     ensureHour(newHour);
     addTask(newHour, quickCat, clean, quickRepeat);
+    
+    // Show success toast
+    setToastNotification({
+      message: "Task added",
+      taskText: clean,
+      type: 'added'
+    });
+    
+    setTimeout(() => {
+      setToastNotification(null);
+    }, 2500);
+    
     setQuickText("");
     setQuickRepeat(REPEAT_OPTIONS.NONE);
   }
@@ -972,7 +987,7 @@ export default function App() {
       <div className="shell">
         <header className="top">
           <div>
-            <div className="kicker">cute schedule</div>
+            <div className="kicker">prouyou</div>
             <h1 className="h1">
               {tab === "today" ? "Today" : tab === "monthly" ? "Monthly" : tab === "list" ? "List" : tab === "notes" ? "Notes" : "Coach"}{" "}
               <span className="sub">
@@ -1249,7 +1264,7 @@ export default function App() {
                     <label className="check">
                       <input type="checkbox" checked={false} onChange={() => toggleTask(t.hour, t.category, t.id)} />
                       <span className="checkmark" />
-                      <span className="item-text">
+                      <span className={`item-text ${t.done ? 'item-text-done' : ''}`}>
                         <span className="task-time">{to12Hour(t.hour)}</span> <Pill label={t.category} /> 
                         <span className="energy-badge" style={{ 
                           marginLeft: '8px',
@@ -1546,45 +1561,16 @@ export default function App() {
           </div>
         )}
 
-        {/* Completion Celebration Modal */}
-        {completionCelebration && (
-          <div className="modal-overlay celebration-overlay" onClick={() => setCompletionCelebration(null)}>
-            <div className="modal celebration-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="celebration-animation"><SparkleIcon style={{ width: '64px', height: '64px' }} /></div>
-              <h3>{completionCelebration.message}</h3>
-              <p className="celebration-task">{completionCelebration.task.text}</p>
-              
-              <div className="feeling-options">
-                <p>How did this feel?</p>
-                <div className="feeling-buttons">
-                  <button 
-                    className="feeling-btn"
-                    onClick={() => saveTaskFeeling(completionCelebration.taskId, 'good')}
-                  >
-                    <GoodFeelingIcon style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-                    Good
-                  </button>
-                  <button 
-                    className="feeling-btn"
-                    onClick={() => saveTaskFeeling(completionCelebration.taskId, 'neutral')}
-                  >
-                    <NeutralFeelingIcon style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-                    Neutral
-                  </button>
-                  <button 
-                    className="feeling-btn"
-                    onClick={() => saveTaskFeeling(completionCelebration.taskId, 'hard')}
-                  >
-                    <HardFeelingIcon style={{ marginRight: '8px', verticalAlign: 'middle' }} />
-                    Hard
-                  </button>
-                  <button 
-                    className="feeling-btn skip"
-                    onClick={() => setCompletionCelebration(null)}
-                  >
-                    Skip
-                  </button>
-                </div>
+        {/* Toast Notification */}
+        {toastNotification && (
+          <div className="toast-notification">
+            <div className="toast-content">
+              <SparkleIcon style={{ width: '20px', height: '20px', flexShrink: 0 }} />
+              <div className="toast-text">
+                <div className="toast-message">{toastNotification.message}</div>
+                {toastNotification.taskText && (
+                  <div className="toast-task">{toastNotification.taskText}</div>
+                )}
               </div>
             </div>
           </div>

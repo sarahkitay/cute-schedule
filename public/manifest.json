@@ -1,7 +1,7 @@
 {
-  "name": "✨ Cute Schedule ✨",
-  "short_name": "Schedule",
-  "description": "Your girly productivity schedule app with AI assistance 💕",
+  "name": "prouyou",
+  "short_name": "prouyou",
+  "description": "Your personal productivity schedule app with AI assistance",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#FFB6C1",
