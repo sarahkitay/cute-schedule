@@ -1,12 +1,8 @@
 // Completion Rituals - Using The Gentle Anchor system
 import { generateCompletionMessage as gentleCompletion, inferEmotionalState } from './gentleAnchor';
 
-export function generateCompletionMessage(task, category, completedToday, energyLevel, categoryTone) {
-  // Use the new gentle anchor system
-  const tasks = []; // This would come from state - simplified for now
-  const state = inferEmotionalState(tasks, "afternoon");
-  return gentleCompletion(task, category, completedToday, energyLevel, state);
-}
+// Re-export the gentle completion message directly to avoid circular dependency
+export { generateCompletionMessage } from './gentleAnchor';
 
 export function checkEnergyBalance(tasksByHour) {
   const heavyCount = {};
