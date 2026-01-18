@@ -1,6 +1,4 @@
 // Completion Rituals - Using The Gentle Anchor system
-import { generateCompletionMessage as gentleCompletion, inferEmotionalState } from './gentleAnchor';
-
 // Re-export the gentle completion message directly to avoid circular dependency
 export { generateCompletionMessage } from './gentleAnchor';
 
