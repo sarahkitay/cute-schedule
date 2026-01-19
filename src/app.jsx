@@ -177,6 +177,31 @@ function isSameDayKey(a, b) {
   return String(a) === String(b);
 }
 
+function getDayLabel(dayKey, todayKey) {
+  if (isSameDayKey(dayKey, todayKey)) {
+    return null; // Will show as "Today"
+  }
+  
+  const tomorrowKey = addDaysKey(todayKey, 1);
+  if (isSameDayKey(dayKey, tomorrowKey)) {
+    return "Tomorrow";
+  }
+  
+  // Check if it's in the future (after tomorrow)
+  const [y, m, d] = dayKey.split("-").map(Number);
+  const [ty, tm, td] = todayKey.split("-").map(Number);
+  const dayDate = new Date(y, m - 1, d);
+  const todayDate = new Date(ty, tm - 1, td);
+  const tomorrowDate = new Date(ty, tm - 1, td + 1);
+  
+  if (dayDate.getTime() > tomorrowDate.getTime()) {
+    return "Future";
+  }
+  
+  // Past date - return null to show formatted date
+  return null;
+}
+
 function allTasksInDay(hours) {
   const hourEntries = Object.entries(hours || {});
   return hourEntries.flatMap(([hourKey, tasksByCat]) => {
@@ -1230,14 +1255,32 @@ export default function App() {
           <div>
             <div className="kicker">proyou</div>
             <h1 className="h1">
-              {tab === "today" ? "Today" : tab === "monthly" ? "Monthly" : tab === "list" ? "List" : tab === "notes" ? "Notes" : "Coach"}{" "}
+              {(() => {
+                if (tab === "today") {
+                  if (isSameDayKey(tKey, realTodayKey)) return "Today";
+                  const label = getDayLabel(tKey, realTodayKey);
+                  if (label === "Tomorrow") return "Tomorrow";
+                  if (label === "Future") return "Future";
+                  return "Today"; // Past dates
+                }
+                return tab === "monthly" ? "Monthly" 
+                  : tab === "list" ? "List" 
+                  : tab === "notes" ? "Notes" 
+                  : "Coach";
+              })()}{" "}
               <span className="sub">
                 {tab === "today" || tab === "list"
-                  ? new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                    })
+                  ? (() => {
+                      const label = getDayLabel(tKey, realTodayKey);
+                      if (label === "Tomorrow" || label === "Future") {
+                        return ""; // Don't show subtitle if main title already says Tomorrow/Future
+                      }
+                      return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
+                        weekday: "long",
+                        month: "long",
+                        day: "numeric",
+                      });
+                    })()
                   : tab === "monthly"
                   ? "Objectives"
                   : "Assistant"}
@@ -1274,40 +1317,44 @@ export default function App() {
 
         {(tab === "today" || tab === "list") && (
           <div className="date-controls">
-            <button className="btn" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, -1))}>
-              <ChevronLeftIcon />
-            </button>
-
-            <input
-              className="input date-input"
-              type="date"
-              value={formatDateInput(selectedDayKey)}
-              onChange={(e) => setSelectedDayKey(e.target.value)}
-            />
-
-            <button className="btn" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, 1))}>
-              <ChevronRightIcon />
-            </button>
-
-            <button
-              className="btn"
-              type="button"
-              onClick={() => setSelectedDayKey(realTodayKey)}
-              disabled={isSameDayKey(selectedDayKey, realTodayKey)}
-            >
-              Today
-            </button>
-
-            {tab === "today" && (
-              <button
-                className={mode === "do" ? "btn btn-primary" : "btn"}
-                type="button"
-                onClick={() => setMode((m) => (m === "do" ? "plan" : "do"))}
-                title="Do mode = clean checkboxes. Plan mode = edit + organize."
-              >
-                {mode === "do" ? "Do" : "Plan"}
+            <div className="date-controls-top">
+              <button className="btn" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, -1))}>
+                <ChevronLeftIcon />
               </button>
-            )}
+
+              <input
+                className="input date-input"
+                type="date"
+                value={formatDateInput(selectedDayKey)}
+                onChange={(e) => setSelectedDayKey(e.target.value)}
+              />
+
+              <button className="btn" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, 1))}>
+                <ChevronRightIcon />
+              </button>
+            </div>
+
+            <div className="date-controls-bottom">
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setSelectedDayKey(realTodayKey)}
+                disabled={isSameDayKey(selectedDayKey, realTodayKey)}
+              >
+                Today
+              </button>
+
+              {tab === "today" && (
+                <button
+                  className={mode === "do" ? "btn btn-primary" : "btn"}
+                  type="button"
+                  onClick={() => setMode((m) => (m === "do" ? "plan" : "do"))}
+                  title="Do mode = clean checkboxes. Plan mode = edit + organize."
+                >
+                  {mode === "do" ? "Do" : "Plan"}
+                </button>
+              )}
+            </div>
           </div>
         )}
 
