@@ -880,20 +880,27 @@
     gap: 10px;
   }
   
-  .date-controls-top,
+  .date-controls-top {
+    gap: 6px;
+    flex-wrap: nowrap;
+  }
+  
   .date-controls-bottom {
     gap: 6px;
   }
   
   .date-controls .btn {
-    padding: 8px 14px;
+    padding: 8px 12px;
     font-size: 13px;
+    flex-shrink: 0;
   }
   
   .date-controls .date-input {
+    min-width: 120px;
     max-width: 180px;
     font-size: 13px;
     padding: 8px 10px;
+    flex: 1;
   }
 }
 
@@ -1323,6 +1330,7 @@ button {
   align-items: center;
   justify-content: center;
   width: 100%;
+  flex-wrap: nowrap;
 }
 
 .date-controls-bottom {
@@ -1342,6 +1350,7 @@ button {
 
 .date-controls .date-input {
   flex: 1;
+  min-width: 140px;
   max-width: 200px;
   font-size: 14px;
   padding: 10px 12px;
