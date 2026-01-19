@@ -894,26 +894,22 @@
   }
   
   .date-controls-top .btn {
-    padding: 8px 10px;
-    font-size: 13px;
-    flex-shrink: 0;
-    min-width: 44px;
+    padding: 6px 8px !important;
+    font-size: 12px !important;
+    flex-shrink: 0 !important;
+    min-width: 32px !important;
+    max-width: 40px !important;
+    width: auto !important;
   }
   
   .date-controls-top .date-input {
-    min-width: 80px !important;
-    max-width: 120px !important;
-    font-size: 12px;
-    padding: 6px 8px;
-    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    max-width: 110px !important;
+    font-size: 12px !important;
+    padding: 6px 8px !important;
+    flex: 1 1 0 !important;
     width: auto !important;
     display: block !important;
-  }
-  
-  .date-controls-top .btn {
-    padding: 6px 8px !important;
-    font-size: 12px !important;
-    min-width: 36px !important;
   }
   
   .date-controls-bottom .btn {
