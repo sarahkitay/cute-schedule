@@ -208,6 +208,109 @@ function dayIsStarred(hours) {
   return total > 0 && done === total;
 }
 
+/** ====== Pattern Tracking ====== **/
+function loadPatterns() {
+  try {
+    const raw = localStorage.getItem(PATTERNS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {
+      completions: [], // { dayKey, taskId, category, hour, completedAt, feeling }
+      skippedDays: {}, // { dayKey: { categories: [] } }
+      completionTimes: [], // { hour: number, dayOfWeek: number }
+      weeklyTotals: {} // { weekKey: total }
+    };
+  } catch {
+    return { completions: [], skippedDays: {}, completionTimes: [], weeklyTotals: {} };
+  }
+}
+
+function savePatterns(patterns) {
+  try {
+    localStorage.setItem(PATTERNS_STORAGE_KEY, JSON.stringify(patterns));
+  } catch (err) {
+    console.error('Failed to save patterns:', err);
+  }
+}
+
+function trackTaskCompletion(task, category, hour, dayKey, feeling = null) {
+  const patterns = loadPatterns();
+  const completedAt = new Date();
+  const dayOfWeek = completedAt.getDay();
+  const hourNum = completedAt.getHours();
+  
+  patterns.completions.push({
+    dayKey,
+    taskId: task.id,
+    category,
+    hour,
+    completedAt: completedAt.toISOString(),
+    feeling,
+    dayOfWeek,
+    hourNum
+  });
+  
+  patterns.completionTimes.push({ hour: hourNum, dayOfWeek });
+  
+  // Keep last 100 completions
+  if (patterns.completions.length > 100) {
+    patterns.completions = patterns.completions.slice(-100);
+  }
+  if (patterns.completionTimes.length > 100) {
+    patterns.completionTimes = patterns.completionTimes.slice(-100);
+  }
+  
+  savePatterns(patterns);
+}
+
+function analyzePatterns() {
+  const patterns = loadPatterns();
+  const now = new Date();
+  const today = now.getDay();
+  
+  // Analyze completion times - when user typically completes tasks
+  const morningCompletions = patterns.completionTimes.filter(ct => ct.hour >= 6 && ct.hour < 12).length;
+  const afternoonCompletions = patterns.completionTimes.filter(ct => ct.hour >= 12 && ct.hour < 17).length;
+  const eveningCompletions = patterns.completionTimes.filter(ct => ct.hour >= 17 && ct.hour < 22).length;
+  
+  const bestTime = morningCompletions > afternoonCompletions && morningCompletions > eveningCompletions 
+    ? 'morning'
+    : afternoonCompletions > eveningCompletions ? 'afternoon' : 'evening';
+  
+  // Analyze category completion rates
+  const categoryCounts = {};
+  const categoryCompleted = {};
+  patterns.completions.forEach(c => {
+    categoryCounts[c.category] = (categoryCounts[c.category] || 0) + 1;
+    if (c.completedAt) {
+      categoryCompleted[c.category] = (categoryCompleted[c.category] || 0) + 1;
+    }
+  });
+  
+  // Find least completed category
+  let leastCompleted = null;
+  let lowestRate = 1;
+  Object.keys(categoryCounts).forEach(cat => {
+    const rate = categoryCompleted[cat] / (categoryCounts[cat] || 1);
+    if (rate < lowestRate) {
+      lowestRate = rate;
+      leastCompleted = cat;
+    }
+  });
+  
+  // Check day-of-week patterns
+  const todayCompletions = patterns.completions.filter(c => {
+    const cDate = new Date(c.completedAt);
+    return cDate.getDay() === today;
+  }).length;
+  
+  return {
+    bestTime,
+    leastCompletedCategory: leastCompleted,
+    leastCompletedRate: lowestRate,
+    todayCompletions,
+    totalCompletions: patterns.completions.length
+  };
+}
+
 /** ====== UI Components ====== **/
 function Pill({ label }) {
   const cls =
@@ -439,6 +542,7 @@ export default function App() {
   const [missedTasks, setMissedTasks] = useState([]);
   const [windDownMode, setWindDownMode] = useState(false);
   const [rescheduleModal, setRescheduleModal] = useState(null);
+  const [morningGreeting, setMorningGreeting] = useState(false);
   
   // Define todayHours before useEffects that use it
   const todayHours = state.days?.[tKey]?.hours || {};
@@ -495,6 +599,8 @@ export default function App() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState("");
   const [coachResult, setCoachResult] = useState(null);
+  const [coachQuestion, setCoachQuestion] = useState("");
+  const [coachConversation, setCoachConversation] = useState([]);
 
   useEffect(() => {
     localStorage.setItem(COACH_STORAGE_KEY, JSON.stringify(coachMeta));
@@ -529,6 +635,87 @@ export default function App() {
   useEffect(() => {
     notificationService.checkPermission();
   }, []);
+
+  // Morning greeting ritual
+  useEffect(() => {
+    if (!isSameDayKey(tKey, realTodayKey)) return;
+    
+    const lastGreeting = localStorage.getItem(`morning-greeting-${realTodayKey}`);
+    const now = new Date();
+    const hour = now.getHours();
+    
+    // Show greeting if it's morning (6-10am) and hasn't been shown today
+    if (hour >= 6 && hour < 10 && !lastGreeting) {
+      setTimeout(() => {
+        setMorningGreeting(true);
+        localStorage.setItem(`morning-greeting-${realTodayKey}`, 'true');
+      }, 500);
+    }
+  }, [tKey, realTodayKey]);
+
+  // Monitor tasks and schedule transition notifications
+  useEffect(() => {
+    if (!isSameDayKey(tKey, realTodayKey)) return;
+    
+    const allTasks = allTasksInDay(todayHours);
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const currentTimeMinutes = currentHour * 60 + currentMinute;
+
+    // Sort tasks by time
+    const sortedTasks = allTasks
+      .filter(t => !t.done)
+      .sort((a, b) => {
+        const [aHour, aMin] = a.hour.split(':').map(Number);
+        const [bHour, bMin] = b.hour.split(':').map(Number);
+        return (aHour * 60 + aMin) - (bHour * 60 + bMin);
+      });
+
+    // Find current and next task
+    let currentTask = null;
+    let nextTask = null;
+
+    for (let i = 0; i < sortedTasks.length; i++) {
+      const task = sortedTasks[i];
+      const [taskHour, taskMin] = task.hour.split(':').map(Number);
+      const taskTimeMinutes = taskHour * 60 + taskMin;
+
+      // Current task: started within the last hour and not done
+      if (taskTimeMinutes <= currentTimeMinutes && currentTimeMinutes < taskTimeMinutes + 60) {
+        currentTask = task;
+        if (i + 1 < sortedTasks.length) {
+          nextTask = sortedTasks[i + 1];
+        }
+        break;
+      }
+      
+      // Next task: upcoming
+      if (taskTimeMinutes > currentTimeMinutes) {
+        nextTask = task;
+        // Previous task might still be current
+        if (i > 0) {
+          const prevTask = sortedTasks[i - 1];
+          const [prevHour, prevMin] = prevTask.hour.split(':').map(Number);
+          const prevTimeMinutes = prevHour * 60 + prevMin;
+          if (currentTimeMinutes < prevTimeMinutes + 60) {
+            currentTask = prevTask;
+          }
+        }
+        break;
+      }
+    }
+
+    // Schedule transition notifications
+    if (nextTask) {
+      notificationService.scheduleTaskTransition(
+        currentTask,
+        nextTask,
+        nextTask.hour,
+        nextTask.category
+      );
+    }
+  }, [tKey, realTodayKey, todayHours, state]);
 
   const sortedHourKeys = useMemo(() => Object.keys(todayHours).sort(), [todayHours]);
 
@@ -664,6 +851,9 @@ export default function App() {
             // COMPLETION RITUAL
             notificationService.notifyTaskComplete(t, category);
             
+            // Track completion pattern
+            trackTaskCompletion(t, category, hourKey, tKey, t.feeling);
+            
             // Count completed tasks today (before this one is marked done)
             const currentlyDone = allTasksInDay(todayHours).filter(task => task.done && task.id !== taskId).length;
             const completedToday = currentlyDone + 1; // +1 for this task
@@ -673,6 +863,14 @@ export default function App() {
             
             // Generate contextual completion message using Gentle Anchor
             const message = generateCompletionMessage(t, category, completedToday, energyLevel, state);
+            
+            // Show completion celebration with mood selection
+            setCompletionCelebration({
+              task: t,
+              category,
+              message,
+              completedToday
+            });
             
             // Show toast notification that auto-dismisses
             setToastNotification({
@@ -742,9 +940,16 @@ export default function App() {
       
       Object.keys(hours).forEach(hourKey => {
         Object.keys(hours[hourKey]).forEach(cat => {
-          const list = hours[hourKey][cat].map(t => 
-            t.id === taskId ? { ...t, feeling } : t
-          );
+          const list = hours[hourKey][cat].map(t => {
+            if (t.id === taskId) {
+              // Update feeling and re-track with feeling
+              if (t.completedAt && !t.feeling) {
+                trackTaskCompletion(t, cat, hourKey, tKey, feeling);
+              }
+              return { ...t, feeling };
+            }
+            return t;
+          });
           hours[hourKey][cat] = list;
         });
       });
@@ -856,8 +1061,8 @@ export default function App() {
     return notes.filter((n) => n.text.toLowerCase().includes(searchLower));
   }, [notes, noteSearch]);
 
-  async function askCoach() {
-    if (coachLocked) return;
+  async function askCoach(userQuestion = null) {
+    if (coachLocked && !userQuestion) return;
     
     setCoachError("");
     setCoachLoading(true);
@@ -868,6 +1073,14 @@ export default function App() {
       const emotionalState = inferEmotionalState(allTasks, timeOfDay);
       const completedToday = allTasks.filter(t => t.done).length;
       const totalTasks = allTasks.length;
+      
+      // Add user question to conversation if provided
+      if (userQuestion) {
+        setCoachConversation(prev => [...prev, { role: 'user', content: userQuestion }]);
+      }
+      
+      // Analyze patterns for observant coach insights
+      const patterns = analyzePatterns();
       
       const payload = {
         systemPrompt: GENTLE_ANCHOR_PROMPT,
@@ -881,7 +1094,16 @@ export default function App() {
         emotionalState,
         completedToday,
         totalTasks,
-        energyBalance: checkEnergyBalance(todayHours)
+        energyBalance: checkEnergyBalance(todayHours),
+        userQuestion: userQuestion || null,
+        conversation: userQuestion ? coachConversation : [],
+        patterns: {
+          bestTime: patterns.bestTime,
+          leastCompletedCategory: patterns.leastCompletedCategory,
+          leastCompletedRate: patterns.leastCompletedRate,
+          todayCompletions: patterns.todayCompletions,
+          totalCompletions: patterns.totalCompletions
+        }
       };
 
       const res = await fetch("/api/coach", {
@@ -917,7 +1139,15 @@ export default function App() {
         percentSummary: data?.percentSummary || "",
       };
 
-      setCoachResult(shaped);
+      // Add AI response to conversation if it was a question
+      if (userQuestion) {
+        setCoachConversation(prev => [...prev, { role: 'assistant', content: shaped.message }]);
+        // Don't show structured result for questions - just conversation
+        setCoachResult(null);
+      } else {
+        setCoachResult(shaped);
+      }
+      
       setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
     } catch (err) {
       // Fallback to local responses
@@ -929,6 +1159,15 @@ export default function App() {
     } finally {
       setCoachLoading(false);
     }
+  }
+
+  function handleCoachQuestion(e) {
+    e.preventDefault();
+    const question = normalizeText(coachQuestion);
+    if (!question) return;
+    
+    askCoach(question);
+    setCoachQuestion("");
   }
 
   function generateLocalGentleResponse(state, progress, completed, total) {
@@ -989,7 +1228,7 @@ export default function App() {
       <div className="shell">
         <header className="top">
           <div>
-            <div className="kicker">prouyou</div>
+            <div className="kicker">proyou</div>
             <h1 className="h1">
               {tab === "today" ? "Today" : tab === "monthly" ? "Monthly" : tab === "list" ? "List" : tab === "notes" ? "Notes" : "Coach"}{" "}
               <span className="sub">
@@ -1026,9 +1265,9 @@ export default function App() {
               className="settings-btn"
               onClick={() => setShowSettings(true)}
               title="Settings"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', padding: '4px 8px' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '4px 8px', color: 'white', fontWeight: '400' }}
             >
-              <SettingsIcon />
+              Settings
             </button>
           </div>
         </header>
@@ -1355,6 +1594,30 @@ export default function App() {
               </div>
             </div>
 
+            {/* Question Input Form - Prominent */}
+            <form className="coach-question-form" onSubmit={handleCoachQuestion} style={{ marginBottom: 'var(--spacing-md)' }}>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <input
+                  className="input"
+                  type="text"
+                  value={coachQuestion}
+                  onChange={(e) => setCoachQuestion(e.target.value)}
+                  placeholder="Ask me anything about your schedule..."
+                  disabled={coachLoading}
+                  style={{ flex: 1, fontSize: '15px', padding: '12px 16px' }}
+                  autoFocus
+                />
+                <button
+                  className="btn btn-primary"
+                  type="submit"
+                  disabled={coachLoading || !coachQuestion.trim()}
+                  style={{ padding: '12px 24px' }}
+                >
+                  {coachLoading ? "Thinking…" : "Ask"}
+                </button>
+              </div>
+            </form>
+
             <div className="coach-actions">
               <button
                 className="btn btn-primary"
@@ -1364,10 +1627,13 @@ export default function App() {
                   if (!coachLocked) askCoach();
                 }}
               >
-                {coachLoading ? "Thinking…" : coachLocked ? `Coach in ${minsLeft}m` : "Ask Coach"}
+                {coachLoading ? "Thinking…" : coachLocked ? `Coach in ${minsLeft}m` : "General Check-in"}
               </button>
-              {coachResult && (
-                <button className="btn" type="button" onClick={() => setCoachResult(null)}>
+              {(coachResult || coachConversation.length > 0) && (
+                <button className="btn" type="button" onClick={() => {
+                  setCoachResult(null);
+                  setCoachConversation([]);
+                }}>
                   Clear
                 </button>
               )}
@@ -1379,15 +1645,46 @@ export default function App() {
               </div>
             )}
 
-            {!coachResult && !coachError && !coachLoading && (
+            {/* Conversation History */}
+            {coachConversation.length > 0 && (
+              <div className="coach-conversation" style={{ marginBottom: 'var(--spacing-md)' }}>
+                {coachConversation.map((msg, idx) => (
+                  <div key={idx} className={`coach-msg coach-msg-${msg.role}`}>
+                    <div className="coach-msg-label">{msg.role === 'user' ? 'You' : 'Coach'}</div>
+                    <div className="coach-msg-content">{msg.content}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!coachResult && !coachError && !coachLoading && coachConversation.length === 0 && (
               <div className="empty">
-                When you're ready, I can help you see where things stand.
+                Type a question above, or click "General Check-in" for an overview.
                 <br /><br />
                 <small style={{ opacity: 0.7 }}>I'll check in on first open each day and when you've been stuck for a while.</small>
               </div>
             )}
 
-            {coachResult && (
+            {/* Show conversation history for questions */}
+            {coachConversation.length > 0 && (
+              <div className="coach-body">
+                {coachConversation.map((msg, idx) => (
+                  <div key={idx} style={{ marginBottom: 'var(--spacing-md)' }}>
+                    {msg.role === 'user' && (
+                      <div className="coach-message" style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '12px', marginBottom: '8px' }}>
+                        <strong>You:</strong> {msg.content}
+                      </div>
+                    )}
+                    {msg.role === 'assistant' && (
+                      <div className="coach-message">{msg.content}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Show structured result for general check-ins */}
+            {coachResult && coachConversation.length === 0 && (
               <div className="coach-body">
                 {coachResult.message && (
                   <div className="coach-message">{coachResult.message}</div>
@@ -1574,6 +1871,75 @@ export default function App() {
                   <div className="toast-task">{toastNotification.taskText}</div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Completion Celebration with Mood Selection */}
+        {completionCelebration && (
+          <div className="modal-overlay celebration-overlay" onClick={() => saveTaskFeeling(completionCelebration.task.id, null)}>
+            <div className="modal celebration-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="celebration-animation">✨</div>
+              <h3>Done.</h3>
+              <p className="celebration-task">{completionCelebration.message}</p>
+              
+              <div className="feeling-options">
+                <p>How are you feeling?</p>
+                <div className="feeling-buttons">
+                  <button 
+                    className="feeling-btn" 
+                    onClick={() => saveTaskFeeling(completionCelebration.task.id, 'calm')}
+                  >
+                    <GoodFeelingIcon style={{ width: '20px', height: '20px', marginRight: '6px', verticalAlign: 'middle' }} />
+                    Calm
+                  </button>
+                  <button 
+                    className="feeling-btn" 
+                    onClick={() => saveTaskFeeling(completionCelebration.task.id, 'neutral')}
+                  >
+                    <NeutralFeelingIcon style={{ width: '20px', height: '20px', marginRight: '6px', verticalAlign: 'middle' }} />
+                    Neutral
+                  </button>
+                  <button 
+                    className="feeling-btn skip" 
+                    onClick={() => saveTaskFeeling(completionCelebration.task.id, 'drained')}
+                  >
+                    <HardFeelingIcon style={{ width: '20px', height: '20px', marginRight: '6px', verticalAlign: 'middle' }} />
+                    Drained
+                  </button>
+                  <button 
+                    className="feeling-btn skip" 
+                    onClick={() => saveTaskFeeling(completionCelebration.task.id, null)}
+                  >
+                    Skip
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Morning Greeting */}
+        {morningGreeting && (
+          <div className="modal-overlay celebration-overlay" onClick={() => setMorningGreeting(false)}>
+            <div className="modal celebration-modal" onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ fontSize: '24px', marginBottom: '16px' }}>Good morning, Sarah</h3>
+              <p className="celebration-task" style={{ fontSize: '16px', lineHeight: '1.6' }}>
+                {(() => {
+                  const patterns = analyzePatterns();
+                  if (patterns.totalCompletions > 10) {
+                    return `You usually do better when you start with one small task. Want to pick one together?`;
+                  }
+                  return `How would you like to show up today?`;
+                })()}
+              </p>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => setMorningGreeting(false)}
+                style={{ marginTop: '24px' }}
+              >
+                Let's begin
+              </button>
             </div>
           </div>
         )}

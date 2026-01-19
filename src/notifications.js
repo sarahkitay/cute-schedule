@@ -114,6 +114,61 @@ class NotificationService {
       }
     );
   }
+
+  scheduleTaskTransition(currentTask, nextTask, hour, category) {
+    try {
+      const now = new Date();
+      const [hours, minutes] = hour.split(':').map(Number);
+      const taskTime = new Date(now);
+      taskTime.setHours(hours, minutes, 0, 0);
+      
+      // Skip if time has passed
+      if (taskTime < now) {
+        return null;
+      }
+
+      // Schedule "wrap up" notification 10 minutes before task time
+      const wrapUpTime = new Date(taskTime.getTime() - 10 * 60 * 1000);
+      const wrapUpDelay = wrapUpTime.getTime() - now.getTime();
+      
+      if (wrapUpDelay > 0 && wrapUpDelay < 24 * 60 * 60 * 1000) {
+        setTimeout(() => {
+          let wrapUpMessage = "Time to wrap up.";
+          let wrapUpBody = currentTask ? `Finishing up: ${currentTask.text}` : "Wrapping up current task";
+          
+          if (nextTask) {
+            wrapUpBody += `\nNext: ${nextTask.text} at ${hour}`;
+          }
+          
+          this.showNotification(wrapUpMessage, {
+            body: wrapUpBody,
+            tag: `wrapup-${currentTask?.id || Date.now()}`,
+            requireInteraction: false
+          });
+        }, wrapUpDelay);
+      }
+
+      // Schedule "next task" notification at task time
+      const nextTaskDelay = taskTime.getTime() - now.getTime();
+      if (nextTaskDelay > 0 && nextTaskDelay < 24 * 60 * 60 * 1000) {
+        setTimeout(() => {
+          this.showNotification(
+            "Next task starting",
+            {
+              body: `${nextTask.text} (${category})`,
+              tag: `next-${nextTask.id}`,
+              requireInteraction: false
+            }
+          );
+        }, nextTaskDelay);
+      }
+      
+      return { wrapUpTime, taskTime };
+    } catch (error) {
+      console.error('Error scheduling task transition:', error);
+      return null;
+    }
+  }
 }
 
 export const notificationService = new NotificationService();

@@ -26,27 +26,57 @@ export default async function handler(req, res) {
       });
     }
 
-    const { dayKey, today, monthly, progress } = req.body || {};
+    const { dayKey, today, monthly, progress, userQuestion, conversation, patterns } = req.body || {};
     if (!dayKey) return res.status(400).json({ error: "Missing dayKey" });
 
-    const prompt = `
-You are a calm, direct productivity coach for Sarah.
-Return JSON only. No markdown. No code fences.
+    // Build conversation context
+    let messages = [
+      { role: "system", content: "You are a calm, direct productivity coach for Sarah. Return valid JSON only. No markdown. No code fences." }
+    ];
 
+    // Add conversation history if there's a question
+    if (userQuestion && conversation && conversation.length > 0) {
+      conversation.forEach(msg => {
+        messages.push({ role: msg.role === 'user' ? 'user' : 'assistant', content: msg.content });
+      });
+    }
+
+    // Build pattern insights
+    let patternInsights = "";
+    if (patterns) {
+      patternInsights = `\n\nPatterns I've noticed:
+- You typically complete tasks best in the ${patterns.bestTime || 'morning'}
+- ${patterns.leastCompletedCategory ? `You tend to skip ${patterns.leastCompletedCategory} tasks` : ''}
+- Today you've completed ${patterns.todayCompletions || 0} tasks`;
+    }
+    
+    // Build the main prompt
+    const contextPrompt = `
 Day: ${dayKey}
 Completion: ${progress?.done || 0}/${progress?.total || 0} (${progress?.pct || 0}%)
 Today's schedule: ${JSON.stringify(today || {})}
-Monthly objectives: ${JSON.stringify(monthly || [])}
+Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}
+`.trim();
 
-Return JSON EXACTLY in this schema:
+    let prompt;
+    if (userQuestion) {
+      // If there's a question, answer it in the context of the schedule
+      prompt = `${contextPrompt}\n\nUser question: ${userQuestion}\n\nAnswer the question thoughtfully, considering the user's schedule, progress, and patterns. Be observant and slightly opinionated - reference specific patterns when relevant. Return JSON in the schema below.`;
+    } else {
+      // Regular check-in - be observant and opinionated based on patterns
+      prompt = `You are Sarah's observant productivity coach. You notice patterns and offer gentle opinions.\n\n${contextPrompt}\n\nProvide guidance about today's schedule. Reference patterns you've noticed when relevant. Be specific and slightly opinionated - for example, "You usually do better when you start with one small task" or "You tend to skip Personal tasks on Mondays." Avoid generic motivational language. Return JSON in the schema below.`;
+    }
+
+    const fullPrompt = `${prompt}\n\nReturn JSON EXACTLY in this schema:
 {
-  "message": "2-3 sentences. Calm, direct.",
+  "message": "${userQuestion ? "2-4 sentences answering the question" : "2-3 sentences. Calm, direct."}",
   "highlights": ["3-5 bullets"],
   "suggestions": [{"category":"RHEA|EPC|Personal","text":"...","hour":"HH:MM"}],
   "ignoredMonthlies": [{"id":"optional","text":"..."}],
   "percentSummary": "One short line snapshot"
-}
-`.trim();
+}`;
+
+    messages.push({ role: "user", content: fullPrompt });
 
     async function callOpenAI(tryNum) {
       const r = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -58,10 +88,7 @@ Return JSON EXACTLY in this schema:
         body: JSON.stringify({
           model: "gpt-4o-mini",
           temperature: 0.4,
-          messages: [
-            { role: "system", content: "Return valid JSON only. No markdown. No code fences." },
-            { role: "user", content: prompt },
-          ],
+          messages: messages,
         }),
       });
 
