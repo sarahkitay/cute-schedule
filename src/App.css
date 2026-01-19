@@ -881,10 +881,12 @@
   }
   
   .date-controls-top {
-    gap: 6px;
+    gap: 4px !important;
     flex-wrap: nowrap !important;
     flex-direction: row !important;
     display: flex !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
   }
   
   .date-controls-bottom {
