@@ -2129,3 +2129,60 @@ button {
   border-bottom-left-radius: var(--radius-sm);
   border: 0.5px solid rgba(0, 0, 0, 0.04);
 }
+
+/* Task Dropdown Menu */
+.task-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: var(--surface-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  min-width: 180px;
+  z-index: 1000;
+  overflow: hidden;
+  animation: dropdownSlideDown 0.2s var(--transition-fast);
+}
+
+@keyframes dropdownSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dropdown-item {
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--soft-charcoal);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  font-family: var(--font-primary);
+  letter-spacing: -0.01em;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.04);
+}
+
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-item:hover {
+  background: var(--surface-secondary);
+}
+
+.dropdown-item:active {
+  background: rgba(0, 0, 0, 0.05);
+}

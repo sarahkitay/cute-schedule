@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
   SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
-  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, FireIcon
+  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, FireIcon, MenuIcon
 } from "./Icons";
 import { notificationService } from "./notifications";
 import { generateCompletionMessage, checkEnergyBalance } from "./completionRitual";
@@ -10,8 +10,6 @@ import {
   getTimeOfDay, 
   inferEmotionalState, 
   generateReminderMessage,
-  generateMissedTaskMessage,
-  generateReleaseMessage,
   generateWindDownMessage,
   getRandomQuote,
   GENTLE_ANCHOR_PROMPT
@@ -364,7 +362,7 @@ function ProgressBar({ pct }) {
 }
 
 // Ultra-minimal hour card with Do/Plan mode
-function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, mode = "do" }) {
+function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onShowDropdown, taskDropdown, mode = "do" }) {
   const complete = hourIsComplete(tasksByCat);
   const [open, setOpen] = useState(true);
 
@@ -448,26 +446,95 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
                   </span>
                 </label>
 
-                {mode === "plan" && (
-                  <div className="item-actions">
-                    <button
-                      type="button"
-                      className="energy-btn"
-                      title={`Energy: ${ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label} (click to cycle)`}
-                      onClick={() => onToggleEnergyLevel(hourKey, t.category, t.id)}
-                      style={{ 
-                        backgroundColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color + '20',
-                        borderColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color
-                      }}
-                    >
-                      {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon)}
-                    </button>
+                <div className="item-actions" style={{ position: 'relative' }}>
+                  {mode === "plan" && (
+                    <>
+                      <button
+                        type="button"
+                        className="energy-btn"
+                        title={`Energy: ${ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label} (click to cycle)`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleEnergyLevel(hourKey, t.category, t.id);
+                        }}
+                        style={{ 
+                          backgroundColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color + '20',
+                          borderColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color
+                        }}
+                      >
+                        {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon)}
+                      </button>
 
-                    <button type="button" className="icon-btn" title="Delete task" onClick={() => onDeleteTask(hourKey, t.category, t.id)}>
-                      <TrashIcon />
-                    </button>
-                  </div>
-                )}
+                      <button 
+                        type="button" 
+                        className="icon-btn" 
+                        title="Delete task" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteTask(hourKey, t.category, t.id);
+                        }}
+                      >
+                        <TrashIcon />
+                      </button>
+                    </>
+                  )}
+                  
+                  {!t.done && (
+                    <>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Task options"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const dropdownKey = `${hourKey}-${t.category}-${t.id}`;
+                          if (taskDropdown === dropdownKey) {
+                            onShowDropdown(null);
+                          } else {
+                            onShowDropdown(dropdownKey);
+                          }
+                        }}
+                      >
+                        <MenuIcon />
+                      </button>
+                      
+                      {taskDropdown === `${hourKey}-${t.category}-${t.id}` && (
+                        <div className="task-dropdown" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              onMoveToTomorrow(hourKey, t.category, t.id);
+                            }}
+                          >
+                            <CalendarIcon style={{ marginRight: '8px' }} />
+                            Move to tomorrow
+                          </button>
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              onDeleteTask(hourKey, t.category, t.id);
+                              onShowDropdown(null);
+                            }}
+                          >
+                            <FireIcon style={{ marginRight: '8px' }} />
+                            Let it go
+                          </button>
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              onShowDropdown(null);
+                            }}
+                          >
+                            Keep as is
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </li>
             ))}
           </ul>
@@ -566,49 +633,11 @@ export default function App() {
   const [taskFeeling, setTaskFeeling] = useState(null);
   const [missedTasks, setMissedTasks] = useState([]);
   const [windDownMode, setWindDownMode] = useState(false);
-  const [rescheduleModal, setRescheduleModal] = useState(null);
   const [morningGreeting, setMorningGreeting] = useState(false);
+  const [taskDropdown, setTaskDropdown] = useState(null); // { hourKey, category, taskId }
   
   // Define todayHours before useEffects that use it
   const todayHours = state.days?.[tKey]?.hours || {};
-  
-  // Check for missed tasks periodically
-  useEffect(() => {
-    if (!isSameDayKey(tKey, realTodayKey)) return;
-    
-    const checkMissedTasks = () => {
-      const now = new Date();
-      const currentHour = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
-      const allTasks = allTasksInDay(todayHours);
-      
-      const missed = allTasks.filter(task => {
-        if (task.done) return false;
-        const [taskHour, taskMin] = task.hour.split(':').map(Number);
-        const taskTime = new Date();
-        taskTime.setHours(taskHour, taskMin, 0, 0);
-        
-        // Consider missed if it's been 15+ minutes past the scheduled time
-        const diff = now.getTime() - taskTime.getTime();
-        return diff > 15 * 60 * 1000 && diff < 24 * 60 * 60 * 1000; // Within 24 hours
-      });
-      
-      if (missed.length > 0 && !rescheduleModal) {
-        // Show gentle rescheduling option for first missed task
-        const firstMissed = missed[0];
-        const delayCount = (state.days?.[tKey]?.taskDelays?.[firstMissed.id] || 0) + 1;
-        setRescheduleModal({
-          task: firstMissed,
-          delayCount,
-          message: generateMissedTaskMessage(delayCount, firstMissed)
-        });
-      }
-    };
-    
-    const interval = setInterval(checkMissedTasks, 5 * 60 * 1000); // Check every 5 minutes
-    checkMissedTasks(); // Initial check
-    
-    return () => clearInterval(interval);
-  }, [tKey, realTodayKey, todayHours, rescheduleModal]);
 
   // Coach meta for cooldown and auto-run
   const [coachMeta, setCoachMeta] = useState(() => {
@@ -660,6 +689,17 @@ export default function App() {
   useEffect(() => {
     notificationService.checkPermission();
   }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (taskDropdown && !e.target.closest('.task-dropdown') && !e.target.closest('.icon-btn')) {
+        setTaskDropdown(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [taskDropdown]);
 
   // Morning greeting ritual
   useEffect(() => {
@@ -999,6 +1039,46 @@ export default function App() {
 
       return { ...prev, days: { ...prev.days, [tKey]: { hours } } };
     });
+  }
+
+  function moveTaskToTomorrow(hourKey, category, taskId) {
+    // Find the task
+    const day = state.days[tKey];
+    if (!day) return;
+    const hours = day.hours || {};
+    const byCat = hours[hourKey];
+    if (!byCat) return;
+    const task = (byCat[category] || []).find((t) => t.id === taskId);
+    if (!task) return;
+
+    // Delete from current day
+    deleteTask(hourKey, category, taskId);
+
+    // Add to tomorrow at 9:00 AM
+    const tomorrowKey = addDaysKey(realTodayKey, 1);
+    const tomorrowHour = "09:00";
+    
+    setState((prev) => {
+      const tomorrowDay = prev.days[tomorrowKey] || { hours: {} };
+      const tomorrowHours = { ...(tomorrowDay.hours || {}) };
+      const tomorrowByCat = tomorrowHours[tomorrowHour] || {};
+      const tomorrowList = [...(tomorrowByCat[category] || []), task];
+      
+      tomorrowHours[tomorrowHour] = {
+        ...tomorrowByCat,
+        [category]: tomorrowList
+      };
+
+      return {
+        ...prev,
+        days: {
+          ...prev.days,
+          [tomorrowKey]: { hours: tomorrowHours }
+        }
+      };
+    });
+
+    setTaskDropdown(null);
   }
 
   function deleteHour(hourKey) {
@@ -1507,6 +1587,9 @@ export default function App() {
                     onToggleEnergyLevel={toggleEnergyLevel}
                     onDeleteTask={deleteTask}
                     onDeleteHour={deleteHour}
+                    onMoveToTomorrow={moveTaskToTomorrow}
+                    onShowDropdown={setTaskDropdown}
+                    taskDropdown={taskDropdown}
                     mode={mode}
                   />
                 ))
@@ -1567,12 +1650,15 @@ export default function App() {
                       </span>
                     </label>
 
-                    <div className="item-actions">
+                    <div className="item-actions" style={{ position: 'relative' }}>
                       <button
                         type="button"
                         className="energy-btn"
                         title={`Energy: ${ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label}`}
-                        onClick={() => toggleEnergyLevel(t.hour, t.category, t.id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleEnergyLevel(t.hour, t.category, t.id);
+                        }}
                         style={{ 
                           backgroundColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color + '20',
                           borderColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color
@@ -1581,9 +1667,68 @@ export default function App() {
                         {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon)}
                       </button>
 
-                      <button type="button" className="icon-btn" onClick={() => deleteTask(t.hour, t.category, t.id)}>
+                      <button 
+                        type="button" 
+                        className="icon-btn" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteTask(t.hour, t.category, t.id);
+                        }}
+                      >
                         <TrashIcon />
                       </button>
+                      
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Task options"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const dropdownKey = `${t.hour}-${t.category}-${t.id}`;
+                          if (taskDropdown === dropdownKey) {
+                            setTaskDropdown(null);
+                          } else {
+                            setTaskDropdown(dropdownKey);
+                          }
+                        }}
+                      >
+                        <MenuIcon />
+                      </button>
+                      
+                      {taskDropdown === `${t.hour}-${t.category}-${t.id}` && (
+                        <div className="task-dropdown" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              moveTaskToTomorrow(t.hour, t.category, t.id);
+                            }}
+                          >
+                            <CalendarIcon style={{ marginRight: '8px' }} />
+                            Move to tomorrow
+                          </button>
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              deleteTask(t.hour, t.category, t.id);
+                              setTaskDropdown(null);
+                            }}
+                          >
+                            <FireIcon style={{ marginRight: '8px' }} />
+                            Let it go
+                          </button>
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              setTaskDropdown(null);
+                            }}
+                          >
+                            Keep as is
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </li>
                 ))}
@@ -1992,56 +2137,6 @@ export default function App() {
         )}
 
         {/* Gentle Rescheduling Modal */}
-        {rescheduleModal && (
-          <div className="modal-overlay celebration-overlay" onClick={() => setRescheduleModal(null)}>
-            <div className="modal celebration-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>It's okay. Today changed.</h3>
-              <p className="celebration-task">{rescheduleModal.message}</p>
-              <p className="celebration-task" style={{ fontSize: '14px', marginTop: '8px' }}>
-                {rescheduleModal.task.text}
-              </p>
-              
-              <div className="reschedule-options" style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '24px' }}>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => {
-                    // Move to tomorrow morning
-                    const tomorrowKey = addDaysKey(realTodayKey, 1);
-                    setSelectedDayKey(tomorrowKey);
-                    setRescheduleModal(null);
-                  }}
-                >
-                  Move to tomorrow
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setRescheduleModal(null);
-                  }}
-                >
-                  Break it down
-                </button>
-                <button
-                  className="btn feeling-btn skip"
-                  onClick={() => {
-                    deleteTask(rescheduleModal.task.hour, rescheduleModal.task.category, rescheduleModal.task.id);
-                    alert(generateReleaseMessage());
-                    setRescheduleModal(null);
-                  }}
-                >
-                  <FireIcon style={{ marginRight: '4px', verticalAlign: 'middle' }} />
-                  Release this task
-                </button>
-                <button
-                  className="btn feeling-btn skip"
-                  onClick={() => setRescheduleModal(null)}
-                >
-                  Keep as is
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         <footer className="foot">
           <span>Saved automatically on this device.</span>
