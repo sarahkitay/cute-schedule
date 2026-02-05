@@ -175,6 +175,32 @@ function isSameDayKey(a, b) {
   return String(a) === String(b);
 }
 
+/** Simple NL parse for quick add: "Call Martin 11am", "EPC 3pm email Roberto", "RHEA 9am" */
+function parseQuickAddNL(str) {
+  const s = String(str || "").trim();
+  if (!s) return null;
+  let hour = "09:00";
+  let category = "Personal";
+  let text = s;
+  const upper = s.toUpperCase();
+  const catMatch = upper.match(/^(RHEA|EPC|PERSONAL)\s+/i);
+  if (catMatch) {
+    category = catMatch[1] === "PERSONAL" ? "Personal" : catMatch[1];
+    text = s.slice(catMatch[0].length).trim();
+  }
+  const timeMatch = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if (timeMatch) {
+    let h = parseInt(timeMatch[1], 10);
+    const m = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
+    if (timeMatch[3].toLowerCase() === "pm" && h < 12) h += 12;
+    if (timeMatch[3].toLowerCase() === "am" && h === 12) h = 0;
+    hour = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    text = text.replace(timeMatch[0], "").replace(/\s+/g, " ").trim();
+  }
+  if (!text) text = s;
+  return { hour, category, text };
+}
+
 function getDayLabel(dayKey, todayKey) {
   if (isSameDayKey(dayKey, todayKey)) {
     return null; // Will show as "Today"
@@ -649,6 +675,8 @@ export default function App() {
   const [windDownMode, setWindDownMode] = useState(false);
   const [morningGreeting, setMorningGreeting] = useState(false);
   const [taskDropdown, setTaskDropdown] = useState(null); // { hourKey, category, taskId }
+  const [focusMode, setFocusMode] = useState(false);
+  const [quickAddValue, setQuickAddValue] = useState("");
   
   // Define todayHours before useEffects that use it
   const todayHours = state.days?.[tKey]?.hours || {};
@@ -799,6 +827,15 @@ export default function App() {
   }, [tKey, realTodayKey, todayHours, state]);
 
   const sortedHourKeys = useMemo(() => Object.keys(todayHours).sort(), [todayHours]);
+
+  const visibleHourKeys = useMemo(() => {
+    if (!focusMode || sortedHourKeys.length === 0) return sortedHourKeys;
+    const now = new Date();
+    const currentHour = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes() >= 30 ? 30 : 0).padStart(2, "0")}`;
+    const idx = sortedHourKeys.findIndex((h) => h >= currentHour);
+    const start = idx >= 0 ? idx : 0;
+    return sortedHourKeys.slice(start, start + 2);
+  }, [focusMode, sortedHourKeys]);
 
   const prog = useMemo(() => dayProgress(todayHours), [todayHours]);
   const starred = useMemo(() => dayIsStarred(todayHours), [todayHours]);
@@ -1124,6 +1161,15 @@ export default function App() {
     if (!clean) return;
     ensureHour(newHour);
     addTask(newHour, quickCat, clean, quickRepeat);
+  }
+
+  function quickAddFromNL(e) {
+    e.preventDefault();
+    const parsed = parseQuickAddNL(quickAddValue);
+    if (!parsed || !parsed.text) return;
+    ensureHour(parsed.hour);
+    addTask(parsed.hour, parsed.category, parsed.text);
+    setQuickAddValue("");
     
     // Show success toast
     setToastNotification({
@@ -1460,68 +1506,80 @@ export default function App() {
         data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (state.days?.[tKey]?.dailyMood || "") : ""}
       >
         <header className="top">
-          <div>
-            <div className="kicker">proyou</div>
-            <h1 className="h1">
-              {(() => {
-                if (tab === "today") {
-                  if (isSameDayKey(tKey, realTodayKey)) return "Today";
-                  const label = getDayLabel(tKey, realTodayKey);
-                  if (label === "Tomorrow") return "Tomorrow";
-                  if (label === "Future") return "Future";
-                  return "Past";
-                }
-                return tab === "monthly" ? "Monthly" 
-                  : tab === "list" ? "List" 
-                  : tab === "notes" ? "Notes" 
-                  : "Coach";
-              })()}{" "}
-              <span className="sub">
-                {tab === "today" || tab === "list"
-                  ? (() => {
-                      const label = getDayLabel(tKey, realTodayKey);
-                      if (label === "Tomorrow" || label === "Future") {
-                        return ""; // Don't show subtitle if main title already says Tomorrow/Future
-                      }
-                      return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                      });
-                    })()
-                  : tab === "monthly"
-                  ? "Objectives"
-                  : "Assistant"}
-              </span>
-            </h1>
-          </div>
+          <div className="top-inner">
+            <div className="top-left">
+              <span className="kicker">proyou</span>
+              <h1 className="h1">
+                {(() => {
+                  if (tab === "today") {
+                    if (isSameDayKey(tKey, realTodayKey)) return "Today";
+                    const label = getDayLabel(tKey, realTodayKey);
+                    if (label === "Tomorrow") return "Tomorrow";
+                    if (label === "Future") return "Future";
+                    return "Past";
+                  }
+                  return tab === "monthly" ? "Monthly" 
+                    : tab === "list" ? "List" 
+                    : tab === "notes" ? "Notes" 
+                    : "Coach";
+                })()}
+                <span className="sub">
+                  {tab === "today" || tab === "list"
+                    ? (() => {
+                        const label = getDayLabel(tKey, realTodayKey);
+                        if (label === "Tomorrow" || label === "Future") return "";
+                        return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
+                          weekday: "long",
+                          month: "long",
+                          day: "numeric",
+                        });
+                      })()
+                    : tab === "monthly" ? "Objectives" : "Assistant"}
+                </span>
+              </h1>
+            </div>
 
-          <div className="tabs">
-            <TabButton active={tab === "today"} onClick={() => setTab("today")}>
-              Today
-            </TabButton>
-            <TabButton active={tab === "list"} onClick={() => setTab("list")}>
-              List
-            </TabButton>
-            <TabButton active={tab === "monthly"} onClick={() => setTab("monthly")}>
-              Monthly
-            </TabButton>
-            <TabButton active={tab === "coach"} onClick={() => setTab("coach")}>
-              Coach
-            </TabButton>
-            <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>
-              Notes
-            </TabButton>
-            <button 
-              className="settings-btn"
-              onClick={() => setShowSettings(true)}
-              title="Settings"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', padding: '4px 8px', color: 'white', fontWeight: '400' }}
-            >
-              Settings
-            </button>
+            <div className="tabs">
+              <TabButton active={tab === "today"} onClick={() => setTab("today")}>Today</TabButton>
+              <TabButton active={tab === "list"} onClick={() => setTab("list")}>List</TabButton>
+              <TabButton active={tab === "monthly"} onClick={() => setTab("monthly")}>Monthly</TabButton>
+              <TabButton active={tab === "coach"} onClick={() => setTab("coach")}>Coach</TabButton>
+              <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>Notes</TabButton>
+            </div>
+
+            <div className="top-actions">
+              {tab === "today" && (
+                <button
+                  type="button"
+                  className="btn btn-icon"
+                  onClick={() => setTab("today")}
+                  title="Add task"
+                  aria-label="Add task"
+                >
+                  +
+                </button>
+              )}
+              <button
+                type="button"
+                className={`btn ${focusMode ? "btn-primary" : ""}`}
+                onClick={() => setFocusMode((f) => !f)}
+                title="Focus mode"
+              >
+                Focus
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setShowSettings(true)}
+                title="Settings"
+              >
+                Settings
+              </button>
+            </div>
           </div>
         </header>
+
+        <main className="shell-main">
 
         {(tab === "today" || tab === "list") && (
           <div className="date-controls">
@@ -1571,7 +1629,41 @@ export default function App() {
 
         {tab === "today" ? (
           <>
-            <section className="panel daily-progress-card">
+            {/* Quick Add — always visible, natural language */}
+            <form className="quick-add-bar" onSubmit={quickAddFromNL}>
+              <input
+                className="input quick-add-input"
+                type="text"
+                value={quickAddValue}
+                onChange={(e) => setQuickAddValue(e.target.value)}
+                placeholder="Add a task… e.g. Call Martin 11am, EPC 3pm"
+                aria-label="Quick add task"
+              />
+              <button type="submit" className="btn btn-primary" disabled={!quickAddValue.trim()}>
+                Add
+              </button>
+            </form>
+
+            {/* Next Up — focus strip */}
+            {(() => {
+              const nextTasks = incompleteTasks.slice(0, 1);
+              const next = nextTasks[0];
+              return (
+                <div className="focus-strip">
+                  <span className="focus-strip-label">Next up</span>
+                  {next ? (
+                    <>
+                      <span className="focus-strip-task">{next.text}</span>
+                      <span className="focus-strip-meta">{to12Hour(next.hour)} · {next.category}</span>
+                    </>
+                  ) : (
+                    <span className="focus-strip-task muted">Pick one small win</span>
+                  )}
+                </div>
+              );
+            })()}
+
+            <section className="panel panel-hero daily-progress-card">
               <div className="panel-top">
                 <div className="panel-title">
                   <div className="panel-title-row">
@@ -1706,7 +1798,11 @@ export default function App() {
                   <div className="empty-sub">Add a task above and your first hour card will appear.</div>
                 </div>
               ) : (
-                sortedHourKeys.map((hourKey) => (
+                <>
+                  {focusMode && sortedHourKeys.length > 2 && (
+                    <p className="focus-mode-notice">Focus mode: showing current + next block only.</p>
+                  )}
+                  {visibleHourKeys.map((hourKey) => (
                   <HourCard
                     key={hourKey}
                     hourKey={hourKey}
@@ -1720,7 +1816,8 @@ export default function App() {
                     taskDropdown={taskDropdown}
                     mode={mode}
                   />
-                ))
+                ))}
+                </>
               )}
             </section>
 
@@ -2209,6 +2306,9 @@ export default function App() {
             )}
           </section>
         ) : null}
+
+        </main>
+        <aside className="shell-rail" aria-hidden="true" />
 
         {showSettings && (
           <div className="modal-overlay" onClick={() => setShowSettings(false)}>
