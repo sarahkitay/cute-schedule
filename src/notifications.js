@@ -1,9 +1,42 @@
-// Notification Service for Task Reminders and Completions
+// Notification Service for Task Reminders and Completions + PWA Web Push
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return new Uint8Array([...rawData].map((c) => c.charCodeAt(0)));
+}
 
 class NotificationService {
   constructor() {
     this.permission = null;
     this.checkPermission();
+  }
+
+  async enablePush() {
+    if (!("serviceWorker" in navigator)) return false;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") return false;
+      const res = await fetch("/api/push/vapid");
+      const { publicKey } = await res.json();
+      if (!publicKey) return false;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscription: sub }),
+      });
+      this.permission = "granted";
+      return true;
+    } catch (e) {
+      console.warn("Push subscribe failed", e);
+      return false;
+    }
   }
 
   async checkPermission() {

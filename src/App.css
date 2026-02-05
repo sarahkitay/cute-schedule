@@ -1533,6 +1533,30 @@ button {
   margin-left: auto;
 }
 
+.sprint-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--card-pad);
+  background: var(--accentSoft);
+  border-bottom: 1px solid var(--border);
+  font-size: var(--caption);
+  font-weight: 600;
+}
+.sprint-bar-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.sprint-bar-time {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+}
+.sprint-bar .btn-sm {
+  margin-left: auto;
+}
+
 .focus-mode-notice {
   font-size: var(--caption);
   color: var(--muted);
@@ -1620,6 +1644,58 @@ button {
 .btn-ghost:hover {
   background: var(--surface2);
   color: var(--text);
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: var(--caption);
+}
+
+.settings-hint {
+  font-size: var(--caption);
+  color: var(--muted);
+  margin: 0 0 var(--space-1);
+}
+
+.inapp-banner {
+  position: fixed;
+  bottom: var(--space-2);
+  left: var(--space-2);
+  right: var(--space-2);
+  max-width: 400px;
+  margin: 0 auto;
+  z-index: 200;
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+}
+
+.inapp-banner-content {
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.inapp-banner-title {
+  font-size: var(--caption);
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.inapp-banner-task {
+  font-size: var(--body);
+  font-weight: 500;
+  color: var(--text);
+}
+
+.inapp-banner-actions {
+  display: flex;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 
 .btn-icon {

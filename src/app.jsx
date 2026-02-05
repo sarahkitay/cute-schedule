@@ -677,6 +677,7 @@ export default function App() {
   const [taskDropdown, setTaskDropdown] = useState(null); // { hourKey, category, taskId }
   const [focusMode, setFocusMode] = useState(false);
   const [quickAddValue, setQuickAddValue] = useState("");
+  const [taskBanner, setTaskBanner] = useState(null); // { type: 'start'|'wrapup', task, nextTask?, hourKey }
   
   // Define todayHours before useEffects that use it
   const todayHours = state.days?.[tKey]?.hours || {};
@@ -699,6 +700,8 @@ export default function App() {
   const [coachConversation, setCoachConversation] = useState([]);
   const [coachMode, setCoachMode] = useState("plan"); // "plan" | "unstuck" | "review"
   const [coachStructuredResult, setCoachStructuredResult] = useState(null); // { summary, followUp, actions }
+  const [sprintEndsAt, setSprintEndsAt] = useState(null); // timestamp; when set, 10-min sprint is active
+  const [sprintTick, setSprintTick] = useState(0); // force re-render every second during sprint
 
   useEffect(() => {
     localStorage.setItem(COACH_STORAGE_KEY, JSON.stringify(coachMeta));
@@ -828,14 +831,59 @@ export default function App() {
 
   const sortedHourKeys = useMemo(() => Object.keys(todayHours).sort(), [todayHours]);
 
+  const dailyMood = state.days?.[tKey]?.dailyMood || null;
+  const isOverwhelmedMode = dailyMood === "drained";
+  const isHyperfocusMode = dailyMood === "calm";
+
+  useEffect(() => {
+    if (tab !== "coach") return;
+    if (isOverwhelmedMode) setCoachMode("unstuck");
+    else if (isHyperfocusMode) setCoachMode("plan");
+  }, [tab, isOverwhelmedMode, isHyperfocusMode]);
+
   const visibleHourKeys = useMemo(() => {
-    if (!focusMode || sortedHourKeys.length === 0) return sortedHourKeys;
+    if (sortedHourKeys.length === 0) return sortedHourKeys;
+    const limitView = focusMode || isOverwhelmedMode;
+    if (!limitView) return sortedHourKeys;
     const now = new Date();
     const currentHour = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes() >= 30 ? 30 : 0).padStart(2, "0")}`;
     const idx = sortedHourKeys.findIndex((h) => h >= currentHour);
     const start = idx >= 0 ? idx : 0;
     return sortedHourKeys.slice(start, start + 2);
-  }, [focusMode, sortedHourKeys]);
+  }, [focusMode, isOverwhelmedMode, sortedHourKeys]);
+
+  // In-app banner: every 20s, current/next task → Start / Snooze / Skip or Wrap it up
+  useEffect(() => {
+    if (tab !== "today" || !isSameDayKey(tKey, realTodayKey)) return;
+    const SNOOZE_KEY = "taskBannerSnoozeUntil";
+    const run = () => {
+      const snoozeUntil = parseInt(localStorage.getItem(SNOOZE_KEY) || "0", 10);
+      if (Date.now() < snoozeUntil) return;
+      const now = new Date();
+      const nowM = now.getHours() * 60 + now.getMinutes();
+      const tasks = allTasksInDay(todayHours);
+      const withHour = tasks.filter((t) => !t.done).map((t) => ({ ...t, startM: (() => { const [h, m] = t.hour.split(":").map(Number); return h * 60 + m; })() }));
+      const sorted = [...withHour].sort((a, b) => a.startM - b.startM);
+      for (let i = 0; i < sorted.length; i++) {
+        const task = sorted[i];
+        const nextTask = sorted[i + 1] || null;
+        const startM = task.startM;
+        const endM = startM + 60;
+        if (nowM >= startM && nowM < startM + 2) {
+          setTaskBanner({ type: "start", task, nextTask, hourKey: task.hour });
+          return;
+        }
+        if (nowM >= endM - 2 && nowM < endM) {
+          setTaskBanner({ type: "wrapup", task, nextTask, hourKey: task.hour });
+          return;
+        }
+      }
+      setTaskBanner(null);
+    };
+    run();
+    const interval = setInterval(run, 20000);
+    return () => clearInterval(interval);
+  }, [tab, tKey, realTodayKey, todayHours]);
 
   const prog = useMemo(() => dayProgress(todayHours), [todayHours]);
   const starred = useMemo(() => dayIsStarred(todayHours), [todayHours]);
@@ -1422,9 +1470,10 @@ export default function App() {
     }
   }
 
-  function applyCoachActions(actions) {
+  function applyCoachActions(actions, options = {}) {
+    const { clearResult = true } = options;
     if (!Array.isArray(actions) || actions.length === 0) {
-      setCoachStructuredResult(null);
+      if (clearResult) setCoachStructuredResult(null);
       return;
     }
     const dayTasks = allTasksInDay(todayHours);
@@ -1484,7 +1533,23 @@ export default function App() {
         }
       }
     });
-    setCoachStructuredResult(null);
+    if (clearResult) setCoachStructuredResult(null);
+  }
+
+  // Sprint countdown: re-render every second while active, clear when time's up
+  const sprintActive = sprintEndsAt != null && Date.now() < sprintEndsAt;
+  useEffect(() => {
+    if (!sprintEndsAt || Date.now() >= sprintEndsAt) return;
+    const id = setInterval(() => {
+      if (Date.now() >= sprintEndsAt) setSprintEndsAt(null);
+      setSprintTick((t) => t + 1);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [sprintEndsAt, sprintTick]);
+
+  function startSprint(actions) {
+    applyCoachActions(actions, { clearResult: false });
+    setSprintEndsAt(Date.now() + 10 * 60 * 1000);
   }
 
   // List view - all incomplete tasks for today
@@ -1578,6 +1643,22 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        {/* Sprint countdown bar */}
+        {sprintActive && (
+          <div className="sprint-bar" role="status" aria-live="polite">
+            <span className="sprint-bar-label">Sprint</span>
+            <span className="sprint-bar-time">
+              {(() => {
+                const secs = Math.max(0, Math.ceil((sprintEndsAt - Date.now()) / 1000));
+                const m = Math.floor(secs / 60);
+                const s = secs % 60;
+                return `${m}:${String(s).padStart(2, "0")}`;
+              })()}
+            </span>
+            <button type="button" className="btn btn-sm" onClick={() => setSprintEndsAt(null)}>End sprint</button>
+          </div>
+        )}
 
         <main className="shell-main">
 
@@ -1799,8 +1880,10 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  {focusMode && sortedHourKeys.length > 2 && (
-                    <p className="focus-mode-notice">Focus mode: showing current + next block only.</p>
+                  {(focusMode || isOverwhelmedMode) && sortedHourKeys.length > 2 && (
+                    <p className="focus-mode-notice">
+                      {isOverwhelmedMode ? "Drained mode: showing current + next block only." : "Focus mode: showing current + next block only."}
+                    </p>
                   )}
                   {visibleHourKeys.map((hourKey) => (
                   <HourCard
@@ -2083,9 +2166,16 @@ export default function App() {
                   <p className="coach-output-summary">{coachStructuredResult.summary}</p>
                   {coachStructuredResult.followUp && <p className="coach-output-followup">{coachStructuredResult.followUp}</p>}
                   {coachStructuredResult.actions && coachStructuredResult.actions.length > 0 && (
-                    <button type="button" className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => applyCoachActions(coachStructuredResult.actions)}>
-                      Apply plan
-                    </button>
+                    <div className="coach-output-actions" style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      <button type="button" className="btn btn-primary" onClick={() => applyCoachActions(coachStructuredResult.actions)}>
+                        {coachMode === "unstuck" ? "Pin micro-steps to timeline" : "Apply plan"}
+                      </button>
+                      {coachMode === "unstuck" && (
+                        <button type="button" className="btn btn-primary" onClick={() => startSprint(coachStructuredResult.actions)}>
+                          Start Sprint (10 min)
+                        </button>
+                      )}
+                    </div>
                   )}
                   <button type="button" className="btn" style={{ marginTop: 8 }} onClick={() => setCoachStructuredResult(null)}>Dismiss</button>
                 </div>
@@ -2351,12 +2441,51 @@ export default function App() {
                   {notificationService.permission === 'granted' ? '✓ Enabled' : 'Enable Notifications'}
                 </button>
               </div>
+              <div className="settings-section">
+                <label className="label">Push (PWA)</label>
+                <p className="settings-hint">Add to Home Screen, then enable for reminders when the app is closed.</p>
+                <button
+                  className="btn btn-primary"
+                  onClick={async () => {
+                    const ok = await notificationService.enablePush();
+                    if (ok) alert('Push enabled. You\'ll get PROYOU reminders.');
+                    else alert('Push failed. Add to Home Screen first (iOS), or check VAPID keys (Vercel).');
+                  }}
+                >
+                  Enable Push Notifications
+                </button>
+              </div>
 
               <div className="modal-actions">
                 <button className="btn btn-primary" onClick={() => setShowSettings(false)}>
                   Done
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* In-app task banner — Start / Snooze / Skip or Wrap it up */}
+        {taskBanner && (
+          <div className="inapp-banner">
+            <div className="inapp-banner-content">
+              {taskBanner.type === "start" ? (
+                <>
+                  <span className="inapp-banner-title">Next up</span>
+                  <span className="inapp-banner-task">{taskBanner.task.text}</span>
+                  <div className="inapp-banner-actions">
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => setTaskBanner(null)}>Start</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { localStorage.setItem("taskBannerSnoozeUntil", String(Date.now() + 5 * 60 * 1000)); setTaskBanner(null); }}>Snooze</button>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTaskBanner(null)}>Skip</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="inapp-banner-title">Wrap it up</span>
+                  <span className="inapp-banner-task">→ {taskBanner.nextTask ? taskBanner.nextTask.text : "Next"}</span>
+                  <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => setTaskBanner(null)}>OK</button>
+                </>
+              )}
             </div>
           </div>
         )}

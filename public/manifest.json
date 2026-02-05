@@ -1,30 +1,18 @@
 {
-  "name": "proyou",
-  "short_name": "proyou",
-  "description": "Your personal productivity schedule app with AI assistance",
-  "start_url": "/",
+  "name": "PROYOU",
+  "short_name": "PROYOU",
+  "description": "ADHD-friendly daily planner with coaching.",
+  "start_url": "/?source=pwa",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#FFB6C1",
-  "theme_color": "#FF69B4",
+  "background_color": "#ffffff",
+  "theme_color": "#e8a9b7",
   "orientation": "portrait",
   "icons": [
-    {
-      "src": "/Untitled Design 800x800.png",
-      "sizes": "800x800",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/pwa-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/pwa-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }
