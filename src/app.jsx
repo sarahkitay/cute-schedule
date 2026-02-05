@@ -232,11 +232,12 @@ function dayIsStarred(hours) {
 }
 
 function getProgressCopy(pct) {
-  if (pct === 0) return "Let's start with one small win ✨";
+  if (pct === 0) return "Pick one small win ✨";
   if (pct >= 100) return "You showed up today 💛";
-  if (pct >= 30 && pct < 60) return "Momentum looks good";
-  if (pct >= 60 && pct < 100) return "You're in the flow";
-  return "One step at a time";
+  if (pct >= 1 && pct <= 40) return "Momentum started";
+  if (pct >= 41 && pct <= 80) return "You're on a roll";
+  if (pct >= 81 && pct <= 99) return "Close it out";
+  return "Momentum started";
 }
 
 /** ====== Pattern Tracking ====== **/
@@ -435,13 +436,7 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
                 className={["item", t.done ? "item-done" : ""]
                   .filter(Boolean)
                   .join(" ")}
-                onClick={(e) => {
-                  // Make completed tasks clickable to uncomplete
-                  if (t.done && !e.target.closest('.item-actions') && !e.target.closest('input')) {
-                    onToggleTask(hourKey, t.category, t.id);
-                  }
-                }}
-                style={{ cursor: t.done ? 'pointer' : 'default' }}
+                style={{ cursor: "pointer" }}
               >
                 <label className="check">
                   <input type="checkbox" checked={!!t.done} onChange={() => onToggleTask(hourKey, t.category, t.id)} />
@@ -674,6 +669,8 @@ export default function App() {
   const [coachResult, setCoachResult] = useState(null);
   const [coachQuestion, setCoachQuestion] = useState("");
   const [coachConversation, setCoachConversation] = useState([]);
+  const [coachMode, setCoachMode] = useState("plan"); // "plan" | "unstuck" | "review"
+  const [coachStructuredResult, setCoachStructuredResult] = useState(null); // { summary, followUp, actions }
 
   useEffect(() => {
     localStorage.setItem(COACH_STORAGE_KEY, JSON.stringify(coachMeta));
@@ -1341,6 +1338,109 @@ export default function App() {
     setCoachOpen(false);
   }
 
+  async function callCoach(adhdMode) {
+    setCoachError("");
+    setCoachLoading(true);
+    setCoachStructuredResult(null);
+    try {
+      const allTasks = allTasksInDay(todayHours);
+      const tasksForApi = allTasks.map((t) => ({ id: t.id, text: t.text, hour: t.hour, category: t.category, done: t.done }));
+      const payload = {
+        dayKey: tKey,
+        today: todayHours,
+        tasks: tasksForApi,
+        schedule: todayHours,
+        progress: prog,
+        mood: state.days?.[tKey]?.dailyMood || null,
+        patterns: analyzePatterns(),
+      };
+      const res = await fetch("/api/coach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, mode: adhdMode }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCoachError(data?.error || "Something went wrong");
+        return;
+      }
+      setCoachStructuredResult({
+        summary: data.summary || "",
+        followUp: data.followUp || null,
+        actions: Array.isArray(data.actions) ? data.actions : [],
+      });
+    } catch (err) {
+      setCoachError("Network error");
+    } finally {
+      setCoachLoading(false);
+    }
+  }
+
+  function applyCoachActions(actions) {
+    if (!Array.isArray(actions) || actions.length === 0) {
+      setCoachStructuredResult(null);
+      return;
+    }
+    const dayTasks = allTasksInDay(todayHours);
+    actions.forEach((action) => {
+      if (action.type === "TIMEBOX" && action.taskId && action.start != null) {
+        const task = dayTasks.find((t) => t.id === action.taskId);
+        if (task) {
+          const hourKey = String(action.start).length === 5 ? action.start : `${String(action.start).padStart(2, "0")}:00`;
+          ensureHour(hourKey);
+          setState((prev) => {
+            const day = prev.days[tKey];
+            if (!day) return prev;
+            const hours = {};
+            Object.entries(day.hours || {}).forEach(([hk, byCat]) => {
+              hours[hk] = {};
+              CATEGORIES.forEach((cat) => {
+                hours[hk][cat] = (byCat[cat] || []).filter((t) => t.id !== action.taskId);
+              });
+            });
+            if (!hours[hourKey]) hours[hourKey] = { RHEA: [], EPC: [], Personal: [] };
+            hours[hourKey][task.category] = [...(hours[hourKey][task.category] || []), { ...task, hour: hourKey }];
+            return { ...prev, days: { ...prev.days, [tKey]: { ...day, hours } } };
+          });
+        }
+      }
+      if (action.type === "REORDER" && Array.isArray(action.taskIds) && action.taskIds.length > 0) {
+        const tasks = action.taskIds.map((id) => dayTasks.find((t) => t.id === id)).filter(Boolean);
+        if (tasks.length > 0) {
+          setState((prev) => {
+            const day = prev.days[tKey];
+            if (!day) return prev;
+            const hours = {};
+            const ids = new Set(action.taskIds);
+            Object.entries(day.hours || {}).forEach(([hk, byCat]) => {
+              hours[hk] = {};
+              CATEGORIES.forEach((cat) => {
+                hours[hk][cat] = (byCat[cat] || []).filter((t) => !ids.has(t.id));
+              });
+            });
+            tasks.forEach((t) => {
+              const h = t.hour;
+              if (!hours[h]) hours[h] = { RHEA: [], EPC: [], Personal: [] };
+              hours[h][t.category] = [...(hours[h][t.category] || []), { ...t }];
+            });
+            return { ...prev, days: { ...prev.days, [tKey]: { ...day, hours } } };
+          });
+        }
+      }
+      if (action.type === "MICRO_STEPS" && action.taskId && Array.isArray(action.steps) && action.steps.length > 0) {
+        const task = dayTasks.find((t) => t.id === action.taskId);
+        if (task) {
+          action.steps.forEach((step, idx) => {
+            const stepText = step.text || `Step ${idx + 1}`;
+            ensureHour(task.hour);
+            addTask(task.hour, task.category, stepText);
+          });
+        }
+      }
+    });
+    setCoachStructuredResult(null);
+  }
+
   // List view - all incomplete tasks for today
   const incompleteTasks = useMemo(() => {
     return allTasksInDay(todayHours).filter(t => !t.done).sort((a, b) => {
@@ -1698,7 +1798,7 @@ export default function App() {
                     className={["item", t.energyLevel === "HEAVY" ? "item-heavy" : ""].filter(Boolean).join(" ")}
                   >
                     <label className="check">
-                      <input type="checkbox" checked={false} onChange={() => toggleTask(t.hour, t.category, t.id)} />
+                      <input type="checkbox" checked={!!t.done} onChange={() => toggleTask(t.hour, t.category, t.id)} />
                       <span className="checkmark" />
                       <span className={`item-text ${t.done ? 'item-text-done' : ''}`}>
                         <span className="task-time">{to12Hour(t.hour)}</span> <Pill label={t.category} /> 
@@ -1844,11 +1944,55 @@ export default function App() {
             <div className="panel-top">
               <div className="panel-title">
                 <div className="panel-title-row">
-                  <span className="title">AI Coach</span>
+                  <span className="title">Coach</span>
                   <span className="sparkle"><SparkleIcon style={{ display: 'inline-block' }} /></span>
                 </div>
-                <div className="meta">{prog.done}/{prog.total} tasks done · {state.monthly?.length || 0} monthly objectives</div>
+                <div className="meta">{prog.done}/{prog.total} tasks · ADHD planning assistant</div>
               </div>
+            </div>
+
+            {/* Mode selector: Plan / Unstuck / Review */}
+            <div className="coach-mode-tabs">
+              {["plan", "unstuck", "review"].map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  className={`btn coach-mode-btn ${coachMode === m ? "active" : ""}`}
+                  onClick={() => { setCoachMode(m); setCoachStructuredResult(null); setCoachResult(null); }}
+                >
+                  {m === "plan" ? "Plan my day" : m === "unstuck" ? "Unstuck" : "Review"}
+                </button>
+              ))}
+            </div>
+
+            {/* ADHD Coach: run mode → structured result with Apply */}
+            <div className="coach-structured-section">
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={coachLoading}
+                onClick={() => callCoach(coachMode)}
+              >
+                {coachLoading ? "Thinking…" : coachMode === "plan" ? "Plan my day" : coachMode === "unstuck" ? "Pick one task & break it down" : "End-of-day review"}
+              </button>
+              {coachLoading && !coachStructuredResult && (
+                <div className="coach-skeleton">
+                  <div className="coach-skeleton-line" />
+                  <div className="coach-skeleton-line short" />
+                </div>
+              )}
+              {coachStructuredResult && (
+                <div className="coach-output-card">
+                  <p className="coach-output-summary">{coachStructuredResult.summary}</p>
+                  {coachStructuredResult.followUp && <p className="coach-output-followup">{coachStructuredResult.followUp}</p>}
+                  {coachStructuredResult.actions && coachStructuredResult.actions.length > 0 && (
+                    <button type="button" className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => applyCoachActions(coachStructuredResult.actions)}>
+                      Apply plan
+                    </button>
+                  )}
+                  <button type="button" className="btn" style={{ marginTop: 8 }} onClick={() => setCoachStructuredResult(null)}>Dismiss</button>
+                </div>
+              )}
             </div>
 
             {/* Question Input Form - Prominent */}

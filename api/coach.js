@@ -26,8 +26,41 @@ export default async function handler(req, res) {
       });
     }
 
-    const { dayKey, today, monthly, progress, userQuestion, conversation, patterns, notes } = req.body || {};
+    const { dayKey, today, monthly, progress, userQuestion, conversation, patterns, notes, mode, tasks, schedule, mood } = req.body || {};
     if (!dayKey) return res.status(400).json({ error: "Missing dayKey" });
+
+    // ADHD Coach modes: structured actions (plan / unstuck / review)
+    const adhdModes = ["plan", "unstuck", "review"];
+    if (mode && adhdModes.includes(mode)) {
+      const tasksList = Array.isArray(tasks) ? tasks : [];
+      const scheduleData = schedule || today || {};
+      const systemContent = `You are an ADHD planning assistant for this app. You can only reorder existing tasks, propose time blocks, suggest micro-steps for existing tasks, or suggest breaks. You cannot invent new tasks. Return valid JSON only. No markdown. No code fences.`;
+      let userContent = "";
+      if (mode === "plan") {
+        userContent = `Plan my day. Date: ${dayKey}. Current schedule (time -> categories -> tasks): ${JSON.stringify(scheduleData)}. Incomplete tasks: ${JSON.stringify(tasksList)}. Mood: ${mood || "not set"}.
+Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences", "followUp": "one optional question or null", "actions": [ { "type": "TIMEBOX", "taskId": "...", "start": "HH:MM", "end": "HH:MM" }, { "type": "REORDER", "taskIds": ["id1","id2"] }, { "type": "BREAK", "start": "HH:MM", "end": "HH:MM", "label": "Short break" } ] }. Use only taskIds that exist in the input.`;
+      } else if (mode === "unstuck") {
+        userContent = `User is overwhelmed. Pick ONE task from: ${JSON.stringify(tasksList)}. Break it into 3 micro-steps (5-15 min to start). Return JSON: { "summary": "1-2 sentences", "taskId": "...", "taskTitle": "...", "steps": [ { "text": "...", "minutes": 5 } ], "actions": [ { "type": "MICRO_STEPS", "taskId": "...", "steps": [ { "text": "...", "minutes": 5 } ] } ] }.`;
+      } else if (mode === "review") {
+        userContent = `End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progress?.total || 0}. Schedule: ${JSON.stringify(scheduleData)}. Patterns: ${JSON.stringify(patterns || {})}. Summarise wins, detect one pattern (e.g. tasks missed at 3pm), suggest one change for tomorrow. Return JSON: { "summary": "2-4 sentences", "wins": ["..."], "pattern": "one sentence", "suggestion": "one sentence", "actions": [] }.`;
+      }
+      const adhdMessages = [
+        { role: "system", content: systemContent },
+        { role: "user", content: userContent }
+      ];
+      const r = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model: "gpt-4o-mini", temperature: 0.3, messages: adhdMessages }),
+      });
+      const raw = await r.json().catch(() => ({}));
+      if (!r.ok) return res.status(r.status).json({ error: "OpenAI request failed", detail: raw?.error?.message || raw });
+      const text = raw?.choices?.[0]?.message?.content || "{}";
+      const cleaned = String(text).replace(/```json|```/g, "").trim();
+      let parsed;
+      try { parsed = JSON.parse(cleaned); } catch { return res.status(500).json({ error: "Model did not return valid JSON", raw: cleaned }); }
+      return res.status(200).json({ summary: parsed.summary || "", followUp: parsed.followUp || null, actions: Array.isArray(parsed.actions) ? parsed.actions : [] });
+    }
 
     // Build conversation context
     let messages = [
