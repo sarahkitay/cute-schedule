@@ -1478,8 +1478,8 @@ button {
 
 .btn:hover {
   background: var(--surface-secondary);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .btn-primary {
@@ -1491,8 +1491,8 @@ button {
 }
 
 .btn-primary:hover {
-  box-shadow: var(--shadow-lg);
-  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(232, 181, 199, 0.35);
+  transform: translateY(-2px);
 }
 
 /* Input */
@@ -1574,7 +1574,41 @@ button {
   color: var(--theme-accent);
 }
 
-/* Progress Bar */
+/* Daily Progress Card – coach feel, soft gradient */
+.daily-progress-card {
+  position: relative;
+  background: linear-gradient(
+    135deg,
+    rgba(248, 212, 224, 0.08) 0%,
+    rgba(230, 213, 247, 0.06) 100%
+  );
+  border: 0.5px solid rgba(0, 0, 0, 0.04);
+}
+
+.daily-progress-card .daily-progress-copy {
+  font-size: 15px;
+  color: var(--text-secondary);
+  margin-top: 6px;
+  font-weight: 400;
+}
+
+.daily-progress-card .pct-large {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--theme-accent);
+  letter-spacing: -0.02em;
+}
+
+/* Mood subtly warms the progress card (presentation only) */
+.shell[data-mood="calm"] .daily-progress-card {
+  background: linear-gradient(135deg, rgba(248, 212, 224, 0.12) 0%, rgba(230, 213, 247, 0.06) 100%);
+}
+
+.shell[data-mood="drained"] .daily-progress-card {
+  background: linear-gradient(135deg, rgba(248, 212, 224, 0.05) 0%, rgba(230, 213, 247, 0.08) 100%);
+}
+
+/* Progress Bar – smooth animation on task complete */
 .progress-wrap {
   width: 100%;
   height: 8px;
@@ -1584,11 +1618,39 @@ button {
   margin-top: var(--spacing-sm);
 }
 
+.progress-fill {
+  height: 100%;
+  background: var(--theme-header-gradient);
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 4px;
+}
+
 .progress {
   height: 100%;
   background: var(--theme-header-gradient);
-  transition: width var(--transition-slow) cubic-bezier(0.4, 0, 0.2, 1);
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   border-radius: 4px;
+}
+
+/* Segmented bars – task groups */
+.progress-segments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.progress-segment {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.06);
+  transition: background 0.35s ease;
+}
+
+.progress-segment.filled {
+  background: var(--theme-accent);
+  opacity: 0.9;
 }
 
 /* Star */
@@ -1734,6 +1796,7 @@ button {
   border-radius: 4px;
   display: inline-block;
   position: relative;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s ease;
 }
 
 .check input[type="checkbox"]:checked + .checkmark::after {
@@ -1749,6 +1812,8 @@ button {
 .check input[type="checkbox"]:checked + .checkmark {
   background: var(--theme-accent);
   border-color: var(--theme-accent);
+  transform: scale(1.08);
+  box-shadow: 0 0 0 3px rgba(228, 163, 184, 0.25);
 }
 
 /* Icon Buttons */

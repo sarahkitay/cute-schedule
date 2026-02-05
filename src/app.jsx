@@ -231,6 +231,14 @@ function dayIsStarred(hours) {
   return total > 0 && done === total;
 }
 
+function getProgressCopy(pct) {
+  if (pct === 0) return "Let's start with one small win ✨";
+  if (pct >= 100) return "You showed up today 💛";
+  if (pct >= 30 && pct < 60) return "Momentum looks good";
+  if (pct >= 60 && pct < 100) return "You're in the flow";
+  return "One step at a time";
+}
+
 /** ====== Pattern Tracking ====== **/
 function loadPatterns() {
   try {
@@ -356,7 +364,18 @@ function TabButton({ active, children, onClick }) {
 function ProgressBar({ pct }) {
   return (
     <div className="progress-wrap" aria-label={`Progress ${pct}%`}>
-      <div className="progress" style={{ width: `${pct}%` }} />
+      <div className="progress-fill" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function ProgressSegments({ total, done }) {
+  if (total === 0) return null;
+  return (
+    <div className="progress-segments" aria-hidden>
+      {Array.from({ length: total }, (_, i) => (
+        <span key={i} className={`progress-segment ${i < done ? "filled" : ""}`} />
+      ))}
     </div>
   );
 }
@@ -1336,7 +1355,10 @@ export default function App() {
 
   return (
     <div className="app">
-      <div className="shell">
+      <div
+        className="shell"
+        data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (state.days?.[tKey]?.dailyMood || "") : ""}
+      >
         <header className="top">
           <div>
             <div className="kicker">proyou</div>
@@ -1449,7 +1471,7 @@ export default function App() {
 
         {tab === "today" ? (
           <>
-            <section className="panel">
+            <section className="panel daily-progress-card">
               <div className="panel-top">
                 <div className="panel-title">
                   <div className="panel-title-row">
@@ -1458,21 +1480,18 @@ export default function App() {
                       {starred ? <StarIcon filled style={{ display: 'inline-block' }} /> : <StarEmptyIcon style={{ display: 'inline-block' }} />}
                     </span>
                   </div>
-                  <div className="meta">
-                    {prog.total === 0 ? (
-                      <>Add your first task and we'll start counting <SparkleIcon style={{ display: 'inline-block', verticalAlign: 'middle' }} /></>
-                    ) : (
-                      `${prog.done}/${prog.total} tasks done`
-                    )}
+                  <div className="meta daily-progress-copy">
+                    {getProgressCopy(prog.pct)}
                   </div>
                 </div>
 
                 <div className="panel-right">
-                  <div className="pct">{prog.pct}%</div>
+                  <div className="pct pct-large">{prog.pct}%</div>
                 </div>
               </div>
 
               <ProgressBar pct={prog.pct} />
+              <ProgressSegments total={prog.total} done={prog.done} />
 
               {mode === "plan" && (
                 <form className="quick" onSubmit={quickAdd}>
