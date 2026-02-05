@@ -1172,6 +1172,12 @@ button {
   transform: translateY(-2px);
 }
 
+.feeling-btn.active {
+  background: var(--theme-primary);
+  color: white;
+  border-color: var(--theme-accent);
+}
+
 .feeling-btn.skip {
   border-color: #ccc;
   color: #999;
@@ -1315,11 +1321,11 @@ button {
   box-sizing: border-box;
 }
 
-/* Header */
+/* Header - safe area for mobile status bar, sticky */
 .top {
   background: var(--theme-header-gradient);
   color: white;
-  padding: var(--spacing-md);
+  padding: calc(env(safe-area-inset-top, 0px) + 20px) var(--spacing-md) var(--spacing-md);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -1329,9 +1335,10 @@ button {
 .kicker {
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  opacity: 0.8;
+  letter-spacing: 0.22em;
+  opacity: 0.9;
   margin-bottom: 4px;
+  font-weight: 500;
 }
 
 .h1 {
@@ -1346,10 +1353,11 @@ button {
 .sub {
   font-size: 17px;
   font-weight: 400;
-  opacity: 0.8;
+  opacity: 0.65;
   margin-left: 8px;
-  letter-spacing: -0.01em;
-  color: rgba(255, 255, 255, 0.9);
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.85);
+  font-family: "Snell Roundhand", "Apple Chancery", "Brush Script MT", cursive;
 }
 
 /* Tabs */
@@ -1443,6 +1451,8 @@ button {
   display: block !important;
   box-sizing: border-box !important;
   grid-column: 2 !important;
+  accent-color: var(--theme-primary, var(--rose-quartz));
+  color: var(--soft-charcoal);
 }
 
 /* Removed duplicate .date-input rule - using .date-controls-top .date-input instead */

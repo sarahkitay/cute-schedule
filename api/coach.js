@@ -26,7 +26,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const { dayKey, today, monthly, progress, userQuestion, conversation, patterns } = req.body || {};
+    const { dayKey, today, monthly, progress, userQuestion, conversation, patterns, notes } = req.body || {};
     if (!dayKey) return res.status(400).json({ error: "Missing dayKey" });
 
     // Build conversation context
@@ -50,12 +50,17 @@ export default async function handler(req, res) {
 - Today you've completed ${patterns.todayCompletions || 0} tasks`;
     }
     
+    // Notes context for habits and goals
+    const notesContext = Array.isArray(notes) && notes.length > 0
+      ? `\nUser's notes (use these to understand what they're working on or toward): ${JSON.stringify(notes.map(n => typeof n === 'object' && n.text != null ? n.text : String(n)))}`
+      : "";
+
     // Build the main prompt
     const contextPrompt = `
 Day: ${dayKey}
 Completion: ${progress?.done || 0}/${progress?.total || 0} (${progress?.pct || 0}%)
 Today's schedule: ${JSON.stringify(today || {})}
-Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}
+Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesContext}
 `.trim();
 
     let prompt;

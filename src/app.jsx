@@ -660,10 +660,10 @@ export default function App() {
     localStorage.setItem(COACH_STORAGE_KEY, JSON.stringify(coachMeta));
   }, [coachMeta]);
 
+  // Only add a day when it's missing — never overwrite existing (keeps future-day tasks persisted)
   useEffect(() => {
     setState((prev) => {
-      const has = prev.days?.[tKey];
-      if (has) return prev;
+      if (prev.days != null && prev.days[tKey] != null) return prev;
       return { ...prev, days: { ...prev.days, [tKey]: { hours: {} } } };
     });
   }, [tKey]);
@@ -830,7 +830,7 @@ export default function App() {
       if (hours[hourKey]) return prev;
 
       const empty = { RHEA: [], EPC: [], Personal: [] };
-      return { ...prev, days: { ...prev.days, [tKey]: { hours: { ...hours, [hourKey]: empty } } } };
+      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours: { ...hours, [hourKey]: empty } } } };
     });
   }
 
@@ -872,7 +872,7 @@ export default function App() {
         notificationService.scheduleTaskReminder(nextTask, hourKey, category);
       }
       
-      return { ...prev, days: { ...prev.days, [tKey]: { hours } } };
+      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
     });
   }
 
@@ -929,13 +929,8 @@ export default function App() {
             // Generate contextual completion message using Gentle Anchor
             const message = generateCompletionMessage(t, category, completedToday, energyLevel, state);
             
-            // Show completion celebration with mood selection
-            setCompletionCelebration({
-              task: t,
-              category,
-              message,
-              completedToday
-            });
+            // Show toast only (mood is collected end-of-day, not per task)
+            setCompletionCelebration(null);
             
             // Show toast notification that auto-dismisses
             setToastNotification({
@@ -963,7 +958,7 @@ export default function App() {
         return t;
       });
       hours[hourKey] = { ...byCat, [category]: list };
-      return { ...prev, days: { ...prev.days, [tKey]: { hours } } };
+      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
     });
   }
 
@@ -985,7 +980,7 @@ export default function App() {
         return t;
       });
       hours[hourKey] = { ...byCat, [category]: list };
-      return { ...prev, days: { ...prev.days, [tKey]: { hours } } };
+      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
     });
     
     // Check for energy balance warnings
@@ -1019,10 +1014,20 @@ export default function App() {
         });
       });
       
-      return { ...prev, days: { ...prev.days, [tKey]: { hours } } };
+      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
     });
     setTaskFeeling(null);
     setCompletionCelebration(null);
+  }
+
+  function setDailyMood(mood) {
+    setState((prev) => ({
+      ...prev,
+      days: {
+        ...prev.days,
+        [tKey]: { ...(prev.days[tKey] || {}), hours: prev.days[tKey]?.hours || {}, dailyMood: mood },
+      },
+    }));
   }
 
   function deleteTask(hourKey, category, taskId) {
@@ -1037,7 +1042,7 @@ export default function App() {
       const nextByCat = { ...byCat, [category]: list };
       hours[hourKey] = nextByCat;
 
-      return { ...prev, days: { ...prev.days, [tKey]: { hours } } };
+      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
     });
   }
 
@@ -1194,6 +1199,7 @@ export default function App() {
         progress: prog,
         today: todayHours,
         monthly: state.monthly || [],
+        notes: notes || [],
         categories: CATEGORIES,
         timeOfDay,
         emotionalState,
@@ -1341,7 +1347,7 @@ export default function App() {
                   const label = getDayLabel(tKey, realTodayKey);
                   if (label === "Tomorrow") return "Tomorrow";
                   if (label === "Future") return "Future";
-                  return "Today"; // Past dates
+                  return "Past";
                 }
                 return tab === "monthly" ? "Monthly" 
                   : tab === "list" ? "List" 
@@ -1406,7 +1412,10 @@ export default function App() {
                 className="input date-input"
                 type="date"
                 value={formatDateInput(selectedDayKey)}
-                onChange={(e) => setSelectedDayKey(e.target.value)}
+                onChange={(e) => {
+                  const v = (e.target.value || "").trim();
+                  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setSelectedDayKey(v);
+                }}
               />
 
               <button className="btn" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, 1))}>
@@ -1595,6 +1604,43 @@ export default function App() {
                 ))
               )}
             </section>
+
+            {/* End of day mood — only when viewing today */}
+            {tab === "today" && isSameDayKey(tKey, realTodayKey) && (
+              <section className="panel end-of-day-mood" style={{ marginTop: 14 }}>
+                <div className="panel-top">
+                  <div className="panel-title">
+                    <span className="title">How was your day?</span>
+                  </div>
+                </div>
+                <div className="feeling-buttons" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                  <button
+                    type="button"
+                    className={`feeling-btn ${(state.days?.[tKey]?.dailyMood) === 'calm' ? 'active' : ''}`}
+                    onClick={() => setDailyMood('calm')}
+                  >
+                    <GoodFeelingIcon style={{ width: 18, height: 18, marginRight: 6, verticalAlign: 'middle' }} />
+                    Calm
+                  </button>
+                  <button
+                    type="button"
+                    className={`feeling-btn ${(state.days?.[tKey]?.dailyMood) === 'neutral' ? 'active' : ''}`}
+                    onClick={() => setDailyMood('neutral')}
+                  >
+                    <NeutralFeelingIcon style={{ width: 18, height: 18, marginRight: 6, verticalAlign: 'middle' }} />
+                    Neutral
+                  </button>
+                  <button
+                    type="button"
+                    className={`feeling-btn ${(state.days?.[tKey]?.dailyMood) === 'drained' ? 'active' : ''}`}
+                    onClick={() => setDailyMood('drained')}
+                  >
+                    <HardFeelingIcon style={{ width: 18, height: 18, marginRight: 6, verticalAlign: 'middle' }} />
+                    Drained
+                  </button>
+                </div>
+              </section>
+            )}
 
             {starred && (
               <section className="panel" style={{ marginTop: 14 }}>
@@ -2062,50 +2108,6 @@ export default function App() {
                 {toastNotification.taskText && (
                   <div className="toast-task">{toastNotification.taskText}</div>
                 )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Completion Celebration with Mood Selection */}
-        {completionCelebration && (
-          <div className="modal-overlay celebration-overlay" onClick={() => saveTaskFeeling(completionCelebration.task.id, null)}>
-            <div className="modal celebration-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="celebration-animation">✨</div>
-              <h3>Done.</h3>
-              <p className="celebration-task">{completionCelebration.message}</p>
-              
-              <div className="feeling-options">
-                <p>How are you feeling?</p>
-                <div className="feeling-buttons">
-                  <button 
-                    className="feeling-btn" 
-                    onClick={() => saveTaskFeeling(completionCelebration.task.id, 'calm')}
-                  >
-                    <GoodFeelingIcon style={{ width: '20px', height: '20px', marginRight: '6px', verticalAlign: 'middle' }} />
-                    Calm
-                  </button>
-                  <button 
-                    className="feeling-btn" 
-                    onClick={() => saveTaskFeeling(completionCelebration.task.id, 'neutral')}
-                  >
-                    <NeutralFeelingIcon style={{ width: '20px', height: '20px', marginRight: '6px', verticalAlign: 'middle' }} />
-                    Neutral
-                  </button>
-                  <button 
-                    className="feeling-btn skip" 
-                    onClick={() => saveTaskFeeling(completionCelebration.task.id, 'drained')}
-                  >
-                    <HardFeelingIcon style={{ width: '20px', height: '20px', marginRight: '6px', verticalAlign: 'middle' }} />
-                    Drained
-                  </button>
-                  <button 
-                    className="feeling-btn skip" 
-                    onClick={() => saveTaskFeeling(completionCelebration.task.id, null)}
-                  >
-                    Skip
-                  </button>
-                </div>
               </div>
             </div>
           </div>
