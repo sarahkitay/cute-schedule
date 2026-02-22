@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "trigger-deploy": "curl -s -X POST 'https://api.vercel.com/v1/integrations/deploy/prj_ukI3ZkO1WY6Nm0vEWjfbAEq273fA/PQQKficC7i'"
   },
   "dependencies": {
     "@vercel/kv": "^3.0.0",
