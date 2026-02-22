@@ -1,49 +1,40 @@
-// Service Worker for Push Notifications
-const CACHE_NAME = 'cute-schedule-v2';
-
-self.addEventListener('install', (event) => {
+// PWA Service Worker — install, activate, push, notificationclick
+self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    Promise.all([
-      // Delete old caches
-      caches.keys().then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cacheName => {
-            if (cacheName !== CACHE_NAME) {
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      }),
-      // Take control of all clients immediately
-      self.clients.claim()
-    ])
-  );
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
 });
 
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close();
-  event.waitUntil(
-    clients.openWindow('/')
-  );
-});
-
-// Handle push notifications
-self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Schedule Notification';
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch (_) {}
+  const title = data.title || "PROYOU";
   const options = {
-    body: data.body || 'You have a new notification',
-    icon: '/vite.svg',
-    badge: '/vite.svg',
-    tag: data.tag || 'schedule-notification',
-    requireInteraction: false
+    body: data.body || "",
+    icon: "/pwa-192.png",
+    badge: "/pwa-192.png",
+    data: { url: data.url || "/" },
+    tag: data.tag || "proyou-push",
   };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
 
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification?.data?.url || "/";
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && "focus" in client) {
+          client.navigate(url);
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })
   );
 });

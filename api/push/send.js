@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: "Push not configured" });
   }
 
-  const { title = "PROYOU", body = "Test notification ✨", url = "/" } = req.body || {};
+  const { title = "PROYOU", body = "Test notification", url = "/" } = req.body || {};
 
   try {
     const subIds = await kv.smembers("push:subs");

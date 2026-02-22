@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
   SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
-  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, FireIcon, MenuIcon
+  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, FireIcon, MenuIcon,
+  CheckIcon, ArrowRightIcon, FinanceIcon, BulletIcon
 } from "./Icons";
 import { notificationService } from "./notifications";
 import { generateCompletionMessage, checkEnergyBalance } from "./completionRitual";
@@ -23,6 +24,7 @@ const COACH_STORAGE_KEY = "cute_schedule_coach_meta_v1";
 const THEME_STORAGE_KEY = "cute_schedule_theme_v1";
 const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
+const FINANCE_STORAGE_KEY = "cute_schedule_finance_v1";
 
 const ENERGY_LEVELS = {
   LIGHT: { icon: LightEnergyIcon, label: "Light", color: "#90EE90" },
@@ -153,10 +155,23 @@ function normalizeText(s) {
 function to12Hour(time24) {
   const [h, m] = time24.split(':').map(Number);
   if (isNaN(h) || isNaN(m)) return time24;
-  
+
   const period = h >= 12 ? 'PM' : 'AM';
   const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+/** 3-hour window key for time-block color: 06 Dawn, 09 Morning, 12 Noon, 15 Afternoon, 18 Evening, 21 Night */
+function getTimeBlockKey(hourKey) {
+  const [h] = (hourKey || "09:00").split(":").map(Number);
+  const hour = isNaN(h) ? 9 : h;
+  if (hour >= 0 && hour < 6) return "21";  // night extends to early morning
+  if (hour >= 6 && hour < 9) return "06";
+  if (hour >= 9 && hour < 12) return "09";
+  if (hour >= 12 && hour < 15) return "12";
+  if (hour >= 15 && hour < 18) return "15";
+  if (hour >= 18 && hour < 21) return "18";
+  return "21";
 }
 
 function formatDateInput(key) {
@@ -258,8 +273,8 @@ function dayIsStarred(hours) {
 }
 
 function getProgressCopy(pct) {
-  if (pct === 0) return "Pick one small win ✨";
-  if (pct >= 100) return "You showed up today 💛";
+  if (pct === 0) return "Pick one small win";
+  if (pct >= 100) return "You showed up today";
   if (pct >= 1 && pct <= 40) return "Momentum started";
   if (pct >= 41 && pct <= 80) return "You're on a roll";
   if (pct >= 81 && pct <= 99) return "Close it out";
@@ -270,14 +285,13 @@ function getProgressCopy(pct) {
 function loadPatterns() {
   try {
     const raw = localStorage.getItem(PATTERNS_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {
-      completions: [], // { dayKey, taskId, category, hour, completedAt, feeling }
-      skippedDays: {}, // { dayKey: { categories: [] } }
-      completionTimes: [], // { hour: number, dayOfWeek: number }
-      weeklyTotals: {} // { weekKey: total }
+    const out = raw ? JSON.parse(raw) : {
+      completions: [], skippedDays: {}, completionTimes: [], weeklyTotals: {}, bedtimeCompletedDates: []
     };
+    if (!Array.isArray(out.bedtimeCompletedDates)) out.bedtimeCompletedDates = [];
+    return out;
   } catch {
-    return { completions: [], skippedDays: {}, completionTimes: [], weeklyTotals: {} };
+    return { completions: [], skippedDays: {}, completionTimes: [], weeklyTotals: {}, bedtimeCompletedDates: [] };
   }
 }
 
@@ -316,6 +330,15 @@ function trackTaskCompletion(task, category, hour, dayKey, feeling = null) {
     patterns.completionTimes = patterns.completionTimes.slice(-100);
   }
   
+  savePatterns(patterns);
+}
+
+/** Call when user completes full bedtime routine (all items done) for ADHD sleep correlation */
+function trackBedtimeComplete(dayKey) {
+  const patterns = loadPatterns();
+  const list = patterns.bedtimeCompletedDates || [];
+  if (list.includes(dayKey)) return;
+  patterns.bedtimeCompletedDates = [...list, dayKey].slice(-60); // keep last 60 days
   savePatterns(patterns);
 }
 
@@ -360,12 +383,48 @@ function analyzePatterns() {
     return cDate.getDay() === today;
   }).length;
   
+  // Sleep correlation (ADHD-specific): next-day completions when bedtime routine done vs not
+  const bedtimeDates = new Set(patterns.bedtimeCompletedDates || []);
+  const completionsByDay = {};
+  patterns.completions.forEach(c => {
+    if (!c.dayKey) return;
+    completionsByDay[c.dayKey] = (completionsByDay[c.dayKey] || 0) + 1;
+  });
+  const addDays = (dayKeyStr, n) => {
+    const [y, m, d] = dayKeyStr.split("-").map(Number);
+    const x = new Date(y, m - 1, d);
+    x.setDate(x.getDate() + n);
+    return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0");
+  };
+  let withBedtime = 0; let withoutBedtime = 0; let countWith = 0; let countWithout = 0;
+  bedtimeDates.forEach(dayKey => {
+    const nextKey = addDays(dayKey, 1);
+    const n = completionsByDay[nextKey] || 0;
+    withBedtime += n;
+    countWith++;
+  });
+  Object.keys(completionsByDay).forEach(dayKey => {
+    const prevKey = addDays(dayKey, -1);
+    if (bedtimeDates.has(prevKey)) return; // already counted in withBedtime
+    withoutBedtime += completionsByDay[dayKey];
+    countWithout++;
+  });
+  const sleepCorrelation = (countWith > 0 || countWithout > 0)
+    ? {
+        avgNextDayWithBedtime: countWith > 0 ? Math.round((withBedtime / countWith) * 10) / 10 : null,
+        avgNextDayWithoutBedtime: countWithout > 0 ? Math.round((withoutBedtime / countWithout) * 10) / 10 : null,
+        nightsWithRoutine: countWith,
+        nightsWithoutRoutine: countWithout
+      }
+    : null;
+  
   return {
     bestTime,
     leastCompletedCategory: leastCompleted,
     leastCompletedRate: lowestRate,
     todayCompletions,
-    totalCompletions: patterns.completions.length
+    totalCompletions: patterns.completions.length,
+    sleepCorrelation
   };
 }
 
@@ -408,7 +467,7 @@ function ProgressSegments({ total, done }) {
 }
 
 // Ultra-minimal hour card with Do/Plan mode
-function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onShowDropdown, taskDropdown, mode = "do" }) {
+function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onShowDropdown, taskDropdown, expandedTaskKey, onExpandTask, mode = "do" }) {
   const complete = hourIsComplete(tasksByCat);
   const [open, setOpen] = useState(true);
 
@@ -434,7 +493,7 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
   if (totals.total === 0) return null;
 
   return (
-    <div className={complete ? "card card-complete" : "card"}>
+    <div className={complete ? "card card-complete" : "card"} data-time-block={getTimeBlockKey(hourKey)}>
       <div className="card-top">
         <button type="button" className="hour-title" onClick={() => setOpen((v) => !v)}>
           <div className="hour-left">
@@ -456,37 +515,39 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
       {open && (
         <div className="card-body-simple">
           <ul className="list">
-            {allTasks.map((t) => (
+            {allTasks.map((t) => {
+              const itemKey = `${hourKey}-${t.category}-${t.id}`;
+              const expanded = expandedTaskKey === itemKey;
+              return (
               <li
                 key={t.id}
-                className={["item", t.done ? "item-done" : ""]
-                  .filter(Boolean)
-                  .join(" ")}
+                className={["item", t.done ? "item-done" : "", expanded ? "item-expanded" : ""].filter(Boolean).join(" ")}
                 style={{ cursor: "pointer" }}
               >
-                <label className="check">
-                  <input type="checkbox" checked={!!t.done} onChange={() => onToggleTask(hourKey, t.category, t.id)} />
-                  <span className="checkmark" />
-                  <span className={`item-text ${t.done ? 'item-text-done' : ''}`}>
-                    {mode === "plan" ? <Pill label={t.category} /> : null}
-                    {mode === "plan" && (
-                      <span className="energy-badge" style={{ 
-                        marginLeft: '8px',
-                        fontSize: '14px',
-                        color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color,
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '4px'
-                      }}>
-                        {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: '14px', height: '14px' } })}
-                        {ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label}
-                      </span>
-                    )}
-                    {t.text}
-                  </span>
-                </label>
+                <div className="item-main">
+                  <label className="check" onClick={(e) => e.stopPropagation()}>
+                    <input type="checkbox" checked={!!t.done} onChange={() => onToggleTask(hourKey, t.category, t.id)} />
+                    <span className="checkmark" />
+                    <span className={`item-text ${t.done ? 'item-text-done' : ''}`}>
+                      {mode === "plan" ? <Pill label={t.category} /> : null}
+                      {mode === "plan" && (
+                        <span className="energy-badge" style={{ 
+                          marginLeft: '8px',
+                          fontSize: '14px',
+                          color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}>
+                          {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: '14px', height: '14px' } })}
+                          {ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label}
+                        </span>
+                      )}
+                      {t.text}
+                    </span>
+                  </label>
 
-                <div className="item-actions" style={{ position: 'relative' }}>
+                  <div className="item-actions" style={{ position: 'relative' }}>
                   {mode === "plan" && (
                     <>
                       <button
@@ -574,9 +635,43 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
                       )}
                     </>
                   )}
+                    <button
+                      type="button"
+                      className="icon-btn item-expand-btn"
+                      title={expanded ? "Collapse" : "Details"}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onExpandTask(expanded ? null : itemKey);
+                      }}
+                    >
+                      {expanded ? "▾" : "▸"}
+                    </button>
+                  </div>
                 </div>
+                {expanded && (
+                  <div className="item-detail" onClick={(e) => e.stopPropagation()}>
+                    <div className="item-detail-row">
+                      <Pill label={t.category} />
+                      <span className="item-detail-time">{to12Hour(hourKey)}</span>
+                      {mode === "plan" && (
+                        <span className="energy-badge" style={{ fontSize: '12px', color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color }}>
+                          {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: 12, height: 12 } })}
+                          {ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label}
+                        </span>
+                      )}
+                    </div>
+                    <div className="item-detail-actions">
+                      <button type="button" className="btn btn-sm" onClick={() => { onMoveToTomorrow(hourKey, t.category, t.id); onExpandTask(null); }}>
+                        <CalendarIcon style={{ width: 14, height: 14, marginRight: 4 }} /> Move to tomorrow
+                      </button>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => { onDeleteTask(hourKey, t.category, t.id); onExpandTask(null); }}>
+                        <TrashIcon style={{ width: 14, height: 14, marginRight: 4 }} /> Delete
+                      </button>
+                    </div>
+                  </div>
+                )}
               </li>
-            ))}
+            ); })}
           </ul>
         </div>
       )}
@@ -666,7 +761,45 @@ export default function App() {
     }
   });
 
+  // Finance state
+  const [finance, setFinance] = useState(() => {
+    try {
+      const saved = localStorage.getItem(FINANCE_STORAGE_KEY);
+      if (saved) {
+        const data = JSON.parse(saved);
+        return {
+          incomeEntries: data.incomeEntries || [],
+          expenseEntries: data.expenseEntries || [],
+          totalSavings: typeof data.totalSavings === "number" ? data.totalSavings : 0,
+          wishList: data.wishList || [],
+          subscriptions: data.subscriptions || [],
+          bankStatementNotes: data.bankStatementNotes || "",
+        };
+      }
+    } catch (_) {}
+    return {
+      incomeEntries: [],
+      expenseEntries: [],
+      totalSavings: 0,
+      wishList: [],
+      subscriptions: [],
+      bankStatementNotes: "",
+    };
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(finance));
+    } catch (_) {}
+  }, [finance]);
+
   const [noteSearch, setNoteSearch] = useState("");
+  const [financeQuickInput, setFinanceQuickInput] = useState("");
+  const [newWishLabel, setNewWishLabel] = useState("");
+  const [newWishTarget, setNewWishTarget] = useState("");
+  const [newSubName, setNewSubName] = useState("");
+  const [newSubAmount, setNewSubAmount] = useState("");
+  const [newSubCycle, setNewSubCycle] = useState("monthly");
   const [showSettings, setShowSettings] = useState(false);
   const [completionCelebration, setCompletionCelebration] = useState(null);
   const [toastNotification, setToastNotification] = useState(null);
@@ -675,6 +808,7 @@ export default function App() {
   const [windDownMode, setWindDownMode] = useState(false);
   const [morningGreeting, setMorningGreeting] = useState(false);
   const [taskDropdown, setTaskDropdown] = useState(null); // { hourKey, category, taskId }
+  const [expandedTaskKey, setExpandedTaskKey] = useState(null); // "hourKey-category-id" for expandable detail
   const [focusMode, setFocusMode] = useState(false);
   const [quickAddValue, setQuickAddValue] = useState("");
   const [taskBanner, setTaskBanner] = useState(null); // { type: 'start'|'wrapup', task, nextTask?, hourKey }
@@ -887,6 +1021,7 @@ export default function App() {
 
   const prog = useMemo(() => dayProgress(todayHours), [todayHours]);
   const starred = useMemo(() => dayIsStarred(todayHours), [todayHours]);
+  const patternInsights = useMemo(() => analyzePatterns(), [prog.done, prog.total, state.bedtimeRoutine]);
 
   const [starPulse, setStarPulse] = useState(false);
   useEffect(() => {
@@ -896,6 +1031,15 @@ export default function App() {
       return () => clearTimeout(t);
     }
   }, [starred]);
+
+  // Track bedtime routine completion for sleep correlation (ADHD)
+  useEffect(() => {
+    if (!isSameDayKey(tKey, realTodayKey)) return;
+    const routine = state.bedtimeRoutine || [];
+    if (routine.length === 0) return;
+    const allDone = routine.every((r) => r.done);
+    if (allDone && starred) trackBedtimeComplete(realTodayKey);
+  }, [state.bedtimeRoutine, starred, tKey, realTodayKey]);
 
   // Update lastProgressAt whenever tasks change
   useEffect(() => {
@@ -1130,6 +1274,61 @@ export default function App() {
       },
     }));
   }
+  function setDailyCapacity(cap) {
+    setState((prev) => ({
+      ...prev,
+      days: {
+        ...prev.days,
+        [tKey]: { ...(prev.days[tKey] || {}), hours: prev.days[tKey]?.hours || {}, dailyCapacity: cap },
+      },
+    }));
+  }
+
+  // Finance helpers
+  function parseFinanceQuickInput(raw) {
+    const s = String(raw).trim().toLowerCase();
+    const numMatch = s.match(/^([+-]?\d+(?:\.\d{1,2})?)\s*(.*)$/) || s.match(/(\d+(?:\.\d{1,2})?)\s*(.*)$/);
+    if (!numMatch) return null;
+    const amount = Math.abs(parseFloat(numMatch[1]));
+    const rest = (numMatch[2] || "").trim();
+    if (s.startsWith("-") || rest.startsWith("spent") || rest.startsWith("expense") || rest.startsWith("out")) {
+      return { type: "expense", amount, label: rest.replace(/^(spent|expense|out)\s*/i, "").trim() || null };
+    }
+    return { type: "income", amount, label: rest || null };
+  }
+  function addFinanceEntry(type, amount, label = null) {
+    const entry = { id: uid(), amount, label, dateISO: new Date().toISOString() };
+    if (type === "income") {
+      setFinance((prev) => ({ ...prev, incomeEntries: [entry, ...(prev.incomeEntries || [])].slice(0, 200) }));
+    } else {
+      setFinance((prev) => ({ ...prev, expenseEntries: [entry, ...(prev.expenseEntries || [])].slice(0, 200) }));
+    }
+  }
+  function removeFinanceEntry(type, id) {
+    if (type === "income") {
+      setFinance((prev) => ({ ...prev, incomeEntries: (prev.incomeEntries || []).filter((e) => e.id !== id) }));
+    } else {
+      setFinance((prev) => ({ ...prev, expenseEntries: (prev.expenseEntries || []).filter((e) => e.id !== id) }));
+    }
+  }
+  function addWishItem(label, targetAmount = null) {
+    setFinance((prev) => ({
+      ...prev,
+      wishList: [...(prev.wishList || []), { id: uid(), label, targetAmount: targetAmount ? parseFloat(targetAmount) : null, savedSoFar: 0 }],
+    }));
+  }
+  function removeWishItem(id) {
+    setFinance((prev) => ({ ...prev, wishList: (prev.wishList || []).filter((w) => w.id !== id) }));
+  }
+  function addSubscription(name, amount, cycle = "monthly") {
+    setFinance((prev) => ({
+      ...prev,
+      subscriptions: [...(prev.subscriptions || []), { id: uid(), name, amount: parseFloat(amount) || 0, cycle }],
+    }));
+  }
+  function removeSubscription(id) {
+    setFinance((prev) => ({ ...prev, subscriptions: (prev.subscriptions || []).filter((s) => s.id !== id) }));
+  }
 
   function deleteTask(hourKey, category, taskId) {
     setState((prev) => {
@@ -1324,7 +1523,26 @@ export default function App() {
           leastCompletedRate: patterns.leastCompletedRate,
           todayCompletions: patterns.todayCompletions,
           totalCompletions: patterns.totalCompletions
-        }
+        },
+        finance: (() => {
+          const now = new Date();
+          const incomeThisMonth = (finance.incomeEntries || []).reduce((sum, e) => {
+            const d = new Date(e.dateISO);
+            return (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) ? sum + (e.amount || 0) : sum;
+          }, 0);
+          const spentThisMonth = (finance.expenseEntries || []).reduce((sum, e) => {
+            const d = new Date(e.dateISO);
+            return (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) ? sum + (e.amount || 0) : sum;
+          }, 0);
+          return {
+            incomeThisMonth,
+            spentThisMonth,
+            totalSavings: finance.totalSavings || 0,
+            subscriptions: finance.subscriptions || [],
+            wishList: finance.wishList || [],
+            bankStatementNotes: (finance.bankStatementNotes || "").slice(0, 2000),
+          };
+        })(),
       };
 
       const res = await fetch("/api/coach", {
@@ -1447,6 +1665,21 @@ export default function App() {
         progress: prog,
         mood: state.days?.[tKey]?.dailyMood || null,
         patterns: analyzePatterns(),
+        finance: {
+          incomeThisMonth: (finance.incomeEntries || []).reduce((s, e) => {
+            const d = new Date(e.dateISO);
+            const n = new Date();
+            return (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) ? s + (e.amount || 0) : s;
+          }, 0),
+          spentThisMonth: (finance.expenseEntries || []).reduce((s, e) => {
+            const d = new Date(e.dateISO);
+            const n = new Date();
+            return (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) ? s + (e.amount || 0) : s;
+          }, 0),
+          totalSavings: finance.totalSavings || 0,
+          subscriptions: finance.subscriptions || [],
+          wishList: finance.wishList || [],
+        },
       };
       const res = await fetch("/api/coach", {
         method: "POST",
@@ -1573,7 +1806,6 @@ export default function App() {
         <header className="top">
           <div className="top-inner">
             <div className="top-left">
-              <span className="kicker">proyou</span>
               <h1 className="h1">
                 {(() => {
                   if (tab === "today") {
@@ -1583,66 +1815,91 @@ export default function App() {
                     if (label === "Future") return "Future";
                     return "Past";
                   }
-                  return tab === "monthly" ? "Monthly" 
+                  return tab === "monthly" ? "Calendar" 
                     : tab === "list" ? "List" 
                     : tab === "notes" ? "Notes" 
-                    : "Coach";
+                    : tab === "finance" ? "Finance" 
+                    : "Pattern insights";
                 })()}
-                <span className="sub">
-                  {tab === "today" || tab === "list"
-                    ? (() => {
-                        const label = getDayLabel(tKey, realTodayKey);
-                        if (label === "Tomorrow" || label === "Future") return "";
-                        return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
-                          weekday: "long",
-                          month: "long",
-                          day: "numeric",
-                        });
-                      })()
-                    : tab === "monthly" ? "Objectives" : "Assistant"}
-                </span>
               </h1>
+              <span className="sub">
+                {tab === "today" || tab === "list"
+                  ? (() => {
+                      const label = getDayLabel(tKey, realTodayKey);
+                      if (label === "Tomorrow" || label === "Future") return "";
+                      return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
+                        weekday: "long",
+                        month: "long",
+                        day: "numeric",
+                      });
+                    })()
+                  : tab === "monthly" ? "Objectives" 
+                  : tab === "finance" ? "Income, spending & savings" 
+                  : "Insights"}
+              </span>
             </div>
 
-            <div className="tabs">
+            <div className="tabs" aria-hidden="true">
               <TabButton active={tab === "today"} onClick={() => setTab("today")}>Today</TabButton>
               <TabButton active={tab === "list"} onClick={() => setTab("list")}>List</TabButton>
               <TabButton active={tab === "monthly"} onClick={() => setTab("monthly")}>Monthly</TabButton>
-              <TabButton active={tab === "coach"} onClick={() => setTab("coach")}>Coach</TabButton>
+              <TabButton active={tab === "coach"} onClick={() => setTab("coach")}>Pattern insights</TabButton>
               <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>Notes</TabButton>
+              <TabButton active={tab === "finance"} onClick={() => setTab("finance")}>Finance</TabButton>
             </div>
 
             <div className="top-actions">
               {tab === "today" && (
                 <button
                   type="button"
-                  className="btn btn-icon"
-                  onClick={() => setTab("today")}
-                  title="Add task"
-                  aria-label="Add task"
+                  className="btn btn-pill"
+                  onClick={() => setFocusMode((f) => !f)}
+                  title="Focus mode"
                 >
-                  +
+                  <ChevronRightIcon style={{ width: 14, height: 14, transform: "rotate(-90deg)" }} />
+                  {focusMode ? "Focus on" : "Reset available"}
                 </button>
               )}
               <button
                 type="button"
-                className={`btn ${focusMode ? "btn-primary" : ""}`}
-                onClick={() => setFocusMode((f) => !f)}
-                title="Focus mode"
-              >
-                Focus
-              </button>
-              <button
-                type="button"
-                className="btn btn-ghost"
+                className="btn btn-ghost btn-icon"
                 onClick={() => setShowSettings(true)}
                 title="Settings"
+                aria-label="Settings"
               >
-                Settings
+                <SettingsIcon style={{ width: 22, height: 22 }} />
               </button>
             </div>
           </div>
         </header>
+
+        {/* Bottom navigation — pill bar */}
+        <nav className="bottom-nav" aria-label="Main">
+          <button type="button" className={`bottom-nav-item ${tab === "today" ? "active" : ""}`} onClick={() => setTab("today")} aria-current={tab === "today" ? "page" : undefined}>
+            <CalendarIcon style={{ width: 22, height: 22 }} />
+            Today
+          </button>
+          <button type="button" className={`bottom-nav-item ${tab === "list" ? "active" : ""}`} onClick={() => setTab("list")} aria-current={tab === "list" ? "page" : undefined}>
+            <MenuIcon style={{ width: 22, height: 22 }} />
+            List
+          </button>
+          <button type="button" className={`bottom-nav-item ${tab === "monthly" ? "active" : ""}`} onClick={() => setTab("monthly")} aria-current={tab === "monthly" ? "page" : undefined}>
+            <CalendarIcon style={{ width: 22, height: 22 }} />
+            Calendar
+          </button>
+          <button type="button" className={`bottom-nav-item ${tab === "coach" ? "active" : ""}`} onClick={() => setTab("coach")} aria-current={tab === "coach" ? "page" : undefined}>
+            <SparkleIcon style={{ width: 22, height: 22 }} />
+            Coach
+          </button>
+          <button type="button" className={`bottom-nav-item ${tab === "notes" ? "active" : ""}`} onClick={() => setTab("notes")} aria-current={tab === "notes" ? "page" : undefined}>
+            <MoonIcon style={{ width: 22, height: 22 }} />
+            Notes
+          </button>
+          <button type="button" className={`bottom-nav-item ${tab === "finance" ? "active" : ""}`} onClick={() => setTab("finance")} aria-current={tab === "finance" ? "page" : undefined}>
+            <FinanceIcon style={{ width: 22, height: 22 }} />
+            Finance
+          </button>
+        </nav>
 
         {/* Sprint countdown bar */}
         {sprintActive && (
@@ -1725,20 +1982,27 @@ export default function App() {
               </button>
             </form>
 
-            {/* Next Up — focus strip */}
+            {/* Next Up — reference card with Prep */}
             {(() => {
               const nextTasks = incompleteTasks.slice(0, 1);
               const next = nextTasks[0];
               return (
-                <div className="focus-strip">
-                  <span className="focus-strip-label">Next up</span>
-                  {next ? (
-                    <>
-                      <span className="focus-strip-task">{next.text}</span>
-                      <span className="focus-strip-meta">{to12Hour(next.hour)} · {next.category}</span>
-                    </>
-                  ) : (
-                    <span className="focus-strip-task muted">Pick one small win</span>
+                <div className="next-up-card">
+                  <div className="next-up-card-inner">
+                    <div className="next-up-label">Next up</div>
+                    {next ? (
+                      <>
+                        <div className="next-up-task">{next.text}</div>
+                        <div className="next-up-meta">{to12Hour(next.hour)} · {next.category}</div>
+                      </>
+                    ) : (
+                      <div className="next-up-task muted">Pick one small win</div>
+                    )}
+                  </div>
+                  {next && (
+                    <button type="button" className="next-up-prep" onClick={() => setFocusMode(true)}>
+                      Prep
+                    </button>
                   )}
                 </div>
               );
@@ -1847,8 +2111,10 @@ export default function App() {
                             >
                               <div>
                                 <div style={{ fontSize: '14px', fontWeight: '500' }}>{task.text}</div>
-                                <div style={{ fontSize: '12px', color: '#999', marginTop: '4px' }}>
-                                  {task.category} • {task.hour}
+                                <div style={{ fontSize: '12px', color: '#999', marginTop: '4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                  {task.category}
+                                  <BulletIcon style={{ width: 4, height: 4 }} />
+                                  {task.hour}
                                 </div>
                               </div>
                               <button
@@ -1872,7 +2138,7 @@ export default function App() {
               )}
             </section>
 
-            <section className="stack">
+            <section className="timeline-wrap">
               {sortedHourKeys.length === 0 ? (
                 <div className="empty-big">
                   <div className="empty-title">No hours yet.</div>
@@ -1885,56 +2151,77 @@ export default function App() {
                       {isOverwhelmedMode ? "Drained mode: showing current + next block only." : "Focus mode: showing current + next block only."}
                     </p>
                   )}
+                  <div className="timeline-track" aria-hidden="true" />
                   {visibleHourKeys.map((hourKey) => (
-                  <HourCard
-                    key={hourKey}
-                    hourKey={hourKey}
-                    tasksByCat={todayHours[hourKey]}
-                    onToggleTask={toggleTask}
-                    onToggleEnergyLevel={toggleEnergyLevel}
-                    onDeleteTask={deleteTask}
-                    onDeleteHour={deleteHour}
-                    onMoveToTomorrow={moveTaskToTomorrow}
-                    onShowDropdown={setTaskDropdown}
-                    taskDropdown={taskDropdown}
-                    mode={mode}
-                  />
-                ))}
+                    <div key={hourKey} className="timeline-row">
+                      <div className="timeline-time-cell">
+                        <span className="timeline-time">{to12Hour(hourKey)}</span>
+                      </div>
+                      <span className="timeline-dot" aria-hidden="true" />
+                      <div className="timeline-blocks">
+                        <HourCard
+                          hourKey={hourKey}
+                          tasksByCat={todayHours[hourKey]}
+                          onToggleTask={toggleTask}
+                          onToggleEnergyLevel={toggleEnergyLevel}
+                          onDeleteTask={deleteTask}
+                          onDeleteHour={deleteHour}
+                          onMoveToTomorrow={moveTaskToTomorrow}
+                          onShowDropdown={setTaskDropdown}
+                          taskDropdown={taskDropdown}
+                          expandedTaskKey={expandedTaskKey}
+                          onExpandTask={setExpandedTaskKey}
+                          mode={mode}
+                        />
+                      </div>
+                    </div>
+                  ))}
                 </>
               )}
             </section>
 
-            {/* End of day mood — only when viewing today */}
+            {/* Today's Capacity — Energy + Mood pills (reference) */}
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (
-              <section className="panel end-of-day-mood" style={{ marginTop: 14 }}>
-                <div className="panel-top">
-                  <div className="panel-title">
-                    <span className="title">How was your day?</span>
-                  </div>
+              <section className="capacity-card">
+                <div className="panel-title">
+                  <span className="title">Today&apos;s Capacity</span>
                 </div>
-                <div className="feeling-buttons" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                <div className="capacity-pills">
+                  {["LOW", "MEDIUM", "HIGH"].map((cap) => (
+                    <button
+                      key={cap}
+                      type="button"
+                      className={`capacity-pill ${(state.days?.[tKey]?.dailyCapacity || "MEDIUM") === cap ? "active" : ""}`}
+                      onClick={() => setDailyCapacity(cap)}
+                    >
+                      {cap.charAt(0) + cap.slice(1).toLowerCase()}
+                      {(cap === "MEDIUM" || cap === "HIGH") && <SparkleIcon style={{ width: 12, height: 12, marginLeft: 4, verticalAlign: "middle" }} />}
+                    </button>
+                  ))}
+                </div>
+                <div className="capacity-pills">
                   <button
                     type="button"
-                    className={`feeling-btn ${(state.days?.[tKey]?.dailyMood) === 'calm' ? 'active' : ''}`}
-                    onClick={() => setDailyMood('calm')}
+                    className={`capacity-pill ${(state.days?.[tKey]?.dailyMood) === "calm" ? "active" : ""}`}
+                    onClick={() => setDailyMood("calm")}
                   >
-                    <GoodFeelingIcon style={{ width: 18, height: 18, marginRight: 6, verticalAlign: 'middle' }} />
+                    <GoodFeelingIcon style={{ width: 16, height: 16, marginRight: 4, verticalAlign: "middle" }} />
                     Calm
                   </button>
                   <button
                     type="button"
-                    className={`feeling-btn ${(state.days?.[tKey]?.dailyMood) === 'neutral' ? 'active' : ''}`}
-                    onClick={() => setDailyMood('neutral')}
+                    className={`capacity-pill ${(state.days?.[tKey]?.dailyMood) === "neutral" ? "active" : ""}`}
+                    onClick={() => setDailyMood("neutral")}
                   >
-                    <NeutralFeelingIcon style={{ width: 18, height: 18, marginRight: 6, verticalAlign: 'middle' }} />
+                    <NeutralFeelingIcon style={{ width: 16, height: 16, marginRight: 4, verticalAlign: "middle" }} />
                     Neutral
                   </button>
                   <button
                     type="button"
-                    className={`feeling-btn ${(state.days?.[tKey]?.dailyMood) === 'drained' ? 'active' : ''}`}
-                    onClick={() => setDailyMood('drained')}
+                    className={`capacity-pill ${(state.days?.[tKey]?.dailyMood) === "drained" ? "active" : ""}`}
+                    onClick={() => setDailyMood("drained")}
                   >
-                    <HardFeelingIcon style={{ width: 18, height: 18, marginRight: 6, verticalAlign: 'middle' }} />
+                    <HardFeelingIcon style={{ width: 16, height: 16, marginRight: 4, verticalAlign: "middle" }} />
                     Drained
                   </button>
                 </div>
@@ -2124,12 +2411,50 @@ export default function App() {
             <div className="panel-top">
               <div className="panel-title">
                 <div className="panel-title-row">
-                  <span className="title">Coach</span>
-                  <span className="sparkle"><SparkleIcon style={{ display: 'inline-block' }} /></span>
+                  <span className="title">Pattern insights</span>
                 </div>
-                <div className="meta">{prog.done}/{prog.total} tasks · ADHD planning assistant</div>
+                <div className="meta">Your data, not generic advice · ADHD-aware</div>
               </div>
             </div>
+
+            {/* Pattern insight cards */}
+            <div className="pattern-insights">
+              <div className="insight-card">
+                <span className="insight-label">Peak time</span>
+                <span className="insight-value">{patternInsights.bestTime}</span>
+                <span className="insight-detail">You complete most tasks in the {patternInsights.bestTime}.</span>
+              </div>
+              {patternInsights.leastCompletedCategory && (
+                <div className="insight-card">
+                  <span className="insight-label">Category to nurture</span>
+                  <span className="insight-value">{patternInsights.leastCompletedCategory}</span>
+                  <span className="insight-detail">
+                    {Math.round((1 - patternInsights.leastCompletedRate) * 100)}% completion — try one small win.
+                  </span>
+                </div>
+              )}
+              {patternInsights.sleepCorrelation && (patternInsights.sleepCorrelation.nightsWithRoutine > 0 || patternInsights.sleepCorrelation.nightsWithoutRoutine > 0) && (
+                <div className="insight-card insight-sleep">
+                  <span className="insight-label">Sleep correlation</span>
+                  <span className="insight-value">
+                    {patternInsights.sleepCorrelation.avgNextDayWithBedtime != null && patternInsights.sleepCorrelation.avgNextDayWithoutBedtime != null
+                      ? `${patternInsights.sleepCorrelation.avgNextDayWithBedtime} vs ${patternInsights.sleepCorrelation.avgNextDayWithoutBedtime} tasks next day`
+                      : patternInsights.sleepCorrelation.nightsWithRoutine > 0
+                        ? `${patternInsights.sleepCorrelation.avgNextDayWithBedtime} tasks next day (${patternInsights.sleepCorrelation.nightsWithRoutine} nights)`
+                        : "Complete routine to see impact."}
+                  </span>
+                  <span className="insight-detail">ADHD: consistency with wind-down often improves next-day focus.</span>
+                </div>
+              )}
+              <div className="insight-card">
+                <span className="insight-label">This week</span>
+                <span className="insight-value">{patternInsights.todayCompletions} today</span>
+                <span className="insight-detail">{patternInsights.totalCompletions} completions in history.</span>
+              </div>
+            </div>
+
+            <h3 className="coach-subsection-title">Coach</h3>
+            <div className="panel-title"><div className="meta">{prog.done}/{prog.total} tasks · Plan / Unstuck / Review</div></div>
 
             {/* Mode selector: Plan / Unstuck / Review */}
             <div className="coach-mode-tabs">
@@ -2334,6 +2659,173 @@ export default function App() {
               </div>
             )}
           </section>
+        ) : tab === "finance" ? (
+          <section className="panel finance-panel">
+            <div className="panel-top">
+              <div className="panel-title">
+                <span className="title">Finance</span>
+                <div className="meta">Income, spending, savings &mdash; Coach can help with habits</div>
+              </div>
+            </div>
+
+            <form className="finance-quick-add" onSubmit={(e) => {
+              e.preventDefault();
+              const parsed = parseFinanceQuickInput(financeQuickInput);
+              if (parsed) {
+                addFinanceEntry(parsed.type, parsed.amount, parsed.label);
+                setFinanceQuickInput("");
+              }
+            }}>
+              <input
+                className="input"
+                type="text"
+                value={financeQuickInput}
+                onChange={(e) => setFinanceQuickInput(e.target.value)}
+                placeholder="+500 income or -200 spent (or &quot;200 spent&quot;)"
+                aria-label="Add income or expense"
+              />
+              <button type="submit" className="btn btn-primary" disabled={!financeQuickInput.trim()}>Add</button>
+            </form>
+
+            <div className="finance-totals">
+              <div className="finance-total-row">
+                <span className="finance-total-label">Income (this month)</span>
+                <span className="finance-total-value income">
+                  +${(finance.incomeEntries || []).reduce((sum, e) => {
+                    const d = new Date(e.dateISO);
+                    const n = new Date();
+                    if (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) return sum + (e.amount || 0);
+                    return sum;
+                  }, 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="finance-total-row">
+                <span className="finance-total-label">Spent (this month)</span>
+                <span className="finance-total-value expense">
+                  -${(finance.expenseEntries || []).reduce((sum, e) => {
+                    const d = new Date(e.dateISO);
+                    const n = new Date();
+                    if (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) return sum + (e.amount || 0);
+                    return sum;
+                  }, 0).toFixed(2)}
+                </span>
+              </div>
+              <div className="finance-total-row savings">
+                <span className="finance-total-label">Total savings</span>
+                <input
+                  className="input finance-savings-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={finance.totalSavings === 0 ? "" : finance.totalSavings}
+                  onChange={(e) => setFinance((prev) => ({ ...prev, totalSavings: parseFloat(e.target.value) || 0 }))}
+                  onBlur={(e) => setFinance((prev) => ({ ...prev, totalSavings: parseFloat(e.target.value) || 0 }))}
+                  placeholder="0"
+                />
+              </div>
+            </div>
+
+            <div className="finance-section">
+              <h3 className="finance-section-title">Recent income</h3>
+              <ul className="finance-list">
+                {(finance.incomeEntries || []).slice(0, 15).map((e) => (
+                  <li key={e.id} className="finance-list-item income">
+                    <span className="finance-amount">+${Number(e.amount).toFixed(2)}</span>
+                    {e.label && <span className="finance-label">{e.label}</span>}
+                    <button type="button" className="icon-btn" onClick={() => removeFinanceEntry("income", e.id)} aria-label="Remove"><TrashIcon /></button>
+                  </li>
+                ))}
+                {(finance.incomeEntries || []).length === 0 && <li className="finance-list-empty">No income logged yet. Try +500</li>}
+              </ul>
+            </div>
+
+            <div className="finance-section">
+              <h3 className="finance-section-title">Recent spending</h3>
+              <ul className="finance-list">
+                {(finance.expenseEntries || []).slice(0, 15).map((e) => (
+                  <li key={e.id} className="finance-list-item expense">
+                    <span className="finance-amount">-${Number(e.amount).toFixed(2)}</span>
+                    {e.label && <span className="finance-label">{e.label}</span>}
+                    <button type="button" className="icon-btn" onClick={() => removeFinanceEntry("expense", e.id)} aria-label="Remove"><TrashIcon /></button>
+                  </li>
+                ))}
+                {(finance.expenseEntries || []).length === 0 && <li className="finance-list-empty">No spending logged yet. Try -200 or &quot;50 coffee&quot;</li>}
+              </ul>
+            </div>
+
+            <div className="finance-section">
+              <h3 className="finance-section-title">Subscriptions</h3>
+              <form className="finance-inline-form" onSubmit={(e) => {
+                e.preventDefault();
+                if (newSubName.trim()) {
+                  addSubscription(newSubName.trim(), newSubAmount || 0, newSubCycle);
+                  setNewSubName("");
+                  setNewSubAmount("");
+                }
+              }}>
+                <input className="input" value={newSubName} onChange={(e) => setNewSubName(e.target.value)} placeholder="Netflix, gym…" />
+                <input className="input" type="number" min="0" step="0.01" value={newSubAmount} onChange={(e) => setNewSubAmount(e.target.value)} placeholder="Amount" style={{ width: 90 }} />
+                <select className="input" value={newSubCycle} onChange={(e) => setNewSubCycle(e.target.value)} style={{ width: 100 }}>
+                  <option value="monthly">/mo</option>
+                  <option value="yearly">/yr</option>
+                </select>
+                <button type="submit" className="btn btn-primary">Add</button>
+              </form>
+              <ul className="finance-list">
+                {(finance.subscriptions || []).map((s) => (
+                  <li key={s.id} className="finance-list-item">
+                    <span className="finance-label">{s.name}</span>
+                    <span className="finance-amount">${Number(s.amount).toFixed(2)}/{s.cycle === "yearly" ? "yr" : "mo"}</span>
+                    <button type="button" className="icon-btn" onClick={() => removeSubscription(s.id)} aria-label="Remove"><TrashIcon /></button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="finance-section">
+              <h3 className="finance-section-title">Wish list</h3>
+              <form className="finance-inline-form" onSubmit={(e) => {
+                e.preventDefault();
+                if (newWishLabel.trim()) {
+                  addWishItem(newWishLabel.trim(), newWishTarget || null);
+                  setNewWishLabel("");
+                  setNewWishTarget("");
+                }
+              }}>
+                <input className="input" value={newWishLabel} onChange={(e) => setNewWishLabel(e.target.value)} placeholder="What to save for?" />
+                <input className="input" type="number" min="0" step="0.01" value={newWishTarget} onChange={(e) => setNewWishTarget(e.target.value)} placeholder="Target $" style={{ width: 100 }} />
+                <button type="submit" className="btn btn-primary">Add</button>
+              </form>
+              <ul className="finance-list">
+                {(finance.wishList || []).map((w) => (
+                  <li key={w.id} className="finance-list-item">
+                    <span className="finance-label">{w.label}</span>
+                    {w.targetAmount != null && <span className="finance-meta">Goal ${Number(w.targetAmount).toFixed(2)}</span>}
+                    <button type="button" className="icon-btn" onClick={() => removeWishItem(w.id)} aria-label="Remove"><TrashIcon /></button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="finance-section">
+              <h3 className="finance-section-title">Bank / statement notes</h3>
+              <p className="finance-hint">Paste or type notes from statements. Coach uses this to spot patterns and suggest what to work on.</p>
+              <textarea
+                className="input finance-notes-textarea"
+                value={finance.bankStatementNotes}
+                onChange={(e) => setFinance((prev) => ({ ...prev, bankStatementNotes: e.target.value }))}
+                placeholder="e.g. Biggest charges this month: Amazon 120, dining 80…"
+                rows={4}
+              />
+            </div>
+
+            <div className="finance-coach-cta">
+              <button type="button" className="btn btn-primary" onClick={() => setTab("coach")}>
+                <SparkleIcon style={{ width: 18, height: 18, marginRight: 8 }} />
+                Ask Coach about my money
+              </button>
+            </div>
+          </section>
         ) : tab === "notes" ? (
           <section className="panel">
             <div className="panel-top">
@@ -2400,6 +2892,19 @@ export default function App() {
         </main>
         <aside className="shell-rail" aria-hidden="true" />
 
+        {/* Floating action — Add task (Today only, reference style) */}
+        {tab === "today" && (
+          <button
+            type="button"
+            className="fab"
+            onClick={() => document.querySelector(".quick-add-input")?.focus()}
+            aria-label="Add task"
+            title="Add task"
+          >
+            +
+          </button>
+        )}
+
         {showSettings && (
           <div className="modal-overlay" onClick={() => setShowSettings(false)}>
             <div className="modal" onClick={(e) => e.stopPropagation()}>
@@ -2419,7 +2924,7 @@ export default function App() {
                       }}
                       title={themeData.name}
                     >
-                      {theme.name === themeData.name && '✓'}
+                      {theme.name === themeData.name && <CheckIcon style={{ color: '#333', width: 18, height: 18 }} />}
                     </button>
                   ))}
                 </div>
@@ -2438,7 +2943,7 @@ export default function App() {
                     }
                   }}
                 >
-                  {notificationService.permission === 'granted' ? '✓ Enabled' : 'Enable Notifications'}
+                  {notificationService.permission === 'granted' ? <><CheckIcon style={{ width: 16, height: 16, marginRight: 6, verticalAlign: 'middle' }} />Enabled</> : 'Enable Notifications'}
                 </button>
               </div>
               <div className="settings-section">
@@ -2482,7 +2987,7 @@ export default function App() {
               ) : (
                 <>
                   <span className="inapp-banner-title">Wrap it up</span>
-                  <span className="inapp-banner-task">→ {taskBanner.nextTask ? taskBanner.nextTask.text : "Next"}</span>
+                  <span className="inapp-banner-task"><ArrowRightIcon style={{ width: 14, height: 14, verticalAlign: 'middle', marginRight: 6 }} />{taskBanner.nextTask ? taskBanner.nextTask.text : "Next"}</span>
                   <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => setTaskBanner(null)}>OK</button>
                 </>
               )}
@@ -2534,7 +3039,7 @@ export default function App() {
 
         <footer className="foot">
           <span>Saved automatically on this device.</span>
-          <span className="dot">•</span>
+          <BulletIcon style={{ marginLeft: 6, marginRight: 6, verticalAlign: 'middle' }} />
           <span>Next upgrade: cloud sync + phone install.</span>
         </footer>
       </div>

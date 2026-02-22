@@ -409,3 +409,82 @@ export function MenuIcon({ className = "" }) {
     </svg>
   );
 }
+
+/** Checkmark — line-art, for selected state / success */
+export function CheckIcon({ className = "", style = {} }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={style}
+    >
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+/** Arrow right — for "next" / flow */
+export function ArrowRightIcon({ className = "", style = {} }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="var(--soft-charcoal, #3A3A3A)"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      style={style}
+    >
+      <line x1="5" y1="12" x2="19" y2="12" />
+      <polyline points="12 5 19 12 12 19" />
+    </svg>
+  );
+}
+
+/** Finance / money — line-art dollar for nav and finance UI */
+export function FinanceIcon({ className = "", style = {} }) {
+  return (
+    <svg
+      className={className}
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="var(--soft-charcoal, #3A3A3A)"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      opacity="0.85"
+      style={style}
+    >
+      <line x1="12" y1="2" x2="12" y2="22" />
+      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+    </svg>
+  );
+}
+
+/** Bullet / dot — subtle separator */
+export function BulletIcon({ className = "", style = {} }) {
+  return (
+    <svg
+      className={className}
+      width="6"
+      height="6"
+      viewBox="0 0 8 8"
+      fill="var(--text-soft, #888)"
+      style={style}
+    >
+      <circle cx="4" cy="4" r="2" />
+    </svg>
+  );
+}

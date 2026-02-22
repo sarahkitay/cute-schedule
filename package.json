@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@vercel/kv": "^3.0.0",
+    "firebase": "^12.9.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "web-push": "^3.6.7"
