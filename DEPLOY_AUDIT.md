@@ -84,15 +84,30 @@ From [Vercel KB](https://vercel.com/kb/guide/why-aren-t-commits-triggering-deplo
 
 ---
 
-## 5. Backup: deploy without GitHub
+## 5. Backup: deploy without GitHub (Deploy Hook)
 
-If you need a deploy before the GitHub → Vercel link is fixed:
+The previous deploy hook URL is **no longer valid** (Vercel returns “deploy hook not found”). Create a new one:
 
-```bash
-npm run trigger-deploy
-```
+1. **Vercel** → your project → **Settings** → **Git** → **Deploy Hooks**.
+2. **Create Hook** (e.g. name: “Manual deploy”), copy the new URL.
+3. In your terminal:
+   ```bash
+   export VERCEL_DEPLOY_HOOK="https://api.vercel.com/v1/integrations/deploy/..."
+   npm run trigger-deploy
+   ```
+   Or add `VERCEL_DEPLOY_HOOK` to your `.env` (do not commit it).
 
-This calls your Vercel Deploy Hook and starts a deployment from the current Git state (Vercel will pull from the connected repo when the hook runs).
+That triggers a deployment from the current Git state without relying on GitHub push.
+
+---
+
+## 6. Build failing on Vercel (“not building”)
+
+If the deploy hook returns `PENDING` but the deployment never succeeds:
+
+1. **See the actual error:** Vercel Dashboard → **Deployments** → click the latest deployment → open **Building** in the logs. The red error line is the cause (e.g. `vite: command not found`, Node too old, missing env var).
+2. **Node version:** This project sets `engines.node >= 20` and includes `.nvmrc` with `20` so Vercel uses Node 20. If your build still fails, check the log for a Node version error.
+3. **Explicit build:** `vercel.json` sets `buildCommand`, `outputDirectory`, and `installCommand` so Vercel doesn’t rely on auto-detect.
 
 ---
 
@@ -100,5 +115,5 @@ This calls your Vercel Deploy Hook and starts a deployment from the current Git 
 
 - **Repo and build:** OK.  
 - **Likely cause:** Vercel not receiving push events (integration/permissions) or Production Branch / Ignored Build Step.  
-- **Do:** Recheck Vercel **Git** and **Production Branch**, and GitHub **Integrations** / **Webhooks**; reconnect the repo if needed; set Ignored Build Step to Automatic.  
+- **If job is created but build fails:** Check deployment **Build logs** (Section 6 above).  
 - **Optional:** Use `npm run trigger-deploy` to deploy on demand.
