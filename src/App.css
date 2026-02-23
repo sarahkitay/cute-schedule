@@ -2500,6 +2500,7 @@ button {
   border-radius: 26px;
   padding: var(--card-pad);
   margin: var(--space-3) 0;
+  margin-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
   box-shadow: 0 20px 60px rgba(30, 10, 20, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 .capacity-card .panel-title .title {

@@ -2229,7 +2229,6 @@ export default function App() {
                       onClick={() => setDailyCapacity(cap)}
                     >
                       {cap.charAt(0) + cap.slice(1).toLowerCase()}
-                      {(cap === "MEDIUM" || cap === "HIGH") && <SparkleIcon style={{ width: 12, height: 12, marginLeft: 4, verticalAlign: "middle" }} />}
                     </button>
                   ))}
                 </div>
@@ -2239,7 +2238,6 @@ export default function App() {
                     className={`capacity-pill ${(state.days?.[tKey]?.dailyMood) === "calm" ? "active" : ""}`}
                     onClick={() => setDailyMood("calm")}
                   >
-                    <GoodFeelingIcon style={{ width: 16, height: 16, marginRight: 4, verticalAlign: "middle" }} />
                     Calm
                   </button>
                   <button
@@ -2247,7 +2245,6 @@ export default function App() {
                     className={`capacity-pill ${(state.days?.[tKey]?.dailyMood) === "neutral" ? "active" : ""}`}
                     onClick={() => setDailyMood("neutral")}
                   >
-                    <NeutralFeelingIcon style={{ width: 16, height: 16, marginRight: 4, verticalAlign: "middle" }} />
                     Neutral
                   </button>
                   <button
@@ -2255,7 +2252,6 @@ export default function App() {
                     className={`capacity-pill ${(state.days?.[tKey]?.dailyMood) === "drained" ? "active" : ""}`}
                     onClick={() => setDailyMood("drained")}
                   >
-                    <HardFeelingIcon style={{ width: 16, height: 16, marginRight: 4, verticalAlign: "middle" }} />
                     Drained
                   </button>
                 </div>
