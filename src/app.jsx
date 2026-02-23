@@ -1982,13 +1982,16 @@ export default function App() {
               </button>
             </form>
 
-            {/* Next Up — reference card with Prep */}
+            {/* Next Up — featured card with icon + Prep CTA */}
             {(() => {
               const nextTasks = incompleteTasks.slice(0, 1);
               const next = nextTasks[0];
               return (
                 <div className="next-up-card">
                   <div className="next-up-card-inner">
+                    <div className="next-up-icon-badge">
+                      <CalendarIcon style={{ width: 18, height: 18 }} />
+                    </div>
                     <div className="next-up-label">Next up</div>
                     {next ? (
                       <>
@@ -2000,7 +2003,7 @@ export default function App() {
                     )}
                   </div>
                   {next && (
-                    <button type="button" className="next-up-prep" onClick={() => setFocusMode(true)}>
+                    <button type="button" className="next-up-prep btn-primary" onClick={() => setFocusMode(true)}>
                       Prep
                     </button>
                   )}
