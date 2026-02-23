@@ -1446,6 +1446,13 @@ button {
   top: 0;
   z-index: 100;
 }
+.top.surface-glass {
+  background: var(--color-surface-elevated);
+  backdrop-filter: blur(var(--blur-md));
+  -webkit-backdrop-filter: blur(var(--blur-md));
+  border-bottom: var(--border-subtle);
+  box-shadow: var(--elev-1), var(--elev-inset);
+}
 
 .top-inner {
   max-width: 1120px;
@@ -1540,21 +1547,42 @@ button {
   max-width: 100% !important;
 }
 
+/* Date Controls — control group: icon buttons + date pill with inset */
+.date-control-group .date-controls-top {
+  display: grid !important;
+  grid-template-columns: 44px 1fr 44px !important;
+  gap: var(--space-2) !important;
+  align-items: center !important;
+}
+.date-control-group .date-pill {
+  text-align: center;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  border-radius: var(--radius-pill);
+  box-shadow: var(--elev-inner);
+  padding: var(--space-2) var(--space-3);
+}
+.date-control-group .date-pill:focus {
+  outline: none;
+  box-shadow: var(--focus-ring), var(--elev-inner);
+}
 .date-controls-bottom {
   display: flex;
-  gap: var(--space-1);
+  gap: var(--space-2);
   align-items: center;
   justify-content: center;
-  width: 100%;
+  flex-wrap: wrap;
+}
+.date-controls-bottom .segmented-control {
+  margin: 0;
 }
 
-/* Quick Add — glass bar */
-.quick-add-bar {
-  display: flex;
-  gap: var(--space-2);
-  padding: var(--space-2) 0 var(--space-3);
-  margin: 0 0 var(--space-2);
+/* Quick Add — input group (design-tokens .input-group) */
+.quick-add-bar.input-group {
+  padding: var(--space-2) 0;
+  margin-bottom: var(--space-3);
 }
+.quick-add-bar .quick-add-input { padding-left: var(--space-3); }
 
 .quick-add-input {
   flex: 1;
@@ -1622,11 +1650,14 @@ button {
   margin-bottom: 4px;
   letter-spacing: -0.02em;
 }
-.next-up-meta {
-  font-size: var(--caption);
-  color: var(--text-soft);
-  font-weight: 400;
+.next-up-task-muted,
+.next-up-card .next-up-task.muted {
+  color: var(--color-ink-tertiary);
+  font-weight: 500;
 }
+.next-up-card:hover { transform: translateY(-1px); transition: transform var(--motion-fast); }
+.next-up-card:active { transform: scale(0.995); }
+.next-up-prep:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 .next-up-prep {
   flex-shrink: 0;
   padding: 12px 18px;
@@ -1990,6 +2021,17 @@ button {
   font-weight: 600;
   color: var(--accent);
   letter-spacing: -0.03em;
+}
+.daily-progress-empty {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  text-align: center;
+  border-radius: var(--radius-md);
+  background: rgba(255, 248, 245, 0.5);
+}
+.daily-progress-empty .state-empty { margin: 0 0 var(--space-2); }
+.daily-progress-chip {
+  margin-top: var(--space-1);
 }
 
 /* Progress bar — 8–10px, rounded, inner highlight, 250–350ms */
@@ -2523,11 +2565,18 @@ button {
   padding: var(--space-1) 0;
 }
 .finance-total-row.savings { margin-top: var(--space-1); padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); }
+.finance-total-row.debt { padding-top: var(--space-1); }
+.finance-total-row-net { padding-top: var(--space-1); border-top: 1px solid var(--border-subtle); }
+.finance-total-row-total { padding-top: var(--space-2); margin-top: var(--space-1); border-top: 1px solid var(--border-subtle); font-weight: 600; }
 .finance-total-label { font-size: var(--caption); color: var(--text-soft); }
 .finance-total-value { font-family: var(--font-mono); font-weight: 600; }
 .finance-total-value.income { color: #2d7a4a; }
 .finance-total-value.expense { color: #b85c4a; }
-.finance-savings-input { width: 120px; text-align: right; }
+.finance-total-value.net { color: var(--color-ink); }
+.finance-total-value.total { color: var(--color-ink); font-size: var(--text-headline); }
+.finance-savings-input,
+.finance-debt-input { width: 120px; text-align: right; }
+.finance-totals.surface-glass { padding: var(--space-4); border-radius: var(--radius-lg); }
 .finance-section { margin-bottom: var(--space-3); }
 .finance-section-title { font-size: var(--h2); font-weight: 600; margin: 0 0 var(--space-2); color: var(--text); }
 .finance-list { list-style: none; padding: 0; margin: 0; }
@@ -2610,7 +2659,7 @@ button {
 .bottom-nav-item svg { width: 22px; height: 22px; }
 .bottom-nav-item.active svg { color: var(--rose-mid); }
 
-/* FAB — gradient + aura */
+/* FAB — gradient, aura glow, pressed, subtle entrance */
 .fab {
   position: fixed;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
@@ -2635,6 +2684,13 @@ button {
   font-weight: 300;
   line-height: 1;
 }
+.fab-premium {
+  animation: fabEntrance 0.5s var(--ease-out-soft) forwards;
+}
+@keyframes fabEntrance {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
 .fab:hover {
   transform: translateY(-3px) scale(1.03);
   box-shadow: 0 24px 56px rgba(225, 126, 151, 0.35), 0 0 0 12px rgba(246, 166, 182, 0.15);
@@ -2642,6 +2698,7 @@ button {
 .fab:active {
   transform: scale(0.98);
 }
+.fab:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 /* Bedtime */
 .bedtime {

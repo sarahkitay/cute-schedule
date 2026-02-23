@@ -771,6 +771,7 @@ export default function App() {
           incomeEntries: data.incomeEntries || [],
           expenseEntries: data.expenseEntries || [],
           totalSavings: typeof data.totalSavings === "number" ? data.totalSavings : 0,
+          totalDebt: typeof data.totalDebt === "number" ? data.totalDebt : 0,
           wishList: data.wishList || [],
           subscriptions: data.subscriptions || [],
           bankStatementNotes: data.bankStatementNotes || "",
@@ -781,6 +782,7 @@ export default function App() {
       incomeEntries: [],
       expenseEntries: [],
       totalSavings: 0,
+      totalDebt: 0,
       wishList: [],
       subscriptions: [],
       bankStatementNotes: "",
@@ -1538,6 +1540,7 @@ export default function App() {
             incomeThisMonth,
             spentThisMonth,
             totalSavings: finance.totalSavings || 0,
+            totalDebt: finance.totalDebt || 0,
             subscriptions: finance.subscriptions || [],
             wishList: finance.wishList || [],
             bankStatementNotes: (finance.bankStatementNotes || "").slice(0, 2000),
@@ -1677,6 +1680,7 @@ export default function App() {
             return (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) ? s + (e.amount || 0) : s;
           }, 0),
           totalSavings: finance.totalSavings || 0,
+          totalDebt: finance.totalDebt || 0,
           subscriptions: finance.subscriptions || [],
           wishList: finance.wishList || [],
         },
@@ -1803,10 +1807,10 @@ export default function App() {
         className="shell"
         data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (state.days?.[tKey]?.dailyMood || "") : ""}
       >
-        <header className="top">
+        <header className="top surface-glass">
           <div className="top-inner">
             <div className="top-left">
-              <h1 className="h1">
+              <h1 className="h1" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
                 {(() => {
                   if (tab === "today") {
                     if (isSameDayKey(tKey, realTodayKey)) return "Today";
@@ -1855,14 +1859,15 @@ export default function App() {
                   className="btn btn-pill"
                   onClick={() => setFocusMode((f) => !f)}
                   title="Focus mode"
+                  aria-pressed={focusMode}
                 >
-                  <ChevronRightIcon style={{ width: 14, height: 14, transform: "rotate(-90deg)" }} />
+                  <SparkleIcon style={{ width: 14, height: 14, flexShrink: 0 }} aria-hidden />
                   {focusMode ? "Focus on" : "Reset available"}
                 </button>
               )}
               <button
                 type="button"
-                className="btn btn-ghost btn-icon"
+                className="btn-icon"
                 onClick={() => setShowSettings(true)}
                 title="Settings"
                 aria-label="Settings"
@@ -1873,8 +1878,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* Bottom navigation — pill bar */}
-        <nav className="bottom-nav" aria-label="Main">
+        {/* Bottom navigation — frosted dock, active-tab pill */}
+        <nav className="bottom-nav surface-dock" aria-label="Main">
           <button type="button" className={`bottom-nav-item ${tab === "today" ? "active" : ""}`} onClick={() => setTab("today")} aria-current={tab === "today" ? "page" : undefined}>
             <CalendarIcon style={{ width: 22, height: 22 }} />
             Today
@@ -1920,24 +1925,25 @@ export default function App() {
         <main className="shell-main">
 
         {(tab === "today" || tab === "list") && (
-          <div className="date-controls">
+          <div className="date-controls date-control-group">
             <div className="date-controls-top">
-              <button className="btn" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, -1))}>
-                <ChevronLeftIcon />
+              <button className="btn-icon" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, -1))} aria-label="Previous day">
+                <ChevronLeftIcon style={{ width: 20, height: 20 }} />
               </button>
 
               <input
-                className="input date-input"
+                className="input date-input date-pill"
                 type="date"
                 value={formatDateInput(selectedDayKey)}
                 onChange={(e) => {
                   const v = (e.target.value || "").trim();
                   if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setSelectedDayKey(v);
                 }}
+                aria-label="Selected date"
               />
 
-              <button className="btn" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, 1))}>
-                <ChevronRightIcon />
+              <button className="btn-icon" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, 1))} aria-label="Next day">
+                <ChevronRightIcon style={{ width: 20, height: 20 }} />
               </button>
             </div>
 
@@ -1952,14 +1958,26 @@ export default function App() {
               </button>
 
               {tab === "today" && (
-                <button
-                  className={mode === "do" ? "btn btn-primary" : "btn"}
-                  type="button"
-                  onClick={() => setMode((m) => (m === "do" ? "plan" : "do"))}
-                  title="Do mode = clean checkboxes. Plan mode = edit + organize."
-                >
-                  {mode === "do" ? "Do" : "Plan"}
-                </button>
+                <div className="segmented-control" role="tablist" aria-label="View mode">
+                  <button
+                    role="tab"
+                    aria-selected={mode === "do"}
+                    type="button"
+                    onClick={() => setMode("do")}
+                    title="Do mode — clean checkboxes"
+                  >
+                    Do
+                  </button>
+                  <button
+                    role="tab"
+                    aria-selected={mode === "plan"}
+                    type="button"
+                    onClick={() => setMode("plan")}
+                    title="Plan mode — edit and organize"
+                  >
+                    Plan
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -1967,8 +1985,8 @@ export default function App() {
 
         {tab === "today" ? (
           <>
-            {/* Quick Add — always visible, natural language */}
-            <form className="quick-add-bar" onSubmit={quickAddFromNL}>
+            {/* Quick Add — input group with focus ring, CTA disabled until input */}
+            <form className="input-group quick-add-bar" onSubmit={quickAddFromNL}>
               <input
                 className="input quick-add-input"
                 type="text"
@@ -1977,20 +1995,20 @@ export default function App() {
                 placeholder="Add a task… e.g. Call Martin 11am, EPC 3pm"
                 aria-label="Quick add task"
               />
-              <button type="submit" className="btn btn-primary" disabled={!quickAddValue.trim()}>
+              <button type="submit" className="btn-primary" disabled={!quickAddValue.trim()} aria-label="Add task">
                 Add
               </button>
             </form>
 
-            {/* Next Up — featured card with icon + Prep CTA */}
+            {/* Next Up — featured card: icon badge, title, time + tags, gradient Prep CTA */}
             {(() => {
               const nextTasks = incompleteTasks.slice(0, 1);
               const next = nextTasks[0];
               return (
-                <div className="next-up-card">
+                <div className="next-up-card surface-featured">
                   <div className="next-up-card-inner">
                     <div className="next-up-icon-badge">
-                      <CalendarIcon style={{ width: 18, height: 18 }} />
+                      <CalendarIcon style={{ width: 18, height: 18 }} aria-hidden />
                     </div>
                     <div className="next-up-label">Next up</div>
                     {next ? (
@@ -1999,7 +2017,7 @@ export default function App() {
                         <div className="next-up-meta">{to12Hour(next.hour)} · {next.category}</div>
                       </>
                     ) : (
-                      <div className="next-up-task muted">Pick one small win</div>
+                      <div className="next-up-task next-up-task-muted">Pick one small win</div>
                     )}
                   </div>
                   {next && (
@@ -2011,7 +2029,7 @@ export default function App() {
               );
             })()}
 
-            <section className="panel panel-hero daily-progress-card">
+            <section className="panel panel-hero daily-progress-card surface-glass">
               <div className="panel-top">
                 <div className="panel-title">
                   <div className="panel-title-row">
@@ -2032,6 +2050,19 @@ export default function App() {
 
               <ProgressBar pct={prog.pct} />
               <ProgressSegments total={prog.total} done={prog.done} />
+
+              {prog.pct === 0 && prog.total === 0 && (
+                <div className="daily-progress-empty">
+                  <p className="state-empty">No tasks yet. Add one to get started.</p>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary daily-progress-chip"
+                    onClick={() => document.querySelector(".quick-add-input")?.focus()}
+                  >
+                    Pick one small win
+                  </button>
+                </div>
+              )}
 
               {mode === "plan" && (
                 <form className="quick" onSubmit={quickAdd}>
@@ -2663,15 +2694,15 @@ export default function App() {
             )}
           </section>
         ) : tab === "finance" ? (
-          <section className="panel finance-panel">
+          <section className="panel finance-panel surface-glass">
             <div className="panel-top">
               <div className="panel-title">
                 <span className="title">Finance</span>
-                <div className="meta">Income, spending, savings &mdash; Coach can help with habits</div>
+                <div className="meta">Income, spending, savings & debt — Coach can help with habits</div>
               </div>
             </div>
 
-            <form className="finance-quick-add" onSubmit={(e) => {
+            <form className="input-group finance-quick-add" onSubmit={(e) => {
               e.preventDefault();
               const parsed = parseFinanceQuickInput(financeQuickInput);
               if (parsed) {
@@ -2687,10 +2718,10 @@ export default function App() {
                 placeholder="+500 income or -200 spent (or &quot;200 spent&quot;)"
                 aria-label="Add income or expense"
               />
-              <button type="submit" className="btn btn-primary" disabled={!financeQuickInput.trim()}>Add</button>
+              <button type="submit" className="btn-primary" disabled={!financeQuickInput.trim()}>Add</button>
             </form>
 
-            <div className="finance-totals">
+            <div className="finance-totals surface-glass">
               <div className="finance-total-row">
                 <span className="finance-total-label">Income (this month)</span>
                 <span className="finance-total-value income">
@@ -2713,6 +2744,26 @@ export default function App() {
                   }, 0).toFixed(2)}
                 </span>
               </div>
+              <div className="finance-total-row finance-total-row-net">
+                <span className="finance-total-label">Net (this month)</span>
+                <span className="finance-total-value net">
+                  ${(() => {
+                    const income = (finance.incomeEntries || []).reduce((sum, e) => {
+                      const d = new Date(e.dateISO);
+                      const n = new Date();
+                      if (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) return sum + (e.amount || 0);
+                      return sum;
+                    }, 0);
+                    const spent = (finance.expenseEntries || []).reduce((sum, e) => {
+                      const d = new Date(e.dateISO);
+                      const n = new Date();
+                      if (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) return sum + (e.amount || 0);
+                      return sum;
+                    }, 0);
+                    return (income - spent).toFixed(2);
+                  })()}
+                </span>
+              </div>
               <div className="finance-total-row savings">
                 <span className="finance-total-label">Total savings</span>
                 <input
@@ -2725,6 +2776,25 @@ export default function App() {
                   onBlur={(e) => setFinance((prev) => ({ ...prev, totalSavings: parseFloat(e.target.value) || 0 }))}
                   placeholder="0"
                 />
+              </div>
+              <div className="finance-total-row debt">
+                <span className="finance-total-label">Total debt</span>
+                <input
+                  className="input finance-debt-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={finance.totalDebt === 0 ? "" : finance.totalDebt}
+                  onChange={(e) => setFinance((prev) => ({ ...prev, totalDebt: parseFloat(e.target.value) || 0 }))}
+                  onBlur={(e) => setFinance((prev) => ({ ...prev, totalDebt: parseFloat(e.target.value) || 0 }))}
+                  placeholder="0"
+                />
+              </div>
+              <div className="finance-total-row finance-total-row-total">
+                <span className="finance-total-label">Liquid (savings − debt)</span>
+                <span className="finance-total-value total">
+                  ${((finance.totalSavings || 0) - (finance.totalDebt || 0)).toFixed(2)}
+                </span>
               </div>
             </div>
 
@@ -2895,11 +2965,11 @@ export default function App() {
         </main>
         <aside className="shell-rail" aria-hidden="true" />
 
-        {/* Floating action — Add task (Today only, reference style) */}
+        {/* Floating action — Add task (Today only): gradient, glow, pressed, subtle entrance */}
         {tab === "today" && (
           <button
             type="button"
-            className="fab"
+            className="fab fab-premium"
             onClick={() => document.querySelector(".quick-add-input")?.focus()}
             aria-label="Add task"
             title="Add task"
