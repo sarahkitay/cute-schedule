@@ -62,13 +62,13 @@ const CATEGORY_TONES = {
 // Themes: gradient affects background + all colored buttons; name used in picker
 const THEMES = {
   "Classic Pink": {
-    primary: "#F8BBD0",
-    secondary: "#F5A6C2",
+    primary: "#F3A6B8",
+    secondary: "#E889A3",
     accent: "#F48FB1",
-    gradient: "linear-gradient(135deg, #F8BBD0 0%, #F5A6C2 50%, #F48FB1 100%)",
+    gradient: "linear-gradient(135deg, #F3A6B8 0%, #E889A3 100%)",
     headerGradient: "linear-gradient(135deg, #F48FB1 0%, #F8BBD0 100%)",
-    backgroundGradient: "linear-gradient(145deg, #F6F0EE 0%, #F4D8DC 45%, #EFE7E4 100%)",
-    backgroundGlow: "rgba(244, 188, 200, 0.18)",
+    backgroundGradient: "linear-gradient(160deg, #F8F5F4 0%, #F1E8E6 100%)",
+    backgroundGlow: "rgba(232, 180, 192, 0.15)",
     name: "Classic Pink"
   },
   "Rose Gold": {
@@ -529,7 +529,7 @@ function ProgressSegments({ total, done }) {
 }
 
 // Ultra-minimal hour card with Do/Plan mode
-function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onShowDropdown, taskDropdown, expandedTaskKey, onExpandTask, mode = "do" }) {
+function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onChangeTaskTime, onShowDropdown, taskDropdown, editingTaskTime, editTaskTimeValue, setEditTaskTimeValue, setEditingTaskTime, onEditTimeSave, onEditTimeCancel, expandedTaskKey, onExpandTask, mode = "do" }) {
   const complete = hourIsComplete(tasksByCat);
   const [open, setOpen] = useState(true);
 
@@ -663,36 +663,67 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
                       
                       {taskDropdown === `${hourKey}-${t.category}-${t.id}` && (
                         <div className="task-dropdown" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            className="dropdown-item"
-                            onClick={() => {
-                              onMoveToTomorrow(hourKey, t.category, t.id);
-                            }}
-                          >
-                            <CalendarIcon style={{ marginRight: '8px' }} />
-                            Move to tomorrow
-                          </button>
-                          <button
-                            type="button"
-                            className="dropdown-item"
-                            onClick={() => {
-                              onDeleteTask(hourKey, t.category, t.id);
-                              onShowDropdown(null);
-                            }}
-                          >
-                            <FireIcon style={{ marginRight: '8px' }} />
-                            Let it go
-                          </button>
-                          <button
-                            type="button"
-                            className="dropdown-item"
-                            onClick={() => {
-                              onShowDropdown(null);
-                            }}
-                          >
-                            Keep as is
-                          </button>
+                          {editingTaskTime === `${hourKey}-${t.category}-${t.id}` ? (
+                            <div className="dropdown-edit-time">
+                              <label className="dropdown-edit-time-label">New time</label>
+                              <input
+                                type="time"
+                                className="input dropdown-time-input"
+                                value={editTaskTimeValue}
+                                onChange={(e) => setEditTaskTimeValue(e.target.value)}
+                                aria-label="Task time"
+                              />
+                              <div className="dropdown-edit-time-actions">
+                                <button type="button" className="dropdown-item" onClick={() => onEditTimeSave(hourKey, t.category, t.id, editTaskTimeValue)}>
+                                  Save
+                                </button>
+                                <button type="button" className="dropdown-item" onClick={onEditTimeCancel}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                onClick={() => {
+                                  onMoveToTomorrow(hourKey, t.category, t.id);
+                                }}
+                              >
+                                <CalendarIcon style={{ marginRight: '8px' }} />
+                                Move to tomorrow
+                              </button>
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                onClick={() => {
+                                  setEditTaskTimeValue(hourKey);
+                                  if (setEditingTaskTime) setEditingTaskTime(`${hourKey}-${t.category}-${t.id}`);
+                                }}
+                              >
+                                Edit time
+                              </button>
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                onClick={() => {
+                                  onDeleteTask(hourKey, t.category, t.id);
+                                  onShowDropdown(null);
+                                }}
+                              >
+                                <FireIcon style={{ marginRight: '8px' }} />
+                                Let it go
+                              </button>
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                onClick={() => onShowDropdown(null)}
+                              >
+                                Keep as is
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </>
@@ -957,7 +988,9 @@ export default function App() {
   const [missedTasks, setMissedTasks] = useState([]);
   const [windDownMode, setWindDownMode] = useState(false);
   const [morningGreeting, setMorningGreeting] = useState(false);
-  const [taskDropdown, setTaskDropdown] = useState(null); // { hourKey, category, taskId }
+  const [taskDropdown, setTaskDropdown] = useState(null); // "hourKey-category-id"
+  const [editingTaskTime, setEditingTaskTime] = useState(null); // "hourKey-category-id" when showing time editor
+  const [editTaskTimeValue, setEditTaskTimeValue] = useState("09:00"); // new time for edit
   const [expandedTaskKey, setExpandedTaskKey] = useState(null); // "hourKey-category-id" for expandable detail
   const [focusMode, setFocusMode] = useState(false);
   const [quickAddValue, setQuickAddValue] = useState("");
@@ -1010,8 +1043,9 @@ export default function App() {
     document.documentElement.style.setProperty('--theme-accent', theme.accent);
     document.documentElement.style.setProperty('--theme-gradient', theme.gradient);
     document.documentElement.style.setProperty('--theme-header-gradient', theme.headerGradient);
-    document.documentElement.style.setProperty('--theme-bg-gradient', theme.backgroundGradient || 'linear-gradient(145deg, #F6F0EE 0%, #F4D8DC 45%, #EFE7E4 100%)');
-    document.documentElement.style.setProperty('--theme-bg-glow', theme.backgroundGlow || 'rgba(244, 188, 200, 0.18)');
+    document.documentElement.style.setProperty('--gradient-cta', theme.gradient);
+    document.documentElement.style.setProperty('--theme-bg-gradient', theme.backgroundGradient || 'linear-gradient(160deg, #F8F5F4 0%, #F1E8E6 100%)');
+    document.documentElement.style.setProperty('--theme-bg-glow', theme.backgroundGlow || 'rgba(232, 180, 192, 0.15)');
   }, [theme]);
 
   useEffect(() => {
@@ -1499,7 +1533,6 @@ export default function App() {
   }
 
   function moveTaskToTomorrow(hourKey, category, taskId) {
-    // Find the task
     const day = state.days[tKey];
     if (!day) return;
     const hours = day.hours || {};
@@ -1508,19 +1541,17 @@ export default function App() {
     const task = (byCat[category] || []).find((t) => t.id === taskId);
     if (!task) return;
 
-    // Delete from current day
     deleteTask(hourKey, category, taskId);
 
-    // Add to tomorrow at 9:00 AM
     const tomorrowKey = addDaysKey(realTodayKey, 1);
     const tomorrowHour = "09:00";
-    
+
     setState((prev) => {
       const tomorrowDay = prev.days[tomorrowKey] || { hours: {} };
       const tomorrowHours = { ...(tomorrowDay.hours || {}) };
       const tomorrowByCat = tomorrowHours[tomorrowHour] || {};
       const tomorrowList = [...(tomorrowByCat[category] || []), task];
-      
+
       tomorrowHours[tomorrowHour] = {
         ...tomorrowByCat,
         [category]: tomorrowList
@@ -1536,6 +1567,28 @@ export default function App() {
     });
 
     setTaskDropdown(null);
+  }
+
+  function changeTaskTime(hourKey, category, taskId, newHourKey) {
+    const day = state.days[tKey];
+    if (!day) return;
+    const hours = { ...(day.hours || {}) };
+    const byCat = hours[hourKey];
+    if (!byCat) return;
+    const task = (byCat[category] || []).find((t) => t.id === taskId);
+    if (!task) return;
+    if (newHourKey === hourKey) return;
+
+    const list = (byCat[category] || []).filter((t) => t.id !== taskId);
+    hours[hourKey] = { ...byCat, [category]: list };
+
+    const nextByCat = hours[newHourKey] || { RHEA: [], EPC: [], Personal: [] };
+    const nextList = [...(nextByCat[category] || []), { ...task, hour: newHourKey }];
+    hours[newHourKey] = { ...nextByCat, [category]: nextList };
+
+    setState((prev) => ({ ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } }));
+    setTaskDropdown(null);
+    setEditingTaskTime(null);
   }
 
   function deleteHour(hourKey) {
@@ -1978,7 +2031,7 @@ export default function App() {
                     : "Pattern insights";
                 })()}
               </h1>
-              <span className="sub">
+              <span className={`sub header-date ${tab === "today" || tab === "list" ? "header-date-visible" : ""}`}>
                 {tab === "today" || tab === "list"
                   ? (() => {
                       const label = getDayLabel(tKey, realTodayKey);
@@ -2353,8 +2406,15 @@ export default function App() {
                           onDeleteTask={deleteTask}
                           onDeleteHour={deleteHour}
                           onMoveToTomorrow={moveTaskToTomorrow}
+                          onChangeTaskTime={changeTaskTime}
                           onShowDropdown={setTaskDropdown}
                           taskDropdown={taskDropdown}
+                          editingTaskTime={editingTaskTime}
+                          editTaskTimeValue={editTaskTimeValue}
+                          setEditTaskTimeValue={setEditTaskTimeValue}
+                          setEditingTaskTime={setEditingTaskTime}
+                          onEditTimeSave={(h, c, id, newTime) => { changeTaskTime(h, c, id, newTime); setEditingTaskTime(null); }}
+                          onEditTimeCancel={() => setEditingTaskTime(null)}
                           expandedTaskKey={expandedTaskKey}
                           onExpandTask={setExpandedTaskKey}
                           mode={mode}
@@ -2511,36 +2571,47 @@ export default function App() {
                       
                       {taskDropdown === `${t.hour}-${t.category}-${t.id}` && (
                         <div className="task-dropdown" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            className="dropdown-item"
-                            onClick={() => {
-                              moveTaskToTomorrow(t.hour, t.category, t.id);
-                            }}
-                          >
-                            <CalendarIcon style={{ marginRight: '8px' }} />
-                            Move to tomorrow
-                          </button>
-                          <button
-                            type="button"
-                            className="dropdown-item"
-                            onClick={() => {
-                              deleteTask(t.hour, t.category, t.id);
-                              setTaskDropdown(null);
-                            }}
-                          >
-                            <FireIcon style={{ marginRight: '8px' }} />
-                            Let it go
-                          </button>
-                          <button
-                            type="button"
-                            className="dropdown-item"
-                            onClick={() => {
-                              setTaskDropdown(null);
-                            }}
-                          >
-                            Keep as is
-                          </button>
+                          {editingTaskTime === `${t.hour}-${t.category}-${t.id}` ? (
+                            <div className="dropdown-edit-time">
+                              <label className="dropdown-edit-time-label">New time</label>
+                              <input
+                                type="time"
+                                className="input dropdown-time-input"
+                                value={editTaskTimeValue}
+                                onChange={(e) => setEditTaskTimeValue(e.target.value)}
+                                aria-label="Task time"
+                              />
+                              <div className="dropdown-edit-time-actions">
+                                <button type="button" className="dropdown-item" onClick={() => { changeTaskTime(t.hour, t.category, t.id, editTaskTimeValue); setEditingTaskTime(null); setTaskDropdown(null); }}>
+                                  Save
+                                </button>
+                                <button type="button" className="dropdown-item" onClick={() => setEditingTaskTime(null)}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <button type="button" className="dropdown-item" onClick={() => moveTaskToTomorrow(t.hour, t.category, t.id)}>
+                                <CalendarIcon style={{ marginRight: '8px' }} />
+                                Move to tomorrow
+                              </button>
+                              <button
+                                type="button"
+                                className="dropdown-item"
+                                onClick={() => { setEditTaskTimeValue(t.hour); setEditingTaskTime(`${t.hour}-${t.category}-${t.id}`); }}
+                              >
+                                Edit time
+                              </button>
+                              <button type="button" className="dropdown-item" onClick={() => { deleteTask(t.hour, t.category, t.id); setTaskDropdown(null); }}>
+                                <FireIcon style={{ marginRight: '8px' }} />
+                                Let it go
+                              </button>
+                              <button type="button" className="dropdown-item" onClick={() => setTaskDropdown(null)}>
+                                Keep as is
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
