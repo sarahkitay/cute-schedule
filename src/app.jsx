@@ -25,6 +25,8 @@ const THEME_STORAGE_KEY = "cute_schedule_theme_v1";
 const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
 const FINANCE_STORAGE_KEY = "cute_schedule_finance_v1";
+const PROFILE_STORAGE_KEY = "cute_schedule_profile_v1";
+const ROUTINE_TEMPLATE_KEY = "cute_schedule_routine_template_v1";
 
 const ENERGY_LEVELS = {
   LIGHT: { icon: LightEnergyIcon, label: "Light", color: "#90EE90" },
@@ -57,7 +59,7 @@ const CATEGORY_TONES = {
   }
 };
 
-// Classy lighter pink theme colors
+// Themes: gradient affects background + all colored buttons; name used in picker
 const THEMES = {
   "Classic Pink": {
     primary: "#F8BBD0",
@@ -65,6 +67,8 @@ const THEMES = {
     accent: "#F48FB1",
     gradient: "linear-gradient(135deg, #F8BBD0 0%, #F5A6C2 50%, #F48FB1 100%)",
     headerGradient: "linear-gradient(135deg, #F48FB1 0%, #F8BBD0 100%)",
+    backgroundGradient: "linear-gradient(145deg, #F6F0EE 0%, #F4D8DC 45%, #EFE7E4 100%)",
+    backgroundGlow: "rgba(244, 188, 200, 0.18)",
     name: "Classic Pink"
   },
   "Rose Gold": {
@@ -73,6 +77,8 @@ const THEMES = {
     accent: "#D4A5A5",
     gradient: "linear-gradient(135deg, #F4C2C2 0%, #E8B4B8 50%, #D4A5A5 100%)",
     headerGradient: "linear-gradient(135deg, #D4A5A5 0%, #F4C2C2 100%)",
+    backgroundGradient: "linear-gradient(145deg, #F8F2F0 0%, #F0E0E0 50%, #EDE5E2 100%)",
+    backgroundGlow: "rgba(212, 165, 165, 0.2)",
     name: "Rose Gold"
   },
   "Blush": {
@@ -81,6 +87,8 @@ const THEMES = {
     accent: "#FFC7C7",
     gradient: "linear-gradient(135deg, #FFE5E5 0%, #FFD6D6 50%, #FFC7C7 100%)",
     headerGradient: "linear-gradient(135deg, #FFC7C7 0%, #FFE5E5 100%)",
+    backgroundGradient: "linear-gradient(145deg, #FFF5F5 0%, #FFE8EC 50%, #FDF0ED 100%)",
+    backgroundGlow: "rgba(255, 199, 199, 0.2)",
     name: "Blush"
   },
   "Lavender": {
@@ -89,6 +97,8 @@ const THEMES = {
     accent: "#C295E9",
     gradient: "linear-gradient(135deg, #E6D5F7 0%, #D4B5F0 50%, #C295E9 100%)",
     headerGradient: "linear-gradient(135deg, #C295E9 0%, #E6D5F7 100%)",
+    backgroundGradient: "linear-gradient(145deg, #F4F0FA 0%, #EDE4F5 50%, #E8E2F0 100%)",
+    backgroundGlow: "rgba(194, 149, 233, 0.18)",
     name: "Lavender"
   },
   "Peach": {
@@ -97,7 +107,59 @@ const THEMES = {
     accent: "#FFC4B2",
     gradient: "linear-gradient(135deg, #FFE4D6 0%, #FFD4C4 50%, #FFC4B2 100%)",
     headerGradient: "linear-gradient(135deg, #FFC4B2 0%, #FFE4D6 100%)",
+    backgroundGradient: "linear-gradient(145deg, #FDF6F2 0%, #FCE8E0 50%, #F5E8E2 100%)",
+    backgroundGlow: "rgba(255, 196, 178, 0.2)",
     name: "Peach"
+  },
+  "Neutral": {
+    primary: "#D4C8C4",
+    secondary: "#C4B8B4",
+    accent: "#A89890",
+    gradient: "linear-gradient(135deg, #E8E2DE 0%, #D4C8C4 50%, #C4B8B4 100%)",
+    headerGradient: "linear-gradient(135deg, #A89890 0%, #D4C8C4 100%)",
+    backgroundGradient: "linear-gradient(145deg, #F2EFED 0%, #E8E4E0 50%, #E2DED8 100%)",
+    backgroundGlow: "rgba(168, 152, 144, 0.12)",
+    name: "Neutral"
+  },
+  "Slate": {
+    primary: "#A8B8C8",
+    secondary: "#8A9CB0",
+    accent: "#6B7C94",
+    gradient: "linear-gradient(135deg, #C8D4E0 0%, #A8B8C8 50%, #8A9CB0 100%)",
+    headerGradient: "linear-gradient(135deg, #6B7C94 0%, #A8B8C8 100%)",
+    backgroundGradient: "linear-gradient(145deg, #EEF2F6 0%, #E2E8F0 50%, #D8DEE8 100%)",
+    backgroundGlow: "rgba(107, 124, 148, 0.15)",
+    name: "Slate"
+  },
+  "Sage": {
+    primary: "#B8C8B8",
+    secondary: "#9CB09C",
+    accent: "#7A9478",
+    gradient: "linear-gradient(135deg, #D4E0D4 0%, #B8C8B8 50%, #9CB09C 100%)",
+    headerGradient: "linear-gradient(135deg, #7A9478 0%, #B8C8B8 100%)",
+    backgroundGradient: "linear-gradient(145deg, #F0F4EE 0%, #E4ECE2 50%, #DCE4DA 100%)",
+    backgroundGlow: "rgba(122, 148, 120, 0.14)",
+    name: "Sage"
+  },
+  "Elegant": {
+    primary: "#C4B4B0",
+    secondary: "#B0A098",
+    accent: "#8C7A72",
+    gradient: "linear-gradient(135deg, #E0D8D4 0%, #C4B4B0 50%, #B0A098 100%)",
+    headerGradient: "linear-gradient(135deg, #8C7A72 0%, #C4B4B0 100%)",
+    backgroundGradient: "linear-gradient(145deg, #F6F2F0 0%, #EDE6E2 45%, #E6DED8 100%)",
+    backgroundGlow: "rgba(140, 122, 114, 0.12)",
+    name: "Elegant"
+  },
+  "Berry": {
+    primary: "#E8C4D4",
+    secondary: "#D8A8BC",
+    accent: "#C888A4",
+    gradient: "linear-gradient(135deg, #F0D8E4 0%, #E8C4D4 50%, #D8A8BC 100%)",
+    headerGradient: "linear-gradient(135deg, #C888A4 0%, #E8C4D4 100%)",
+    backgroundGradient: "linear-gradient(145deg, #FAF2F6 0%, #F4E4EC 50%, #EFDAE4 100%)",
+    backgroundGlow: "rgba(200, 136, 164, 0.18)",
+    name: "Berry"
   }
 };
 
@@ -732,13 +794,56 @@ export default function App() {
 
   const [state, setState] = useState(() => {
     const saved = loadState();
-    if (saved) return saved;
+    const routineTemplate = (() => {
+      try {
+        const raw = localStorage.getItem(ROUTINE_TEMPLATE_KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch { return null; }
+    })();
+    const template = routineTemplate && routineTemplate.length ? routineTemplate : BEDTIME_ROUTINE;
+    const todayK = todayKey();
+    if (saved) {
+      const dayKey = saved.bedtimeRoutineDayKey;
+      if (dayKey !== todayK) {
+        return {
+          ...saved,
+          bedtimeRoutineDayKey: todayK,
+          bedtimeRoutine: template.map((r) => ({ ...r, done: false })),
+        };
+      }
+      return { ...saved, bedtimeRoutine: saved.bedtimeRoutine || template.map((r) => ({ ...r, done: false })), bedtimeRoutineDayKey: saved.bedtimeRoutineDayKey || todayK };
+    }
     return {
       days: {},
       monthly: [],
-      bedtimeRoutine: BEDTIME_ROUTINE.map((r) => ({ ...r, done: false })),
+      bedtimeRoutine: template.map((r) => ({ ...r, done: false })),
+      bedtimeRoutineDayKey: todayK,
       notes: [],
     };
+  });
+
+  // Profile (name, birthday) — persisted
+  const [profile, setProfile] = useState(() => {
+    try {
+      const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+      if (raw) {
+        const p = JSON.parse(raw);
+        return { userName: p.userName || "", userBirthday: p.userBirthday || "" };
+      }
+    } catch (_) {}
+    return { userName: "", userBirthday: "" };
+  });
+
+  // Editable bedtime routine template (persisted)
+  const [routineTemplate, setRoutineTemplate] = useState(() => {
+    try {
+      const raw = localStorage.getItem(ROUTINE_TEMPLATE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) && arr.length ? arr : BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+      }
+    } catch (_) {}
+    return BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
   });
 
   // Theme state
@@ -772,6 +877,7 @@ export default function App() {
           expenseEntries: data.expenseEntries || [],
           totalSavings: typeof data.totalSavings === "number" ? data.totalSavings : 0,
           totalDebt: typeof data.totalDebt === "number" ? data.totalDebt : 0,
+          totalInvestments: typeof data.totalInvestments === "number" ? data.totalInvestments : 0,
           wishList: data.wishList || [],
           subscriptions: data.subscriptions || [],
           bankStatementNotes: data.bankStatementNotes || "",
@@ -783,6 +889,7 @@ export default function App() {
       expenseEntries: [],
       totalSavings: 0,
       totalDebt: 0,
+      totalInvestments: 0,
       wishList: [],
       subscriptions: [],
       bankStatementNotes: "",
@@ -794,6 +901,47 @@ export default function App() {
       localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(finance));
     } catch (_) {}
   }, [finance]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    } catch (_) {}
+  }, [profile]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ROUTINE_TEMPLATE_KEY, JSON.stringify(routineTemplate));
+    } catch (_) {}
+  }, [routineTemplate]);
+
+  // Reset bedtime routine when day changes to today
+  useEffect(() => {
+    setState((prev) => {
+      const currentDayKey = prev.bedtimeRoutineDayKey || realTodayKey;
+      if (currentDayKey !== realTodayKey) {
+        const template = routineTemplate.length ? routineTemplate : BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+        return {
+          ...prev,
+          bedtimeRoutineDayKey: realTodayKey,
+          bedtimeRoutine: template.map((r) => ({ ...r, done: false })),
+        };
+      }
+      return prev;
+    });
+  }, [realTodayKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When routine template changes, merge into today's routine (preserve done flags)
+  useEffect(() => {
+    const template = routineTemplate.length ? routineTemplate : BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+    setState((prev) => {
+      if (prev.bedtimeRoutineDayKey !== realTodayKey) return prev;
+      const merged = template.map((r) => {
+        const existing = prev.bedtimeRoutine?.find((x) => x.id === r.id);
+        return { ...r, done: existing ? existing.done : false };
+      });
+      return { ...prev, bedtimeRoutine: merged };
+    });
+  }, [routineTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [noteSearch, setNoteSearch] = useState("");
   const [financeQuickInput, setFinanceQuickInput] = useState("");
@@ -862,6 +1010,8 @@ export default function App() {
     document.documentElement.style.setProperty('--theme-accent', theme.accent);
     document.documentElement.style.setProperty('--theme-gradient', theme.gradient);
     document.documentElement.style.setProperty('--theme-header-gradient', theme.headerGradient);
+    document.documentElement.style.setProperty('--theme-bg-gradient', theme.backgroundGradient || 'linear-gradient(145deg, #F6F0EE 0%, #F4D8DC 45%, #EFE7E4 100%)');
+    document.documentElement.style.setProperty('--theme-bg-glow', theme.backgroundGlow || 'rgba(244, 188, 200, 0.18)');
   }, [theme]);
 
   useEffect(() => {
@@ -1541,6 +1691,7 @@ export default function App() {
             spentThisMonth,
             totalSavings: finance.totalSavings || 0,
             totalDebt: finance.totalDebt || 0,
+            totalInvestments: finance.totalInvestments || 0,
             subscriptions: finance.subscriptions || [],
             wishList: finance.wishList || [],
             bankStatementNotes: (finance.bankStatementNotes || "").slice(0, 2000),
@@ -1681,6 +1832,7 @@ export default function App() {
           }, 0),
           totalSavings: finance.totalSavings || 0,
           totalDebt: finance.totalDebt || 0,
+          totalInvestments: finance.totalInvestments || 0,
           subscriptions: finance.subscriptions || [],
           wishList: finance.wishList || [],
         },
@@ -2786,6 +2938,30 @@ export default function App() {
                   placeholder="0"
                 />
               </div>
+              <div className="finance-total-row finance-total-row-ratio">
+                <span className="finance-total-label">Debt / Savings ratio</span>
+                <span className="finance-total-value ratio">
+                  {(() => {
+                    const s = finance.totalSavings || 0;
+                    const d = finance.totalDebt || 0;
+                    if (s <= 0) return d > 0 ? "—" : "0%";
+                    return `${(Math.round((d / s) * 100))}%`;
+                  })()}
+                </span>
+              </div>
+              <div className="finance-total-row investments">
+                <span className="finance-total-label">Investments</span>
+                <input
+                  className="input finance-investments-input"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={finance.totalInvestments === 0 ? "" : finance.totalInvestments}
+                  onChange={(e) => setFinance((prev) => ({ ...prev, totalInvestments: parseFloat(e.target.value) || 0 }))}
+                  onBlur={(e) => setFinance((prev) => ({ ...prev, totalInvestments: parseFloat(e.target.value) || 0 }))}
+                  placeholder="0"
+                />
+              </div>
               <div className="finance-total-row finance-total-row-total">
                 <span className="finance-total-label">Liquid (savings − debt)</span>
                 <span className="finance-total-value total">
@@ -2976,9 +3152,67 @@ export default function App() {
 
         {showSettings && (
           <div className="modal-overlay" onClick={() => setShowSettings(false)}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
               <h3>Settings</h3>
-              
+
+              <div className="settings-section">
+                <label className="label">Your name</label>
+                <input
+                  className="input modal-input"
+                  type="text"
+                  value={profile.userName}
+                  onChange={(e) => setProfile((p) => ({ ...p, userName: e.target.value.trim() }))}
+                  placeholder="e.g. Sarah"
+                  aria-label="Your name"
+                />
+              </div>
+              <div className="settings-section">
+                <label className="label">Birthday (for greetings)</label>
+                <input
+                  className="input modal-input"
+                  type="text"
+                  value={profile.userBirthday}
+                  onChange={(e) => setProfile((p) => ({ ...p, userBirthday: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+                  placeholder="MMDD e.g. 0315"
+                  aria-label="Birthday month and day"
+                  maxLength={4}
+                />
+                <p className="settings-hint">Enter as MMDD (e.g. 0315 for March 15). We&apos;ll wish you happy birthday on the day.</p>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Wind-down routine</label>
+                <p className="settings-hint">Edit the steps that appear in your nightly routine.</p>
+                <ul className="routine-template-list">
+                  {routineTemplate.map((r, idx) => (
+                    <li key={r.id} className="routine-template-item">
+                      <input
+                        className="input routine-template-input"
+                        type="text"
+                        value={r.text}
+                        onChange={(e) => setRoutineTemplate((prev) => prev.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
+                        aria-label={`Step ${idx + 1}`}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm routine-template-remove"
+                        onClick={() => setRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))}
+                        aria-label="Remove step"
+                      >
+                        <TrashIcon style={{ width: 14, height: 14 }} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setRoutineTemplate((prev) => [...prev, { id: `step-${Date.now()}`, text: "New step" }])}
+                >
+                  Add step
+                </button>
+              </div>
+
               <div className="settings-section">
                 <label className="label">Theme Color</label>
                 <div className="theme-picker">
@@ -3083,23 +3317,41 @@ export default function App() {
         {morningGreeting && (
           <div className="modal-overlay celebration-overlay" onClick={() => setMorningGreeting(false)}>
             <div className="modal celebration-modal" onClick={(e) => e.stopPropagation()}>
-              <h3 style={{ fontSize: '24px', marginBottom: '16px' }}>Good morning, Sarah</h3>
-              <p className="celebration-task" style={{ fontSize: '16px', lineHeight: '1.6' }}>
-                {(() => {
-                  const patterns = analyzePatterns();
-                  if (patterns.totalCompletions > 10) {
-                    return `You usually do better when you start with one small task. Want to pick one together?`;
-                  }
-                  return `How would you like to show up today?`;
-                })()}
-              </p>
-              <button 
-                className="btn btn-primary" 
-                onClick={() => setMorningGreeting(false)}
-                style={{ marginTop: '24px' }}
-              >
-                Let's begin
-              </button>
+              {(() => {
+                const now = new Date();
+                const monthDay = `${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+                const birthInput = (profile.userBirthday || "").replace(/\D/g, "").padStart(4, "0").slice(-4);
+                const isBirthday = birthInput.length === 4 && birthInput === monthDay;
+                const displayName = (profile.userName || "").trim() || "you";
+                return (
+                  <>
+                    <h3 style={{ fontSize: "24px", marginBottom: "8px" }}>
+                      Good morning, {displayName}
+                    </h3>
+                    {isBirthday && (
+                      <p className="celebration-task" style={{ fontSize: "18px", fontWeight: 600, marginBottom: "16px", color: "var(--theme-accent)" }}>
+                        Happy birthday!
+                      </p>
+                    )}
+                    <p className="celebration-task" style={{ fontSize: "16px", lineHeight: "1.6" }}>
+                      {(() => {
+                        const patterns = analyzePatterns();
+                        if (patterns.totalCompletions > 10) {
+                          return "You usually do better when you start with one small task. Want to pick one together?";
+                        }
+                        return "How would you like to show up today?";
+                      })()}
+                    </p>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => setMorningGreeting(false)}
+                      style={{ marginTop: "24px" }}
+                    >
+                      Let&apos;s begin
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           </div>
         )}
