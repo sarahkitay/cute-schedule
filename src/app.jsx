@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import ReactDOM from "react-dom";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
   SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
@@ -546,7 +547,7 @@ function ProgressSegments({ total, done }) {
 }
 
 // Ultra-minimal hour card with Do/Plan mode
-function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onChangeTaskTime, onShowDropdown, taskDropdown, editingTaskTime, editTaskTimeValue, setEditTaskTimeValue, setEditingTaskTime, onEditTimeSave, onEditTimeCancel, expandedTaskKey, onExpandTask, mode = "do" }) {
+function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onChangeTaskTime, onOpenDropdown, taskDropdown, editingTaskTime, editTaskTimeValue, setEditTaskTimeValue, setEditingTaskTime, onEditTimeSave, onEditTimeCancel, expandedTaskKey, onExpandTask, mode = "do" }) {
   const complete = hourIsComplete(tasksByCat);
   const [open, setOpen] = useState(true);
 
@@ -669,80 +670,16 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
                           e.stopPropagation();
                           const dropdownKey = `${hourKey}-${t.category}-${t.id}`;
                           if (taskDropdown === dropdownKey) {
-                            onShowDropdown(null);
+                            onOpenDropdown(null, null);
                           } else {
-                            onShowDropdown(dropdownKey);
+                            onOpenDropdown(dropdownKey, e.currentTarget.getBoundingClientRect());
                           }
                         }}
+                        title="Task options"
+                        data-task-menu-trigger
                       >
                         <MenuIcon />
                       </button>
-                      
-                      {taskDropdown === `${hourKey}-${t.category}-${t.id}` && (
-                        <div className="task-dropdown" onClick={(e) => e.stopPropagation()}>
-                          {editingTaskTime === `${hourKey}-${t.category}-${t.id}` ? (
-                            <div className="dropdown-edit-time">
-                              <label className="dropdown-edit-time-label">New time</label>
-                              <input
-                                type="time"
-                                className="input dropdown-time-input"
-                                value={editTaskTimeValue}
-                                onChange={(e) => setEditTaskTimeValue(e.target.value)}
-                                aria-label="Task time"
-                              />
-                              <div className="dropdown-edit-time-actions">
-                                <button type="button" className="dropdown-item" onClick={() => onEditTimeSave(hourKey, t.category, t.id, editTaskTimeValue)}>
-                                  Save
-                                </button>
-                                <button type="button" className="dropdown-item" onClick={onEditTimeCancel}>
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="dropdown-item"
-                                onClick={() => {
-                                  onMoveToTomorrow(hourKey, t.category, t.id);
-                                }}
-                              >
-                                <CalendarIcon style={{ marginRight: '8px' }} />
-                                Move to tomorrow
-                              </button>
-                              <button
-                                type="button"
-                                className="dropdown-item"
-                                onClick={() => {
-                                  setEditTaskTimeValue(hourKey);
-                                  if (setEditingTaskTime) setEditingTaskTime(`${hourKey}-${t.category}-${t.id}`);
-                                }}
-                              >
-                                Edit time
-                              </button>
-                              <button
-                                type="button"
-                                className="dropdown-item"
-                                onClick={() => {
-                                  onDeleteTask(hourKey, t.category, t.id);
-                                  onShowDropdown(null);
-                                }}
-                              >
-                                <FireIcon style={{ marginRight: '8px' }} />
-                                Let it go
-                              </button>
-                              <button
-                                type="button"
-                                className="dropdown-item"
-                                onClick={() => onShowDropdown(null)}
-                              >
-                                Keep as is
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
                     </>
                   )}
                     <button
@@ -1070,6 +1007,7 @@ export default function App() {
   const [windDownMode, setWindDownMode] = useState(false);
   const [morningGreeting, setMorningGreeting] = useState(false);
   const [taskDropdown, setTaskDropdown] = useState(null); // "hourKey-category-id"
+  const [dropdownAnchorRect, setDropdownAnchorRect] = useState(null); // { top, left, bottom, right } for portal
   const [editingTaskTime, setEditingTaskTime] = useState(null); // "hourKey-category-id" when showing time editor
   const [editTaskTimeValue, setEditTaskTimeValue] = useState("09:00"); // new time for edit
   const [expandedTaskKey, setExpandedTaskKey] = useState(null); // "hourKey-category-id" for expandable detail
@@ -1138,16 +1076,30 @@ export default function App() {
     notificationService.checkPermission();
   }, []);
 
-  // Close dropdown when clicking outside
+  // Close dropdown when clicking outside (portal or trigger)
   useEffect(() => {
     const handleClickOutside = (e) => {
-      if (taskDropdown && !e.target.closest('.task-dropdown') && !e.target.closest('.icon-btn')) {
+      if (taskDropdown && !e.target.closest('.task-dropdown-portal') && !e.target.closest('[data-task-menu-trigger]')) {
         setTaskDropdown(null);
+        setDropdownAnchorRect(null);
       }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [taskDropdown]);
+
+  // ESC closes calendar sheet
+  useEffect(() => {
+    if (!showMonthCalendar) return;
+    const handleEsc = (e) => { if (e.key === 'Escape') setShowMonthCalendar(false); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [showMonthCalendar]);
+
+  // Scroll to top when switching tabs
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, [tab]);
 
   // Morning greeting ritual
   useEffect(() => {
@@ -2118,43 +2070,21 @@ export default function App() {
                     : "Pattern insights";
                 })()}
               </h1>
-              {tab === "today" && !showMonthCalendar ? (
-                <button
-                  type="button"
-                  className={`sub header-date header-date-btn ${tab === "today" || tab === "list" ? "header-date-visible" : ""}`}
-                  onClick={() => {
-                    setShowMonthCalendar(true);
-                    setMonthCalendarMonth({ year: new Date().getFullYear(), month: new Date().getMonth() });
-                  }}
-                  aria-label="View full calendar"
-                >
-                  {(() => {
-                    const label = getDayLabel(tKey, realTodayKey);
-                    if (label === "Tomorrow" || label === "Future") return "Today";
-                    return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
-                      weekday: "long",
-                      month: "long",
-                      day: "numeric",
-                    });
-                  })()}
-                </button>
-              ) : (
-                <span className={`sub header-date ${tab === "today" || tab === "list" ? "header-date-visible" : ""}`}>
-                  {tab === "today" || tab === "list"
-                    ? (() => {
-                        const label = getDayLabel(tKey, realTodayKey);
-                        if (label === "Tomorrow" || label === "Future") return "";
-                        return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
-                          weekday: "long",
-                          month: "long",
-                          day: "numeric",
-                        });
-                      })()
-                    : tab === "monthly" ? "Objectives"
-                    : tab === "finance" ? "Income, spending & savings"
-                    : "Insights"}
-                </span>
-              )}
+              <span className={`sub header-date ${tab === "today" || tab === "list" ? "header-date-visible" : ""}`}>
+                {tab === "today" || tab === "list"
+                  ? (() => {
+                      const label = getDayLabel(tKey, realTodayKey);
+                      if (label === "Tomorrow" || label === "Future") return "";
+                      return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
+                        weekday: "long",
+                        month: "long",
+                        day: "numeric",
+                      });
+                    })()
+                  : tab === "monthly" ? "Objectives"
+                  : tab === "finance" ? "Income, spending & savings"
+                  : "Insights"}
+              </span>
             </div>
 
             <div className="tabs" aria-hidden="true">
@@ -2179,6 +2109,20 @@ export default function App() {
                   {focusMode ? "Focus on" : "Reset available"}
                 </button>
               )}
+              {tab === "today" && (
+                <button
+                  type="button"
+                  className="btn-icon"
+                  onClick={() => {
+                    setShowMonthCalendar(true);
+                    setMonthCalendarMonth({ year: new Date().getFullYear(), month: new Date().getMonth() });
+                  }}
+                  title="Calendar"
+                  aria-label="Open calendar"
+                >
+                  <CalendarIcon style={{ width: 22, height: 22 }} />
+                </button>
+              )}
               <button
                 type="button"
                 className="btn-icon"
@@ -2194,7 +2138,7 @@ export default function App() {
 
         {/* Bottom navigation — frosted dock, active-tab pill */}
         <nav className="bottom-nav surface-dock" aria-label="Main">
-          <button type="button" className={`bottom-nav-item ${tab === "today" ? "active" : ""}`} onClick={() => setTab("today")} aria-current={tab === "today" ? "page" : undefined}>
+          <button type="button" className={`bottom-nav-item ${tab === "today" ? "active" : ""}`} onClick={() => { setTab("today"); setShowMonthCalendar(false); }} aria-current={tab === "today" ? "page" : undefined}>
             <CalendarIcon style={{ width: 22, height: 22 }} />
             Today
           </button>
@@ -2298,28 +2242,6 @@ export default function App() {
         )}
 
         {tab === "today" ? (
-          showMonthCalendar ? (
-            <div className="panel month-calendar-wrap">
-              <MonthCalendar
-                days={state.days || {}}
-                year={monthCalendarMonth.year}
-                month={monthCalendarMonth.month}
-                onSelectDay={(dayKey) => {
-                  setSelectedDayKey(dayKey);
-                  setShowMonthCalendar(false);
-                }}
-                onBack={() => setShowMonthCalendar(false)}
-                onPrevMonth={() => setMonthCalendarMonth((prev) => {
-                  const d = new Date(prev.year, prev.month - 1, 1);
-                  return { year: d.getFullYear(), month: d.getMonth() };
-                })}
-                onNextMonth={() => setMonthCalendarMonth((prev) => {
-                  const d = new Date(prev.year, prev.month + 1, 1);
-                  return { year: d.getFullYear(), month: d.getMonth() };
-                })}
-              />
-            </div>
-          ) : (
           <>
             {/* Quick Add — input group with focus ring, CTA disabled until input */}
             <form className="input-group quick-add-bar" onSubmit={quickAddFromNL}>
@@ -2549,14 +2471,14 @@ export default function App() {
                           onDeleteHour={deleteHour}
                           onMoveToTomorrow={moveTaskToTomorrow}
                           onChangeTaskTime={changeTaskTime}
-                          onShowDropdown={setTaskDropdown}
+                          onOpenDropdown={(key, rect) => { setTaskDropdown(key); setDropdownAnchorRect(rect || null); }}
                           taskDropdown={taskDropdown}
                           editingTaskTime={editingTaskTime}
                           editTaskTimeValue={editTaskTimeValue}
                           setEditTaskTimeValue={setEditTaskTimeValue}
                           setEditingTaskTime={setEditingTaskTime}
-                          onEditTimeSave={(h, c, id, newTime) => { changeTaskTime(h, c, id, newTime); setEditingTaskTime(null); }}
-                          onEditTimeCancel={() => setEditingTaskTime(null)}
+                          onEditTimeSave={(h, c, id, newTime) => { changeTaskTime(h, c, id, newTime); setEditingTaskTime(null); setTaskDropdown(null); setDropdownAnchorRect(null); }}
+                          onEditTimeCancel={() => { setEditingTaskTime(null); }}
                           expandedTaskKey={expandedTaskKey}
                           onExpandTask={setExpandedTaskKey}
                           mode={mode}
@@ -2632,141 +2554,67 @@ export default function App() {
               </section>
             )}
           </>
-          )
         ) : tab === "list" ? (
-          <section className="panel">
-            <div className="panel-top">
-              <div className="panel-title">
-                <div className="panel-title-row">
-                  <span className="title">List</span>
-                </div>
-                <div className="meta">
-                  {incompleteTasks.length === 0 ? (
-                    <>All done for today! <CelebrateIcon style={{ display: 'inline-block', marginLeft: '4px', verticalAlign: 'middle' }} /></>
-                  ) : (
-                    `${incompleteTasks.length} task${incompleteTasks.length === 1 ? '' : 's'} remaining`
-                  )}
-                </div>
-              </div>
+          <section className="panel list-page">
+            <div className="list-page-header">
+              <h2 className="list-page-title">List</h2>
+              <span className="list-page-count">
+                {incompleteTasks.length === 0 ? (
+                  <>All done for today! <CelebrateIcon style={{ display: 'inline-block', marginLeft: '4px', verticalAlign: 'middle' }} /></>
+                ) : (
+                  `${incompleteTasks.length} task${incompleteTasks.length === 1 ? '' : 's'} remaining`
+                )}
+              </span>
             </div>
 
             {incompleteTasks.length === 0 ? (
               <div className="empty">All tasks complete!</div>
             ) : (
-              <ul className="list">
+              <ul className="list list-page-list">
                 {incompleteTasks.map((t) => (
                   <li
                     key={`${t.hour}-${t.category}-${t.id}`}
-                    className={["item", t.energyLevel === "HEAVY" ? "item-heavy" : ""].filter(Boolean).join(" ")}
+                    className={["list-row", t.energyLevel === "HEAVY" ? "list-row-heavy" : ""].filter(Boolean).join(" ")}
                   >
-                    <label className="check">
+                    <span className="list-row-time">{to12Hour(t.hour)}</span>
+                    <label className="list-row-main check">
                       <input type="checkbox" checked={!!t.done} onChange={() => toggleTask(t.hour, t.category, t.id)} />
                       <span className="checkmark" />
-                      <span className={`item-text ${t.done ? 'item-text-done' : ''}`}>
-                        <span className="task-time">{to12Hour(t.hour)}</span> <Pill label={t.category} /> 
-                        <span className="energy-badge" style={{ 
-                          marginLeft: '8px',
-                          fontSize: '12px',
-                          color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color,
-                          display: 'inline-flex',
-                          alignItems: 'center'
-                        }}>
-                          {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: '12px', height: '12px' } })}
+                      <span className={`list-row-title ${t.done ? 'item-text-done' : ''}`}>{t.text}</span>
+                      <span className="list-row-meta">
+                        <Pill label={t.category} />
+                        <span className="energy-badge" style={{ fontSize: '11px', color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color, display: 'inline-flex', alignItems: 'center' }}>
+                          {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: '10px', height: '10px', marginLeft: 4 } })}
                         </span>
-                        {t.text}
                       </span>
                     </label>
-
-                    <div className="item-actions" style={{ position: 'relative' }}>
+                    <div className="list-row-actions">
                       <button
                         type="button"
-                        className="energy-btn"
+                        className="icon-btn energy-btn list-row-action"
                         title={`Energy: ${ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          toggleEnergyLevel(t.hour, t.category, t.id);
-                        }}
-                        style={{ 
-                          backgroundColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color + '20',
-                          borderColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color
-                        }}
+                        onClick={(e) => { e.stopPropagation(); toggleEnergyLevel(t.hour, t.category, t.id); }}
+                        style={{ backgroundColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color + '18', borderColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color }}
                       >
-                        {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon)}
+                        {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: 14, height: 14 } })}
                       </button>
-
-                      <button 
-                        type="button" 
-                        className="icon-btn" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteTask(t.hour, t.category, t.id);
-                        }}
-                      >
-                        <TrashIcon />
+                      <button type="button" className="icon-btn list-row-action" onClick={(e) => { e.stopPropagation(); deleteTask(t.hour, t.category, t.id); }} aria-label="Delete">
+                        <TrashIcon style={{ width: 16, height: 16 }} />
                       </button>
-                      
                       <button
                         type="button"
-                        className="icon-btn"
+                        className="icon-btn list-row-action"
                         title="Task options"
                         onClick={(e) => {
                           e.stopPropagation();
                           const dropdownKey = `${t.hour}-${t.category}-${t.id}`;
-                          if (taskDropdown === dropdownKey) {
-                            setTaskDropdown(null);
-                          } else {
-                            setTaskDropdown(dropdownKey);
-                          }
+                          if (taskDropdown === dropdownKey) { setTaskDropdown(null); setDropdownAnchorRect(null); }
+                          else { setTaskDropdown(dropdownKey); setDropdownAnchorRect(e.currentTarget.getBoundingClientRect()); }
                         }}
+                        data-task-menu-trigger
                       >
-                        <MenuIcon />
+                        <MenuIcon style={{ width: 16, height: 16 }} />
                       </button>
-                      
-                      {taskDropdown === `${t.hour}-${t.category}-${t.id}` && (
-                        <div className="task-dropdown" onClick={(e) => e.stopPropagation()}>
-                          {editingTaskTime === `${t.hour}-${t.category}-${t.id}` ? (
-                            <div className="dropdown-edit-time">
-                              <label className="dropdown-edit-time-label">New time</label>
-                              <input
-                                type="time"
-                                className="input dropdown-time-input"
-                                value={editTaskTimeValue}
-                                onChange={(e) => setEditTaskTimeValue(e.target.value)}
-                                aria-label="Task time"
-                              />
-                              <div className="dropdown-edit-time-actions">
-                                <button type="button" className="dropdown-item" onClick={() => { changeTaskTime(t.hour, t.category, t.id, editTaskTimeValue); setEditingTaskTime(null); setTaskDropdown(null); }}>
-                                  Save
-                                </button>
-                                <button type="button" className="dropdown-item" onClick={() => setEditingTaskTime(null)}>
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              <button type="button" className="dropdown-item" onClick={() => moveTaskToTomorrow(t.hour, t.category, t.id)}>
-                                <CalendarIcon style={{ marginRight: '8px' }} />
-                                Move to tomorrow
-                              </button>
-                              <button
-                                type="button"
-                                className="dropdown-item"
-                                onClick={() => { setEditTaskTimeValue(t.hour); setEditingTaskTime(`${t.hour}-${t.category}-${t.id}`); }}
-                              >
-                                Edit time
-                              </button>
-                              <button type="button" className="dropdown-item" onClick={() => { deleteTask(t.hour, t.category, t.id); setTaskDropdown(null); }}>
-                                <FireIcon style={{ marginRight: '8px' }} />
-                                Let it go
-                              </button>
-                              <button type="button" className="dropdown-item" onClick={() => setTaskDropdown(null)}>
-                                Keep as is
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      )}
                     </div>
                   </li>
                 ))}
@@ -3360,6 +3208,104 @@ export default function App() {
           >
             +
           </button>
+        )}
+
+        {taskDropdown && dropdownAnchorRect && ReactDOM.createPortal(
+          (() => {
+            const parts = taskDropdown.split('-');
+            const hourKey = parts[0];
+            const category = parts[1];
+            const id = parts.slice(2).join('-') || parts[2];
+            const editKey = `${hourKey}-${category}-${id}`;
+            const isEditing = editingTaskTime === editKey;
+            const closeDropdown = () => { setTaskDropdown(null); setDropdownAnchorRect(null); };
+            return (
+              <div
+                className="task-dropdown-portal"
+                style={{
+                  position: 'fixed',
+                  left: dropdownAnchorRect.left,
+                  top: dropdownAnchorRect.bottom + 6,
+                  zIndex: 'var(--z-popover)',
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="task-dropdown">
+                  {isEditing ? (
+                    <div className="dropdown-edit-time">
+                      <label className="dropdown-edit-time-label">New time</label>
+                      <input
+                        type="time"
+                        className="input dropdown-time-input"
+                        value={editTaskTimeValue}
+                        onChange={(e) => setEditTaskTimeValue(e.target.value)}
+                        aria-label="Task time"
+                      />
+                      <div className="dropdown-edit-time-actions">
+                        <button type="button" className="dropdown-item" onClick={() => { changeTaskTime(hourKey, category, id, editTaskTimeValue); setEditingTaskTime(null); closeDropdown(); }}>
+                          Save
+                        </button>
+                        <button type="button" className="dropdown-item" onClick={() => { setEditingTaskTime(null); closeDropdown(); }}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <button type="button" className="dropdown-item" onClick={() => { moveTaskToTomorrow(hourKey, category, id); closeDropdown(); }}>
+                        <CalendarIcon style={{ marginRight: '8px' }} />
+                        Move to tomorrow
+                      </button>
+                      <button type="button" className="dropdown-item" onClick={() => { setEditTaskTimeValue(hourKey); setEditingTaskTime(editKey); }}>
+                        Edit time
+                      </button>
+                      <button type="button" className="dropdown-item" onClick={() => { deleteTask(hourKey, category, id); closeDropdown(); }}>
+                        <FireIcon style={{ marginRight: '8px' }} />
+                        Let it go
+                      </button>
+                      <button type="button" className="dropdown-item" onClick={closeDropdown}>
+                        Keep as is
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            );
+          })(),
+          document.body
+        )}
+
+        {showMonthCalendar && (
+          <div className="modal-overlay" onClick={() => setShowMonthCalendar(false)} aria-modal="true" role="dialog" aria-label="Calendar">
+            <div className="modal calendar-sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="calendar-sheet-header">
+                <h3 className="calendar-sheet-title">Calendar</h3>
+                <button type="button" className="btn-icon" onClick={() => setShowMonthCalendar(false)} aria-label="Close calendar">
+                  <CloseIcon style={{ width: 22, height: 22 }} />
+                </button>
+              </div>
+              <div className="panel month-calendar-wrap">
+                <MonthCalendar
+                  days={state.days || {}}
+                  year={monthCalendarMonth.year}
+                  month={monthCalendarMonth.month}
+                  onSelectDay={(dayKey) => {
+                    setSelectedDayKey(dayKey);
+                    setShowMonthCalendar(false);
+                  }}
+                  onBack={() => setShowMonthCalendar(false)}
+                  onPrevMonth={() => setMonthCalendarMonth((prev) => {
+                    const d = new Date(prev.year, prev.month - 1, 1);
+                    return { year: d.getFullYear(), month: d.getMonth() };
+                  })}
+                  onNextMonth={() => setMonthCalendarMonth((prev) => {
+                    const d = new Date(prev.year, prev.month + 1, 1);
+                    return { year: d.getFullYear(), month: d.getMonth() };
+                  })}
+                />
+              </div>
+            </div>
+          </div>
         )}
 
         {showSettings && (
