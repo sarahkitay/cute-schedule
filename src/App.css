@@ -1408,10 +1408,24 @@ button {
   width: 100%;
   max-width: 640px;
   margin: 0 auto;
-  padding: 0 var(--space-3);
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) var(--space-3) 24px;
   box-sizing: border-box;
   animation: contentReveal 0.6s var(--ease-out-soft) forwards;
 }
+.shell-main .panel:first-child,
+.shell-main .date-controls:first-child,
+.shell-main .finance-panel:first-child,
+.shell-main .monthly-objectives-section,
+.shell-main .pattern-insights-section,
+.shell-main .notes-section {
+  margin-top: 0;
+}
+.panel.finance-panel,
+.section-finance { padding-top: 4px; }
+.panel.monthly-objectives-section { padding-bottom: 28px; }
+.panel.pattern-insights-section { padding-bottom: 28px; }
+.section-notes.panel { padding-bottom: 28px; }
+.panel.finance-panel { padding-bottom: 28px; }
 @keyframes contentReveal {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1497,6 +1511,24 @@ button {
   font-weight: 500;
   letter-spacing: 0.01em;
   color: rgba(30, 30, 30, 0.7);
+}
+.header-date-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 8px;
+  transition: background 0.2s, color 0.2s;
+}
+.header-date-btn:hover {
+  color: var(--theme-accent);
+  background: rgba(0, 0, 0, 0.04);
+}
+.header-date-btn:active {
+  opacity: 0.9;
 }
 
 /* Header pill button — Reset available / Focus */
@@ -2548,6 +2580,138 @@ button {
   transform: scale(0.97);
 }
 .capacity-pill .sparkle { opacity: 0.9; margin-left: 4px; }
+.see-full-calendar-btn {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-2);
+  padding: 10px 0;
+  background: none;
+  border: none;
+  font-size: var(--caption);
+  font-weight: 500;
+  color: var(--theme-accent);
+  cursor: pointer;
+  text-align: center;
+  border-radius: var(--radius-sm);
+  transition: background 0.2s, color 0.2s;
+}
+.see-full-calendar-btn:hover {
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* Month calendar (full calendar view) */
+.month-calendar-wrap {
+  padding: var(--space-2);
+  margin-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+}
+.month-calendar {
+  background: var(--surface-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2);
+  box-shadow: var(--shadow-card);
+}
+.month-calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.month-calendar-title {
+  font-size: var(--h2);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  flex: 1;
+  text-align: center;
+}
+.month-calendar-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.month-calendar-nav .btn-icon {
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-soft);
+}
+.month-calendar-nav .btn-icon:hover {
+  color: var(--theme-accent);
+  background: rgba(0, 0, 0, 0.04);
+}
+.month-calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-bottom: 6px;
+}
+.month-calendar-weekday {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-soft);
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.month-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+.month-calendar-day {
+  aspect-ratio: 1;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 4px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.2s;
+}
+.month-calendar-day:hover:not(.month-calendar-day-empty) {
+  background: rgba(0, 0, 0, 0.04);
+}
+.month-calendar-day.has-tasks {
+  background: rgba(0, 0, 0, 0.03);
+}
+.month-calendar-day.is-today {
+  background: var(--accentSoft);
+  color: var(--theme-accent);
+  font-weight: 600;
+}
+.month-calendar-day-empty {
+  cursor: default;
+  opacity: 0.4;
+}
+.month-calendar-day-num {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+.month-calendar-day-bars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-top: 2px;
+  width: 100%;
+  max-width: 24px;
+}
+.month-calendar-bar {
+  border-radius: 1px;
+}
+.month-calendar-bar.done {
+  background: var(--theme-accent) !important;
+}
 
 /* Finance page */
 .finance-panel .panel-title .meta { margin-bottom: var(--space-2); }

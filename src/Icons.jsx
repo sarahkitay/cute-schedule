@@ -57,7 +57,7 @@ export function TrashIcon({ className = "" }) {
   );
 }
 
-export function SparkleIcon({ className = "" }) {
+export function SparkleIcon({ className = "", style = {} }) {
   return (
     <svg
       className={className}
@@ -65,11 +65,12 @@ export function SparkleIcon({ className = "" }) {
       height="16"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="var(--rose-quartz, #E79AB5)"
+      stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      opacity="0.7"
+      opacity="0.85"
+      style={style}
     >
       <path d="M12 2L13.5 8.5L20 10L13.5 11.5L12 18L10.5 11.5L4 10L10.5 8.5L12 2Z" />
     </svg>
@@ -96,7 +97,7 @@ export function RepeatIcon({ className = "" }) {
   );
 }
 
-export function CalendarIcon({ className = "" }) {
+export function CalendarIcon({ className = "", style = {} }) {
   return (
     <svg
       className={className}
@@ -104,11 +105,12 @@ export function CalendarIcon({ className = "" }) {
       height="16"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="var(--soft-charcoal, #3A3A3A)"
+      stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      opacity="0.6"
+      opacity="0.85"
+      style={style}
     >
       <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
       <line x1="16" y1="2" x2="16" y2="6" />
@@ -118,7 +120,7 @@ export function CalendarIcon({ className = "" }) {
   );
 }
 
-export function MoonIcon({ className = "" }) {
+export function MoonIcon({ className = "", style = {} }) {
   return (
     <svg
       className={className}
@@ -126,10 +128,11 @@ export function MoonIcon({ className = "" }) {
       height="20"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="var(--rose-quartz, #E79AB5)"
+      stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
+      style={style}
     >
       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
     </svg>
@@ -460,7 +463,7 @@ export function FinanceIcon({ className = "", style = {} }) {
       height="22"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="var(--soft-charcoal, #3A3A3A)"
+      stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"

@@ -343,6 +343,23 @@ function getProgressCopy(pct) {
   return "Momentum started";
 }
 
+function getDayKeysInMonth(year, month) {
+  const days = [];
+  const n = new Date(year, month + 1, 0).getDate();
+  const m = String(month + 1).padStart(2, "0");
+  for (let d = 1; d <= n; d++) {
+    days.push(`${year}-${m}-${String(d).padStart(2, "0")}`);
+  }
+  return days;
+}
+
+function getFirstWeekday(year, month) {
+  return new Date(year, month, 1).getDay();
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
 /** ====== Pattern Tracking ====== **/
 function loadPatterns() {
   try {
@@ -811,6 +828,70 @@ function BedtimeRoutine({ routine, onToggle, allTasksDone }) {
           <p className="bedtime-note">{quote}</p>
         </div>
       )}
+    </div>
+  );
+}
+
+function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, onNextMonth }) {
+  const dayKeys = getDayKeysInMonth(year, month);
+  const firstWeekday = getFirstWeekday(year, month);
+  const padding = Array(firstWeekday).fill(null);
+
+  return (
+    <div className="month-calendar">
+      <div className="month-calendar-header">
+        <button type="button" className="btn-icon" onClick={onBack} aria-label="Back to today">
+          <ChevronLeftIcon style={{ width: 20, height: 20 }} />
+        </button>
+        <h2 className="month-calendar-title">{MONTH_NAMES[month]} {year}</h2>
+        <div className="month-calendar-nav">
+          <button type="button" className="btn-icon" onClick={onPrevMonth} aria-label="Previous month">
+            <ChevronLeftIcon style={{ width: 18, height: 18 }} />
+          </button>
+          <button type="button" className="btn-icon" onClick={onNextMonth} aria-label="Next month">
+            <ChevronRightIcon style={{ width: 18, height: 18 }} />
+          </button>
+        </div>
+      </div>
+      <div className="month-calendar-weekdays">
+        {WEEKDAYS.map((w) => (
+          <span key={w} className="month-calendar-weekday">{w}</span>
+        ))}
+      </div>
+      <div className="month-calendar-grid">
+        {padding.map((_, i) => (
+          <div key={`pad-${i}`} className="month-calendar-day month-calendar-day-empty" />
+        ))}
+        {dayKeys.map((dayKey) => {
+          const dayData = days[dayKey];
+          const tasks = dayData ? allTasksInDay(dayData.hours) : [];
+          const total = tasks.length;
+          const done = tasks.filter((t) => t.done).length;
+          const isToday = dayKey === todayKey(new Date());
+          return (
+            <button
+              key={dayKey}
+              type="button"
+              className={`month-calendar-day ${total > 0 ? "has-tasks" : ""} ${isToday ? "is-today" : ""}`}
+              onClick={() => onSelectDay(dayKey)}
+              aria-label={`${dayKey}, ${total} tasks`}
+            >
+              <span className="month-calendar-day-num">{new Date(dayKey + "T12:00:00").getDate()}</span>
+              {total > 0 && (
+                <div className="month-calendar-day-bars" aria-hidden>
+                  {[0, 1, 2].slice(0, Math.min(3, total)).map((_, i) => (
+                    <span
+                      key={i}
+                      className={`month-calendar-bar ${i < done ? "done" : ""}`}
+                      style={{ height: 3, flex: 1, maxWidth: 8, borderRadius: 1, background: i < done ? "var(--theme-accent)" : "rgba(0,0,0,0.12)" }}
+                    />
+                  ))}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -1602,9 +1683,15 @@ export default function App() {
   }
 
   const [newHour, setNewHour] = useState("09:00");
+  const [pastRepeatAddHour, setPastRepeatAddHour] = useState("09:00");
   const [quickCat, setQuickCat] = useState("Personal");
   const [quickText, setQuickText] = useState("");
   const [quickRepeat, setQuickRepeat] = useState(REPEAT_OPTIONS.NONE);
+  const [showMonthCalendar, setShowMonthCalendar] = useState(false);
+  const [monthCalendarMonth, setMonthCalendarMonth] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
   const [showPastRepeats, setShowPastRepeats] = useState(false);
 
   function quickAdd(e) {
@@ -2024,28 +2111,50 @@ export default function App() {
                     if (label === "Future") return "Future";
                     return "Past";
                   }
-                  return tab === "monthly" ? "Calendar" 
+                  return tab === "monthly" ? "Monthly Objectives" 
                     : tab === "list" ? "List" 
                     : tab === "notes" ? "Notes" 
                     : tab === "finance" ? "Finance" 
                     : "Pattern insights";
                 })()}
               </h1>
-              <span className={`sub header-date ${tab === "today" || tab === "list" ? "header-date-visible" : ""}`}>
-                {tab === "today" || tab === "list"
-                  ? (() => {
-                      const label = getDayLabel(tKey, realTodayKey);
-                      if (label === "Tomorrow" || label === "Future") return "";
-                      return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                      });
-                    })()
-                  : tab === "monthly" ? "Objectives" 
-                  : tab === "finance" ? "Income, spending & savings" 
-                  : "Insights"}
-              </span>
+              {tab === "today" && !showMonthCalendar ? (
+                <button
+                  type="button"
+                  className={`sub header-date header-date-btn ${tab === "today" || tab === "list" ? "header-date-visible" : ""}`}
+                  onClick={() => {
+                    setShowMonthCalendar(true);
+                    setMonthCalendarMonth({ year: new Date().getFullYear(), month: new Date().getMonth() });
+                  }}
+                  aria-label="View full calendar"
+                >
+                  {(() => {
+                    const label = getDayLabel(tKey, realTodayKey);
+                    if (label === "Tomorrow" || label === "Future") return "Today";
+                    return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    });
+                  })()}
+                </button>
+              ) : (
+                <span className={`sub header-date ${tab === "today" || tab === "list" ? "header-date-visible" : ""}`}>
+                  {tab === "today" || tab === "list"
+                    ? (() => {
+                        const label = getDayLabel(tKey, realTodayKey);
+                        if (label === "Tomorrow" || label === "Future") return "";
+                        return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
+                          weekday: "long",
+                          month: "long",
+                          day: "numeric",
+                        });
+                      })()
+                    : tab === "monthly" ? "Objectives"
+                    : tab === "finance" ? "Income, spending & savings"
+                    : "Insights"}
+                </span>
+              )}
             </div>
 
             <div className="tabs" aria-hidden="true">
@@ -2095,7 +2204,7 @@ export default function App() {
           </button>
           <button type="button" className={`bottom-nav-item ${tab === "monthly" ? "active" : ""}`} onClick={() => setTab("monthly")} aria-current={tab === "monthly" ? "page" : undefined}>
             <CalendarIcon style={{ width: 22, height: 22 }} />
-            Calendar
+            Monthly Objectives
           </button>
           <button type="button" className={`bottom-nav-item ${tab === "coach" ? "active" : ""}`} onClick={() => setTab("coach")} aria-current={tab === "coach" ? "page" : undefined}>
             <SparkleIcon style={{ width: 22, height: 22 }} />
@@ -2189,6 +2298,28 @@ export default function App() {
         )}
 
         {tab === "today" ? (
+          showMonthCalendar ? (
+            <div className="panel month-calendar-wrap">
+              <MonthCalendar
+                days={state.days || {}}
+                year={monthCalendarMonth.year}
+                month={monthCalendarMonth.month}
+                onSelectDay={(dayKey) => {
+                  setSelectedDayKey(dayKey);
+                  setShowMonthCalendar(false);
+                }}
+                onBack={() => setShowMonthCalendar(false)}
+                onPrevMonth={() => setMonthCalendarMonth((prev) => {
+                  const d = new Date(prev.year, prev.month - 1, 1);
+                  return { year: d.getFullYear(), month: d.getMonth() };
+                })}
+                onNextMonth={() => setMonthCalendarMonth((prev) => {
+                  const d = new Date(prev.year, prev.month + 1, 1);
+                  return { year: d.getFullYear(), month: d.getMonth() };
+                })}
+              />
+            </div>
+          ) : (
           <>
             {/* Quick Add — input group with focus ring, CTA disabled until input */}
             <form className="input-group quick-add-bar" onSubmit={quickAddFromNL}>
@@ -2322,6 +2453,16 @@ export default function App() {
                       <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '12px', color: 'var(--soft-charcoal)' }}>
                         Tasks you marked "Option to repeat"
                       </div>
+                      <div className="quick-row" style={{ marginBottom: 12 }}>
+                        <label className="label">Add at time</label>
+                        <input
+                          type="time"
+                          className="input"
+                          value={pastRepeatAddHour}
+                          onChange={(e) => setPastRepeatAddHour(e.target.value)}
+                          aria-label="Time for added task"
+                        />
+                      </div>
                       {getRepeatableTasks().length === 0 ? (
                         <div style={{ fontSize: '13px', color: '#999', fontStyle: 'italic' }}>
                           No repeatable tasks yet. Mark a task as "Option to repeat" to see it here.
@@ -2331,6 +2472,7 @@ export default function App() {
                           {getRepeatableTasks().map((task, idx) => (
                             <div 
                               key={idx}
+                              className="past-repeat-row"
                               style={{ 
                                 padding: '12px', 
                                 background: 'white', 
@@ -2342,7 +2484,7 @@ export default function App() {
                                 transition: 'all 0.2s'
                               }}
                               onClick={() => {
-                                addTask(newHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
+                                addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
                                 setShowPastRepeats(false);
                               }}
                               onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
@@ -2350,7 +2492,7 @@ export default function App() {
                             >
                               <div>
                                 <div style={{ fontSize: '14px', fontWeight: '500' }}>{task.text}</div>
-                                <div style={{ fontSize: '12px', color: '#999', marginTop: '4px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <div style={{ fontSize: '12px', color: 'var(--text-soft)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: 6 }}>
                                   {task.category}
                                   <BulletIcon style={{ width: 4, height: 4 }} />
                                   {task.hour}
@@ -2361,7 +2503,7 @@ export default function App() {
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  addTask(newHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
+                                  addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
                                   setShowPastRepeats(false);
                                 }}
                               >
@@ -2467,6 +2609,16 @@ export default function App() {
                     Drained
                   </button>
                 </div>
+                <button
+                  type="button"
+                  className="see-full-calendar-btn"
+                  onClick={() => {
+                    setShowMonthCalendar(true);
+                    setMonthCalendarMonth({ year: new Date().getFullYear(), month: new Date().getMonth() });
+                  }}
+                >
+                  See full calendar
+                </button>
               </section>
             )}
 
@@ -2480,6 +2632,7 @@ export default function App() {
               </section>
             )}
           </>
+          )
         ) : tab === "list" ? (
           <section className="panel">
             <div className="panel-top">
@@ -2621,7 +2774,7 @@ export default function App() {
             )}
           </section>
         ) : tab === "monthly" ? (
-          <section className="panel">
+          <section className="panel monthly-objectives-section">
             <div className="panel-top">
               <div className="panel-title">
                 <div className="panel-title-row">
@@ -2660,7 +2813,7 @@ export default function App() {
             )}
           </section>
         ) : tab === "coach" ? (
-          <section className="panel">
+          <section className="panel pattern-insights-section">
             <div className="panel-top">
               <div className="panel-title">
                 <div className="panel-title-row">
@@ -2913,7 +3066,7 @@ export default function App() {
             )}
           </section>
         ) : tab === "finance" ? (
-          <section className="panel finance-panel surface-glass">
+          <section className="panel finance-panel surface-glass section-finance">
             <div className="panel-top">
               <div className="panel-title">
                 <span className="title">Finance</span>
@@ -3143,7 +3296,7 @@ export default function App() {
             </div>
           </section>
         ) : tab === "notes" ? (
-          <section className="panel">
+          <section className="panel notes-section">
             <div className="panel-top">
               <div className="panel-title">
                 <div className="panel-title-row">
