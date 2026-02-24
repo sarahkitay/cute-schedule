@@ -44,7 +44,7 @@ export function generateCompletionMessage(task, category, completedToday, energy
       "You completed it. Good."
     ],
     HEAVY: [
-      "That was a heavy one. Take a breath — you earned it.",
+      "That was a heavy one. Take a breath. You earned it.",
       "Heavy task completed. You're stronger than you think.",
       "That took something from you. Rest is okay now."
     ]

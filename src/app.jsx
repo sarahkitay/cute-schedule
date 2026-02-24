@@ -2278,7 +2278,7 @@ export default function App() {
                     aria-selected={mode === "do"}
                     type="button"
                     onClick={() => setMode("do")}
-                    title="Do mode — clean checkboxes"
+                    title="Do mode: clean checkboxes"
                   >
                     Do
                   </button>
@@ -2287,7 +2287,7 @@ export default function App() {
                     aria-selected={mode === "plan"}
                     type="button"
                     onClick={() => setMode("plan")}
-                    title="Plan mode — edit and organize"
+                    title="Plan mode: edit and organize"
                   >
                     Plan
                   </button>
@@ -2777,10 +2777,6 @@ export default function App() {
           <section className="panel monthly-objectives-section">
             <div className="panel-top">
               <div className="panel-title">
-                <div className="panel-title-row">
-                  <span className="title">Monthly Objectives</span>
-                  <span className="sparkle"><SparkleIcon style={{ display: 'inline-block' }} /></span>
-                </div>
                 <div className="meta">Big picture goals that don't clutter Today.</div>
               </div>
             </div>
@@ -2816,9 +2812,6 @@ export default function App() {
           <section className="panel pattern-insights-section">
             <div className="panel-top">
               <div className="panel-title">
-                <div className="panel-title-row">
-                  <span className="title">Pattern insights</span>
-                </div>
                 <div className="meta">Your data, not generic advice · ADHD-aware</div>
               </div>
             </div>
@@ -2835,7 +2828,7 @@ export default function App() {
                   <span className="insight-label">Category to nurture</span>
                   <span className="insight-value">{patternInsights.leastCompletedCategory}</span>
                   <span className="insight-detail">
-                    {Math.round((1 - patternInsights.leastCompletedRate) * 100)}% completion — try one small win.
+                    {Math.round((1 - patternInsights.leastCompletedRate) * 100)}% completion. Try one small win.
                   </span>
                 </div>
               )}
@@ -3069,8 +3062,7 @@ export default function App() {
           <section className="panel finance-panel surface-glass section-finance">
             <div className="panel-top">
               <div className="panel-title">
-                <span className="title">Finance</span>
-                <div className="meta">Income, spending, savings & debt — Coach can help with habits</div>
+                <div className="meta">Income, spending, savings & debt. Coach can help with habits.</div>
               </div>
             </div>
 
@@ -3168,7 +3160,7 @@ export default function App() {
                   {(() => {
                     const s = finance.totalSavings || 0;
                     const d = finance.totalDebt || 0;
-                    if (s <= 0) return d > 0 ? "—" : "0%";
+                    if (s <= 0) return d > 0 ? "n/a" : "0%";
                     return `${(Math.round((d / s) * 100))}%`;
                   })()}
                 </span>
@@ -3299,10 +3291,6 @@ export default function App() {
           <section className="panel notes-section">
             <div className="panel-top">
               <div className="panel-title">
-                <div className="panel-title-row">
-                  <span className="title">Notes & Ideas</span>
-                  <span className="sparkle"><SparkleIcon style={{ display: 'inline-block' }} /></span>
-                </div>
                 <div className="meta">Jot down thoughts, ideas, and reminders</div>
               </div>
             </div>
