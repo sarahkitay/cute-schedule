@@ -1664,7 +1664,7 @@ export default function App() {
     // Show success toast
     setToastNotification({
       message: "Task added",
-      taskText: clean,
+      taskText: parsed.text,
       type: 'added'
     });
     
