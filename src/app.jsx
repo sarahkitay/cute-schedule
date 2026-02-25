@@ -848,8 +848,13 @@ export default function App() {
   const [selectedDayKey, setSelectedDayKey] = useState(realTodayKey);
   const tKey = selectedDayKey;
   const [mode, setMode] = useState("do"); // "do" | "plan"
+  const [showMonthCalendar, setShowMonthCalendar] = useState(false);
+  const [monthCalendarMonth, setMonthCalendarMonth] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
 
-  const [state, setState] = useState(() => {
+  const [appState, setAppState] = useState(() => {
     const saved = loadState();
     const routineTemplate = (() => {
       try {
@@ -973,7 +978,7 @@ export default function App() {
 
   // Reset bedtime routine when day changes to today
   useEffect(() => {
-    setState((prev) => {
+    setAppState((prev) => {
       const currentDayKey = prev.bedtimeRoutineDayKey || realTodayKey;
       if (currentDayKey !== realTodayKey) {
         const template = routineTemplate.length ? routineTemplate : BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
@@ -990,7 +995,7 @@ export default function App() {
   // When routine template changes, merge into today's routine (preserve done flags)
   useEffect(() => {
     const template = routineTemplate.length ? routineTemplate : BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
-    setState((prev) => {
+    setAppState((prev) => {
       if (prev.bedtimeRoutineDayKey !== realTodayKey) return prev;
       const merged = template.map((r) => {
         const existing = prev.bedtimeRoutine?.find((x) => x.id === r.id);
@@ -1024,7 +1029,7 @@ export default function App() {
   const [taskBanner, setTaskBanner] = useState(null); // { type: 'start'|'wrapup', task, nextTask?, hourKey }
   
   // Define todayHours before useEffects that use it
-  const todayHours = state.days?.[tKey]?.hours || {};
+  const todayHours = appState.days?.[tKey]?.hours || {};
 
   // Coach meta for cooldown and auto-run
   const [coachMeta, setCoachMeta] = useState(() => {
@@ -1053,15 +1058,15 @@ export default function App() {
 
   // Only add a day when it's missing — never overwrite existing (keeps future-day tasks persisted)
   useEffect(() => {
-    setState((prev) => {
+    setAppState((prev) => {
       if (prev.days != null && prev.days[tKey] != null) return prev;
       return { ...prev, days: { ...prev.days, [tKey]: { hours: {} } } };
     });
   }, [tKey]);
 
   useEffect(() => {
-    saveState(state);
-  }, [state]);
+    saveState(appState);
+  }, [appState]);
 
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(theme));
@@ -1188,11 +1193,11 @@ export default function App() {
         nextTask.category
       );
     }
-  }, [tKey, realTodayKey, todayHours, state]);
+  }, [tKey, realTodayKey, todayHours, appState]);
 
   const sortedHourKeys = useMemo(() => Object.keys(todayHours).sort(), [todayHours]);
 
-  const dailyMood = state.days?.[tKey]?.dailyMood || null;
+  const dailyMood = appState.days?.[tKey]?.dailyMood || null;
   const isOverwhelmedMode = dailyMood === "drained";
   const isHyperfocusMode = dailyMood === "calm";
 
@@ -1248,7 +1253,7 @@ export default function App() {
 
   const prog = useMemo(() => dayProgress(todayHours), [todayHours]);
   const starred = useMemo(() => dayIsStarred(todayHours), [todayHours]);
-  const patternInsights = useMemo(() => analyzePatterns(), [prog.done, prog.total, state.bedtimeRoutine]);
+  const patternInsights = useMemo(() => analyzePatterns(), [prog.done, prog.total, appState.bedtimeRoutine]);
 
   const [starPulse, setStarPulse] = useState(false);
   useEffect(() => {
@@ -1262,11 +1267,11 @@ export default function App() {
   // Track bedtime routine completion for sleep correlation (ADHD)
   useEffect(() => {
     if (!isSameDayKey(tKey, realTodayKey)) return;
-    const routine = state.bedtimeRoutine || [];
+    const routine = appState.bedtimeRoutine || [];
     if (routine.length === 0) return;
     const allDone = routine.every((r) => r.done);
     if (allDone && starred) trackBedtimeComplete(realTodayKey);
-  }, [state.bedtimeRoutine, starred, tKey, realTodayKey]);
+  }, [appState.bedtimeRoutine, starred, tKey, realTodayKey]);
 
   // Update lastProgressAt whenever tasks change
   useEffect(() => {
@@ -1296,7 +1301,7 @@ export default function App() {
   }, [tKey, realTodayKey, prog.total, prog.done, tab]);
 
   function ensureHour(hourKey) {
-    setState((prev) => {
+    setAppState((prev) => {
       const day = prev.days[tKey] || { hours: {} };
       const hours = day.hours || {};
       if (hours[hourKey]) return prev;
@@ -1307,7 +1312,7 @@ export default function App() {
   }
 
   function addTask(hourKey, category, text, repeatType = REPEAT_OPTIONS.NONE, sourceTaskId = null) {
-    setState((prev) => {
+    setAppState((prev) => {
       const day = prev.days[tKey] || { hours: {} };
       const hours = { ...(day.hours || {}) };
       const byCat = hours[hourKey] || { RHEA: [], EPC: [], Personal: [] };
@@ -1373,7 +1378,7 @@ export default function App() {
   }
 
   function toggleTask(hourKey, category, taskId) {
-    setState((prev) => {
+    setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day) return prev;
       const hours = { ...(day.hours || {}) };
@@ -1435,7 +1440,7 @@ export default function App() {
   }
 
   function toggleEnergyLevel(hourKey, category, taskId) {
-    setState((prev) => {
+    setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day) return prev;
       const hours = { ...(day.hours || {}) };
@@ -1465,7 +1470,7 @@ export default function App() {
   }
 
   function saveTaskFeeling(taskId, feeling) {
-    setState((prev) => {
+    setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day) return prev;
       const hours = { ...(day.hours || {}) };
@@ -1493,7 +1498,7 @@ export default function App() {
   }
 
   function setDailyMood(mood) {
-    setState((prev) => ({
+    setAppState((prev) => ({
       ...prev,
       days: {
         ...prev.days,
@@ -1502,7 +1507,7 @@ export default function App() {
     }));
   }
   function setDailyCapacity(cap) {
-    setState((prev) => ({
+    setAppState((prev) => ({
       ...prev,
       days: {
         ...prev.days,
@@ -1558,7 +1563,7 @@ export default function App() {
   }
 
   function deleteTask(hourKey, category, taskId) {
-    setState((prev) => {
+    setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day) return prev;
       const hours = { ...(day.hours || {}) };
@@ -1574,7 +1579,7 @@ export default function App() {
   }
 
   function moveTaskToTomorrow(hourKey, category, taskId) {
-    const day = state.days[tKey];
+    const day = appState.days[tKey];
     if (!day) return;
     const hours = day.hours || {};
     const byCat = hours[hourKey];
@@ -1587,7 +1592,7 @@ export default function App() {
     const tomorrowKey = addDaysKey(realTodayKey, 1);
     const tomorrowHour = "09:00";
 
-    setState((prev) => {
+    setAppState((prev) => {
       const tomorrowDay = prev.days[tomorrowKey] || { hours: {} };
       const tomorrowHours = { ...(tomorrowDay.hours || {}) };
       const tomorrowByCat = tomorrowHours[tomorrowHour] || {};
@@ -1611,7 +1616,7 @@ export default function App() {
   }
 
   function changeTaskTime(hourKey, category, taskId, newHourKey) {
-    const day = state.days[tKey];
+    const day = appState.days[tKey];
     if (!day) return;
     const hours = { ...(day.hours || {}) };
     const byCat = hours[hourKey];
@@ -1627,13 +1632,13 @@ export default function App() {
     const nextList = [...(nextByCat[category] || []), { ...task, hour: newHourKey }];
     hours[newHourKey] = { ...nextByCat, [category]: nextList };
 
-    setState((prev) => ({ ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } }));
+    setAppState((prev) => ({ ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } }));
     setTaskDropdown(null);
     setEditingTaskTime(null);
   }
 
   function deleteHour(hourKey) {
-    setState((prev) => {
+    setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day) return prev;
       const hours = { ...(day.hours || {}) };
@@ -1647,11 +1652,6 @@ export default function App() {
   const [quickCat, setQuickCat] = useState("Personal");
   const [quickText, setQuickText] = useState("");
   const [quickRepeat, setQuickRepeat] = useState(REPEAT_OPTIONS.NONE);
-  const [showMonthCalendar, setShowMonthCalendar] = useState(false);
-  const [monthCalendarMonth, setMonthCalendarMonth] = useState(() => {
-    const d = new Date();
-    return { year: d.getFullYear(), month: d.getMonth() };
-  });
   const [showPastRepeats, setShowPastRepeats] = useState(false);
 
   function quickAdd(e) {
@@ -1690,18 +1690,18 @@ export default function App() {
     e.preventDefault();
     const clean = normalizeText(monthlyText);
     if (!clean) return;
-    setState((prev) => ({ ...prev, monthly: [...prev.monthly, { id: uid(), text: clean, done: false }] }));
+    setAppState((prev) => ({ ...prev, monthly: [...prev.monthly, { id: uid(), text: clean, done: false }] }));
     setMonthlyText("");
   }
   function toggleMonthly(id) {
-    setState((prev) => ({ ...prev, monthly: prev.monthly.map((m) => (m.id === id ? { ...m, done: !m.done } : m)) }));
+    setAppState((prev) => ({ ...prev, monthly: prev.monthly.map((m) => (m.id === id ? { ...m, done: !m.done } : m)) }));
   }
   function deleteMonthly(id) {
-    setState((prev) => ({ ...prev, monthly: prev.monthly.filter((m) => m.id !== id) }));
+    setAppState((prev) => ({ ...prev, monthly: prev.monthly.filter((m) => m.id !== id) }));
   }
 
   function toggleBedtime(id) {
-    setState((prev) => ({
+    setAppState((prev) => ({
       ...prev,
       bedtimeRoutine: prev.bedtimeRoutine.map((r) => (r.id === id ? { ...r, done: !r.done } : r)),
     }));
@@ -1759,7 +1759,7 @@ export default function App() {
         prettyDate: new Date(tKey + "T00:00:00").toLocaleDateString(),
         progress: prog,
         today: todayHours,
-        monthly: state.monthly || [],
+        monthly: appState.monthly || [],
         notes: notes || [],
         categories: CATEGORIES,
         timeOfDay,
@@ -1923,7 +1923,7 @@ export default function App() {
         tasks: tasksForApi,
         schedule: todayHours,
         progress: prog,
-        mood: state.days?.[tKey]?.dailyMood || null,
+        mood: appState.days?.[tKey]?.dailyMood || null,
         patterns: analyzePatterns(),
         finance: {
           incomeThisMonth: (finance.incomeEntries || []).reduce((s, e) => {
@@ -1978,7 +1978,7 @@ export default function App() {
         if (task) {
           const hourKey = String(action.start).length === 5 ? action.start : `${String(action.start).padStart(2, "0")}:00`;
           ensureHour(hourKey);
-          setState((prev) => {
+          setAppState((prev) => {
             const day = prev.days[tKey];
             if (!day) return prev;
             const hours = {};
@@ -1997,7 +1997,7 @@ export default function App() {
       if (action.type === "REORDER" && Array.isArray(action.taskIds) && action.taskIds.length > 0) {
         const tasks = action.taskIds.map((id) => dayTasks.find((t) => t.id === id)).filter(Boolean);
         if (tasks.length > 0) {
-          setState((prev) => {
+          setAppState((prev) => {
             const day = prev.days[tKey];
             if (!day) return prev;
             const hours = {};
@@ -2063,7 +2063,7 @@ export default function App() {
     <div className="app">
       <div
         className="shell"
-        data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (state.days?.[tKey]?.dailyMood || "") : ""}
+        data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (appState.days?.[tKey]?.dailyMood || "") : ""}
       >
         <header className="top surface-glass">
           <div className="top-inner">
@@ -2515,7 +2515,7 @@ export default function App() {
                     <button
                       key={cap}
                       type="button"
-                      className={`capacity-pill ${(state.days?.[tKey]?.dailyCapacity || "MEDIUM") === cap ? "active" : ""}`}
+                      className={`capacity-pill ${(appState.days?.[tKey]?.dailyCapacity || "MEDIUM") === cap ? "active" : ""}`}
                       onClick={() => setDailyCapacity(cap)}
                     >
                       {cap.charAt(0) + cap.slice(1).toLowerCase()}
@@ -2525,21 +2525,21 @@ export default function App() {
                 <div className="capacity-pills">
                   <button
                     type="button"
-                    className={`capacity-pill ${(state.days?.[tKey]?.dailyMood) === "calm" ? "active" : ""}`}
+                    className={`capacity-pill ${(appState.days?.[tKey]?.dailyMood) === "calm" ? "active" : ""}`}
                     onClick={() => setDailyMood("calm")}
                   >
                     Calm
                   </button>
                   <button
                     type="button"
-                    className={`capacity-pill ${(state.days?.[tKey]?.dailyMood) === "neutral" ? "active" : ""}`}
+                    className={`capacity-pill ${(appState.days?.[tKey]?.dailyMood) === "neutral" ? "active" : ""}`}
                     onClick={() => setDailyMood("neutral")}
                   >
                     Neutral
                   </button>
                   <button
                     type="button"
-                    className={`capacity-pill ${(state.days?.[tKey]?.dailyMood) === "drained" ? "active" : ""}`}
+                    className={`capacity-pill ${(appState.days?.[tKey]?.dailyMood) === "drained" ? "active" : ""}`}
                     onClick={() => setDailyMood("drained")}
                   >
                     Drained
@@ -2561,7 +2561,7 @@ export default function App() {
             {starred && (
               <section className="panel" style={{ marginTop: 14 }}>
                 <BedtimeRoutine 
-                  routine={state.bedtimeRoutine} 
+                  routine={appState.bedtimeRoutine} 
                   onToggle={toggleBedtime}
                   allTasksDone={starred}
                 />
@@ -2650,11 +2650,11 @@ export default function App() {
               </button>
             </form>
 
-            {state.monthly.length === 0 ? (
+            {appState.monthly.length === 0 ? (
               <div className="empty">Add your first monthly objective.</div>
             ) : (
               <ul className="list">
-                {state.monthly.map((m) => (
+                {appState.monthly.map((m) => (
                   <li key={m.id} className={m.done ? "item item-done" : "item"}>
                     <label className="check">
                       <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
@@ -3300,7 +3300,7 @@ export default function App() {
               </div>
               <div className="panel month-calendar-wrap">
                 <MonthCalendar
-                  days={state.days || {}}
+                  days={appState.days || {}}
                   year={monthCalendarMonth.year}
                   month={monthCalendarMonth.month}
                   onSelectDay={(dayKey) => {
@@ -3450,7 +3450,7 @@ export default function App() {
           <div className="inapp-banner">
             <div className="inapp-banner-content">
               {taskBanner.type === "start" ? (
-                <>
+                <div className="inapp-banner-inner">
                   <span className="inapp-banner-title">Next up</span>
                   <span className="inapp-banner-task">{taskBanner.task.text}</span>
                   <div className="inapp-banner-actions">
@@ -3458,13 +3458,13 @@ export default function App() {
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => { localStorage.setItem("taskBannerSnoozeUntil", String(Date.now() + 5 * 60 * 1000)); setTaskBanner(null); }}>Snooze</button>
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTaskBanner(null)}>Skip</button>
                   </div>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="inapp-banner-inner">
                   <span className="inapp-banner-title">Wrap it up</span>
                   <span className="inapp-banner-task"><ArrowRightIcon style={{ width: 14, height: 14, verticalAlign: 'middle', marginRight: 6 }} />{taskBanner.nextTask ? taskBanner.nextTask.text : "Next"}</span>
                   <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => setTaskBanner(null)}>OK</button>
-                </>
+                </div>
               )}
             </div>
           </div>
@@ -3476,7 +3476,7 @@ export default function App() {
             <div className="toast-content">
               <SparkleIcon style={{ width: '20px', height: '20px', flexShrink: 0 }} />
               <div className="toast-text">
-                <div className="toast-message">{toastNotification.message ?? ""}</div>
+                <div className="toast-message">{String(toastNotification.message || "")}</div>
                 {toastNotification.taskText ? (
                   <div className="toast-task">{toastNotification.taskText}</div>
                 ) : null}
@@ -3496,7 +3496,7 @@ export default function App() {
                 const isBirthday = birthInput.length === 4 && birthInput === monthDay;
                 const displayName = (profile.userName || "").trim() || "you";
                 return (
-                  <>
+                  <div className="celebration-modal-inner">
                     <h3 style={{ fontSize: "24px", marginBottom: "8px" }}>
                       Good morning, {displayName}
                     </h3>
@@ -3521,7 +3521,7 @@ export default function App() {
                     >
                       Let&apos;s begin
                     </button>
-                  </>
+                  </div>
                 );
               })()}
             </div>

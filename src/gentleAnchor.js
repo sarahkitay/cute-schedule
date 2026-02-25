@@ -31,7 +31,7 @@ export function inferEmotionalState(tasks, timeOfDay) {
   return "gentle";
 }
 
-export function generateCompletionMessage(task, category, completedToday, energyLevel, state) {
+export function generateCompletionMessage(task, category, completedToday, energyLevel, emotionalState) {
   const messages = {
     LIGHT: [
       "Nice. That one didn't take much, but it still counts.",
@@ -54,7 +54,7 @@ export function generateCompletionMessage(task, category, completedToday, energy
   let message = baseMessages[Math.floor(Math.random() * baseMessages.length)];
 
   // Add contextual layer based on completed count
-  if (completedToday >= 3 && state !== "focused") {
+  if (completedToday >= 3 && emotionalState !== "focused") {
     message += " You did enough for today.";
   }
 

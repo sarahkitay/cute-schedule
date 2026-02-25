@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   publicDir: 'public',
   build: {
+    sourcemap: true,
+    esbuild: {
+      keepNames: true, // avoid minifier renaming variables to same symbol (TDZ "vn" error)
+    },
     rollupOptions: {
       output: {
         assetFileNames: 'assets/[name].[ext]'

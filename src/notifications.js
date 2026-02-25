@@ -10,7 +10,13 @@ function urlBase64ToUint8Array(base64String) {
 class NotificationService {
   constructor() {
     this.permission = null;
-    this.checkPermission();
+    // Defer checkPermission to first use so we don't run async code at import time (avoids init-order/TDZ issues in prod bundle)
+    this._checkPromise = null;
+  }
+
+  _lazyCheck() {
+    if (this._checkPromise == null) this._checkPromise = this.checkPermission();
+    return this._checkPromise;
   }
 
   async enablePush() {
@@ -204,4 +210,30 @@ class NotificationService {
   }
 }
 
-export const notificationService = new NotificationService();
+const _notificationService = new NotificationService();
+export const notificationService = {
+  get permission() {
+    return _notificationService.permission;
+  },
+  enablePush() {
+    return _notificationService.enablePush();
+  },
+  checkPermission() {
+    return _notificationService._lazyCheck();
+  },
+  requestPermission() {
+    return _notificationService.requestPermission();
+  },
+  showNotification(title, options) {
+    return _notificationService.showNotification(title, options);
+  },
+  scheduleTaskReminder(task, hour, category) {
+    return _notificationService.scheduleTaskReminder(task, hour, category);
+  },
+  notifyTaskComplete(task, category) {
+    return _notificationService.notifyTaskComplete(task, category);
+  },
+  scheduleTaskTransition(currentTask, nextTask, hour, category) {
+    return _notificationService.scheduleTaskTransition(currentTask, nextTask, hour, category);
+  },
+};
