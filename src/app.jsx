@@ -1387,10 +1387,10 @@ export default function App() {
             const completedToday = currentlyDone + 1; // +1 for this task
             const energyLevel = t.energyLevel || "MEDIUM";
             const allTasksList = allTasksInDay(todayHours);
-            const state = inferEmotionalState(allTasksList, getTimeOfDay());
+            const emotionalState = inferEmotionalState(allTasksList, getTimeOfDay());
             
             // Generate contextual completion message using Gentle Anchor
-            const message = generateCompletionMessage(t, category, completedToday, energyLevel, state);
+            const message = generateCompletionMessage(t, category, completedToday, energyLevel, emotionalState);
             
             // Show toast only (mood is collected end-of-day, not per task)
             setCompletionCelebration(null);
@@ -1854,18 +1854,18 @@ export default function App() {
     setCoachQuestion("");
   }
 
-  function generateLocalGentleResponse(state, progress, completed, total) {
+  function generateLocalGentleResponse(emotionalState, progress, completed, total) {
     let message = "";
     const highlights = [];
     
-    if (state === "overloaded") {
+    if (emotionalState === "overloaded") {
       message = "You have a lot planned today. We can adjust if needed.";
       highlights.push("Consider moving some tasks to tomorrow");
       highlights.push("Heavy tasks need space between them");
-    } else if (state === "drained") {
+    } else if (emotionalState === "drained") {
       message = "You've been working. It's okay to slow down.";
       highlights.push("Rest is part of the process");
-    } else if (state === "focused") {
+    } else if (emotionalState === "focused") {
       message = "You're in a good flow. Keep going when it feels right.";
       highlights.push("You're making steady progress");
     } else if (completed >= 3) {
