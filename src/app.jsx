@@ -1593,7 +1593,7 @@ export default function App() {
         ...prev,
         days: {
           ...prev.days,
-          [tomorrowKey]: { hours: tomorrowHours }
+          [tomorrowKey]: { ...(prev.days[tomorrowKey] || {}), hours: tomorrowHours }
         }
       };
     });
@@ -1629,7 +1629,7 @@ export default function App() {
       if (!day) return prev;
       const hours = { ...(day.hours || {}) };
       delete hours[hourKey];
-      return { ...prev, days: { ...prev.days, [tKey]: { hours } } };
+      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
     });
   }
 
@@ -1802,6 +1802,9 @@ export default function App() {
         // Fallback to local gentle responses if API fails
         const localResponse = generateLocalGentleResponse(emotionalState, prog, completedToday, totalTasks);
         setCoachResult(localResponse);
+        if (userQuestion) {
+          setCoachConversation(prev => [...prev, { role: 'assistant', content: localResponse.message }]);
+        }
         setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
         setCoachLoading(false);
         return;
@@ -1840,6 +1843,9 @@ export default function App() {
       const completedToday = allTasks.filter(t => t.done).length;
       const localResponse = generateLocalGentleResponse(emotionalState, prog, completedToday, allTasks.length);
       setCoachResult(localResponse);
+      if (userQuestion) {
+        setCoachConversation(prev => [...prev, { role: 'assistant', content: localResponse.message }]);
+      }
     } finally {
       setCoachLoading(false);
     }
