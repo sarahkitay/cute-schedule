@@ -363,15 +363,24 @@ const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "Ju
 
 /** ====== Pattern Tracking ====== **/
 function loadPatterns() {
+  const defaultPatterns = {
+    completions: [],
+    skippedDays: {},
+    completionTimes: [],
+    weeklyTotals: {},
+    bedtimeCompletedDates: []
+  };
   try {
     const raw = localStorage.getItem(PATTERNS_STORAGE_KEY);
-    const out = raw ? JSON.parse(raw) : {
-      completions: [], skippedDays: {}, completionTimes: [], weeklyTotals: {}, bedtimeCompletedDates: []
-    };
+    const out = raw ? JSON.parse(raw) : { ...defaultPatterns };
+    if (!Array.isArray(out.completions)) out.completions = [];
+    if (!Array.isArray(out.completionTimes)) out.completionTimes = [];
+    if (!out.skippedDays || typeof out.skippedDays !== "object") out.skippedDays = {};
+    if (!out.weeklyTotals || typeof out.weeklyTotals !== "object") out.weeklyTotals = {};
     if (!Array.isArray(out.bedtimeCompletedDates)) out.bedtimeCompletedDates = [];
     return out;
   } catch {
-    return { completions: [], skippedDays: {}, completionTimes: [], weeklyTotals: {}, bedtimeCompletedDates: [] };
+    return { ...defaultPatterns };
   }
 }
 
@@ -3467,10 +3476,10 @@ export default function App() {
             <div className="toast-content">
               <SparkleIcon style={{ width: '20px', height: '20px', flexShrink: 0 }} />
               <div className="toast-text">
-                <div className="toast-message">{toastNotification.message}</div>
-                {toastNotification.taskText && (
+                <div className="toast-message">{toastNotification.message ?? ""}</div>
+                {toastNotification.taskText ? (
                   <div className="toast-task">{toastNotification.taskText}</div>
-                )}
+                ) : null}
               </div>
             </div>
           </div>
