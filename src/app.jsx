@@ -2065,7 +2065,7 @@ export default function App() {
         className="shell"
         data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (appState.days?.[tKey]?.dailyMood || "") : ""}
       >
-        <header className="top surface-glass">
+        <header className="top">
           <div className="top-inner">
             <div className="top-left">
               <h1 className="h1" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
@@ -2585,53 +2585,43 @@ export default function App() {
               <div className="empty">All tasks complete!</div>
             ) : (
               <ul className="list list-page-list">
-                {incompleteTasks.map((t) => (
-                  <li
-                    key={`${t.hour}-${t.category}-${t.id}`}
-                    className={["list-row", t.energyLevel === "HEAVY" ? "list-row-heavy" : ""].filter(Boolean).join(" ")}
-                  >
-                    <span className="list-row-time">{to12Hour(t.hour)}</span>
-                    <label className="list-row-main check">
-                      <input type="checkbox" checked={!!t.done} onChange={() => toggleTask(t.hour, t.category, t.id)} />
-                      <span className="checkmark" />
-                      <span className={`list-row-title ${t.done ? 'item-text-done' : ''}`}>{t.text}</span>
-                      <span className="list-row-meta">
-                        <Pill label={t.category} />
-                        <span className="energy-badge" style={{ fontSize: '11px', color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color, display: 'inline-flex', alignItems: 'center' }}>
-                          {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: '10px', height: '10px', marginLeft: 4 } })}
-                        </span>
-                      </span>
-                    </label>
-                    <div className="list-row-actions">
-                      <button
-                        type="button"
-                        className="icon-btn energy-btn list-row-action"
-                        title={`Energy: ${ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label}`}
-                        onClick={(e) => { e.stopPropagation(); toggleEnergyLevel(t.hour, t.category, t.id); }}
-                        style={{ backgroundColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color + '18', borderColor: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color }}
-                      >
-                        {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: 14, height: 14 } })}
-                      </button>
-                      <button type="button" className="icon-btn list-row-action" onClick={(e) => { e.stopPropagation(); deleteTask(t.hour, t.category, t.id); }} aria-label="Delete">
-                        <TrashIcon style={{ width: 16, height: 16 }} />
-                      </button>
-                      <button
-                        type="button"
-                        className="icon-btn list-row-action"
-                        title="Task options"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const dropdownKey = `${t.hour}-${t.category}-${t.id}`;
-                          if (taskDropdown === dropdownKey) { setTaskDropdown(null); setDropdownAnchorRect(null); }
-                          else { setTaskDropdown(dropdownKey); setDropdownAnchorRect(e.currentTarget.getBoundingClientRect()); }
-                        }}
-                        data-task-menu-trigger
-                      >
-                        <MenuIcon style={{ width: 16, height: 16 }} />
-                      </button>
-                    </div>
-                  </li>
-                ))}
+                {incompleteTasks.map((t) => {
+                  const dropdownKey = `${t.hour}-${t.category}-${t.id}`;
+                  return (
+                    <li
+                      key={dropdownKey}
+                      className={["list-row", t.energyLevel === "HEAVY" ? "list-row-heavy" : ""].filter(Boolean).join(" ")}
+                      onClick={(e) => {
+                        if (e.target.closest('.list-row-more, .check, input')) return;
+                        setTaskDropdown(taskDropdown === dropdownKey ? null : dropdownKey);
+                        setDropdownAnchorRect(e.currentTarget.getBoundingClientRect());
+                      }}
+                    >
+                      <span className="list-row-time">{to12Hour(t.hour)}</span>
+                      <label className="list-row-main check" onClick={(e) => e.stopPropagation()}>
+                        <input type="checkbox" checked={!!t.done} onChange={() => toggleTask(t.hour, t.category, t.id)} />
+                        <span className="checkmark" />
+                        <span className={`list-row-title ${t.done ? 'item-text-done' : ''}`}>{t.text}</span>
+                      </label>
+                      <div className="list-row-actions">
+                        <button
+                          type="button"
+                          className="icon-btn list-row-action list-row-more"
+                          title="Task options"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (taskDropdown === dropdownKey) { setTaskDropdown(null); setDropdownAnchorRect(null); }
+                            else { setTaskDropdown(dropdownKey); setDropdownAnchorRect(e.currentTarget.getBoundingClientRect()); }
+                          }}
+                          data-task-menu-trigger
+                          aria-label="Task options"
+                        >
+                          <MenuIcon style={{ width: 18, height: 18 }} />
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>
@@ -2644,10 +2634,8 @@ export default function App() {
             </div>
 
             <form className="monthly-add" onSubmit={addMonthly}>
-              <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" />
-              <button className="btn btn-primary" type="submit">
-                Add
-              </button>
+              <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" aria-label="New objective" />
+              <button className="btn btn-primary" type="submit">Add</button>
             </form>
 
             {appState.monthly.length === 0 ? (
@@ -3167,16 +3155,15 @@ export default function App() {
               />
             </div>
 
-            <form className="monthly-add" onSubmit={addNote}>
-              <input 
-                className="input" 
-                value={newNote} 
-                onChange={(e) => setNewNote(e.target.value)} 
-                placeholder="Add a note or idea…" 
+            <form className="notes-add-form monthly-add" onSubmit={addNote}>
+              <input
+                className="input"
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                placeholder="Add a note or idea…"
+                aria-label="New note"
               />
-              <button className="btn btn-primary" type="submit">
-                Add
-              </button>
+              <button className="btn btn-primary" type="submit">Add</button>
             </form>
 
             {filteredNotes.length === 0 ? (
@@ -3529,12 +3516,6 @@ export default function App() {
         )}
 
         {/* Gentle Rescheduling Modal */}
-
-        <footer className="foot">
-          <span>Saved automatically on this device.</span>
-          <BulletIcon style={{ marginLeft: 6, marginRight: 6, verticalAlign: 'middle' }} />
-          <span>Next upgrade: cloud sync + phone install.</span>
-        </footer>
       </div>
     </div>
   );
