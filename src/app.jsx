@@ -675,7 +675,6 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
                             onOpenDropdown(dropdownKey, e.currentTarget.getBoundingClientRect());
                           }
                         }}
-                        title="Task options"
                         data-task-menu-trigger
                       >
                         <MenuIcon />
