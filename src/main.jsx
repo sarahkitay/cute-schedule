@@ -7,7 +7,10 @@ import App from './app.jsx'
 
 // Error boundary so a runtime error shows a message instead of a blank page
 class ErrorBoundary extends Component {
-  state = { error: null }
+  constructor(props) {
+    super(props)
+    this.state = { error: null }
+  }
   static getDerivedStateFromError(error) {
     return { error }
   }
