@@ -1,12 +1,12 @@
 :root {
-  --radius: 0;
-  --radius-sm: 0;
-  --radius-md: 0;
-  --radius-lg: 0;
-  --radius-xl: 0;
-  --radius-card: 0;
-  --radius-2xl: 0;
-  --radius-pill: 0;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+  --radius-card: 8px;
+  --radius-2xl: 12px;
+  --radius-pill: 999px;
 
   --bg: #F8F5F4;
   --bg-warm: #F1E8E6;
@@ -125,11 +125,16 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(160px at 90% 8%, var(--theme-bg-glow, rgba(0,0,0,0.03)), transparent 50%);
+  background: radial-gradient(280px at 85% 5%, var(--theme-bg-glow, rgba(232, 180, 192, 0.18)), transparent 55%);
+  filter: blur(60px);
   pointer-events: none;
 }
 .app-bg::after {
-  display: none;
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(180px at 15% 90%, rgba(240, 230, 255, 0.12), transparent 45%);
+  pointer-events: none;
 }
 
 .app {
@@ -686,10 +691,11 @@
 
 .modal {
   background: var(--surface-solid);
-  border-radius: 0;
+  border-radius: var(--radius-2xl);
   padding: var(--spacing-lg);
   width: 100%;
   max-width: 400px;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
   animation: modalSlideUp 0.3s var(--ease-out-soft);
   border: 1px solid var(--border-subtle);
 }
@@ -710,7 +716,7 @@
   .modal {
     max-width: none;
     max-height: 92vh;
-    border-radius: 0;
+    border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
     border-left: none;
     border-right: none;
     border-bottom: none;
@@ -1425,7 +1431,7 @@ button {
   width: 100%;
   max-width: 640px;
   margin: 0 auto;
-  padding: calc(env(safe-area-inset-top, 0px) + 52px) var(--screen-margin) calc(env(safe-area-inset-bottom, 0px) + 72px);
+  padding: calc(env(safe-area-inset-top, 0px) + 36px) var(--screen-margin) calc(env(safe-area-inset-bottom, 0px) + 72px);
   box-sizing: border-box;
   animation: contentReveal 0.6s var(--ease-out-soft) forwards;
 }
@@ -1505,11 +1511,12 @@ button {
 
 .top {
   background: var(--theme-header-gradient);
-  padding: calc(env(safe-area-inset-top, 0px) + var(--space-3)) var(--screen-margin) var(--space-3);
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) var(--screen-margin) 10px;
   position: sticky;
   top: 0;
   z-index: 100;
   border-bottom: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .top-inner {
@@ -1698,9 +1705,10 @@ button {
 .next-up-card {
   background: var(--surface-solid);
   border: 1px solid var(--border-subtle);
-  border-radius: 0;
+  border-radius: var(--radius-card);
   padding: var(--space-4);
   margin-bottom: var(--space-3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2018,7 +2026,7 @@ button {
   border-radius: var(--radius-lg);
   padding: var(--card-pad);
   margin: 0 0 var(--space-5);
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
   border: 1px solid var(--border-subtle);
   transition: box-shadow var(--transition-base);
 }
@@ -2089,7 +2097,7 @@ button {
   position: relative;
   padding: var(--card-pad);
   background: var(--surface-solid);
-  box-shadow: var(--shadow-card);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
 }
@@ -2123,7 +2131,7 @@ button {
   width: 100%;
   height: 10px;
   background: var(--surface2);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   overflow: visible;
   margin-top: var(--space-2);
   position: relative;
@@ -2133,7 +2141,7 @@ button {
   height: 100%;
   background: var(--gradient-cta);
   transition: width 0.4s var(--ease-out-soft);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
@@ -2146,7 +2154,7 @@ button {
   height: 100%;
   background: var(--theme-header-gradient);
   transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  border-radius: 0;
+  border-radius: var(--radius-sm);
 }
 
 /* Segmented bars – task groups */
@@ -2160,7 +2168,7 @@ button {
 .progress-segment {
   width: 8px;
   height: 8px;
-  border-radius: 0;
+  border-radius: var(--radius-sm);
   background: rgba(0, 0, 0, 0.06);
   transition: background 0.35s ease;
 }
@@ -2196,12 +2204,11 @@ button {
 
 .card {
   background: var(--surface-solid);
-  border-radius: 0;
+  border-radius: var(--radius-card);
   padding: var(--space-4) var(--space-4);
   margin: 0 0 var(--space-4);
   border: 1px solid var(--border-subtle);
-  border-left: none;
-  border-right: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 .card[data-time-block="06"] { background: var(--surface-solid); }
 .card[data-time-block="09"] { background: var(--block-morning); }
@@ -2293,17 +2300,6 @@ button {
   .timeline-row .card {
     margin: 0 0 var(--space-3);
     padding: var(--space-4) var(--screen-margin);
-  }
-  .panel {
-    border-radius: 0;
-    box-shadow: none;
-  }
-  .panel.surface-glass,
-  .panel.surface-featured {
-    box-shadow: none;
-  }
-  .bottom-nav {
-    border-radius: 0;
   }
   .shell-main .monthly-objectives-section .monthly-add,
   .shell-main .notes-section .notes-add-form.monthly-add {
@@ -2973,8 +2969,11 @@ button {
   left: 0;
   right: 0;
   padding: var(--space-2) var(--screen-margin) calc(env(safe-area-inset-bottom, 0px) + var(--space-2));
-  background: var(--surface-solid);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-top: 1px solid var(--border-subtle);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.04);
   display: flex;
   align-items: center;
   justify-content: space-around;
@@ -3006,7 +3005,8 @@ button {
 .bottom-nav-item svg { width: 20px; height: 20px; }
 .bottom-nav-item.active svg { color: var(--theme-accent); }
 .bottom-nav.surface-dock {
-  background: var(--surface-solid);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
 }
 
 /* FAB: above tab bar */
