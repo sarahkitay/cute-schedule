@@ -228,6 +228,26 @@ function emptySlot(categories) {
   return (categories || []).reduce((acc, c) => ({ ...acc, [c]: [] }), {});
 }
 
+function mergeSubscriptionTasksIntoHours(hours, dayKey, subscriptions, categories) {
+  const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
+  const firstCat = cats[0];
+  const dayOfMonth = parseInt(String(dayKey).slice(8), 10);
+  if (!dayOfMonth || dayOfMonth < 1 || dayOfMonth > 31) return hours;
+  const subsDue = (subscriptions || []).filter((s) => s.dueDay != null && s.dueDay === dayOfMonth);
+  if (subsDue.length === 0) return hours;
+  const synthetic = subsDue.map((s) => ({
+    id: "sub-" + s.id,
+    text: `Pay ${s.name} ($${Number(s.amount).toFixed(2)})`,
+    done: false,
+    energyLevel: "MEDIUM",
+    isSubscription: true,
+  }));
+  const nextHours = { ...hours };
+  const at09 = nextHours["09:00"] || emptySlot(cats);
+  nextHours["09:00"] = { ...at09, [firstCat]: [...(at09[firstCat] || []), ...synthetic] };
+  return nextHours;
+}
+
 function saveState(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
@@ -985,6 +1005,7 @@ export default function App() {
           totalInvestments: typeof data.totalInvestments === "number" ? data.totalInvestments : 0,
           wishList: data.wishList || [],
           subscriptions: data.subscriptions || [],
+          bills: data.bills || [],
           bankStatementNotes: data.bankStatementNotes || "",
         };
       }
@@ -997,6 +1018,7 @@ export default function App() {
       totalInvestments: 0,
       wishList: [],
       subscriptions: [],
+      bills: [],
       bankStatementNotes: "",
     };
   });
@@ -1006,6 +1028,25 @@ export default function App() {
       localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(finance));
     } catch (_) {}
   }, [finance]);
+
+  const BILL_REMINDER_KEY = "cute_schedule_bill_reminder_date";
+  useEffect(() => {
+    const today = todayKey();
+    const billsDue = (finance.bills || []).filter((b) => b.dueDate === today);
+    if (billsDue.length === 0) return;
+    const lastReminded = localStorage.getItem(BILL_REMINDER_KEY);
+    if (lastReminded === today) return;
+    (async () => {
+      const ok = await notificationService.checkPermission();
+      if (ok) {
+        notificationService.showNotification(
+          "Bill due today",
+          { body: billsDue.map((b) => b.name + (b.amount ? ` ($${Number(b.amount).toFixed(2)})` : "")).join(", "), tag: "bill-due-" + today }
+        );
+        localStorage.setItem(BILL_REMINDER_KEY, today);
+      }
+    })();
+  }, [finance.bills, realTodayKey]);
 
   useEffect(() => {
     try {
@@ -1055,6 +1096,10 @@ export default function App() {
   const [newSubName, setNewSubName] = useState("");
   const [newSubAmount, setNewSubAmount] = useState("");
   const [newSubCycle, setNewSubCycle] = useState("monthly");
+  const [newSubDueDay, setNewSubDueDay] = useState("");
+  const [newBillName, setNewBillName] = useState("");
+  const [newBillAmount, setNewBillAmount] = useState("");
+  const [newBillDueDate, setNewBillDueDate] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [newTypeName, setNewTypeName] = useState("");
   const [completionCelebration, setCompletionCelebration] = useState(null);
@@ -1075,6 +1120,10 @@ export default function App() {
   
   // Define todayHours before useEffects that use it
   const todayHours = appState.days?.[tKey]?.hours || {};
+  const todayHoursWithSubs = useMemo(
+    () => mergeSubscriptionTasksIntoHours(todayHours, tKey, finance.subscriptions, customCategories),
+    [todayHours, tKey, finance.subscriptions, customCategories]
+  );
 
   // Coach meta for cooldown and auto-run
   const [coachMeta, setCoachMeta] = useState(() => {
@@ -1240,7 +1289,7 @@ export default function App() {
     }
   }, [tKey, realTodayKey, todayHours, appState]);
 
-  const sortedHourKeys = useMemo(() => Object.keys(todayHours).sort(), [todayHours]);
+  const sortedHourKeys = useMemo(() => Object.keys(todayHoursWithSubs).sort(), [todayHoursWithSubs]);
 
   const dailyMood = appState.days?.[tKey]?.dailyMood || null;
   const isOverwhelmedMode = dailyMood === "drained";
@@ -1423,6 +1472,7 @@ export default function App() {
   }
 
   function toggleTask(hourKey, category, taskId) {
+    if (String(taskId).startsWith("sub-")) return;
     setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day) return prev;
@@ -1597,17 +1647,27 @@ export default function App() {
   function removeWishItem(id) {
     setFinance((prev) => ({ ...prev, wishList: (prev.wishList || []).filter((w) => w.id !== id) }));
   }
-  function addSubscription(name, amount, cycle = "monthly") {
+  function addSubscription(name, amount, cycle = "monthly", dueDay = null) {
     setFinance((prev) => ({
       ...prev,
-      subscriptions: [...(prev.subscriptions || []), { id: uid(), name, amount: parseFloat(amount) || 0, cycle }],
+      subscriptions: [...(prev.subscriptions || []), { id: uid(), name, amount: parseFloat(amount) || 0, cycle, dueDay: dueDay != null ? parseInt(dueDay, 10) : null }],
     }));
   }
   function removeSubscription(id) {
     setFinance((prev) => ({ ...prev, subscriptions: (prev.subscriptions || []).filter((s) => s.id !== id) }));
   }
+  function addBill(name, amount, dueDate) {
+    setFinance((prev) => ({
+      ...prev,
+      bills: [...(prev.bills || []), { id: uid(), name, amount: parseFloat(amount) || 0, dueDate: dueDate || null }],
+    }));
+  }
+  function removeBill(id) {
+    setFinance((prev) => ({ ...prev, bills: (prev.bills || []).filter((b) => b.id !== id) }));
+  }
 
   function deleteTask(hourKey, category, taskId) {
+    if (String(taskId).startsWith("sub-")) return;
     setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day) return prev;
@@ -2099,7 +2159,7 @@ export default function App() {
 
   // List view - all incomplete tasks for today
   const incompleteTasks = useMemo(() => {
-    return allTasksInDay(todayHours, customCategories).filter(t => !t.done).sort((a, b) => {
+    return allTasksInDay(todayHoursWithSubs, customCategories).filter(t => !t.done).sort((a, b) => {
       // Sort by energy level: Heavy first
       const order = { HEAVY: 0, MEDIUM: 1, LIGHT: 2 };
       const aEnergy = order[a.energyLevel] ?? 1;
@@ -2115,9 +2175,10 @@ export default function App() {
         className="shell"
         data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (appState.days?.[tKey]?.dailyMood || "") : ""}
       >
-        <header className="top">
+        <header className="top top-plain">
           <div className="top-inner">
             <div className="top-left">
+              <span className="brand-name">PROYOU</span>
               <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
                 {tab === "today"
                   ? formatBannerDate(tKey, realTodayKey)
@@ -2532,7 +2593,7 @@ export default function App() {
                       <div className="timeline-blocks">
                         <HourCard
                           hourKey={hourKey}
-                          tasksByCat={todayHours[hourKey]}
+                          tasksByCat={todayHoursWithSubs[hourKey]}
                           categories={customCategories}
                           onToggleTask={toggleTask}
                           onToggleEnergyLevel={toggleEnergyLevel}
@@ -3121,12 +3182,15 @@ export default function App() {
 
             <div className="finance-section">
               <h3 className="finance-section-title">Subscriptions</h3>
+              <p className="finance-hint">Add a due day (1–31) to show &quot;Pay [name]&quot; on your schedule that day each month.</p>
               <form className="finance-inline-form" onSubmit={(e) => {
                 e.preventDefault();
                 if (newSubName.trim()) {
-                  addSubscription(newSubName.trim(), newSubAmount || 0, newSubCycle);
+                  const dueDay = newSubDueDay.trim() ? parseInt(newSubDueDay, 10) : null;
+                  addSubscription(newSubName.trim(), newSubAmount || 0, newSubCycle, dueDay);
                   setNewSubName("");
                   setNewSubAmount("");
+                  setNewSubDueDay("");
                 }
               }}>
                 <input className="input" value={newSubName} onChange={(e) => setNewSubName(e.target.value)} placeholder="Netflix, gym…" />
@@ -3135,6 +3199,7 @@ export default function App() {
                   <option value="monthly">/mo</option>
                   <option value="yearly">/yr</option>
                 </select>
+                <input className="input" type="number" min="1" max="31" value={newSubDueDay} onChange={(e) => setNewSubDueDay(e.target.value)} placeholder="Due day (1–31)" style={{ width: 110 }} title="Day of month it’s due — adds to schedule that day" />
                 <button type="submit" className="btn btn-primary">Add</button>
               </form>
               <ul className="finance-list">
@@ -3142,7 +3207,37 @@ export default function App() {
                   <li key={s.id} className="finance-list-item">
                     <span className="finance-label">{s.name}</span>
                     <span className="finance-amount">${Number(s.amount).toFixed(2)}/{s.cycle === "yearly" ? "yr" : "mo"}</span>
+                    {s.dueDay != null && <span className="finance-meta">Due day {s.dueDay}</span>}
                     <button type="button" className="icon-btn" onClick={() => removeSubscription(s.id)} aria-label="Remove"><TrashIcon /></button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="finance-section">
+              <h3 className="finance-section-title">Bills</h3>
+              <p className="finance-hint">Add due date to get a reminder that day.</p>
+              <form className="finance-inline-form" onSubmit={(e) => {
+                e.preventDefault();
+                if (newBillName.trim() && newBillDueDate.trim()) {
+                  addBill(newBillName.trim(), newBillAmount || 0, newBillDueDate.trim());
+                  setNewBillName("");
+                  setNewBillAmount("");
+                  setNewBillDueDate("");
+                }
+              }}>
+                <input className="input" value={newBillName} onChange={(e) => setNewBillName(e.target.value)} placeholder="Bill name" />
+                <input className="input" type="number" min="0" step="0.01" value={newBillAmount} onChange={(e) => setNewBillAmount(e.target.value)} placeholder="Amount" style={{ width: 90 }} />
+                <input className="input" type="date" value={newBillDueDate} onChange={(e) => setNewBillDueDate(e.target.value)} aria-label="Due date" style={{ width: 140 }} />
+                <button type="submit" className="btn btn-primary">Add</button>
+              </form>
+              <ul className="finance-list">
+                {(finance.bills || []).map((b) => (
+                  <li key={b.id} className="finance-list-item">
+                    <span className="finance-label">{b.name}</span>
+                    {b.amount > 0 && <span className="finance-amount">${Number(b.amount).toFixed(2)}</span>}
+                    {b.dueDate && <span className="finance-meta">Due {b.dueDate}</span>}
+                    <button type="button" className="icon-btn" onClick={() => removeBill(b.id)} aria-label="Remove"><TrashIcon /></button>
                   </li>
                 ))}
               </ul>
@@ -3282,11 +3377,6 @@ export default function App() {
             const vh = typeof window !== "undefined" ? window.innerHeight : 600;
             const rect = dropdownAnchorRect;
             let left = rect.left;
-            if (rect.right - dropdownWidth < pad) {
-              left = pad;
-            } else if (rect.left + dropdownWidth > vw - pad) {
-              left = rect.right - dropdownWidth;
-            }
             left = Math.max(pad, Math.min(left, vw - pad - dropdownWidth));
             let top = rect.bottom + 6;
             if (top + dropdownMaxHeight > vh - pad) {

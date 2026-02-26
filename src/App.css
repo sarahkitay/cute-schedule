@@ -1518,6 +1518,18 @@ button {
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
 }
+.top-plain .brand-name {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  color: var(--text-soft);
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  background: none;
+  border: none;
+  padding: 0;
+}
 .h1-banner-date {
   font-size: clamp(1.125rem, 4vw, var(--title-display));
   line-height: 1.25;
@@ -2261,19 +2273,22 @@ button {
 }
 
 .card {
-  background: var(--surface-solid);
-  border-radius: var(--radius-card);
-  padding: var(--space-4) var(--space-4);
-  margin: 0 0 var(--space-4);
-  border: 1px solid var(--border-subtle);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  background: transparent;
+  border-radius: 0;
+  padding: var(--space-3) 0 var(--space-4);
+  margin: 0;
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  box-shadow: none;
 }
-.card[data-time-block="06"] { background: var(--surface-solid); }
-.card[data-time-block="09"] { background: var(--block-morning); }
-.card[data-time-block="12"] { background: var(--block-noon); }
-.card[data-time-block="15"] { background: var(--block-afternoon); }
-.card[data-time-block="18"] { background: var(--block-evening); }
-.card[data-time-block="21"] { background: var(--block-night); }
+.card[data-time-block="06"],
+.card[data-time-block="09"],
+.card[data-time-block="12"],
+.card[data-time-block="15"],
+.card[data-time-block="18"],
+.card[data-time-block="21"] {
+  background: transparent;
+}
 .card-complete {
   opacity: 0.88;
 }
