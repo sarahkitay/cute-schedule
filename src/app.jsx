@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
@@ -1054,6 +1054,7 @@ export default function App() {
   const [windDownMode, setWindDownMode] = useState(false);
   const [morningGreeting, setMorningGreeting] = useState(false);
   const [taskDropdown, setTaskDropdown] = useState(null); // "hourKey-category-id"
+  const dateInputRef = useRef(null);
   const [dropdownAnchorRect, setDropdownAnchorRect] = useState(null); // { top, left, bottom, right } for portal
   const [editingTaskTime, setEditingTaskTime] = useState(null); // "hourKey-category-id" when showing time editor
   const [editTaskTimeValue, setEditTaskTimeValue] = useState("09:00"); // new time for edit
@@ -2123,21 +2124,11 @@ export default function App() {
                     : "Pattern insights";
                 })()}
               </h1>
-              <span className={`sub header-date ${tab === "today" || tab === "list" ? "header-date-visible" : ""}`}>
-                {tab === "today" || tab === "list"
-                  ? (() => {
-                      const label = getDayLabel(tKey, realTodayKey);
-                      if (label === "Tomorrow" || label === "Future") return "";
-                      return new Date(tKey + "T00:00:00").toLocaleDateString(undefined, {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                      });
-                    })()
-                  : tab === "monthly" ? "Objectives"
-                  : tab === "finance" ? "Income, spending & savings"
-                  : "Insights"}
-              </span>
+              {(tab !== "today" && tab !== "list") && (
+                <span className="sub header-date header-date-visible">
+                  {tab === "monthly" ? "Objectives" : tab === "finance" ? "Income, spending & savings" : "Insights"}
+                </span>
+              )}
             </div>
 
             <div className="tabs" aria-hidden="true">
@@ -2242,16 +2233,33 @@ export default function App() {
                 <ChevronLeftIcon style={{ width: 20, height: 20 }} />
               </button>
 
-              <input
-                className="input date-input date-pill"
-                type="date"
-                value={formatDateInput(selectedDayKey)}
-                onChange={(e) => {
-                  const v = (e.target.value || "").trim();
-                  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setSelectedDayKey(v);
-                }}
-                aria-label="Selected date"
-              />
+              <div className="date-pill-wrap">
+                <input
+                  ref={dateInputRef}
+                  className="input date-input date-pill date-input-hidden"
+                  type="date"
+                  value={formatDateInput(selectedDayKey)}
+                  onChange={(e) => {
+                    const v = (e.target.value || "").trim();
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setSelectedDayKey(v);
+                  }}
+                  aria-label="Selected date"
+                />
+                <button
+                  type="button"
+                  className="date-pill-label"
+                  onClick={() => dateInputRef.current?.click()}
+                  aria-label="Choose date"
+                >
+                  {isSameDayKey(selectedDayKey, realTodayKey)
+                    ? "Today"
+                    : new Date(selectedDayKey + "T00:00:00").toLocaleDateString(undefined, {
+                        weekday: "long",
+                        month: "long",
+                        day: "numeric",
+                      })}
+                </button>
+              </div>
 
               <button className="btn-icon" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, 1))} aria-label="Next day">
                 <ChevronRightIcon style={{ width: 20, height: 20 }} />
