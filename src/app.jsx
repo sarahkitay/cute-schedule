@@ -411,13 +411,14 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 function formatBannerDate(dayKey, realTodayKey) {
+  const d = new Date(dayKey + "T00:00:00");
   if (isSameDayKey(dayKey, realTodayKey)) {
-    return new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
   }
   const label = getDayLabel(dayKey, realTodayKey);
-  if (label === "Tomorrow") return "Tomorrow · " + new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  if (label === "Future") return new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-  return new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  if (label === "Tomorrow") return "Tomorrow · " + d.toLocaleDateString(undefined, { month: "long", day: "numeric" });
+  if (label === "Future") return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
 }
 
 /** ====== Pattern Tracking ====== **/
