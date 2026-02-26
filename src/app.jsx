@@ -390,6 +390,16 @@ function getFirstWeekday(year, month) {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+function formatBannerDate(dayKey, realTodayKey) {
+  if (isSameDayKey(dayKey, realTodayKey)) {
+    return new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  }
+  const label = getDayLabel(dayKey, realTodayKey);
+  if (label === "Tomorrow") return "Tomorrow · " + new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  if (label === "Future") return new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+}
+
 /** ====== Pattern Tracking ====== **/
 function loadPatterns() {
   const defaultPatterns = {
@@ -2108,21 +2118,18 @@ export default function App() {
         <header className="top">
           <div className="top-inner">
             <div className="top-left">
-              <h1 className="h1" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
-                {(() => {
-                  if (tab === "today") {
-                    if (isSameDayKey(tKey, realTodayKey)) return "Today";
-                    const label = getDayLabel(tKey, realTodayKey);
-                    if (label === "Tomorrow") return "Tomorrow";
-                    if (label === "Future") return "Future";
-                    return "Past";
-                  }
-                  return tab === "monthly" ? "Monthly Objectives" 
-                    : tab === "list" ? "List" 
-                    : tab === "notes" ? "Notes" 
-                    : tab === "finance" ? "Finance" 
-                    : "Pattern insights";
-                })()}
+              <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
+                {tab === "today"
+                  ? formatBannerDate(tKey, realTodayKey)
+                  : tab === "list"
+                  ? "List"
+                  : tab === "monthly"
+                  ? "Monthly Objectives"
+                  : tab === "notes"
+                  ? "Notes"
+                  : tab === "finance"
+                  ? "Finance"
+                  : "Pattern insights"}
               </h1>
               {(tab !== "today" && tab !== "list") && (
                 <span className="sub header-date header-date-visible">
