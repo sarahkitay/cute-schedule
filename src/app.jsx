@@ -3275,13 +3275,31 @@ export default function App() {
             const editKey = `${hourKey}-${category}-${id}`;
             const isEditing = editingTaskTime === editKey;
             const closeDropdown = () => { setTaskDropdown(null); setDropdownAnchorRect(null); };
+            const pad = 16;
+            const dropdownWidth = 200;
+            const dropdownMaxHeight = 280;
+            const vw = typeof window !== "undefined" ? window.innerWidth : 400;
+            const vh = typeof window !== "undefined" ? window.innerHeight : 600;
+            const rect = dropdownAnchorRect;
+            let left = rect.left;
+            if (rect.right - dropdownWidth < pad) {
+              left = pad;
+            } else if (rect.left + dropdownWidth > vw - pad) {
+              left = rect.right - dropdownWidth;
+            }
+            left = Math.max(pad, Math.min(left, vw - pad - dropdownWidth));
+            let top = rect.bottom + 6;
+            if (top + dropdownMaxHeight > vh - pad) {
+              top = Math.max(pad, rect.top - dropdownMaxHeight - 6);
+            }
+            top = Math.max(pad, Math.min(top, vh - pad - 100));
             return (
               <div
                 className="task-dropdown-portal"
                 style={{
                   position: 'fixed',
-                  left: dropdownAnchorRect.left,
-                  top: dropdownAnchorRect.bottom + 6,
+                  left,
+                  top,
                   zIndex: 'var(--z-popover)',
                 }}
                 onClick={(e) => e.stopPropagation()}
