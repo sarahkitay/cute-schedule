@@ -2213,18 +2213,6 @@ export default function App() {
               {tab === "today" && (
                 <button
                   type="button"
-                  className="btn btn-pill"
-                  onClick={() => setFocusMode((f) => !f)}
-                  title="Focus mode"
-                  aria-pressed={focusMode}
-                >
-                  <SparkleIcon style={{ width: 14, height: 14, flexShrink: 0 }} aria-hidden />
-                  {focusMode ? "Focus on" : "Reset available"}
-                </button>
-              )}
-              {tab === "today" && (
-                <button
-                  type="button"
                   className="btn-icon"
                   onClick={() => {
                     setShowMonthCalendar(true);
