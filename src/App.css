@@ -1742,6 +1742,18 @@ button {
 }
 .quick-add-bar .quick-add-input { padding-left: var(--space-2); }
 
+.quick-add-bar .btn-primary {
+  border-radius: 50%;
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .quick-add-input {
   flex: 1;
   min-width: 0;
