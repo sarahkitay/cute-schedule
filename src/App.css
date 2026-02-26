@@ -1518,6 +1518,13 @@ button {
   border-bottom: 1px solid var(--border-subtle);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
 }
+
+/* Old style: no colored block — plain header with PROYOU as text only */
+.top-plain {
+  background: transparent;
+  box-shadow: none;
+  border-bottom: 1px solid var(--border-subtle);
+}
 .top-plain .brand-name {
   display: block;
   font-size: 12px;
@@ -1529,6 +1536,23 @@ button {
   background: none;
   border: none;
   padding: 0;
+}
+.top-plain .h1,
+.top-plain .sub {
+  color: var(--text);
+}
+.top-plain .sub {
+  color: var(--text-soft);
+}
+.top-plain .btn-icon {
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  color: var(--text);
+}
+.top-plain .btn-pill {
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text);
 }
 .h1-banner-date {
   font-size: clamp(1.125rem, 4vw, var(--title-display));
