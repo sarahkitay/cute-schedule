@@ -410,6 +410,17 @@ function getFirstWeekday(year, month) {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
+function formatWeekday(dayKey) {
+  return new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { weekday: "long" });
+}
+
+function formatWrittenDate(dayKey) {
+  const d = new Date(dayKey + "T00:00:00");
+  const day = d.getDate();
+  const suffix = day === 1 || day === 21 || day === 31 ? "st" : day === 2 || day === 22 ? "nd" : day === 3 || day === 23 ? "rd" : "th";
+  return d.toLocaleDateString(undefined, { month: "long" }) + " " + day + suffix;
+}
+
 function formatBannerDate(dayKey, realTodayKey) {
   const d = new Date(dayKey + "T00:00:00");
   if (isSameDayKey(dayKey, realTodayKey)) {
@@ -2182,7 +2193,7 @@ export default function App() {
               <span className="brand-name">PROYOU</span>
               <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
                 {tab === "today"
-                  ? formatBannerDate(tKey, realTodayKey)
+                  ? formatWeekday(tKey)
                   : tab === "list"
                   ? "List"
                   : tab === "monthly"
@@ -2308,13 +2319,7 @@ export default function App() {
                   onClick={() => dateInputRef.current?.click()}
                   aria-label="Choose date"
                 >
-                  {isSameDayKey(selectedDayKey, realTodayKey)
-                    ? "Today"
-                    : new Date(selectedDayKey + "T00:00:00").toLocaleDateString(undefined, {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                      })}
+                  {formatWrittenDate(selectedDayKey)}
                 </button>
               </div>
 
