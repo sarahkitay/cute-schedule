@@ -18,7 +18,8 @@ import {
 } from "./gentleAnchor";
 
 /** ====== Config ====== **/
-const CATEGORIES = ["RHEA", "EPC", "Personal"];
+const DEFAULT_CATEGORIES = ["Work", "Personal"];
+const CUSTOM_CATEGORIES_KEY = "cute_schedule_categories_v1";
 const STORAGE_KEY = "cute_schedule_v3";
 const COACH_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 const COACH_STORAGE_KEY = "cute_schedule_coach_meta_v1";
@@ -40,24 +41,6 @@ const REPEAT_OPTIONS = {
   DAILY: "daily",
   WEEKLY: "weekly",
   OPTIONAL: "optional"
-};
-
-const CATEGORY_TONES = {
-  RHEA: {
-    tone: "structured",
-    style: "direct but supportive",
-    example: "This task supports your professional goals."
-  },
-  EPC: {
-    tone: "analytical",
-    style: "clear and efficient",
-    example: "Let's break this down systematically."
-  },
-  Personal: {
-    tone: "nurturing",
-    style: "soft and encouraging",
-    example: "Take care of yourself first."
-  }
 };
 
 // Themes: gradient affects background + all colored buttons; name used in picker
@@ -196,6 +179,17 @@ function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
+function getStoredCategories() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_CATEGORIES_KEY);
+    if (!raw) return null;
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) && arr.length > 0 ? arr : null;
+  } catch {
+    return null;
+  }
+}
+
 function loadState() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -204,6 +198,34 @@ function loadState() {
   } catch {
     return null;
   }
+}
+
+/** Migrate old RHEA/EPC/Personal to custom categories (Work, Personal by default) */
+function migrateState(saved, categories) {
+  if (!saved || !saved.days || !categories || categories.length === 0) return saved;
+  const newDays = {};
+  Object.entries(saved.days).forEach(([dayKey, day]) => {
+    const hours = day.hours || {};
+    const newHours = {};
+    Object.entries(hours).forEach(([hourKey, byCat]) => {
+      const hasLegacy = "RHEA" in byCat || "EPC" in byCat || "Personal" in byCat;
+      if (!hasLegacy) {
+        newHours[hourKey] = byCat;
+        return;
+      }
+      const slot = categories.reduce((acc, c) => ({ ...acc, [c]: [] }), {});
+      if (categories[0]) slot[categories[0]] = [...(byCat.RHEA || []), ...(byCat.EPC || [])];
+      if (categories[1]) slot[categories[1]] = [...(byCat.Personal || [])];
+      for (let i = 2; i < categories.length; i++) slot[categories[i]] = [];
+      newHours[hourKey] = slot;
+    });
+    newDays[dayKey] = { ...day, hours: newHours };
+  });
+  return { ...saved, days: newDays };
+}
+
+function emptySlot(categories) {
+  return (categories || []).reduce((acc, c) => ({ ...acc, [c]: [] }), {});
 }
 
 function saveState(state) {
@@ -253,18 +275,23 @@ function isSameDayKey(a, b) {
   return String(a) === String(b);
 }
 
-/** Simple NL parse for quick add: "Call Martin 11am", "EPC 3pm email Roberto", "RHEA 9am" */
-function parseQuickAddNL(str) {
+/** Simple NL parse for quick add: "Call Martin 11am", "Work 3pm email", etc. */
+function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES) {
   const s = String(str || "").trim();
   if (!s) return null;
+  const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   let hour = "09:00";
-  let category = "Personal";
+  let category = cats[0] || "Work";
   let text = s;
   const upper = s.toUpperCase();
-  const catMatch = upper.match(/^(RHEA|EPC|PERSONAL)\s+/i);
-  if (catMatch) {
-    category = catMatch[1] === "PERSONAL" ? "Personal" : catMatch[1];
-    text = s.slice(catMatch[0].length).trim();
+  for (const c of cats) {
+    const re = new RegExp(`^${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+`, "i");
+    const m = upper.match(re);
+    if (m) {
+      category = cats.find((x) => x.toUpperCase() === m[0].trim().toUpperCase()) || c;
+      text = s.slice(m[0].length).trim();
+      break;
+    }
   }
   const timeMatch = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
   if (timeMatch) {
@@ -304,10 +331,11 @@ function getDayLabel(dayKey, todayKey) {
   return null;
 }
 
-function allTasksInDay(hours) {
+function allTasksInDay(hours, categories = DEFAULT_CATEGORIES) {
+  const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   const hourEntries = Object.entries(hours || {});
   return hourEntries.flatMap(([hourKey, tasksByCat]) => {
-    return CATEGORIES.flatMap((cat) => {
+    return cats.flatMap((cat) => {
       return (tasksByCat[cat] || []).map(task => ({
         ...task,
         hour: hourKey,
@@ -317,21 +345,22 @@ function allTasksInDay(hours) {
   });
 }
 
-function hourIsComplete(tasksByCat) {
-  const tasks = CATEGORIES.flatMap((c) => tasksByCat?.[c] || []);
+function hourIsComplete(tasksByCat, categories = DEFAULT_CATEGORIES) {
+  const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
+  const tasks = cats.flatMap((c) => tasksByCat?.[c] || []);
   if (tasks.length === 0) return false;
   return tasks.every((t) => t.done);
 }
 
-function dayProgress(hours) {
-  const tasks = allTasksInDay(hours);
+function dayProgress(hours, categories = DEFAULT_CATEGORIES) {
+  const tasks = allTasksInDay(hours, categories);
   const total = tasks.length;
   const done = tasks.filter((t) => t.done).length;
   return { total, done, pct: total === 0 ? 0 : Math.round((done / total) * 100) };
 }
 
-function dayIsStarred(hours) {
-  const { total, done } = dayProgress(hours);
+function dayIsStarred(hours, categories = DEFAULT_CATEGORIES) {
+  const { total, done } = dayProgress(hours, categories);
   return total > 0 && done === total;
 }
 
@@ -519,13 +548,7 @@ function analyzePatterns() {
 
 /** ====== UI Components ====== **/
 function Pill({ label }) {
-  const cls =
-    label === "RHEA"
-      ? "pill pill-rhea"
-      : label === "EPC"
-      ? "pill pill-epc"
-      : "pill pill-personal";
-  return <span className={cls}>{label}</span>;
+  return <span className="pill pill-personal">{label}</span>;
 }
 
 function TabButton({ active, children, onClick }) {
@@ -556,12 +579,13 @@ function ProgressSegments({ total, done }) {
 }
 
 // Ultra-minimal hour card with Do/Plan mode
-function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onChangeTaskTime, onOpenDropdown, taskDropdown, editingTaskTime, editTaskTimeValue, setEditTaskTimeValue, setEditingTaskTime, onEditTimeSave, onEditTimeCancel, expandedTaskKey, onExpandTask, mode = "do" }) {
-  const complete = hourIsComplete(tasksByCat);
+function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onChangeTaskTime, onOpenDropdown, taskDropdown, editingTaskTime, editTaskTimeValue, setEditTaskTimeValue, setEditingTaskTime, onEditTimeSave, onEditTimeCancel, expandedTaskKey, onExpandTask, mode = "do" }) {
+  const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
+  const complete = hourIsComplete(tasksByCat, cats);
   const [open, setOpen] = useState(true);
 
   const allTasks = useMemo(() => {
-    return CATEGORIES.flatMap((cat) => 
+    return cats.flatMap((cat) =>
       (tasksByCat?.[cat] || []).map(t => ({ ...t, category: cat }))
     ).sort((a, b) => {
       // Sort by energy level: Heavy first, then Medium, then Light
@@ -570,7 +594,7 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
       const bEnergy = order[b.energyLevel] ?? 1;
       return aEnergy - bEnergy;
     });
-  }, [tasksByCat]);
+  }, [tasksByCat, cats]);
 
   const totals = useMemo(() => {
     const total = allTasks.length;
@@ -618,7 +642,7 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
                     <input type="checkbox" checked={!!t.done} onChange={() => onToggleTask(hourKey, t.category, t.id)} />
                     <span className="checkmark" />
                     <span className={`item-text ${t.done ? 'item-text-done' : ''}`}>
-                      {mode === "plan" ? <Pill label={t.category} /> : null}
+                      {null}
                       {mode === "plan" && (
                         <span className="energy-badge" style={{ 
                           marginLeft: '8px',
@@ -706,7 +730,6 @@ function HourCard({ hourKey, tasksByCat, onToggleTask, onToggleEnergyLevel, onDe
                 {expanded && (
                   <div className="item-detail" onClick={(e) => e.stopPropagation()}>
                     <div className="item-detail-row">
-                      <Pill label={t.category} />
                       <span className="item-detail-time">{to12Hour(hourKey)}</span>
                       {mode === "plan" && (
                         <span className="energy-badge" style={{ fontSize: '12px', color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color }}>
@@ -777,7 +800,7 @@ function BedtimeRoutine({ routine, onToggle, allTasksDone }) {
   );
 }
 
-function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, onNextMonth }) {
+function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, onNextMonth, categories = DEFAULT_CATEGORIES }) {
   const dayKeys = getDayKeysInMonth(year, month);
   const firstWeekday = getFirstWeekday(year, month);
   const padding = Array(firstWeekday).fill(null);
@@ -809,7 +832,7 @@ function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, on
         ))}
         {dayKeys.map((dayKey) => {
           const dayData = days[dayKey];
-          const tasks = dayData ? allTasksInDay(dayData.hours) : [];
+          const tasks = dayData ? allTasksInDay(dayData.hours, categories) : [];
           const total = tasks.length;
           const done = tasks.filter((t) => t.done).length;
           const isToday = dayKey === todayKey(new Date());
@@ -854,8 +877,12 @@ export default function App() {
     return { year: d.getFullYear(), month: d.getMonth() };
   });
 
+  const [customCategories, setCustomCategories] = useState(() => getStoredCategories() || DEFAULT_CATEGORIES);
+
   const [appState, setAppState] = useState(() => {
+    const cats = getStoredCategories() || DEFAULT_CATEGORIES;
     const saved = loadState();
+    const migrated = migrateState(saved, cats);
     const routineTemplate = (() => {
       try {
         const raw = localStorage.getItem(ROUTINE_TEMPLATE_KEY);
@@ -864,16 +891,16 @@ export default function App() {
     })();
     const template = routineTemplate && routineTemplate.length ? routineTemplate : BEDTIME_ROUTINE;
     const todayK = todayKey();
-    if (saved) {
-      const dayKey = saved.bedtimeRoutineDayKey;
+    if (migrated) {
+      const dayKey = migrated.bedtimeRoutineDayKey;
       if (dayKey !== todayK) {
         return {
-          ...saved,
+          ...migrated,
           bedtimeRoutineDayKey: todayK,
           bedtimeRoutine: template.map((r) => ({ ...r, done: false })),
         };
       }
-      return { ...saved, bedtimeRoutine: saved.bedtimeRoutine || template.map((r) => ({ ...r, done: false })), bedtimeRoutineDayKey: saved.bedtimeRoutineDayKey || todayK };
+      return { ...migrated, bedtimeRoutine: migrated.bedtimeRoutine || template.map((r) => ({ ...r, done: false })), bedtimeRoutineDayKey: migrated.bedtimeRoutineDayKey || todayK };
     }
     return {
       days: {},
@@ -883,6 +910,12 @@ export default function App() {
       notes: [],
     };
   });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(customCategories));
+    } catch (_) {}
+  }, [customCategories]);
 
   // Profile (name, birthday) — persisted
   const [profile, setProfile] = useState(() => {
@@ -1013,6 +1046,7 @@ export default function App() {
   const [newSubAmount, setNewSubAmount] = useState("");
   const [newSubCycle, setNewSubCycle] = useState("monthly");
   const [showSettings, setShowSettings] = useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
   const [completionCelebration, setCompletionCelebration] = useState(null);
   const [toastNotification, setToastNotification] = useState(null);
   const [taskFeeling, setTaskFeeling] = useState(null);
@@ -1135,7 +1169,7 @@ export default function App() {
   useEffect(() => {
     if (!isSameDayKey(tKey, realTodayKey)) return;
     
-    const allTasks = allTasksInDay(todayHours);
+    const allTasks = allTasksInDay(todayHours, customCategories);
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
@@ -1227,7 +1261,7 @@ export default function App() {
       if (Date.now() < snoozeUntil) return;
       const now = new Date();
       const nowM = now.getHours() * 60 + now.getMinutes();
-      const tasks = allTasksInDay(todayHours);
+      const tasks = allTasksInDay(todayHours, customCategories);
       const withHour = tasks.filter((t) => !t.done).map((t) => ({ ...t, startM: (() => { const [h, m] = t.hour.split(":").map(Number); return h * 60 + m; })() }));
       const sorted = [...withHour].sort((a, b) => a.startM - b.startM);
       for (let i = 0; i < sorted.length; i++) {
@@ -1249,10 +1283,10 @@ export default function App() {
     run();
     const interval = setInterval(run, 20000);
     return () => clearInterval(interval);
-  }, [tab, tKey, realTodayKey, todayHours]);
+  }, [tab, tKey, realTodayKey, todayHours, customCategories]);
 
-  const prog = useMemo(() => dayProgress(todayHours), [todayHours]);
-  const starred = useMemo(() => dayIsStarred(todayHours), [todayHours]);
+  const prog = useMemo(() => dayProgress(todayHours, customCategories), [todayHours, customCategories]);
+  const starred = useMemo(() => dayIsStarred(todayHours, customCategories), [todayHours, customCategories]);
   const patternInsights = useMemo(() => analyzePatterns(), [prog.done, prog.total, appState.bedtimeRoutine]);
 
   const [starPulse, setStarPulse] = useState(false);
@@ -1306,7 +1340,7 @@ export default function App() {
       const hours = day.hours || {};
       if (hours[hourKey]) return prev;
 
-      const empty = { RHEA: [], EPC: [], Personal: [] };
+      const empty = emptySlot(customCategories);
       return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours: { ...hours, [hourKey]: empty } } } };
     });
   }
@@ -1315,7 +1349,7 @@ export default function App() {
     setAppState((prev) => {
       const day = prev.days[tKey] || { hours: {} };
       const hours = { ...(day.hours || {}) };
-      const byCat = hours[hourKey] || { RHEA: [], EPC: [], Personal: [] };
+      const byCat = hours[hourKey] || emptySlot(customCategories);
 
       const nextTask = { 
         id: uid(), 
@@ -1397,10 +1431,10 @@ export default function App() {
             trackTaskCompletion(t, category, hourKey, tKey, t.feeling);
             
             // Count completed tasks today (before this one is marked done)
-            const currentlyDone = allTasksInDay(todayHours).filter(task => task.done && task.id !== taskId).length;
+            const currentlyDone = allTasksInDay(todayHours, customCategories).filter(task => task.done && task.id !== taskId).length;
             const completedToday = currentlyDone + 1; // +1 for this task
             const energyLevel = t.energyLevel || "MEDIUM";
-            const allTasksList = allTasksInDay(todayHours);
+            const allTasksList = allTasksInDay(todayHours, customCategories);
             const emotionalState = inferEmotionalState(allTasksList, getTimeOfDay());
             
             // Generate contextual completion message using Gentle Anchor
@@ -1628,7 +1662,7 @@ export default function App() {
     const list = (byCat[category] || []).filter((t) => t.id !== taskId);
     hours[hourKey] = { ...byCat, [category]: list };
 
-    const nextByCat = hours[newHourKey] || { RHEA: [], EPC: [], Personal: [] };
+    const nextByCat = hours[newHourKey] || emptySlot(customCategories);
     const nextList = [...(nextByCat[category] || []), { ...task, hour: newHourKey }];
     hours[newHourKey] = { ...nextByCat, [category]: nextList };
 
@@ -1649,7 +1683,12 @@ export default function App() {
 
   const [newHour, setNewHour] = useState("09:00");
   const [pastRepeatAddHour, setPastRepeatAddHour] = useState("09:00");
-  const [quickCat, setQuickCat] = useState("Personal");
+  const [quickCat, setQuickCat] = useState(() => customCategories[0] || "Work");
+  useEffect(() => {
+    if (customCategories.length && !customCategories.includes(quickCat)) {
+      setQuickCat(customCategories[0]);
+    }
+  }, [customCategories, quickCat]);
   const [quickText, setQuickText] = useState("");
   const [quickRepeat, setQuickRepeat] = useState(REPEAT_OPTIONS.NONE);
   const [showPastRepeats, setShowPastRepeats] = useState(false);
@@ -1664,7 +1703,7 @@ export default function App() {
 
   function quickAddFromNL(e) {
     e.preventDefault();
-    const parsed = parseQuickAddNL(quickAddValue);
+    const parsed = parseQuickAddNL(quickAddValue, customCategories);
     if (!parsed || !parsed.text) return;
     ensureHour(parsed.hour);
     addTask(parsed.hour, parsed.category, parsed.text);
@@ -1739,7 +1778,7 @@ export default function App() {
     setCoachLoading(true);
 
     try {
-      const allTasks = allTasksInDay(todayHours);
+      const allTasks = allTasksInDay(todayHours, customCategories);
       const timeOfDay = getTimeOfDay();
       const emotionalState = inferEmotionalState(allTasks, timeOfDay);
       const completedToday = allTasks.filter(t => t.done).length;
@@ -1761,7 +1800,7 @@ export default function App() {
         today: todayHours,
         monthly: appState.monthly || [],
         notes: notes || [],
-        categories: CATEGORIES,
+        categories: customCategories,
         timeOfDay,
         emotionalState,
         completedToday,
@@ -1825,7 +1864,7 @@ export default function App() {
         suggestions: (data?.suggestions || []).map((x) => ({
           id: x.id || uid(),
           hour: x.hour || "09:00",
-          category: x.category || "Personal",
+          category: customCategories.includes(x.category) ? x.category : (customCategories[0] || "Work"),
           text: x.text || "",
         })),
         ignoredMonthlies: (data?.ignoredMonthlies || []).map((x) => ({
@@ -1847,7 +1886,7 @@ export default function App() {
       setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
     } catch (err) {
       // Fallback to local responses
-      const allTasks = allTasksInDay(todayHours);
+      const allTasks = allTasksInDay(todayHours, customCategories);
       const emotionalState = inferEmotionalState(allTasks, getTimeOfDay());
       const completedToday = allTasks.filter(t => t.done).length;
       const localResponse = generateLocalGentleResponse(emotionalState, prog, completedToday, allTasks.length);
@@ -1902,7 +1941,7 @@ export default function App() {
 
   function acceptCoachSuggestion(s) {
     const hour = s?.hour || "09:00";
-    const cat = CATEGORIES.includes(s?.category) ? s.category : "Personal";
+    const cat = customCategories.includes(s?.category) ? s.category : (customCategories[0] || "Work");
     const text = normalizeText(s?.text);
     if (!text) return;
     ensureHour(hour);
@@ -1915,7 +1954,7 @@ export default function App() {
     setCoachLoading(true);
     setCoachStructuredResult(null);
     try {
-      const allTasks = allTasksInDay(todayHours);
+      const allTasks = allTasksInDay(todayHours, customCategories);
       const tasksForApi = allTasks.map((t) => ({ id: t.id, text: t.text, hour: t.hour, category: t.category, done: t.done }));
       const payload = {
         dayKey: tKey,
@@ -1971,7 +2010,7 @@ export default function App() {
       if (clearResult) setCoachStructuredResult(null);
       return;
     }
-    const dayTasks = allTasksInDay(todayHours);
+    const dayTasks = allTasksInDay(todayHours, customCategories);
     actions.forEach((action) => {
       if (action.type === "TIMEBOX" && action.taskId && action.start != null) {
         const task = dayTasks.find((t) => t.id === action.taskId);
@@ -1984,11 +2023,11 @@ export default function App() {
             const hours = {};
             Object.entries(day.hours || {}).forEach(([hk, byCat]) => {
               hours[hk] = {};
-              CATEGORIES.forEach((cat) => {
+              customCategories.forEach((cat) => {
                 hours[hk][cat] = (byCat[cat] || []).filter((t) => t.id !== action.taskId);
               });
             });
-            if (!hours[hourKey]) hours[hourKey] = { RHEA: [], EPC: [], Personal: [] };
+            if (!hours[hourKey]) hours[hourKey] = emptySlot(customCategories);
             hours[hourKey][task.category] = [...(hours[hourKey][task.category] || []), { ...task, hour: hourKey }];
             return { ...prev, days: { ...prev.days, [tKey]: { ...day, hours } } };
           });
@@ -2004,13 +2043,13 @@ export default function App() {
             const ids = new Set(action.taskIds);
             Object.entries(day.hours || {}).forEach(([hk, byCat]) => {
               hours[hk] = {};
-              CATEGORIES.forEach((cat) => {
+              customCategories.forEach((cat) => {
                 hours[hk][cat] = (byCat[cat] || []).filter((t) => !ids.has(t.id));
               });
             });
             tasks.forEach((t) => {
               const h = t.hour;
-              if (!hours[h]) hours[h] = { RHEA: [], EPC: [], Personal: [] };
+              if (!hours[h]) hours[h] = emptySlot(customCategories);
               hours[h][t.category] = [...(hours[h][t.category] || []), { ...t }];
             });
             return { ...prev, days: { ...prev.days, [tKey]: { ...day, hours } } };
@@ -2049,7 +2088,7 @@ export default function App() {
 
   // List view - all incomplete tasks for today
   const incompleteTasks = useMemo(() => {
-    return allTasksInDay(todayHours).filter(t => !t.done).sort((a, b) => {
+    return allTasksInDay(todayHours, customCategories).filter(t => !t.done).sort((a, b) => {
       // Sort by energy level: Heavy first
       const order = { HEAVY: 0, MEDIUM: 1, LIGHT: 2 };
       const aEnergy = order[a.energyLevel] ?? 1;
@@ -2264,7 +2303,7 @@ export default function App() {
                 type="text"
                 value={quickAddValue}
                 onChange={(e) => setQuickAddValue(e.target.value)}
-                placeholder="Add a task… e.g. Call Martin 11am, EPC 3pm"
+                placeholder="Add a task… e.g. Call Martin 11am, Work 3pm"
                 aria-label="Quick add task"
               />
               <button type="submit" className="btn-primary" disabled={!quickAddValue.trim()} aria-label="Add task">
@@ -2286,7 +2325,7 @@ export default function App() {
                     {next ? (
                       <>
                         <div className="next-up-task">{next.text}</div>
-                        <div className="next-up-meta">{to12Hour(next.hour)} · {next.category}</div>
+                        <div className="next-up-meta">{to12Hour(next.hour)}</div>
                       </>
                     ) : (
                       <div className="next-up-task next-up-task-muted">Pick one small win</div>
@@ -2346,7 +2385,7 @@ export default function App() {
                   <div className="quick-row">
                     <label className="label">Category</label>
                     <select className="input" value={quickCat} onChange={(e) => setQuickCat(e.target.value)}>
-                      {CATEGORIES.map((c) => (
+                      {customCategories.map((c) => (
                         <option key={c} value={c}>
                           {c}
                         </option>
@@ -2479,6 +2518,7 @@ export default function App() {
                         <HourCard
                           hourKey={hourKey}
                           tasksByCat={todayHours[hourKey]}
+                          categories={customCategories}
                           onToggleTask={toggleTask}
                           onToggleEnergyLevel={toggleEnergyLevel}
                           onDeleteTask={deleteTask}
@@ -3290,6 +3330,7 @@ export default function App() {
                   days={appState.days || {}}
                   year={monthCalendarMonth.year}
                   month={monthCalendarMonth.month}
+                  categories={customCategories}
                   onSelectDay={(dayKey) => {
                     setSelectedDayKey(dayKey);
                     setShowMonthCalendar(false);
@@ -3370,6 +3411,63 @@ export default function App() {
                 >
                   Add step
                 </button>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Task types</label>
+                <p className="settings-hint">Types for organizing tasks (e.g. Work, Personal). Quick add and tasks use these.</p>
+                <ul className="routine-template-list">
+                  {customCategories.map((cat, idx) => (
+                    <li key={cat} className="routine-template-item">
+                      <span className="routine-template-input" style={{ flex: 1 }}>{cat}</span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm routine-template-remove"
+                        onClick={() => {
+                          if (customCategories.length <= 1) return;
+                          setCustomCategories((prev) => prev.filter((c) => c !== cat));
+                        }}
+                        disabled={customCategories.length <= 1}
+                        aria-label={`Remove type ${cat}`}
+                      >
+                        <TrashIcon style={{ width: 14, height: 14 }} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="settings-add-type">
+                  <input
+                    className="input modal-input"
+                    type="text"
+                    value={newTypeName}
+                    onChange={(e) => setNewTypeName(e.target.value)}
+                    placeholder="New type name"
+                    aria-label="New task type"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const name = (newTypeName || "").trim();
+                        if (name && !customCategories.includes(name)) {
+                          setCustomCategories((prev) => [...prev, name]);
+                          setNewTypeName("");
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => {
+                      const name = (newTypeName || "").trim();
+                      if (name && !customCategories.includes(name)) {
+                        setCustomCategories((prev) => [...prev, name]);
+                        setNewTypeName("");
+                      }
+                    }}
+                  >
+                    Add type
+                  </button>
+                </div>
               </div>
 
               <div className="settings-section">
