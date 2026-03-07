@@ -46,6 +46,12 @@ if (!rootElement) {
       <StrictMode>
         <ErrorBoundary>
           <div className="app-bg">
+            <img
+              src="/app-background__gradient.svg"
+              alt=""
+              className="app-bg-texture"
+              aria-hidden
+            />
             <App />
           </div>
         </ErrorBoundary>

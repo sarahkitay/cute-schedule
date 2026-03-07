@@ -208,6 +208,26 @@ class NotificationService {
       return null;
     }
   }
+
+  /** Sync reminders to server so cron can send push when app is closed. */
+  async syncRemindersToServer(reminders) {
+    if (!Array.isArray(reminders) || reminders.length === 0) return false;
+    if (!("serviceWorker" in navigator)) return false;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) return false;
+      const res = await fetch("/api/push/reminders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subscription: sub, reminders }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn("Sync reminders failed", e);
+      return false;
+    }
+  }
 }
 
 const _notificationService = new NotificationService();
@@ -235,5 +255,8 @@ export const notificationService = {
   },
   scheduleTaskTransition(currentTask, nextTask, hour, category) {
     return _notificationService.scheduleTaskTransition(currentTask, nextTask, hour, category);
+  },
+  syncRemindersToServer(reminders) {
+    return _notificationService.syncRemindersToServer(reminders);
   },
 };

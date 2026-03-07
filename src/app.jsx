@@ -29,6 +29,8 @@ const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
 const FINANCE_STORAGE_KEY = "cute_schedule_finance_v1";
 const PROFILE_STORAGE_KEY = "cute_schedule_profile_v1";
 const ROUTINE_TEMPLATE_KEY = "cute_schedule_routine_template_v1";
+const ROUTINE_MORNING_TEMPLATE_KEY = "cute_schedule_routine_morning_v1";
+const ROUTINE_SCHEDULE_KEY = "cute_schedule_routine_schedule_v1"; // { morning: 'every' | [0..6], night: 'every' | [0..6] }
 
 const ENERGY_LEVELS = {
   LIGHT: { icon: LightEnergyIcon, label: "Light", color: "#90EE90" },
@@ -154,6 +156,18 @@ const BEDTIME_ROUTINE = [
   { id: "chill", text: "Read or draw in bed" },
 ];
 
+const MORNING_ROUTINE = [
+  { id: "wake", text: "Wake up & stretch" },
+  { id: "water", text: "Drink water" },
+  { id: "breakfast", text: "Eat breakfast" },
+];
+
+/** dayOfWeek 0=Sun..6=Sat; schedule is 'every' or array of 0-6 */
+function routineAppliesToday(schedule, dayOfWeek) {
+  if (!schedule || schedule === "every") return true;
+  return Array.isArray(schedule) && schedule.includes(dayOfWeek);
+}
+
 
 /** ====== Helpers ====== **/
 function pad2(n) {
@@ -200,11 +214,13 @@ function loadState() {
   }
 }
 
-/** Migrate old RHEA/EPC/Personal to custom categories (Work, Personal by default) */
+/** Migrate old RHEA/EPC/Personal to custom categories (Work, Personal by default). Preserves all days. */
 function migrateState(saved, categories) {
-  if (!saved || !saved.days || !categories || categories.length === 0) return saved;
+  if (!saved) return saved;
+  const daysSource = saved.days && typeof saved.days === "object" ? saved.days : {};
+  if (!categories || categories.length === 0) return { ...saved, days: daysSource };
   const newDays = {};
-  Object.entries(saved.days).forEach(([dayKey, day]) => {
+  Object.entries(daysSource).forEach(([dayKey, day]) => {
     const hours = day.hours || {};
     const newHours = {};
     Object.entries(hours).forEach(([hourKey, byCat]) => {
@@ -221,7 +237,7 @@ function migrateState(saved, categories) {
     });
     newDays[dayKey] = { ...day, hours: newHours };
   });
-  return { ...saved, days: newDays };
+  return { ...saved, days: Object.keys(newDays).length ? newDays : daysSource };
 }
 
 function emptySlot(categories) {
@@ -385,7 +401,7 @@ function dayIsStarred(hours, categories = DEFAULT_CATEGORIES) {
 }
 
 function getProgressCopy(pct) {
-  if (pct === 0) return "Pick one small win";
+  if (pct === 0) return "Add one task to get started";
   if (pct >= 100) return "You showed up today";
   if (pct >= 1 && pct <= 40) return "Momentum started";
   if (pct >= 41 && pct <= 80) return "You're on a roll";
@@ -799,6 +815,37 @@ function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onTogg
   );
 }
 
+function MorningRoutine({ routine, onToggle }) {
+  const allDone = (routine || []).length > 0 && (routine || []).every((r) => r.done);
+  return (
+    <div className="bedtime morning-routine">
+      <div className="bedtime-header">
+        <h3 className="bedtime-title">
+          <SparkleIcon style={{ display: "inline-block", marginRight: "8px", verticalAlign: "middle" }} />
+          Morning routine
+        </h3>
+        <p className="bedtime-subtitle">Start your day</p>
+      </div>
+      <ul className="bedtime-list">
+        {(routine || []).map((item) => (
+          <li key={item.id} className={item.done ? "bedtime-item bedtime-done" : "bedtime-item"}>
+            <label className="check">
+              <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} />
+              <span className="checkmark" />
+              <span className={`item-text ${item.done ? "item-text-done" : ""}`}>{item.text}</span>
+            </label>
+          </li>
+        ))}
+      </ul>
+      {allDone && (
+        <div className="bedtime-message">
+          <p className="bedtime-congrats">Good start to your day.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function BedtimeRoutine({ routine, onToggle, allTasksDone }) {
   const allDone = (routine || []).every((r) => r.done);
   const timeOfDay = getTimeOfDay();
@@ -983,6 +1030,33 @@ export default function App() {
     return BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
   });
 
+  // Morning routine template (persisted)
+  const [morningRoutineTemplate, setMorningRoutineTemplate] = useState(() => {
+    try {
+      const raw = localStorage.getItem(ROUTINE_MORNING_TEMPLATE_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        return Array.isArray(arr) && arr.length ? arr : MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+      }
+    } catch (_) {}
+    return MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+  });
+
+  // Which days morning/night routines apply: 'every' or [0,1,2,3,4,5,6] (0=Sun)
+  const [routineSchedule, setRoutineSchedule] = useState(() => {
+    try {
+      const raw = localStorage.getItem(ROUTINE_SCHEDULE_KEY);
+      if (raw) {
+        const o = JSON.parse(raw);
+        return {
+          morning: o.morning === "every" || (Array.isArray(o.morning) && o.morning.length) ? o.morning : "every",
+          night: o.night === "every" || (Array.isArray(o.night) && o.night.length) ? o.night : "every",
+        };
+      }
+    } catch (_) {}
+    return { morning: "every", night: "every" };
+  });
+
   // Theme state
   const [theme, setTheme] = useState(() => {
     try {
@@ -1060,6 +1134,26 @@ export default function App() {
     })();
   }, [finance.bills, realTodayKey]);
 
+  const SUBSCRIPTION_REMINDER_KEY = "cute_schedule_sub_reminder_date";
+  useEffect(() => {
+    const today = realTodayKey;
+    const dayOfMonth = parseInt(today.slice(8), 10);
+    const subsDue = (finance.subscriptions || []).filter((s) => s.dueDay != null && s.dueDay === dayOfMonth);
+    if (subsDue.length === 0) return;
+    const lastReminded = localStorage.getItem(SUBSCRIPTION_REMINDER_KEY);
+    if (lastReminded === today) return;
+    (async () => {
+      const ok = await notificationService.checkPermission();
+      if (ok) {
+        notificationService.showNotification(
+          "Payment due today",
+          { body: subsDue.map((s) => s.name + (s.amount ? ` ($${Number(s.amount).toFixed(2)})` : "")).join(", "), tag: "sub-due-" + today }
+        );
+        localStorage.setItem(SUBSCRIPTION_REMINDER_KEY, today);
+      }
+    })();
+  }, [finance.subscriptions, realTodayKey]);
+
   useEffect(() => {
     try {
       localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
@@ -1071,6 +1165,18 @@ export default function App() {
       localStorage.setItem(ROUTINE_TEMPLATE_KEY, JSON.stringify(routineTemplate));
     } catch (_) {}
   }, [routineTemplate]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ROUTINE_MORNING_TEMPLATE_KEY, JSON.stringify(morningRoutineTemplate));
+    } catch (_) {}
+  }, [morningRoutineTemplate]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ROUTINE_SCHEDULE_KEY, JSON.stringify(routineSchedule));
+    } catch (_) {}
+  }, [routineSchedule]);
 
   // Reset bedtime routine when day changes to today
   useEffect(() => {
@@ -1137,6 +1243,67 @@ export default function App() {
     [todayHours, tKey, finance.subscriptions, customCategories]
   );
 
+  // Morning routine for selected day: merge template with stored per-day completion
+  const effectiveMorningRoutine = useMemo(() => {
+    const template = morningRoutineTemplate.length ? morningRoutineTemplate : MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+    const stored = appState.days?.[tKey]?.morningRoutine || [];
+    return template.map((t) => {
+      const s = stored.find((r) => r.id === t.id);
+      return { ...t, done: s ? s.done : false };
+    });
+  }, [tKey, appState.days, morningRoutineTemplate]);
+
+  // Build reminder list for server push (so reminders fire when app is closed)
+  const pushRemindersList = useMemo(() => {
+    const list = [];
+    const today = realTodayKey;
+    const dayOfMonth = parseInt(today.slice(8), 10);
+
+    const eightAmToday = new Date();
+    eightAmToday.setHours(8, 0, 0, 0);
+
+    const billsDue = (finance.bills || []).filter((b) => b.dueDate === today);
+    if (billsDue.length > 0) {
+      list.push({
+        at: eightAmToday.toISOString(),
+        title: "Bill due today",
+        body: billsDue.map((b) => b.name + (b.amount ? ` ($${Number(b.amount).toFixed(2)})` : "")).join(", "),
+        tag: "bill-due-" + today,
+      });
+    }
+
+    const subsDue = (finance.subscriptions || []).filter((s) => s.dueDay != null && s.dueDay === dayOfMonth);
+    if (subsDue.length > 0) {
+      list.push({
+        at: eightAmToday.toISOString(),
+        title: "Payment due today",
+        body: subsDue.map((s) => s.name + (s.amount ? ` ($${Number(s.amount).toFixed(2)})` : "")).join(", "),
+        tag: "sub-due-" + today,
+      });
+    }
+
+    const now = Date.now();
+    const maxAt = now + 48 * 60 * 60 * 1000;
+    for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
+      const dayKey = dayOffset === 0 ? today : addDaysKey(today, 1);
+      const hours = appState.days?.[dayKey]?.hours || {};
+      const tasks = allTasksInDay(hours, customCategories).filter((t) => !t.done);
+      for (const t of tasks) {
+        const atDate = new Date(dayKey + "T" + t.hour + ":00");
+        const atTime = atDate.getTime();
+        if (atTime >= now && atTime <= maxAt) {
+          list.push({
+            at: atDate.toISOString(),
+            title: "When you're ready, here's what you planned.",
+            body: t.text + (t.category ? ` (${t.category})` : ""),
+            tag: "reminder-" + t.id,
+          });
+        }
+      }
+    }
+    return list;
+  }, [realTodayKey, finance.bills, finance.subscriptions, appState.days, customCategories]);
+
   // Coach meta for cooldown and auto-run
   const [coachMeta, setCoachMeta] = useState(() => {
     try {
@@ -1162,13 +1329,15 @@ export default function App() {
     localStorage.setItem(COACH_STORAGE_KEY, JSON.stringify(coachMeta));
   }, [coachMeta]);
 
-  // Only add a day when it's missing — never overwrite existing (keeps future-day tasks persisted)
+  // Only add a day when it's missing — never overwrite existing (keeps all days persisted)
   useEffect(() => {
     setAppState((prev) => {
-      if (prev.days != null && prev.days[tKey] != null) return prev;
-      return { ...prev, days: { ...prev.days, [tKey]: { hours: {} } } };
+      const existing = prev.days?.[tKey];
+      if (existing != null) return prev;
+      const morningInit = (morningRoutineTemplate.length ? morningRoutineTemplate : MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }))).map((r) => ({ ...r, done: false }));
+      return { ...prev, days: { ...prev.days, [tKey]: { hours: {}, morningRoutine: morningInit } } };
     });
-  }, [tKey]);
+  }, [tKey, morningRoutineTemplate]);
 
   useEffect(() => {
     saveState(appState);
@@ -1194,6 +1363,15 @@ export default function App() {
   useEffect(() => {
     notificationService.checkPermission();
   }, []);
+
+  // Sync reminders to server so cron can send push when app is closed
+  useEffect(() => {
+    if (pushRemindersList.length === 0) return;
+    const t = setTimeout(() => {
+      notificationService.syncRemindersToServer(pushRemindersList);
+    }, 2000);
+    return () => clearTimeout(t);
+  }, [pushRemindersList]);
 
   // Close dropdown when clicking outside (portal or trigger)
   useEffect(() => {
@@ -1829,6 +2007,14 @@ export default function App() {
     }));
   }
 
+  function toggleMorningRoutine(id) {
+    const nextRoutine = effectiveMorningRoutine.map((r) => (r.id === id ? { ...r, done: !r.done } : r));
+    setAppState((prev) => ({
+      ...prev,
+      days: { ...prev.days, [tKey]: { ...prev.days?.[tKey], hours: prev.days?.[tKey]?.hours || {}, morningRoutine: nextRoutine } },
+    }));
+  }
+
   // Notes functions
   const [newNote, setNewNote] = useState("");
   function addNote(e) {
@@ -1881,8 +2067,8 @@ export default function App() {
         prettyDate: new Date(tKey + "T00:00:00").toLocaleDateString(),
         progress: prog,
         today: todayHours,
-        monthly: appState.monthly || [],
-        notes: notes || [],
+        monthly: (appState.monthly || []).map((m) => ({ id: m.id, text: m.text, done: m.done })),
+        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text, createdAt: n.createdAt })),
         categories: customCategories,
         timeOfDay,
         emotionalState,
@@ -1896,8 +2082,11 @@ export default function App() {
           leastCompletedCategory: patterns.leastCompletedCategory,
           leastCompletedRate: patterns.leastCompletedRate,
           todayCompletions: patterns.todayCompletions,
-          totalCompletions: patterns.totalCompletions
+          totalCompletions: patterns.totalCompletions,
+          sleepCorrelation: patterns.sleepCorrelation || null,
         },
+        billsDueSoon: (finance.bills || []).filter((b) => b.dueDate && b.dueDate >= realTodayKey).slice(0, 10),
+        subscriptions: (finance.subscriptions || []).map((s) => ({ name: s.name, amount: s.amount, dueDay: s.dueDay })),
         finance: (() => {
           const now = new Date();
           const incomeThisMonth = (finance.incomeEntries || []).reduce((sum, e) => {
@@ -2381,188 +2570,11 @@ export default function App() {
               </button>
             </form>
 
-            {/* Next Up — featured card: icon badge, title, time + tags, gradient Prep CTA */}
-            {(() => {
-              const nextTasks = incompleteTasks.slice(0, 1);
-              const next = nextTasks[0];
-              return (
-                <div className="next-up-card surface-featured">
-                  <div className="next-up-card-inner">
-                    <div className="next-up-icon-badge">
-                      <CalendarIcon style={{ width: 18, height: 18 }} aria-hidden />
-                    </div>
-                    <div className="next-up-label">Next up</div>
-                    {next ? (
-                      <>
-                        <div className="next-up-task">{next.text}</div>
-                        <div className="next-up-meta">{to12Hour(next.hour)}</div>
-                      </>
-                    ) : (
-                      <div className="next-up-task next-up-task-muted">Pick one small win</div>
-                    )}
-                  </div>
-                  {next && (
-                    <button type="button" className="next-up-prep btn-primary" onClick={() => setFocusMode(true)}>
-                      Prep
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
-
-            <section className="panel panel-hero daily-progress-card surface-glass">
-              <div className="panel-top">
-                <div className="panel-title">
-                  <div className="panel-title-row">
-                    <span className="title">Daily Progress</span>
-                    <span className={starred ? (starPulse ? "star star-pulse" : "star") : "star star-dim"}>
-                      {starred ? <StarIcon filled style={{ display: 'inline-block' }} /> : <StarEmptyIcon style={{ display: 'inline-block' }} />}
-                    </span>
-                  </div>
-                  <div className="meta daily-progress-copy">
-                    {getProgressCopy(prog.pct)}
-                  </div>
-                </div>
-
-                <div className="panel-right">
-                  <div className="pct pct-large">{prog.pct}%</div>
-                </div>
-              </div>
-
-              <ProgressBar pct={prog.pct} />
-              <ProgressSegments total={prog.total} done={prog.done} />
-
-              {prog.pct === 0 && prog.total === 0 && (
-                <div className="daily-progress-empty">
-                  <p className="state-empty">No tasks yet. Add one to get started.</p>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary daily-progress-chip"
-                    onClick={() => document.querySelector(".quick-add-input")?.focus()}
-                  >
-                    Pick one small win
-                  </button>
-                </div>
-              )}
-
-              {mode === "plan" && (
-                <form className="quick" onSubmit={quickAdd}>
-                  <div className="quick-row">
-                    <label className="label">Hour</label>
-                    <input className="input" type="time" value={newHour} onChange={(e) => setNewHour(e.target.value)} />
-                  </div>
-
-                  <div className="quick-row">
-                    <label className="label">Category</label>
-                    <select className="input" value={quickCat} onChange={(e) => setQuickCat(e.target.value)}>
-                      {customCategories.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="quick-row quick-grow">
-                    <label className="label">Task</label>
-                    <input className="input" value={quickText} onChange={(e) => setQuickText(e.target.value)} placeholder="Add a task…" />
-                  </div>
-
-                  <div className="quick-row">
-                    <label className="label">Repeat</label>
-                    <select className="input" value={quickRepeat} onChange={(e) => setQuickRepeat(e.target.value)}>
-                      <option value={REPEAT_OPTIONS.NONE}>None</option>
-                      <option value={REPEAT_OPTIONS.DAILY}>Daily</option>
-                      <option value={REPEAT_OPTIONS.WEEKLY}>Weekly</option>
-                      <option value={REPEAT_OPTIONS.OPTIONAL}>Option to repeat</option>
-                    </select>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                    <button className="btn btn-primary" type="submit" style={{ flex: 1 }}>
-                      Add
-                    </button>
-                    <button 
-                      className="btn" 
-                      type="button"
-                      onClick={() => setShowPastRepeats(!showPastRepeats)}
-                      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                    >
-                      <RepeatIcon />
-                      Past tasks
-                    </button>
-                  </div>
-
-                  {showPastRepeats && (
-                    <div className="past-repeats-list" style={{ marginTop: '16px', padding: '16px', background: 'var(--surface-card)', borderRadius: '16px' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '12px', color: 'var(--soft-charcoal)' }}>
-                        Tasks you marked "Option to repeat"
-                      </div>
-                      <div className="quick-row" style={{ marginBottom: 12 }}>
-                        <label className="label">Add at time</label>
-                        <input
-                          type="time"
-                          className="input"
-                          value={pastRepeatAddHour}
-                          onChange={(e) => setPastRepeatAddHour(e.target.value)}
-                          aria-label="Time for added task"
-                        />
-                      </div>
-                      {getRepeatableTasks().length === 0 ? (
-                        <div style={{ fontSize: '13px', color: '#999', fontStyle: 'italic' }}>
-                          No repeatable tasks yet. Mark a task as "Option to repeat" to see it here.
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {getRepeatableTasks().map((task, idx) => (
-                            <div 
-                              key={idx}
-                              className="past-repeat-row"
-                              style={{ 
-                                padding: '12px', 
-                                background: 'white', 
-                                borderRadius: '12px',
-                                display: 'flex',
-                                justifyContent: 'space-between',
-                                alignItems: 'center',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s'
-                              }}
-                              onClick={() => {
-                                addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
-                                setShowPastRepeats(false);
-                              }}
-                              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-2px)'}
-                              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
-                            >
-                              <div>
-                                <div style={{ fontSize: '14px', fontWeight: '500' }}>{task.text}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--text-soft)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: 6 }}>
-                                  {task.category}
-                                  <BulletIcon style={{ width: 4, height: 4 }} />
-                                  {task.hour}
-                                </div>
-                              </div>
-                              <button
-                                className="btn"
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
-                                  setShowPastRepeats(false);
-                                }}
-                              >
-                                Add
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </form>
-              )}
-            </section>
+            {tab === "today" && routineAppliesToday(routineSchedule.morning, new Date(tKey + "T12:00:00").getDay()) && effectiveMorningRoutine.length > 0 && (
+              <section className="panel" style={{ marginBottom: 14 }}>
+                <MorningRoutine routine={effectiveMorningRoutine} onToggle={toggleMorningRoutine} />
+              </section>
+            )}
 
             <section className="timeline-wrap">
               {sortedHourKeys.length === 0 ? (
@@ -2611,6 +2623,127 @@ export default function App() {
                     </div>
                   ))}
                 </>
+              )}
+            </section>
+
+            {/* Next up + Daily progress — below this day's tasks */}
+            {(() => {
+              const nextTasks = incompleteTasks.slice(0, 1);
+              const next = nextTasks[0];
+              return (
+                <div className="next-up-card surface-featured">
+                  <div className="next-up-card-inner">
+                    <div className="next-up-icon-badge">
+                      <CalendarIcon style={{ width: 18, height: 18 }} aria-hidden />
+                    </div>
+                    <div className="next-up-label">Next up</div>
+                    {next ? (
+                      <>
+                        <div className="next-up-task">{next.text}</div>
+                        <div className="next-up-meta">{to12Hour(next.hour)}</div>
+                      </>
+                    ) : (
+                      <div className="next-up-task next-up-task-muted">Add a task to see your next up</div>
+                    )}
+                  </div>
+                  {next && (
+                    <button type="button" className="next-up-prep btn-primary" onClick={() => setFocusMode(true)}>
+                      Prep
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+
+            <section className="panel panel-hero daily-progress-card surface-glass">
+              <div className="panel-top">
+                <div className="panel-title">
+                  <div className="panel-title-row">
+                    <span className="title">Daily Progress</span>
+                    <span className={starred ? (starPulse ? "star star-pulse" : "star") : "star star-dim"}>
+                      {starred ? <StarIcon filled style={{ display: 'inline-block' }} /> : <StarEmptyIcon style={{ display: 'inline-block' }} />}
+                    </span>
+                  </div>
+                  <div className="meta daily-progress-copy">
+                    {getProgressCopy(prog.pct)}
+                  </div>
+                </div>
+                <div className="panel-right">
+                  <div className="pct pct-large">{prog.pct}%</div>
+                </div>
+              </div>
+              <ProgressBar pct={prog.pct} />
+              <ProgressSegments total={prog.total} done={prog.done} />
+              {prog.pct === 0 && prog.total === 0 && (
+                <div className="daily-progress-empty">
+                  <p className="state-empty">No tasks yet. Add one to get started.</p>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary daily-progress-chip"
+                    onClick={() => document.querySelector(".quick-add-input")?.focus()}
+                  >
+                    Pick one small win
+                  </button>
+                </div>
+              )}
+              {mode === "plan" && (
+                <form className="quick" onSubmit={quickAdd}>
+                  <div className="quick-row">
+                    <label className="label">Hour</label>
+                    <input className="input" type="time" value={newHour} onChange={(e) => setNewHour(e.target.value)} />
+                  </div>
+                  <div className="quick-row">
+                    <label className="label">Category</label>
+                    <select className="input" value={quickCat} onChange={(e) => setQuickCat(e.target.value)}>
+                      {customCategories.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="quick-row quick-grow">
+                    <label className="label">Task</label>
+                    <input className="input" value={quickText} onChange={(e) => setQuickText(e.target.value)} placeholder="Add a task…" />
+                  </div>
+                  <div className="quick-row">
+                    <label className="label">Repeat</label>
+                    <select className="input" value={quickRepeat} onChange={(e) => setQuickRepeat(e.target.value)}>
+                      <option value={REPEAT_OPTIONS.NONE}>None</option>
+                      <option value={REPEAT_OPTIONS.DAILY}>Daily</option>
+                      <option value={REPEAT_OPTIONS.WEEKLY}>Weekly</option>
+                      <option value={REPEAT_OPTIONS.OPTIONAL}>Option to repeat</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
+                    <button className="btn btn-primary" type="submit" style={{ flex: 1 }}>Add</button>
+                    <button type="button" className="btn" onClick={() => setShowPastRepeats(!showPastRepeats)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <RepeatIcon /> Past tasks
+                    </button>
+                  </div>
+                  {showPastRepeats && (
+                    <div className="past-repeats-list" style={{ marginTop: '16px', padding: '16px', background: 'var(--surface-card)', borderRadius: '16px' }}>
+                      <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '12px', color: 'var(--soft-charcoal)' }}>Tasks you marked "Option to repeat"</div>
+                      <div className="quick-row" style={{ marginBottom: 12 }}>
+                        <label className="label">Add at time</label>
+                        <input type="time" className="input" value={pastRepeatAddHour} onChange={(e) => setPastRepeatAddHour(e.target.value)} aria-label="Time for added task" />
+                      </div>
+                      {getRepeatableTasks().length === 0 ? (
+                        <div style={{ fontSize: '13px', color: '#999', fontStyle: 'italic' }}>No repeatable tasks yet. Mark a task as "Option to repeat" to see it here.</div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {getRepeatableTasks().map((task, idx) => (
+                            <div key={idx} className="past-repeat-row" style={{ padding: '12px', background: 'white', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => { addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id); setShowPastRepeats(false); }}>
+                              <div>
+                                <div style={{ fontSize: '14px', fontWeight: '500' }}>{task.text}</div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-soft)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: 6 }}>{task.category} <BulletIcon style={{ width: 4, height: 4 }} /> {task.hour}</div>
+                              </div>
+                              <button className="btn" type="button" onClick={(e) => { e.stopPropagation(); addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id); setShowPastRepeats(false); }}>Add</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </form>
               )}
             </section>
 
@@ -2668,7 +2801,7 @@ export default function App() {
               </section>
             )}
 
-            {starred && (
+            {starred && routineAppliesToday(routineSchedule.night, new Date(tKey + "T12:00:00").getDay()) && (
               <section className="panel" style={{ marginTop: 14 }}>
                 <BedtimeRoutine 
                   routine={appState.bedtimeRoutine} 
@@ -3498,6 +3631,55 @@ export default function App() {
               </div>
 
               <div className="settings-section">
+                <label className="label">Morning routine</label>
+                <p className="settings-hint">Steps that appear at the start of your day. Choose which days to show it.</p>
+                <ul className="routine-template-list">
+                  {morningRoutineTemplate.map((r, idx) => (
+                    <li key={r.id} className="routine-template-item">
+                      <input
+                        className="input routine-template-input"
+                        type="text"
+                        value={r.text}
+                        onChange={(e) => setMorningRoutineTemplate((prev) => prev.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
+                        aria-label={`Morning step ${idx + 1}`}
+                      />
+                      <button type="button" className="btn btn-ghost btn-sm routine-template-remove" onClick={() => setMorningRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))} aria-label="Remove step">
+                        <TrashIcon style={{ width: 14, height: 14 }} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button type="button" className="btn btn-sm" onClick={() => setMorningRoutineTemplate((prev) => [...prev, { id: `morning-${Date.now()}`, text: "New step" }])}>
+                  Add step
+                </button>
+                <p className="settings-hint" style={{ marginTop: 8 }}>Show on:</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                  <button type="button" className={`btn btn-sm ${routineSchedule.morning === "every" ? "btn-primary" : ""}`} onClick={() => setRoutineSchedule((s) => ({ ...s, morning: "every" }))}>
+                    Every day
+                  </button>
+                  {[0, 1, 2, 3, 4, 5, 6].map((d) => {
+                    const arr = Array.isArray(routineSchedule.morning) ? routineSchedule.morning : [];
+                    const on = routineSchedule.morning === "every" || arr.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`btn btn-sm ${on ? "btn-primary" : ""}`}
+                        onClick={() => setRoutineSchedule((s) => {
+                          const next = Array.isArray(s.morning) ? s.morning : (s.morning === "every" ? [0, 1, 2, 3, 4, 5, 6] : []);
+                          const has = next.includes(d);
+                          const nextArr = has ? next.filter((x) => x !== d) : [...next, d].sort((a, b) => a - b);
+                          return { ...s, morning: nextArr.length === 7 ? "every" : nextArr.length === 0 ? "every" : nextArr };
+                        })}
+                      >
+                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="settings-section">
                 <label className="label">Wind-down routine</label>
                 <p className="settings-hint">Edit the steps that appear in your nightly routine.</p>
                 <ul className="routine-template-list">
@@ -3528,6 +3710,31 @@ export default function App() {
                 >
                   Add step
                 </button>
+                <p className="settings-hint" style={{ marginTop: 8 }}>Show on:</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                  <button type="button" className={`btn btn-sm ${routineSchedule.night === "every" ? "btn-primary" : ""}`} onClick={() => setRoutineSchedule((s) => ({ ...s, night: "every" }))}>
+                    Every day
+                  </button>
+                  {[0, 1, 2, 3, 4, 5, 6].map((d) => {
+                    const arr = Array.isArray(routineSchedule.night) ? routineSchedule.night : [];
+                    const on = routineSchedule.night === "every" || arr.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`btn btn-sm ${on ? "btn-primary" : ""}`}
+                        onClick={() => setRoutineSchedule((s) => {
+                          const next = Array.isArray(s.night) ? s.night : (s.night === "every" ? [0, 1, 2, 3, 4, 5, 6] : []);
+                          const has = next.includes(d);
+                          const nextArr = has ? next.filter((x) => x !== d) : [...next, d].sort((a, b) => a - b);
+                          return { ...s, night: nextArr.length === 7 ? "every" : nextArr.length === 0 ? "every" : nextArr };
+                        })}
+                      >
+                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="settings-section">
@@ -3630,8 +3837,12 @@ export default function App() {
                   className="btn btn-primary"
                   onClick={async () => {
                     const ok = await notificationService.enablePush();
-                    if (ok) alert('Push enabled. You\'ll get PROYOU reminders.');
-                    else alert('Push failed. Add to Home Screen first (iOS), or check VAPID keys (Vercel).');
+                    if (ok) {
+                      await notificationService.syncRemindersToServer(pushRemindersList);
+                      alert('Push enabled. You\'ll get reminders even when the app is closed.');
+                    } else {
+                      alert('Push failed. Add to Home Screen first (iOS), or check VAPID keys (Vercel).');
+                    }
                   }}
                 >
                   Enable Push Notifications
