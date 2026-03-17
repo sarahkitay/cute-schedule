@@ -2619,7 +2619,6 @@ export default function App() {
               {sortedHourKeys.length === 0 ? (
                 <div className="empty-big">
                   <div className="empty-title">No hours yet.</div>
-                  <div className="empty-sub">Add a task above and your first hour card will appear.</div>
                 </div>
               ) : (
                 <>
@@ -2682,7 +2681,7 @@ export default function App() {
                         <div className="next-up-meta">{to12Hour(next.hour)}</div>
                       </>
                     ) : (
-                      <div className="next-up-task next-up-task-muted">Add a task to see your next up</div>
+                      <div className="next-up-task next-up-task-muted">no tasks yet</div>
                     )}
                   </div>
                   {next && (
@@ -2723,7 +2722,7 @@ export default function App() {
               <ProgressSegments total={prog.total} done={prog.done} />
               {prog.pct === 0 && prog.total === 0 && (
                 <div className="daily-progress-empty">
-                  <p className="state-empty">No tasks yet. Add one to get started.</p>
+                  <p className="state-empty">No tasks yet.</p>
                   <button
                     type="button"
                     className="btn btn-sm btn-primary daily-progress-chip"
@@ -3576,19 +3575,6 @@ export default function App() {
 
         </main>
         <aside className="shell-rail" aria-hidden="true" />
-
-        {/* Floating action — Add task (Today only) */}
-        {tab === "today" && (
-          <button
-            type="button"
-            className="fab fab-premium"
-            onClick={() => document.querySelector(".quick-add-input")?.focus()}
-            aria-label="Add task"
-            title="Add task"
-          >
-            Add
-          </button>
-        )}
 
         {taskDropdown && dropdownAnchorRect && ReactDOM.createPortal(
           (() => {

@@ -119,18 +119,17 @@
 .app-bg {
   position: relative;
   min-height: 100vh;
-  /* Flipped gradient (345deg) so prominent part is visible from top; stronger overlay */
   background: var(--theme-bg-gradient, linear-gradient(345deg, #F0E6E2 0%, #F5EDEB 40%, #FAF2F0 100%));
   background-image: linear-gradient(345deg, rgba(240,230,226,0.72) 0%, rgba(245,237,235,0.75) 40%, rgba(250,242,240,0.72) 100%), var(--moodboard-image, none);
   background-size: auto, cover;
   background-position: 0 0, center;
+  background-repeat: no-repeat;
   overflow: hidden;
 }
 .app-bg::before {
   content: "";
   position: absolute;
   inset: 0;
-  /* Glow at top (flipped): was 85% 5%, now prominent at top */
   background: radial-gradient(320px at 50% 0%, var(--theme-bg-glow, rgba(232, 180, 192, 0.35)), transparent 60%);
   filter: blur(50px);
   pointer-events: none;
@@ -146,12 +145,21 @@
 }
 @media (max-width: 414px) {
   .app-bg {
-    background-size: 140% 140%;
-    background-position: 50% 0%;
+    background-size: 100% 100%;
+    background-position: top center;
+    background-attachment: scroll;
   }
   .app-bg::before {
-    transform: scale(1.15);
-    transform-origin: 50% 0%;
+    opacity: 1;
+    background: radial-gradient(380px at 50% 0%, var(--theme-bg-glow, rgba(232, 180, 192, 0.5)), transparent 55%);
+    transform: none;
+  }
+  .app-bg::after {
+    background: radial-gradient(220px at 80% 5%, rgba(240, 230, 255, 0.3), transparent 50%);
+  }
+  /* More opaque overlay on mobile so gradient is visible */
+  .app-bg {
+    background-image: linear-gradient(345deg, rgba(240,230,226,0.55) 0%, rgba(245,237,235,0.6) 40%, rgba(250,242,240,0.55) 100%), var(--moodboard-image, none);
   }
 }
 .app-bg-texture {
@@ -187,9 +195,9 @@
   content: "";
   position: fixed;
   inset: 0;
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(1px);
-  -webkit-backdrop-filter: blur(1px);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
   pointer-events: none;
   z-index: 0;
 }
@@ -744,14 +752,16 @@
 }
 
 .modal {
-  background: var(--surface-solid);
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(28px) saturate(150%);
+  -webkit-backdrop-filter: blur(28px) saturate(150%);
   border-radius: var(--radius-2xl);
   padding: var(--spacing-lg);
   width: 100%;
   max-width: 400px;
-  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.12), 0 0 0 1px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.1), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
   animation: modalSlideUp 0.3s var(--ease-out-soft);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid rgba(255, 255, 255, 0.5);
 }
 .settings-modal {
   max-height: 85vh;
@@ -1576,9 +1586,11 @@ button {
 
 /* Old style: no colored block — plain header with PROYOU as text only */
 .top-plain {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
   box-shadow: none;
-  border-bottom: 1px solid var(--border-subtle);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.5);
 }
 /* Header: PROYOU, then weekday under it (no bubble), thin separator */
 .top-plain .top-left {
@@ -1822,12 +1834,12 @@ button {
 .quick-add-bar.input-group {
   padding: var(--space-2) var(--space-3);
   margin: 0 var(--space-3) var(--space-4);
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: var(--radius-btn);
-  background: rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(22px) saturate(140%);
+  -webkit-backdrop-filter: blur(22px) saturate(140%);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(255, 255, 255, 0.35) inset;
   align-items: center;
 }
 .quick-add-bar.input-group .quick-add-input,
@@ -1867,14 +1879,14 @@ button {
 }
 
 .next-up-card {
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
   border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: var(--radius-card);
   padding: var(--space-4);
   margin-bottom: var(--space-3);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 0 rgba(255, 255, 255, 0.4) inset;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -2178,24 +2190,25 @@ button {
   box-shadow: var(--focusRing);
 }
 
-.glass {
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(255, 255, 255, 0.6);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
-  border-radius: 0;
+.glass,
+.surface-glass {
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(255, 255, 255, 0.4) inset;
+  border-radius: var(--radius-card);
 }
 
 .panel {
-  background: rgba(255, 255, 255, 0.55);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.38);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
   border-radius: var(--radius-card);
   padding: var(--card-pad);
   margin: 0 0 var(--space-5);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+  border: 1px solid rgba(255, 255, 255, 0.45);
   transition: box-shadow var(--transition-base);
 }
 
@@ -2289,7 +2302,11 @@ button {
   padding: var(--space-3);
   text-align: center;
   border-radius: var(--radius-md);
-  background: rgba(255, 248, 245, 0.5);
+  background: rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.3) inset;
 }
 .daily-progress-empty .state-empty { margin: 0 0 var(--space-2); }
 .do-plan-subtle {
@@ -2730,10 +2747,12 @@ button {
 .empty-big {
   text-align: center;
   padding: var(--space-5);
-  background: rgba(255, 252, 250, 0.5);
-  backdrop-filter: blur(8px);
-  border: 1px dashed var(--border-subtle);
+  background: rgba(255, 255, 255, 0.32);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: var(--radius-card);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset;
 }
 
 .empty-title {
@@ -2830,15 +2849,15 @@ button {
 .capacity-card {
   position: relative;
   z-index: var(--z-base);
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  border-radius: 0;
+  background: rgba(255, 255, 255, 0.38);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-card);
   padding: var(--card-pad);
   margin: var(--space-2) 0 var(--space-4);
   margin-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06), 0 1px 0 rgba(255, 255, 255, 0.4) inset;
 }
 .capacity-card .panel-title {
   margin-bottom: var(--space-4);
@@ -3232,8 +3251,11 @@ button {
 .bottom-nav-item svg { width: 20px; height: 20px; }
 .bottom-nav-item.active svg { color: var(--theme-accent); }
 .bottom-nav.surface-dock {
-  background: rgba(255, 255, 255, 0.94);
-  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border-top: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.3) inset;
 }
 
 /* Do / Plan row above quick-add (no date controls) */
