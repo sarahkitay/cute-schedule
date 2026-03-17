@@ -16,6 +16,7 @@ import {
   getRandomQuote,
   GENTLE_ANCHOR_PROMPT
 } from "./gentleAnchor";
+import cloudStorage from "./cloudStorage";
 
 /** ====== Config ====== **/
 const DEFAULT_CATEGORIES = ["Work", "Personal"];
@@ -24,6 +25,8 @@ const STORAGE_KEY = "cute_schedule_v3";
 const COACH_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 const COACH_STORAGE_KEY = "cute_schedule_coach_meta_v1";
 const THEME_STORAGE_KEY = "cute_schedule_theme_v1";
+const MOODBOARD_STORAGE_KEY = "cute_schedule_moodboard_v1";
+const COACH_USER_PROFILE_KEY = "cute_schedule_coach_profile_v1";
 const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
 const FINANCE_STORAGE_KEY = "cute_schedule_finance_v1";
@@ -1042,7 +1045,7 @@ export default function App() {
     return MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
   });
 
-  // Which days morning/night routines apply: 'every' or [0,1,2,3,4,5,6] (0=Sun)
+  // Which days morning/night routines apply: 'every' or [0,1,2,3,4,5,6] (0=Sun). enabledMorning/enabledNight = optional add-ons.
   const [routineSchedule, setRoutineSchedule] = useState(() => {
     try {
       const raw = localStorage.getItem(ROUTINE_SCHEDULE_KEY);
@@ -1051,10 +1054,12 @@ export default function App() {
         return {
           morning: o.morning === "every" || (Array.isArray(o.morning) && o.morning.length) ? o.morning : "every",
           night: o.night === "every" || (Array.isArray(o.night) && o.night.length) ? o.night : "every",
+          enabledMorning: o.enabledMorning !== false,
+          enabledNight: o.enabledNight !== false,
         };
       }
     } catch (_) {}
-    return { morning: "every", night: "every" };
+    return { morning: "every", night: "every", enabledMorning: true, enabledNight: true };
   });
 
   // Theme state
@@ -1066,6 +1071,21 @@ export default function App() {
       return THEMES["Classic Pink"];
     }
   });
+
+  // Custom background / moodboard (image URL + text)
+  const [moodboard, setMoodboard] = useState(() => {
+    try {
+      const raw = localStorage.getItem(MOODBOARD_STORAGE_KEY);
+      const o = raw ? JSON.parse(raw) : {};
+      return { imageUrl: o.imageUrl || "", text: o.text || "" };
+    } catch {
+      return { imageUrl: "", text: "" };
+    }
+  });
+  useEffect(() => {
+    localStorage.setItem(MOODBOARD_STORAGE_KEY, JSON.stringify(moodboard));
+    document.documentElement.style.setProperty("--moodboard-image", moodboard.imageUrl ? `url(${moodboard.imageUrl})` : "none");
+  }, [moodboard]);
 
   // Notes state
   const [notes, setNotes] = useState(() => {
@@ -1321,6 +1341,15 @@ export default function App() {
   const [coachQuestion, setCoachQuestion] = useState("");
   const [coachConversation, setCoachConversation] = useState([]);
   const [coachMode, setCoachMode] = useState("plan"); // "plan" | "unstuck" | "review"
+  const [coachUserProfile, setCoachUserProfile] = useState(() => {
+    try {
+      const raw = localStorage.getItem(COACH_USER_PROFILE_KEY);
+      const o = raw ? JSON.parse(raw) : {};
+      return o.filled ? o : { biggestChallenge: "", bestEnergyTime: "", oneGoal: "", filled: false };
+    } catch {
+      return { biggestChallenge: "", bestEnergyTime: "", oneGoal: "", filled: false };
+    }
+  });
   const [coachStructuredResult, setCoachStructuredResult] = useState(null); // { summary, followUp, actions }
   const [sprintEndsAt, setSprintEndsAt] = useState(null); // timestamp; when set, 10-min sprint is active
   const [sprintTick, setSprintTick] = useState(0); // force re-render every second during sprint
@@ -1342,6 +1371,65 @@ export default function App() {
   useEffect(() => {
     saveState(appState);
   }, [appState]);
+
+  // Firestore: load once on mount, then debounced save when state changes
+  const [firestoreReady, setFirestoreReady] = useState(false);
+  const firestoreLoadAttemptedRef = useRef(false);
+  const firestoreSaveTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    if (firestoreLoadAttemptedRef.current) return;
+    firestoreLoadAttemptedRef.current = true;
+    cloudStorage.loadFullState().then((data) => {
+      if (data) {
+        if (data.appState != null) setAppState(data.appState);
+        if (data.notes != null) setNotes(data.notes);
+        if (data.finance != null) setFinance(data.finance);
+        if (data.profile != null) setProfile(data.profile);
+        if (data.theme != null) setTheme(data.theme);
+        if (data.routineTemplate != null) setRoutineTemplate(data.routineTemplate);
+        if (data.morningRoutineTemplate != null) setMorningRoutineTemplate(data.morningRoutineTemplate);
+        if (data.routineSchedule != null) setRoutineSchedule(data.routineSchedule);
+        if (data.coachMeta != null) setCoachMeta(data.coachMeta);
+        if (data.coachUserProfile != null) setCoachUserProfile(data.coachUserProfile);
+        if (data.moodboard != null) setMoodboard(data.moodboard);
+        if (data.customCategories != null && data.customCategories.length) setCustomCategories(data.customCategories);
+        if (data.patterns != null) {
+          try {
+            localStorage.setItem(PATTERNS_STORAGE_KEY, JSON.stringify(data.patterns));
+          } catch (_) {}
+        }
+      }
+      setFirestoreReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!firestoreReady) return;
+    const payload = {
+      appState,
+      notes,
+      finance,
+      profile,
+      theme,
+      routineTemplate,
+      morningRoutineTemplate,
+      routineSchedule,
+      coachMeta,
+      coachUserProfile,
+      moodboard,
+      customCategories,
+      patterns: loadPatterns(),
+    };
+    if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
+    firestoreSaveTimeoutRef.current = setTimeout(() => {
+      cloudStorage.saveFullState(payload);
+      firestoreSaveTimeoutRef.current = null;
+    }, 1500);
+    return () => {
+      if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
+    };
+  }, [firestoreReady, appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories]);
 
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(theme));
@@ -1986,6 +2074,8 @@ export default function App() {
   }
 
   const [monthlyText, setMonthlyText] = useState("");
+  const [editingMonthlyId, setEditingMonthlyId] = useState(null);
+  const [editingMonthlyText, setEditingMonthlyText] = useState("");
   function addMonthly(e) {
     e.preventDefault();
     const clean = normalizeText(monthlyText);
@@ -1998,6 +2088,13 @@ export default function App() {
   }
   function deleteMonthly(id) {
     setAppState((prev) => ({ ...prev, monthly: prev.monthly.filter((m) => m.id !== id) }));
+  }
+  function editMonthly(id, newText) {
+    const clean = (newText || "").trim();
+    if (!clean) return;
+    setAppState((prev) => ({ ...prev, monthly: prev.monthly.map((m) => (m.id === id ? { ...m, text: clean } : m)) }));
+    setEditingMonthlyId(null);
+    setEditingMonthlyText("");
   }
 
   function toggleBedtime(id) {
@@ -2017,6 +2114,8 @@ export default function App() {
 
   // Notes functions
   const [newNote, setNewNote] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editingNoteText, setEditingNoteText] = useState("");
   function addNote(e) {
     e.preventDefault();
     const clean = normalizeText(newNote);
@@ -2077,6 +2176,11 @@ export default function App() {
         energyBalance: checkEnergyBalance(todayHours),
         userQuestion: userQuestion || null,
         conversation: userQuestion ? coachConversation : [],
+        userProfile: coachUserProfile.filled ? {
+          biggestChallenge: coachUserProfile.biggestChallenge,
+          bestEnergyTime: coachUserProfile.bestEnergyTime,
+          oneGoal: coachUserProfile.oneGoal,
+        } : null,
         patterns: {
           bestTime: patterns.bestTime,
           leastCompletedCategory: patterns.leastCompletedCategory,
@@ -2372,6 +2476,11 @@ export default function App() {
 
   return (
     <div className="app">
+      {moodboard.text && (
+        <div className="moodboard-quote" aria-hidden="true">
+          {moodboard.text}
+        </div>
+      )}
       <div
         className="shell"
         data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (appState.days?.[tKey]?.dailyMood || "") : ""}
@@ -2410,13 +2519,13 @@ export default function App() {
             </div>
 
             <div className="top-actions">
-              {tab === "today" && (
+              {(tab === "today" || tab === "list") && (
                 <button
                   type="button"
                   className="btn-icon"
                   onClick={() => {
                     setShowMonthCalendar(true);
-                    setMonthCalendarMonth({ year: new Date().getFullYear(), month: new Date().getMonth() });
+                    setMonthCalendarMonth({ year: new Date(selectedDayKey + "T12:00:00").getFullYear(), month: new Date(selectedDayKey + "T12:00:00").getMonth() });
                   }}
                   title="Calendar"
                   aria-label="Open calendar"
@@ -2483,78 +2592,32 @@ export default function App() {
 
         <main className="shell-main">
 
-        {(tab === "today" || tab === "list") && (
-          <div className="date-controls date-control-group">
-            <div className="date-controls-top">
-              <button className="btn-icon" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, -1))} aria-label="Previous day">
-                <ChevronLeftIcon style={{ width: 20, height: 20 }} />
-              </button>
-
-              <div className="date-pill-wrap">
-                <input
-                  ref={dateInputRef}
-                  className="input date-input date-pill date-input-hidden"
-                  type="date"
-                  value={formatDateInput(selectedDayKey)}
-                  onChange={(e) => {
-                    const v = (e.target.value || "").trim();
-                    if (/^\d{4}-\d{2}-\d{2}$/.test(v)) setSelectedDayKey(v);
-                  }}
-                  aria-label="Selected date"
-                />
-                <button
-                  type="button"
-                  className="date-pill-label"
-                  onClick={() => dateInputRef.current?.click()}
-                  aria-label="Choose date"
-                >
-                  {formatWrittenDate(selectedDayKey)}
-                </button>
-              </div>
-
-              <button className="btn-icon" type="button" onClick={() => setSelectedDayKey((k) => addDaysKey(k, 1))} aria-label="Next day">
-                <ChevronRightIcon style={{ width: 20, height: 20 }} />
-              </button>
-            </div>
-
-            <div className="date-controls-bottom">
-              <button
-                className="btn"
-                type="button"
-                onClick={() => setSelectedDayKey(realTodayKey)}
-                disabled={isSameDayKey(selectedDayKey, realTodayKey)}
-              >
-                Today
-              </button>
-
-              {tab === "today" && (
-                <div className="segmented-control" role="tablist" aria-label="View mode">
-                  <button
-                    role="tab"
-                    aria-selected={mode === "do"}
-                    type="button"
-                    onClick={() => setMode("do")}
-                    title="Do mode: clean checkboxes"
-                  >
-                    Do
-                  </button>
-                  <button
-                    role="tab"
-                    aria-selected={mode === "plan"}
-                    type="button"
-                    onClick={() => setMode("plan")}
-                    title="Plan mode: edit and organize"
-                  >
-                    Plan
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {tab === "today" ? (
           <>
+            {tab === "today" && (
+              <div className="do-plan-row" role="tablist" aria-label="View mode">
+                <button
+                  role="tab"
+                  aria-selected={mode === "do"}
+                  type="button"
+                  className="segmented-control-btn"
+                  onClick={() => setMode("do")}
+                  title="Do mode: clean checkboxes"
+                >
+                  Do
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={mode === "plan"}
+                  type="button"
+                  className="segmented-control-btn"
+                  onClick={() => setMode("plan")}
+                  title="Plan mode: edit and organize"
+                >
+                  Plan
+                </button>
+              </div>
+            )}
             {/* Quick Add — input group with focus ring, CTA disabled until input */}
             <form className="input-group quick-add-bar" onSubmit={quickAddFromNL}>
               <input
@@ -2570,7 +2633,7 @@ export default function App() {
               </button>
             </form>
 
-            {tab === "today" && routineAppliesToday(routineSchedule.morning, new Date(tKey + "T12:00:00").getDay()) && effectiveMorningRoutine.length > 0 && (
+            {tab === "today" && routineSchedule.enabledMorning !== false && routineAppliesToday(routineSchedule.morning, new Date(tKey + "T12:00:00").getDay()) && effectiveMorningRoutine.length > 0 && (
               <section className="panel" style={{ marginBottom: 14 }}>
                 <MorningRoutine routine={effectiveMorningRoutine} onToggle={toggleMorningRoutine} />
               </section>
@@ -2682,7 +2745,7 @@ export default function App() {
                     className="btn btn-sm btn-primary daily-progress-chip"
                     onClick={() => document.querySelector(".quick-add-input")?.focus()}
                   >
-                    Pick one small win
+                    Add task
                   </button>
                 </div>
               )}
@@ -2801,7 +2864,7 @@ export default function App() {
               </section>
             )}
 
-            {starred && routineAppliesToday(routineSchedule.night, new Date(tKey + "T12:00:00").getDay()) && (
+            {starred && routineSchedule.enabledNight !== false && routineAppliesToday(routineSchedule.night, new Date(tKey + "T12:00:00").getDay()) && (
               <section className="panel" style={{ marginTop: 14 }}>
                 <BedtimeRoutine 
                   routine={appState.bedtimeRoutine} 
@@ -2840,13 +2903,16 @@ export default function App() {
                         setDropdownAnchorRect(e.currentTarget.getBoundingClientRect());
                       }}
                     >
-                      <span className="list-row-time">{to12Hour(t.hour)}</span>
-                      <label className="list-row-main check" onClick={(e) => e.stopPropagation()}>
-                        <input type="checkbox" checked={!!t.done} onChange={() => toggleTask(t.hour, t.category, t.id)} />
-                        <span className="checkmark" />
-                        <span className={`list-row-title ${t.done ? 'item-text-done' : ''}`}>{t.text}</span>
-                      </label>
-                      <div className="list-row-actions">
+                      <div className="list-row-top">
+                        <span className="list-row-time">{to12Hour(t.hour)}</span>
+                      </div>
+                      <div className="list-row-body">
+                        <label className="list-row-main check" onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={!!t.done} onChange={() => toggleTask(t.hour, t.category, t.id)} />
+                          <span className="checkmark" />
+                          <span className={`list-row-title ${t.done ? 'item-text-done' : ''}`}>{t.text}</span>
+                        </label>
+                        <div className="list-row-actions">
                         <button
                           type="button"
                           className="icon-btn list-row-action list-row-more"
@@ -2861,6 +2927,7 @@ export default function App() {
                         >
                           <MenuIcon style={{ width: 18, height: 18 }} />
                         </button>
+                        </div>
                       </div>
                     </li>
                   );
@@ -2887,15 +2954,31 @@ export default function App() {
               <ul className="list">
                 {appState.monthly.map((m) => (
                   <li key={m.id} className={m.done ? "item item-done" : "item"}>
-                    <label className="check">
-                      <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
-                      <span className="checkmark" />
-                      <span className="item-text">{m.text}</span>
-                    </label>
-
-                    <button type="button" className="icon-btn" title="Delete objective" onClick={() => deleteMonthly(m.id)}>
-                      <TrashIcon />
-                    </button>
+                    {editingMonthlyId === m.id ? (
+                      <div className="monthly-edit-row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+                        <input
+                          className="input"
+                          value={editingMonthlyId === m.id ? editingMonthlyText : m.text}
+                          onChange={(e) => setEditingMonthlyText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') editMonthly(m.id, editingMonthlyText); if (e.key === 'Escape') { setEditingMonthlyId(null); setEditingMonthlyText(''); } }}
+                          style={{ flex: 1, minWidth: 0 }}
+                          autoFocus
+                        />
+                        <button type="button" className="btn btn-sm btn-primary" onClick={() => editMonthly(m.id, editingMonthlyText)}>Save</button>
+                        <button type="button" className="btn btn-sm" onClick={() => { setEditingMonthlyId(null); setEditingMonthlyText(''); }}>Cancel</button>
+                      </div>
+                    ) : (
+                      <>
+                        <label className="check">
+                          <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
+                          <span className="checkmark" />
+                          <span className="item-text">{m.text}</span>
+                        </label>
+                        <button type="button" className="btn btn-sm" title="Edit objective" onClick={() => { setEditingMonthlyId(m.id); setEditingMonthlyText(m.text); }}>
+                          Edit
+                        </button>
+                      </>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -3062,7 +3145,25 @@ export default function App() {
               </div>
             )}
 
-            {!coachResult && !coachError && !coachLoading && coachConversation.length === 0 && (
+            {!coachUserProfile.filled && (
+              <div className="panel coach-profile-card" style={{ marginBottom: 24 }}>
+                <div className="panel-title"><span className="title">Get to know you</span></div>
+                <p className="settings-hint" style={{ marginBottom: 16 }}>Answer a few questions so your coach can give better, personalized advice over time.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <label className="label">What&apos;s your biggest challenge with planning or habits?</label>
+                  <input className="input" value={coachUserProfile.biggestChallenge} onChange={(e) => setCoachUserProfile(p => ({ ...p, biggestChallenge: e.target.value }))} placeholder="e.g. Overcommitting, starting late..." />
+                  <label className="label">When do you usually have the most energy?</label>
+                  <input className="input" value={coachUserProfile.bestEnergyTime} onChange={(e) => setCoachUserProfile(p => ({ ...p, bestEnergyTime: e.target.value }))} placeholder="e.g. Morning, after lunch..." />
+                  <label className="label">One goal you&apos;re working toward right now?</label>
+                  <input className="input" value={coachUserProfile.oneGoal} onChange={(e) => setCoachUserProfile(p => ({ ...p, oneGoal: e.target.value }))} placeholder="e.g. Ship the project, exercise 3x/week..." />
+                  <button type="button" className="btn btn-primary" onClick={() => { const next = { ...coachUserProfile, filled: true }; setCoachUserProfile(next); localStorage.setItem(COACH_USER_PROFILE_KEY, JSON.stringify(next)); }}>
+                    Save & continue
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {!coachResult && !coachError && !coachLoading && coachConversation.length === 0 && coachUserProfile.filled && (
               <div className="empty">
                 Type a question above, or click "General Check-in" for an overview.
                 <br /><br />
@@ -3452,19 +3553,36 @@ export default function App() {
                 {filteredNotes.map((note) => (
                   <li key={note.id} className="item">
                     <div className="note-content">
-                      <span className="item-text">{note.text}</span>
                       <span className="note-date">
                         {new Date(note.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                       </span>
+                      {editingNoteId === note.id ? (
+                        <div className="note-edit-row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <input
+                            className="input"
+                            value={editingNoteText}
+                            onChange={(e) => setEditingNoteText(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(''); } if (e.key === 'Escape') { setEditingNoteId(null); setEditingNoteText(''); } }}
+                            style={{ flex: 1, minWidth: 0 }}
+                            autoFocus
+                          />
+                          <button type="button" className="btn btn-sm btn-primary" onClick={() => { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(''); }}>Save</button>
+                          <button type="button" className="btn btn-sm" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
+                        </div>
+                      ) : (
+                        <span className="item-text">{note.text}</span>
+                      )}
                     </div>
-                    <button 
-                      type="button" 
-                      className="icon-btn" 
-                      title="Delete note" 
-                      onClick={() => deleteNote(note.id)}
-                    >
-                      <TrashIcon />
-                    </button>
+                    {editingNoteId !== note.id && (
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        title="Edit note"
+                        onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text); }}
+                      >
+                        Edit
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -3475,7 +3593,7 @@ export default function App() {
         </main>
         <aside className="shell-rail" aria-hidden="true" />
 
-        {/* Floating action — Add task (Today only): gradient, glow, pressed, subtle entrance */}
+        {/* Floating action — Add task (Today only) */}
         {tab === "today" && (
           <button
             type="button"
@@ -3484,7 +3602,7 @@ export default function App() {
             aria-label="Add task"
             title="Add task"
           >
-            +
+            Add
           </button>
         )}
 
@@ -3549,10 +3667,6 @@ export default function App() {
                       </button>
                       <button type="button" className="dropdown-item" onClick={() => { setEditTaskTimeValue(hourKey); setEditingTaskTime(editKey); }}>
                         Edit time
-                      </button>
-                      <button type="button" className="dropdown-item" onClick={() => { deleteTask(hourKey, category, id); closeDropdown(); }}>
-                        <FireIcon style={{ marginRight: '8px' }} />
-                        Let it go
                       </button>
                       <button type="button" className="dropdown-item" onClick={closeDropdown}>
                         Keep as is
@@ -3631,7 +3745,11 @@ export default function App() {
               </div>
 
               <div className="settings-section">
-                <label className="label">Morning routine</label>
+                <label className="label">Morning routine (optional add-on)</label>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <input type="checkbox" checked={routineSchedule.enabledMorning !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))} />
+                  <span>Show morning routine on Today</span>
+                </label>
                 <p className="settings-hint">Steps that appear at the start of your day. Choose which days to show it.</p>
                 <ul className="routine-template-list">
                   {morningRoutineTemplate.map((r, idx) => (
@@ -3680,7 +3798,11 @@ export default function App() {
               </div>
 
               <div className="settings-section">
-                <label className="label">Wind-down routine</label>
+                <label className="label">Wind-down routine (optional add-on)</label>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <input type="checkbox" checked={routineSchedule.enabledNight !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledNight: e.target.checked }))} />
+                  <span>Show wind-down routine on Today</span>
+                </label>
                 <p className="settings-hint">Edit the steps that appear in your nightly routine.</p>
                 <ul className="routine-template-list">
                   {routineTemplate.map((r, idx) => (
@@ -3812,6 +3934,26 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Custom background (moodboard)</label>
+                <p className="settings-hint">Use your own image and a short phrase. Great for a visual moodboard.</p>
+                <input
+                  className="input modal-input"
+                  type="url"
+                  value={moodboard.imageUrl}
+                  onChange={(e) => setMoodboard((m) => ({ ...m, imageUrl: e.target.value }))}
+                  placeholder="Image URL (e.g. https://…)"
+                  style={{ marginBottom: 8 }}
+                />
+                <input
+                  className="input modal-input"
+                  type="text"
+                  value={moodboard.text}
+                  onChange={(e) => setMoodboard((m) => ({ ...m, text: e.target.value }))}
+                  placeholder="Short phrase or quote (optional)"
+                />
               </div>
 
               <div className="settings-section">

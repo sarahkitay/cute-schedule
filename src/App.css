@@ -4,9 +4,10 @@
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 10px;
-  --radius-card: 8px;
+  --radius-card: 12px;
   --radius-2xl: 12px;
   --radius-pill: 999px;
+  --radius-btn: 12px;
 
   --bg: #F8F5F4;
   --bg-warm: #F1E8E6;
@@ -118,14 +119,17 @@
 .app-bg {
   position: relative;
   min-height: 100vh;
-  background: var(--theme-bg-gradient, linear-gradient(165deg, #F5EDEB 0%, #EDE2DE 45%, #E8DAD6 100%));
+  background: var(--theme-bg-gradient, linear-gradient(165deg, #FAF2F0 0%, #F5EDEB 40%, #F0E6E2 100%));
+  background-image: linear-gradient(165deg, rgba(250,242,240,0.88) 0%, rgba(245,237,235,0.85) 40%, rgba(240,230,226,0.88) 100%), var(--moodboard-image, none);
+  background-size: auto, cover;
+  background-position: 0 0, center;
   overflow: hidden;
 }
 .app-bg::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(280px at 85% 5%, var(--theme-bg-glow, rgba(232, 180, 192, 0.18)), transparent 55%);
+  background: radial-gradient(280px at 85% 5%, var(--theme-bg-glow, rgba(232, 180, 192, 0.22)), transparent 55%);
   filter: blur(60px);
   pointer-events: none;
   z-index: 0;
@@ -134,9 +138,19 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(180px at 15% 90%, rgba(240, 230, 255, 0.12), transparent 45%);
+  background: radial-gradient(180px at 15% 90%, rgba(240, 230, 255, 0.15), transparent 45%);
   pointer-events: none;
   z-index: 0;
+}
+@media (max-width: 414px) {
+  .app-bg {
+    background-size: 140% 140%;
+    background-position: 50% 0%;
+  }
+  .app-bg::before {
+    transform: scale(1.2);
+    transform-origin: 85% 5%;
+  }
 }
 .app-bg-texture {
   position: absolute;
@@ -161,15 +175,40 @@
   font-size: var(--body);
   line-height: var(--body-lh);
   letter-spacing: -0.01em;
-  position: relative;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
 }
+.app::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(1px);
+  -webkit-backdrop-filter: blur(1px);
+  pointer-events: none;
+  z-index: 0;
+}
+.moodboard-quote {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 16px);
+  left: var(--screen-margin);
+  right: var(--screen-margin);
+  text-align: center;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-soft);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.9;
+}
 
-.app::before,
+.app > * {
+  position: relative;
+  z-index: 1;
+}
 .app::after {
   display: none;
 }
@@ -1450,6 +1489,7 @@ button {
 }
 .shell-main .panel:first-child,
 .shell-main .date-controls:first-child,
+.shell-main .do-plan-row:first-child,
 .shell-main .finance-panel:first-child,
 .shell-main .monthly-objectives-section,
 .shell-main .pattern-insights-section,
@@ -1538,15 +1578,14 @@ button {
   box-shadow: none;
   border-bottom: 1px solid var(--border-subtle);
 }
-/* Header: PROYOU (light) then date on same line, no "Today" */
+/* Header: PROYOU, then weekday under it (no bubble), thin separator */
 .top-plain .top-left {
-  flex-direction: row;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
 }
 .top-plain .brand-name {
-  display: inline;
+  display: block;
   font-size: 12px;
   font-weight: 400;
   letter-spacing: 0.12em;
@@ -1559,6 +1598,11 @@ button {
 }
 .top-plain .top-left .h1 {
   margin: 0;
+  font-size: 1.125rem;
+}
+.top-plain {
+  border-bottom-width: 1px;
+  padding-bottom: 6px;
 }
 .top-plain .h1,
 .top-plain .sub {
@@ -1777,9 +1821,11 @@ button {
   padding: var(--space-2) var(--space-3);
   margin: 0 var(--space-3) var(--space-4);
   border: 1px solid rgba(255, 255, 255, 0.6);
-  border-radius: var(--radius-pill);
-  background: rgba(255, 255, 255, 0.45);
+  border-radius: var(--radius-btn);
+  background: rgba(255, 255, 255, 0.5);
   backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
   align-items: center;
 }
 .quick-add-bar.input-group .quick-add-input,
@@ -1819,12 +1865,14 @@ button {
 }
 
 .next-up-card {
-  background: var(--surface-solid);
-  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
   border-radius: var(--radius-card);
   padding: var(--space-4);
   margin-bottom: var(--space-3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -1986,7 +2034,7 @@ button {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-pill);
+  border-radius: var(--radius-btn);
   font-size: 15px;
   font-weight: 500;
   cursor: pointer;
@@ -2013,7 +2061,7 @@ button {
   background: var(--theme-gradient);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 0;
+  border-radius: var(--radius-btn);
   padding: 12px 18px;
   font-weight: 600;
   box-shadow: 0 6px 20px rgba(232, 137, 163, 0.35);
@@ -2138,12 +2186,14 @@ button {
 }
 
 .panel {
-  background: var(--surface-solid);
-  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: var(--radius-card);
   padding: var(--card-pad);
   margin: 0 0 var(--space-5);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 0 rgba(255, 255, 255, 0.8) inset;
-  border: 1px solid var(--border-subtle);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  border: 1px solid rgba(255, 255, 255, 0.5);
   transition: box-shadow var(--transition-base);
 }
 
@@ -2843,8 +2893,9 @@ button {
 }
 .list-row {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border-subtle);
   min-height: 56px;
@@ -2853,11 +2904,19 @@ button {
 }
 .list-row:hover { background: rgba(0, 0, 0, 0.02); }
 .list-row:last-child { border-bottom: none; }
+.list-row-top {
+  width: 100%;
+  margin-bottom: 2px;
+}
+.list-row-body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
 .list-row-time {
-  flex-shrink: 0;
-  width: 48px;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-soft);
 }
@@ -3144,19 +3203,52 @@ button {
   backdrop-filter: blur(12px);
 }
 
-/* FAB: above tab bar */
+/* Do / Plan row above quick-add (no date controls) */
+.do-plan-row {
+  display: flex;
+  gap: 0;
+  margin-bottom: var(--space-2);
+  padding: 0 var(--screen-margin);
+}
+.do-plan-row .segmented-control-btn {
+  padding: 8px 20px;
+  font-size: var(--caption);
+  font-weight: 500;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+  color: var(--text-soft);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.do-plan-row .segmented-control-btn[aria-selected="true"] {
+  background: var(--theme-accent);
+  color: #fff;
+  border-color: var(--theme-accent);
+}
+.do-plan-row .segmented-control-btn:first-of-type {
+  border-radius: var(--radius-btn) 0 0 var(--radius-btn);
+}
+.do-plan-row .segmented-control-btn:last-of-type {
+  border-radius: 0 var(--radius-btn) var(--radius-btn) 0;
+  margin-left: -1px;
+}
+
+/* FAB: above tab bar — "Add" text, no plus */
 .fab {
   z-index: var(--z-fab);
   position: fixed;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
   right: calc(var(--screen-margin) + 8px);
-  width: 56px;
-  height: 56px;
+  min-width: 72px;
+  height: 48px;
+  padding: 0 18px;
   background: var(--theme-gradient);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 0;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15), 0 0 0 10px rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius-btn);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3164,8 +3256,8 @@ button {
   transition: transform var(--transition-base), box-shadow var(--transition-base);
   z-index: 99;
   text-decoration: none;
-  font-size: 28px;
-  font-weight: 300;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1;
 }
 .fab-premium {

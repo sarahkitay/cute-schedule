@@ -1,110 +1,162 @@
-// Cloud Storage Service
-// This provides a unified interface for cloud storage
-// Currently uses localStorage as fallback, but can be easily extended to use:
-// - Firebase Firestore
-// - Supabase
-// - AWS DynamoDB
-// - Any cloud storage service
+import { getDb, initFirebase, getDeviceId } from "./firebase";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+
+const FIRESTORE_COLLECTION = "schedules";
 
 class CloudStorage {
   constructor() {
-    this.storageKey = 'cute-schedule-data'
-    this.syncKey = 'cute-schedule-sync'
+    this.storageKey = "cute-schedule-data";
+    this.syncKey = "cute-schedule-sync";
   }
 
-  // Save data to cloud/localStorage
+  /** Save full app state to Firestore (and keep localStorage as fallback). */
+  async saveFullState(payload) {
+    const { appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patterns } = payload;
+    const dataToSave = {
+      appState: appState ?? null,
+      notes: notes ?? [],
+      finance: finance ?? null,
+      profile: profile ?? null,
+      theme: theme ?? null,
+      routineTemplate: routineTemplate ?? null,
+      morningRoutineTemplate: morningRoutineTemplate ?? null,
+      routineSchedule: routineSchedule ?? null,
+      coachMeta: coachMeta ?? null,
+      coachUserProfile: coachUserProfile ?? null,
+      moodboard: moodboard ?? null,
+      customCategories: customCategories ?? null,
+      patterns: patterns ?? null,
+      updatedAt: new Date().toISOString(),
+      version: "1.0",
+    };
+
+    try {
+      const firebaseDb = getDb();
+      if (firebaseDb) {
+        const deviceId = getDeviceId();
+        const ref = doc(firebaseDb, FIRESTORE_COLLECTION, deviceId);
+        await setDoc(ref, dataToSave, { merge: true });
+        if (typeof localStorage !== "undefined") {
+          localStorage.setItem(this.syncKey, Date.now().toString());
+        }
+        return { success: true, source: "firestore" };
+      }
+    } catch (error) {
+      console.warn("Firestore save failed:", error);
+    }
+    return { success: true, source: "localOnly" };
+  }
+
+  /** Load full app state from Firestore. Returns null if not configured or offline. */
+  async loadFullState() {
+    try {
+      initFirebase();
+      const firebaseDb = getDb();
+      if (!firebaseDb) return null;
+
+      const deviceId = getDeviceId();
+      const ref = doc(firebaseDb, FIRESTORE_COLLECTION, deviceId);
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return null;
+
+      const data = snap.data();
+      return {
+        appState: data.appState ?? null,
+        notes: data.notes ?? [],
+        finance: data.finance ?? null,
+        profile: data.profile ?? null,
+        theme: data.theme ?? null,
+        routineTemplate: data.routineTemplate ?? null,
+        morningRoutineTemplate: data.morningRoutineTemplate ?? null,
+        routineSchedule: data.routineSchedule ?? null,
+        coachMeta: data.coachMeta ?? null,
+        coachUserProfile: data.coachUserProfile ?? null,
+        moodboard: data.moodboard ?? null,
+        customCategories: data.customCategories ?? null,
+        patterns: data.patterns ?? null,
+        updatedAt: data.updatedAt ?? null,
+      };
+    } catch (error) {
+      console.warn("Firestore load failed:", error);
+      return null;
+    }
+  }
+
+  // Legacy: save(data) / load() for backward compatibility (e.g. categories-only)
   async save(data) {
     try {
-      // Save to localStorage (always available)
       const dataToSave = {
         categories: data,
         timestamp: new Date().toISOString(),
-        version: '1.0'
+        version: "1.0",
+      };
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(this.storageKey, JSON.stringify(dataToSave));
+        localStorage.setItem(this.syncKey, Date.now().toString());
       }
-      
-      localStorage.setItem(this.storageKey, JSON.stringify(dataToSave))
-      localStorage.setItem(this.syncKey, Date.now().toString())
-      
-      // TODO: Integrate with cloud service
-      // Example with Firebase:
-      // await firebase.firestore().collection('users').doc(userId).set(dataToSave)
-      
-      // Example with Supabase:
-      // await supabase.from('schedules').upsert({ user_id: userId, data: dataToSave })
-      
-      return { success: true }
+      const firebaseDb = getDb();
+      if (firebaseDb) {
+        const deviceId = getDeviceId();
+        const ref = doc(firebaseDb, FIRESTORE_COLLECTION, deviceId);
+        await setDoc(ref, { categories: data, updatedAt: new Date().toISOString() }, { merge: true });
+      }
+      return { success: true };
     } catch (error) {
-      console.error('Error saving to cloud:', error)
-      // Fallback to localStorage only
+      console.error("Error saving to cloud:", error);
       try {
-        localStorage.setItem(this.storageKey, JSON.stringify(data))
-        return { success: true, fallback: true }
+        if (typeof localStorage !== "undefined") localStorage.setItem(this.storageKey, JSON.stringify(data));
+        return { success: true, fallback: true };
       } catch (e) {
-        return { success: false, error: e.message }
+        return { success: false, error: e.message };
       }
     }
   }
 
-  // Load data from cloud/localStorage
   async load() {
     try {
-      // Try cloud storage first (when implemented)
-      // const cloudData = await this.loadFromCloud()
-      // if (cloudData) return cloudData
-      
-      // Fallback to localStorage
-      const saved = localStorage.getItem(this.storageKey)
-      if (saved) {
-        const parsed = JSON.parse(saved)
-        // Support both old format (array) and new format (object with metadata)
-        if (Array.isArray(parsed)) {
-          return parsed
-        } else if (parsed.categories) {
-          return parsed.categories
+      const full = await this.loadFullState();
+      if (full && full.appState) return full;
+      if (typeof localStorage !== "undefined") {
+        const saved = localStorage.getItem(this.storageKey);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+          if (parsed.categories) return parsed.categories;
         }
       }
-      
-      return null
+      return null;
     } catch (error) {
-      console.error('Error loading from cloud:', error)
-      return null
+      console.error("Error loading from cloud:", error);
+      return null;
     }
   }
 
-  // Get last sync time
   getLastSync() {
     try {
-      const syncTime = localStorage.getItem(this.syncKey)
-      return syncTime ? new Date(parseInt(syncTime)) : null
-    } catch (error) {
-      return null
+      if (typeof localStorage === "undefined") return null;
+      const syncTime = localStorage.getItem(this.syncKey);
+      return syncTime ? new Date(parseInt(syncTime, 10)) : null;
+    } catch {
+      return null;
     }
   }
 
-  // Check if data needs syncing
   needsSync() {
-    const lastSync = this.getLastSync()
-    if (!lastSync) return true
-    
-    // Sync if last sync was more than 5 minutes ago
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000)
-    return lastSync < fiveMinutesAgo
+    const lastSync = this.getLastSync();
+    if (!lastSync) return true;
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    return lastSync < fiveMinutesAgo;
   }
 
-  // Initialize cloud storage (can be called when user logs in)
   initialize(userId, cloudService = null) {
-    this.userId = userId
-    this.cloudService = cloudService
-    // This would initialize connection to cloud service
+    this.userId = userId;
+    this.cloudService = cloudService;
   }
 }
 
-// Export singleton instance
-const cloudStorage = new CloudStorage()
-
-// Make it available globally for the app
-if (typeof window !== 'undefined') {
-  window.cloudStorage = cloudStorage
+const cloudStorage = new CloudStorage();
+if (typeof window !== "undefined") {
+  window.cloudStorage = cloudStorage;
 }
 
-export default cloudStorage
+export default cloudStorage;
