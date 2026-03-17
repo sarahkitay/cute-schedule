@@ -2291,12 +2291,38 @@ button {
   border-radius: var(--radius-md);
   background: rgba(255, 248, 245, 0.5);
 }
-.daily-progress-empty .do-plan-inline {
-  padding: 0;
-  margin-bottom: 0;
-  justify-content: center;
-}
 .daily-progress-empty .state-empty { margin: 0 0 var(--space-2); }
+.do-plan-subtle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--caption);
+  font-weight: 400;
+  color: var(--text-soft);
+}
+.do-plan-subtle-sep {
+  opacity: 0.5;
+  user-select: none;
+}
+.do-plan-subtle-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 0.15s, color 0.15s;
+}
+.do-plan-subtle-btn:hover {
+  opacity: 1;
+  color: var(--text);
+}
+.do-plan-subtle-btn[aria-selected="true"] {
+  opacity: 1;
+  color: var(--theme-accent);
+  font-weight: 500;
+}
 .daily-progress-chip {
   margin-top: var(--space-1);
 }
