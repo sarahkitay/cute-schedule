@@ -119,8 +119,9 @@
 .app-bg {
   position: relative;
   min-height: 100vh;
-  background: var(--theme-bg-gradient, linear-gradient(165deg, #FAF2F0 0%, #F5EDEB 40%, #F0E6E2 100%));
-  background-image: linear-gradient(165deg, rgba(250,242,240,0.88) 0%, rgba(245,237,235,0.85) 40%, rgba(240,230,226,0.88) 100%), var(--moodboard-image, none);
+  /* Flipped gradient (345deg) so prominent part is visible from top; stronger overlay */
+  background: var(--theme-bg-gradient, linear-gradient(345deg, #F0E6E2 0%, #F5EDEB 40%, #FAF2F0 100%));
+  background-image: linear-gradient(345deg, rgba(240,230,226,0.72) 0%, rgba(245,237,235,0.75) 40%, rgba(250,242,240,0.72) 100%), var(--moodboard-image, none);
   background-size: auto, cover;
   background-position: 0 0, center;
   overflow: hidden;
@@ -129,8 +130,9 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(280px at 85% 5%, var(--theme-bg-glow, rgba(232, 180, 192, 0.22)), transparent 55%);
-  filter: blur(60px);
+  /* Glow at top (flipped): was 85% 5%, now prominent at top */
+  background: radial-gradient(320px at 50% 0%, var(--theme-bg-glow, rgba(232, 180, 192, 0.35)), transparent 60%);
+  filter: blur(50px);
   pointer-events: none;
   z-index: 0;
 }
@@ -138,7 +140,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(180px at 15% 90%, rgba(240, 230, 255, 0.15), transparent 45%);
+  background: radial-gradient(200px at 80% 10%, rgba(240, 230, 255, 0.2), transparent 50%);
   pointer-events: none;
   z-index: 0;
 }
@@ -148,8 +150,8 @@
     background-position: 50% 0%;
   }
   .app-bg::before {
-    transform: scale(1.2);
-    transform-origin: 85% 5%;
+    transform: scale(1.15);
+    transform-origin: 50% 0%;
   }
 }
 .app-bg-texture {
@@ -2288,6 +2290,11 @@ button {
   text-align: center;
   border-radius: var(--radius-md);
   background: rgba(255, 248, 245, 0.5);
+}
+.daily-progress-empty .do-plan-inline {
+  padding: 0;
+  margin-bottom: 0;
+  justify-content: center;
 }
 .daily-progress-empty .state-empty { margin: 0 0 var(--space-2); }
 .daily-progress-chip {

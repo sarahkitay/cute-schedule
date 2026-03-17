@@ -404,7 +404,7 @@ function dayIsStarred(hours, categories = DEFAULT_CATEGORIES) {
 }
 
 function getProgressCopy(pct) {
-  if (pct === 0) return "Add one task to get started";
+  if (pct === 0) return "Choose Do or Plan";
   if (pct >= 100) return "You showed up today";
   if (pct >= 1 && pct <= 40) return "Momentum started";
   if (pct >= 41 && pct <= 80) return "You're on a roll";
@@ -2739,14 +2739,28 @@ export default function App() {
               <ProgressSegments total={prog.total} done={prog.done} />
               {prog.pct === 0 && prog.total === 0 && (
                 <div className="daily-progress-empty">
-                  <p className="state-empty">No tasks yet. Add one to get started.</p>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary daily-progress-chip"
-                    onClick={() => document.querySelector(".quick-add-input")?.focus()}
-                  >
-                    Add task
-                  </button>
+                  <div className="do-plan-row do-plan-inline" role="tablist" aria-label="View mode">
+                    <button
+                      role="tab"
+                      aria-selected={mode === "do"}
+                      type="button"
+                      className="segmented-control-btn"
+                      onClick={() => setMode("do")}
+                      title="Do mode: clean checkboxes"
+                    >
+                      Do
+                    </button>
+                    <button
+                      role="tab"
+                      aria-selected={mode === "plan"}
+                      type="button"
+                      className="segmented-control-btn"
+                      onClick={() => setMode("plan")}
+                      title="Plan mode: edit and organize"
+                    >
+                      Plan
+                    </button>
+                  </div>
                 </div>
               )}
               {mode === "plan" && (
