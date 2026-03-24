@@ -271,6 +271,20 @@ function saveState(state) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+/** True if persisted state has tasks or monthly rows (avoid Firestore load overwriting newer local data). */
+function savedStateHasScheduleData(state) {
+  if (!state || typeof state !== "object") return false;
+  if (Array.isArray(state.monthly) && state.monthly.length > 0) return true;
+  const days = state.days;
+  if (!days || typeof days !== "object") return false;
+  return Object.values(days).some((day) => {
+    const hours = day?.hours || {};
+    return Object.values(hours).some((byCat) =>
+      Object.values(byCat || {}).some((arr) => Array.isArray(arr) && arr.length > 0)
+    );
+  });
+}
+
 function normalizeText(s) {
   return String(s || "").trim();
 }
@@ -1381,8 +1395,15 @@ export default function App() {
     if (firestoreLoadAttemptedRef.current) return;
     firestoreLoadAttemptedRef.current = true;
     cloudStorage.loadFullState().then((data) => {
+      let preferLocalAppState = false;
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) preferLocalAppState = savedStateHasScheduleData(JSON.parse(raw));
+      } catch (_) {}
       if (data) {
-        if (data.appState != null) setAppState(data.appState);
+        if (data.appState != null && !preferLocalAppState) {
+          setAppState(data.appState);
+        }
         if (data.notes != null) setNotes(data.notes);
         if (data.finance != null) setFinance(data.finance);
         if (data.profile != null) setProfile(data.profile);
