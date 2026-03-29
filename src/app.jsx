@@ -227,6 +227,10 @@ function migrateState(saved, categories) {
     const hours = day.hours || {};
     const newHours = {};
     Object.entries(hours).forEach(([hourKey, byCat]) => {
+      if (!byCat || typeof byCat !== "object" || Array.isArray(byCat)) {
+        newHours[hourKey] = byCat;
+        return;
+      }
       const hasLegacy = "RHEA" in byCat || "EPC" in byCat || "Personal" in byCat;
       if (!hasLegacy) {
         newHours[hourKey] = byCat;
@@ -268,7 +272,11 @@ function mergeSubscriptionTasksIntoHours(hours, dayKey, subscriptions, categorie
 }
 
 function saveState(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.warn("cute_schedule: localStorage save failed", e);
+  }
 }
 
 /** True if persisted state has tasks or monthly rows (avoid Firestore load overwriting newer local data). */
@@ -1059,6 +1067,8 @@ export default function App() {
 
   const appStateRef = useRef(appState);
   appStateRef.current = appState;
+  /** First layout only: avoid writing empty in-memory state over a richer schedule still on disk. */
+  const scheduleLayoutPrimedRef = useRef(false);
 
   useEffect(() => {
     try {
@@ -1427,6 +1437,24 @@ export default function App() {
 
   // Persist schedule before paint so a fast tab-close does not skip localStorage (useEffect runs too late).
   useLayoutEffect(() => {
+    if (!scheduleLayoutPrimedRef.current) {
+      scheduleLayoutPrimedRef.current = true;
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const diskSchedule = savedStateHasScheduleData(parsed);
+          const memSchedule = savedStateHasScheduleData(appState);
+          const nDisk = countScheduleTasks(parsed);
+          const nMem = countScheduleTasks(appState);
+          if (diskSchedule && (!memSchedule || nMem < nDisk)) {
+            const cats = getStoredCategories() || DEFAULT_CATEGORIES;
+            setAppState(migrateState(parsed, cats));
+            return;
+          }
+        }
+      } catch (_) {}
+    }
     saveState(appState);
   }, [appState]);
 
@@ -1450,11 +1478,12 @@ export default function App() {
       const nReact = countScheduleTasks(appStateRef.current);
       const localHasSchedule = savedStateHasScheduleData(localParsed);
 
-      // Do not apply cloud if user already has more tasks in memory (late hydrate after StrictMode / slow network).
-      // Do not replace richer local disk with emptier cloud.
+      // Never replace disk/UI that has MORE scheduled items than Firestore (empty cloud was wiping quick-add tasks).
+      // nCloud >= nReact blocks late hydrate after user added tasks before the fetch returned.
       const shouldApplyCloudAppState =
         cloudState != null &&
         nCloud >= nReact &&
+        nCloud >= nLocal &&
         (nCloud > nLocal || !localHasSchedule);
 
       if (data) {
@@ -1513,7 +1542,7 @@ export default function App() {
     firestoreSaveTimeoutRef.current = setTimeout(() => {
       cloudStorage.saveFullState(payload);
       firestoreSaveTimeoutRef.current = null;
-    }, 1500);
+    }, 400);
     return () => {
       if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
     };
