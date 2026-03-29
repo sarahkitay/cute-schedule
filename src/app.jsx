@@ -309,6 +309,19 @@ function normalizeText(s) {
   return String(s || "").trim();
 }
 
+/** Normalize `<input type="time">` / parsed values to `HH:mm` for stable `hours` keys. */
+function normalizeTimeKey(raw) {
+  const s = String(raw || "").trim();
+  const parts = s.split(":");
+  if (parts.length < 2) return "09:00";
+  let h = parseInt(parts[0], 10);
+  let m = parseInt(parts[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return "09:00";
+  h = Math.min(23, Math.max(0, h));
+  m = Math.min(59, Math.max(0, m));
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 // Convert 24-hour to 12-hour time
 function to12Hour(time24) {
   const [h, m] = time24.split(':').map(Number);
@@ -348,7 +361,7 @@ function isSameDayKey(a, b) {
   return String(a) === String(b);
 }
 
-/** Simple NL parse for quick add: "Call Martin 11am", "Work 3pm email", etc. */
+/** Simple NL parse for quick add: "Call Martin 11am", "Work 3pm email", "Standup 14:30", etc. */
 function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES) {
   const s = String(str || "").trim();
   if (!s) return null;
@@ -356,27 +369,34 @@ function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES) {
   let hour = "09:00";
   let category = cats[0] || "Work";
   let text = s;
-  const upper = s.toUpperCase();
   for (const c of cats) {
     const re = new RegExp(`^${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+`, "i");
-    const m = upper.match(re);
+    const m = s.match(re);
     if (m) {
       category = cats.find((x) => x.toUpperCase() === m[0].trim().toUpperCase()) || c;
       text = s.slice(m[0].length).trim();
       break;
     }
   }
-  const timeMatch = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
-  if (timeMatch) {
-    let h = parseInt(timeMatch[1], 10);
-    const m = timeMatch[2] ? parseInt(timeMatch[2], 10) : 0;
-    if (timeMatch[3].toLowerCase() === "pm" && h < 12) h += 12;
-    if (timeMatch[3].toLowerCase() === "am" && h === 12) h = 0;
-    hour = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    text = text.replace(timeMatch[0], "").replace(/\s+/g, " ").trim();
+  const time12 = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if (time12) {
+    let h = parseInt(time12[1], 10);
+    const mins = time12[2] ? parseInt(time12[2], 10) : 0;
+    if (time12[3].toLowerCase() === "pm" && h < 12) h += 12;
+    if (time12[3].toLowerCase() === "am" && h === 12) h = 0;
+    hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+    text = text.replace(time12[0], "").replace(/\s+/g, " ").trim();
+  } else {
+    const time24 = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+    if (time24) {
+      const h = parseInt(time24[1], 10);
+      const mins = parseInt(time24[2], 10);
+      hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+      text = text.replace(time24[0], "").replace(/\s+/g, " ").trim();
+    }
   }
   if (!text) text = s;
-  return { hour, category, text };
+  return { hour: normalizeTimeKey(hour), category, text: text.trim() };
 }
 
 function getDayLabel(dayKey, todayKey) {
@@ -1807,15 +1827,17 @@ export default function App() {
 
       hours[hourKey] = nextByCat;
       
-      // Save to repeated tasks if marked for repetition
+      // Save to repeated tasks if marked for repetition (must not throw — would block React state update)
       if (repeatType !== REPEAT_OPTIONS.NONE) {
-        const repeatedTasks = JSON.parse(localStorage.getItem('repeatedTasks') || '[]');
-        repeatedTasks.push({
-          ...nextTask,
-          category,
-          hour: hourKey
-        });
-        localStorage.setItem('repeatedTasks', JSON.stringify(repeatedTasks));
+        try {
+          const repeatedTasks = JSON.parse(localStorage.getItem("repeatedTasks") || "[]");
+          repeatedTasks.push({
+            ...nextTask,
+            category,
+            hour: hourKey,
+          });
+          localStorage.setItem("repeatedTasks", JSON.stringify(repeatedTasks));
+        } catch (_) {}
       }
       
       // Schedule notification for task reminder
@@ -2148,22 +2170,26 @@ export default function App() {
     e.preventDefault();
     const clean = normalizeText(quickText);
     if (!clean) return;
-    ensureHour(newHour);
-    addTask(newHour, quickCat, clean, quickRepeat);
+    const hourKey = normalizeTimeKey(newHour);
+    addTask(hourKey, quickCat, clean, quickRepeat);
   }
 
   function quickAddFromNL(e) {
     e.preventDefault();
     const parsed = parseQuickAddNL(quickAddValue, customCategories);
-    if (!parsed || !parsed.text) return;
-    ensureHour(parsed.hour);
-    addTask(parsed.hour, parsed.category, parsed.text);
+    if (!parsed) return;
+    const taskText = normalizeText(parsed.text);
+    if (!taskText) return;
+    const hourKey = normalizeTimeKey(parsed.hour);
+    const cats = customCategories.length ? customCategories : DEFAULT_CATEGORIES;
+    const category = cats.includes(parsed.category) ? parsed.category : cats[0] || "Work";
+    addTask(hourKey, category, taskText);
     setQuickAddValue("");
     
     // Show success toast
     setToastNotification({
       message: "Task added",
-      taskText: parsed.text,
+      taskText,
       type: 'added'
     });
     
@@ -2713,14 +2739,16 @@ export default function App() {
         {tab === "today" ? (
           <>
             {/* Quick Add — input group with focus ring, CTA disabled until input */}
-            <form className="input-group quick-add-bar" onSubmit={quickAddFromNL}>
+            <form className="input-group quick-add-bar" onSubmit={quickAddFromNL} autoComplete="off">
               <input
                 className="input quick-add-input"
                 type="text"
+                name="quickAddTask"
                 value={quickAddValue}
                 onChange={(e) => setQuickAddValue(e.target.value)}
                 placeholder="Add a task… e.g. Call Martin 11am, Work 3pm"
                 aria-label="Quick add task"
+                autoComplete="off"
               />
               <button type="submit" className="btn-primary" disabled={!quickAddValue.trim()} aria-label="Add task">
                 Add
