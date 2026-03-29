@@ -3,6 +3,17 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const FIRESTORE_COLLECTION = "schedules";
 
+/** Plain JSON clone; omits undefined (Firestore does not allow undefined). */
+function cloneForFirestore(value) {
+  if (value === undefined) return null;
+  if (value === null || typeof value !== "object") return value;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+}
+
 class CloudStorage {
   constructor() {
     this.storageKey = "cute-schedule-data";
@@ -13,19 +24,19 @@ class CloudStorage {
   async saveFullState(payload) {
     const { appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patterns } = payload;
     const dataToSave = {
-      appState: appState ?? null,
-      notes: notes ?? [],
-      finance: finance ?? null,
-      profile: profile ?? null,
-      theme: theme ?? null,
-      routineTemplate: routineTemplate ?? null,
-      morningRoutineTemplate: morningRoutineTemplate ?? null,
-      routineSchedule: routineSchedule ?? null,
-      coachMeta: coachMeta ?? null,
-      coachUserProfile: coachUserProfile ?? null,
-      moodboard: moodboard ?? null,
-      customCategories: customCategories ?? null,
-      patterns: patterns ?? null,
+      appState: cloneForFirestore(appState) ?? null,
+      notes: cloneForFirestore(notes) ?? [],
+      finance: cloneForFirestore(finance) ?? null,
+      profile: cloneForFirestore(profile) ?? null,
+      theme: cloneForFirestore(theme) ?? null,
+      routineTemplate: cloneForFirestore(routineTemplate) ?? null,
+      morningRoutineTemplate: cloneForFirestore(morningRoutineTemplate) ?? null,
+      routineSchedule: cloneForFirestore(routineSchedule) ?? null,
+      coachMeta: cloneForFirestore(coachMeta) ?? null,
+      coachUserProfile: cloneForFirestore(coachUserProfile) ?? null,
+      moodboard: cloneForFirestore(moodboard) ?? null,
+      customCategories: cloneForFirestore(customCategories) ?? null,
+      patterns: cloneForFirestore(patterns) ?? null,
       updatedAt: new Date().toISOString(),
       version: "1.0",
     };
@@ -35,7 +46,8 @@ class CloudStorage {
       if (firebaseDb) {
         const deviceId = getDeviceId();
         const ref = doc(firebaseDb, FIRESTORE_COLLECTION, deviceId);
-        await setDoc(ref, dataToSave, { merge: true });
+        // Full replace — merge:true deep-merges nested maps and can leave stale/empty `hours` vs real tasks.
+        await setDoc(ref, dataToSave);
         if (typeof localStorage !== "undefined") {
           localStorage.setItem(this.syncKey, Date.now().toString());
         }
