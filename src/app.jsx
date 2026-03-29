@@ -1057,6 +1057,9 @@ export default function App() {
     };
   });
 
+  const appStateRef = useRef(appState);
+  appStateRef.current = appState;
+
   useEffect(() => {
     try {
       localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(customCategories));
@@ -1429,14 +1432,11 @@ export default function App() {
 
   // Firestore: load once on mount, then debounced save when state changes
   const [firestoreReady, setFirestoreReady] = useState(false);
-  const firestoreLoadAttemptedRef = useRef(false);
   const firestoreSaveTimeoutRef = useRef(null);
   const latestForUnloadRef = useRef(null);
 
   useEffect(() => {
-    if (firestoreLoadAttemptedRef.current) return;
-    firestoreLoadAttemptedRef.current = true;
-    cloudStorage.loadFullState().then((data) => {
+    cloudStorage.loadFullStateOnce().then((data) => {
       let localParsed = null;
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -1447,11 +1447,15 @@ export default function App() {
       const cloudState = data?.appState ?? null;
       const nLocal = countScheduleTasks(localParsed);
       const nCloud = countScheduleTasks(cloudState);
+      const nReact = countScheduleTasks(appStateRef.current);
       const localHasSchedule = savedStateHasScheduleData(localParsed);
 
-      // Never replace a richer local snapshot with an older/emptier Firestore doc (common if tab closed before useEffect save).
+      // Do not apply cloud if user already has more tasks in memory (late hydrate after StrictMode / slow network).
+      // Do not replace richer local disk with emptier cloud.
       const shouldApplyCloudAppState =
-        cloudState != null && (nCloud > nLocal || !localHasSchedule);
+        cloudState != null &&
+        nCloud >= nReact &&
+        (nCloud > nLocal || !localHasSchedule);
 
       if (data) {
         if (shouldApplyCloudAppState) {

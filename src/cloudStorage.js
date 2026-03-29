@@ -14,17 +14,77 @@ function cloneForFirestore(value) {
   }
 }
 
+/**
+ * Encode `hours` map keys (e.g. "09:00") for Firestore — some SDK/console paths mishandle ":" in map keys.
+ * Round-trip: decode on read. Plain keys without "%" pass through decodeURIComponent unchanged.
+ */
+function encodeHoursMapKeys(hours) {
+  if (!hours || typeof hours !== "object") return hours;
+  const out = {};
+  for (const [k, v] of Object.entries(hours)) {
+    out[encodeURIComponent(k)] = v;
+  }
+  return out;
+}
+
+function decodeHoursMapKeys(hours) {
+  if (!hours || typeof hours !== "object") return hours;
+  const out = {};
+  for (const [k, v] of Object.entries(hours)) {
+    try {
+      out[decodeURIComponent(k)] = v;
+    } catch {
+      out[k] = v;
+    }
+  }
+  return out;
+}
+
+function encodeAppStateHourKeys(appState) {
+  const a = cloneForFirestore(appState);
+  if (!a?.days || typeof a.days !== "object") return a;
+  const days = { ...a.days };
+  for (const dk of Object.keys(days)) {
+    const day = days[dk];
+    if (!day?.hours || typeof day.hours !== "object") continue;
+    days[dk] = { ...day, hours: encodeHoursMapKeys(day.hours) };
+  }
+  return { ...a, days };
+}
+
+function decodeAppStateHourKeys(appState) {
+  const a = cloneForFirestore(appState);
+  if (!a?.days || typeof a.days !== "object") return a;
+  const days = { ...a.days };
+  for (const dk of Object.keys(days)) {
+    const day = days[dk];
+    if (!day?.hours || typeof day.hours !== "object") continue;
+    days[dk] = { ...day, hours: decodeHoursMapKeys(day.hours) };
+  }
+  return { ...a, days };
+}
+
 class CloudStorage {
   constructor() {
     this.storageKey = "cute-schedule-data";
     this.syncKey = "cute-schedule-sync";
+    this._loadFullStateOncePromise = null;
+  }
+
+  /** One shared in-flight load per tab (React StrictMode double-mount would otherwise run two loads and race setState). */
+  loadFullStateOnce() {
+    if (!this._loadFullStateOncePromise) {
+      this._loadFullStateOncePromise = this.loadFullState();
+    }
+    return this._loadFullStateOncePromise;
   }
 
   /** Save full app state to Firestore (and keep localStorage as fallback). */
   async saveFullState(payload) {
     const { appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patterns } = payload;
+    const appStateEncoded = appState != null ? encodeAppStateHourKeys(appState) : null;
     const dataToSave = {
-      appState: cloneForFirestore(appState) ?? null,
+      appState: appStateEncoded,
       notes: cloneForFirestore(notes) ?? [],
       finance: cloneForFirestore(finance) ?? null,
       profile: cloneForFirestore(profile) ?? null,
@@ -72,8 +132,9 @@ class CloudStorage {
       if (!snap.exists()) return null;
 
       const data = snap.data();
+      const rawApp = data.appState ?? null;
       return {
-        appState: data.appState ?? null,
+        appState: rawApp != null ? decodeAppStateHourKeys(rawApp) : null,
         notes: data.notes ?? [],
         finance: data.finance ?? null,
         profile: data.profile ?? null,
