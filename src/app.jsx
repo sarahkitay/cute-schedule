@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
@@ -283,6 +283,26 @@ function savedStateHasScheduleData(state) {
       Object.values(byCat || {}).some((arr) => Array.isArray(arr) && arr.length > 0)
     );
   });
+}
+
+/** Count day tasks + monthly rows so we can prefer the richer snapshot (Firestore vs disk). */
+function countScheduleTasks(state) {
+  if (!state || typeof state !== "object") return 0;
+  let n = 0;
+  const days = state.days;
+  if (days && typeof days === "object") {
+    for (const day of Object.values(days)) {
+      const hours = day?.hours || {};
+      for (const byCat of Object.values(hours)) {
+        if (!byCat || typeof byCat !== "object") continue;
+        for (const arr of Object.values(byCat)) {
+          if (Array.isArray(arr)) n += arr.length;
+        }
+      }
+    }
+  }
+  if (Array.isArray(state.monthly)) n += state.monthly.length;
+  return n;
 }
 
 function normalizeText(s) {
@@ -1382,7 +1402,8 @@ export default function App() {
     });
   }, [tKey, morningRoutineTemplate]);
 
-  useEffect(() => {
+  // Persist schedule before paint so a fast tab-close does not skip localStorage (useEffect runs too late).
+  useLayoutEffect(() => {
     saveState(appState);
   }, [appState]);
 
@@ -1390,24 +1411,35 @@ export default function App() {
   const [firestoreReady, setFirestoreReady] = useState(false);
   const firestoreLoadAttemptedRef = useRef(false);
   const firestoreSaveTimeoutRef = useRef(null);
+  const latestForUnloadRef = useRef(null);
 
   useEffect(() => {
     if (firestoreLoadAttemptedRef.current) return;
     firestoreLoadAttemptedRef.current = true;
     cloudStorage.loadFullState().then((data) => {
-      let preferLocalAppState = false;
+      let localParsed = null;
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) preferLocalAppState = savedStateHasScheduleData(JSON.parse(raw));
+        if (raw) localParsed = JSON.parse(raw);
       } catch (_) {}
+
       const storedCats = getStoredCategories() || DEFAULT_CATEGORIES;
+      const cloudState = data?.appState ?? null;
+      const nLocal = countScheduleTasks(localParsed);
+      const nCloud = countScheduleTasks(cloudState);
+      const localHasSchedule = savedStateHasScheduleData(localParsed);
+
+      // Never replace a richer local snapshot with an older/emptier Firestore doc (common if tab closed before useEffect save).
+      const shouldApplyCloudAppState =
+        cloudState != null && (nCloud > nLocal || !localHasSchedule);
+
       if (data) {
-        if (data.appState != null && !preferLocalAppState) {
+        if (shouldApplyCloudAppState) {
           const catsForMigrate =
             Array.isArray(data.customCategories) && data.customCategories.length
               ? data.customCategories
               : storedCats;
-          setAppState(migrateState(data.appState, catsForMigrate));
+          setAppState(migrateState(cloudState, catsForMigrate));
         }
         if (data.notes != null) setNotes(data.notes);
         if (data.finance != null) setFinance(data.finance);
@@ -1419,11 +1451,10 @@ export default function App() {
         if (data.coachMeta != null) setCoachMeta(data.coachMeta);
         if (data.coachUserProfile != null) setCoachUserProfile(data.coachUserProfile);
         if (data.moodboard != null) setMoodboard(data.moodboard);
-        // Keeping local schedule but applying cloud categories hides tasks: hours use category keys from local state.
         if (
           data.customCategories != null &&
           data.customCategories.length &&
-          !preferLocalAppState
+          shouldApplyCloudAppState
         ) {
           setCustomCategories(data.customCategories);
         }
@@ -1463,6 +1494,44 @@ export default function App() {
       if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
     };
   }, [firestoreReady, appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories]);
+
+  useEffect(() => {
+    const flush = () => {
+      const p = latestForUnloadRef.current;
+      if (!p) return;
+      try {
+        saveState(p.appState);
+      } catch (_) {}
+      if (firestoreSaveTimeoutRef.current) {
+        clearTimeout(firestoreSaveTimeoutRef.current);
+        firestoreSaveTimeoutRef.current = null;
+      }
+      cloudStorage.saveFullState({
+        appState: p.appState,
+        notes: p.notes,
+        finance: p.finance,
+        profile: p.profile,
+        theme: p.theme,
+        routineTemplate: p.routineTemplate,
+        morningRoutineTemplate: p.morningRoutineTemplate,
+        routineSchedule: p.routineSchedule,
+        coachMeta: p.coachMeta,
+        coachUserProfile: p.coachUserProfile,
+        moodboard: p.moodboard,
+        customCategories: p.customCategories,
+        patterns: p.patterns,
+      });
+    };
+    const onVis = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(theme));
@@ -2506,6 +2575,22 @@ export default function App() {
       return a.hour.localeCompare(b.hour);
     });
   }, [todayHours]);
+
+  latestForUnloadRef.current = {
+    appState,
+    notes,
+    finance,
+    profile,
+    theme,
+    routineTemplate,
+    morningRoutineTemplate,
+    routineSchedule,
+    coachMeta,
+    coachUserProfile,
+    moodboard,
+    customCategories,
+    patterns: loadPatterns(),
+  };
 
   return (
     <div className="app">
