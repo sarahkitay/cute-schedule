@@ -1400,9 +1400,14 @@ export default function App() {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) preferLocalAppState = savedStateHasScheduleData(JSON.parse(raw));
       } catch (_) {}
+      const storedCats = getStoredCategories() || DEFAULT_CATEGORIES;
       if (data) {
         if (data.appState != null && !preferLocalAppState) {
-          setAppState(data.appState);
+          const catsForMigrate =
+            Array.isArray(data.customCategories) && data.customCategories.length
+              ? data.customCategories
+              : storedCats;
+          setAppState(migrateState(data.appState, catsForMigrate));
         }
         if (data.notes != null) setNotes(data.notes);
         if (data.finance != null) setFinance(data.finance);
@@ -1414,7 +1419,14 @@ export default function App() {
         if (data.coachMeta != null) setCoachMeta(data.coachMeta);
         if (data.coachUserProfile != null) setCoachUserProfile(data.coachUserProfile);
         if (data.moodboard != null) setMoodboard(data.moodboard);
-        if (data.customCategories != null && data.customCategories.length) setCustomCategories(data.customCategories);
+        // Keeping local schedule but applying cloud categories hides tasks: hours use category keys from local state.
+        if (
+          data.customCategories != null &&
+          data.customCategories.length &&
+          !preferLocalAppState
+        ) {
+          setCustomCategories(data.customCategories);
+        }
         if (data.patterns != null) {
           try {
             localStorage.setItem(PATTERNS_STORAGE_KEY, JSON.stringify(data.patterns));
