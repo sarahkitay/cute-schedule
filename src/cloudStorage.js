@@ -115,6 +115,11 @@ class CloudStorage {
       }
     } catch (error) {
       console.warn("Firestore save failed:", error);
+      if (error?.code === "permission-denied") {
+        console.warn(
+          "Firestore: permission denied — in Firebase Console → Firestore → Rules, allow read/write on schedules/{id} for this app."
+        );
+      }
     }
     return { success: true, source: "localOnly" };
   }

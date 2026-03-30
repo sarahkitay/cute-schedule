@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import ReactDOM from "react-dom";
+import ReactDOM, { flushSync } from "react-dom";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
   SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
@@ -2199,12 +2199,43 @@ export default function App() {
   const [quickRepeat, setQuickRepeat] = useState(REPEAT_OPTIONS.NONE);
   const [showPastRepeats, setShowPastRepeats] = useState(false);
 
+  /** After flushSync(addTask), snapshot ref includes the new task — persist immediately (don’t wait for debounced Firestore). */
+  function persistScheduleSnapshotNow() {
+    const p = latestForUnloadRef.current;
+    if (!p?.appState) return;
+    try {
+      saveState(p.appState);
+    } catch (_) {}
+    if (firestoreSaveTimeoutRef.current) {
+      clearTimeout(firestoreSaveTimeoutRef.current);
+      firestoreSaveTimeoutRef.current = null;
+    }
+    void cloudStorage.saveFullState({
+      appState: p.appState,
+      notes: p.notes,
+      finance: p.finance,
+      profile: p.profile,
+      theme: p.theme,
+      routineTemplate: p.routineTemplate,
+      morningRoutineTemplate: p.morningRoutineTemplate,
+      routineSchedule: p.routineSchedule,
+      coachMeta: p.coachMeta,
+      coachUserProfile: p.coachUserProfile,
+      moodboard: p.moodboard,
+      customCategories: p.customCategories,
+      patterns: p.patterns,
+    });
+  }
+
   function quickAdd(e) {
     e.preventDefault();
     const clean = normalizeText(quickText);
     if (!clean) return;
     const hourKey = normalizeTimeKey(newHour);
-    addTask(hourKey, quickCat, clean, quickRepeat);
+    flushSync(() => {
+      addTask(hourKey, quickCat, clean, quickRepeat);
+    });
+    persistScheduleSnapshotNow();
   }
 
   function quickAddFromNL(e) {
@@ -2216,7 +2247,10 @@ export default function App() {
     const hourKey = normalizeTimeKey(parsed.hour);
     const cats = customCategories.length ? customCategories : DEFAULT_CATEGORIES;
     const category = cats.includes(parsed.category) ? parsed.category : cats[0] || "Work";
-    addTask(hourKey, category, taskText);
+    flushSync(() => {
+      addTask(hourKey, category, taskText);
+    });
+    persistScheduleSnapshotNow();
     setQuickAddValue("");
     
     // Show success toast
