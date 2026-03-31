@@ -293,6 +293,53 @@ function savedStateHasScheduleData(state) {
   });
 }
 
+/**
+ * When Firestore load wins (shouldApplyCloudAppState=true), merge any tasks the user added
+ * in this session that aren't yet in the cloud snapshot — so they aren't silently dropped.
+ */
+function mergeSessionTasksIntoCloud(cloudState, sessionState) {
+  if (!sessionState?.days) return cloudState;
+  // Build a set of IDs already present in the cloud snapshot
+  const cloudIds = new Set();
+  for (const day of Object.values(cloudState.days || {})) {
+    for (const byCat of Object.values(day.hours || {})) {
+      if (!byCat || typeof byCat !== "object") continue;
+      for (const arr of Object.values(byCat)) {
+        if (Array.isArray(arr)) arr.forEach((t) => t?.id && cloudIds.add(t.id));
+      }
+    }
+  }
+  // Walk session state and collect tasks whose IDs are absent from the cloud
+  let result = cloudState;
+  for (const [dayKey, day] of Object.entries(sessionState.days || {})) {
+    for (const [hourKey, byCat] of Object.entries(day.hours || {})) {
+      if (!byCat || typeof byCat !== "object") continue;
+      for (const [cat, tasks] of Object.entries(byCat)) {
+        if (!Array.isArray(tasks)) continue;
+        const fresh = tasks.filter((t) => t?.id && !cloudIds.has(t.id));
+        if (fresh.length === 0) continue;
+        const cloudDay = result.days?.[dayKey] || { hours: {} };
+        const cloudHour = cloudDay.hours?.[hourKey] || {};
+        const existing = Array.isArray(cloudHour[cat]) ? cloudHour[cat] : [];
+        result = {
+          ...result,
+          days: {
+            ...result.days,
+            [dayKey]: {
+              ...cloudDay,
+              hours: {
+                ...(cloudDay.hours || {}),
+                [hourKey]: { ...cloudHour, [cat]: [...existing, ...fresh] },
+              },
+            },
+          },
+        };
+      }
+    }
+  }
+  return result;
+}
+
 /** Count day tasks + monthly rows so we can prefer the richer snapshot (Firestore vs disk). */
 function countScheduleTasks(state) {
   if (!state || typeof state !== "object") return 0;
@@ -1462,6 +1509,45 @@ export default function App() {
   const [firestoreReady, setFirestoreReady] = useState(false);
   const firestoreSaveTimeoutRef = useRef(null);
   const latestForUnloadRef = useRef(null);
+  /** Set true before flushSync(addTask) so the next layout commit saves Firestore with the real appState. */
+  const saveFirestoreImmediateRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (!saveFirestoreImmediateRef.current) return;
+    saveFirestoreImmediateRef.current = false;
+    if (firestoreSaveTimeoutRef.current) {
+      clearTimeout(firestoreSaveTimeoutRef.current);
+      firestoreSaveTimeoutRef.current = null;
+    }
+    void cloudStorage.saveFullState({
+      appState,
+      notes,
+      finance,
+      profile,
+      theme,
+      routineTemplate,
+      morningRoutineTemplate,
+      routineSchedule,
+      coachMeta,
+      coachUserProfile,
+      moodboard,
+      customCategories,
+      patterns: loadPatterns(),
+    });
+  }, [
+    appState,
+    notes,
+    finance,
+    profile,
+    theme,
+    routineTemplate,
+    morningRoutineTemplate,
+    routineSchedule,
+    coachMeta,
+    coachUserProfile,
+    moodboard,
+    customCategories,
+  ]);
 
   useEffect(() => {
     cloudStorage.loadFullStateOnce().then((data) => {
@@ -1492,7 +1578,10 @@ export default function App() {
             Array.isArray(data.customCategories) && data.customCategories.length
               ? data.customCategories
               : storedCats;
-          setAppState(migrateState(cloudState, catsForMigrate));
+          const migratedCloud = migrateState(cloudState, catsForMigrate);
+          // Preserve any tasks added in this session that haven't made it to Firestore yet
+          const merged = mergeSessionTasksIntoCloud(migratedCloud, appStateRef.current);
+          setAppState(merged);
         }
         if (data.notes != null) setNotes(data.notes);
         if (data.finance != null) setFinance(data.finance);
@@ -2199,43 +2288,15 @@ export default function App() {
   const [quickRepeat, setQuickRepeat] = useState(REPEAT_OPTIONS.NONE);
   const [showPastRepeats, setShowPastRepeats] = useState(false);
 
-  /** After flushSync(addTask), snapshot ref includes the new task — persist immediately (don’t wait for debounced Firestore). */
-  function persistScheduleSnapshotNow() {
-    const p = latestForUnloadRef.current;
-    if (!p?.appState) return;
-    try {
-      saveState(p.appState);
-    } catch (_) {}
-    if (firestoreSaveTimeoutRef.current) {
-      clearTimeout(firestoreSaveTimeoutRef.current);
-      firestoreSaveTimeoutRef.current = null;
-    }
-    void cloudStorage.saveFullState({
-      appState: p.appState,
-      notes: p.notes,
-      finance: p.finance,
-      profile: p.profile,
-      theme: p.theme,
-      routineTemplate: p.routineTemplate,
-      morningRoutineTemplate: p.morningRoutineTemplate,
-      routineSchedule: p.routineSchedule,
-      coachMeta: p.coachMeta,
-      coachUserProfile: p.coachUserProfile,
-      moodboard: p.moodboard,
-      customCategories: p.customCategories,
-      patterns: p.patterns,
-    });
-  }
-
   function quickAdd(e) {
     e.preventDefault();
     const clean = normalizeText(quickText);
     if (!clean) return;
     const hourKey = normalizeTimeKey(newHour);
+    saveFirestoreImmediateRef.current = true;
     flushSync(() => {
       addTask(hourKey, quickCat, clean, quickRepeat);
     });
-    persistScheduleSnapshotNow();
   }
 
   function quickAddFromNL(e) {
@@ -2247,10 +2308,10 @@ export default function App() {
     const hourKey = normalizeTimeKey(parsed.hour);
     const cats = customCategories.length ? customCategories : DEFAULT_CATEGORIES;
     const category = cats.includes(parsed.category) ? parsed.category : cats[0] || "Work";
+    saveFirestoreImmediateRef.current = true;
     flushSync(() => {
       addTask(hourKey, category, taskText);
     });
-    persistScheduleSnapshotNow();
     setQuickAddValue("");
     
     // Show success toast

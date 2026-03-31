@@ -3,6 +3,9 @@ import { getFirestore } from "firebase/firestore";
 
 const DEVICE_ID_KEY = "cute_schedule_device_id_v1";
 
+/** Only if both localStorage and sessionStorage throw (extremely rare). */
+let lastResortDeviceId = null;
+
 function getFirebaseConfig() {
   const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
   const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
@@ -43,16 +46,43 @@ export function isFirebaseEnabled() {
   return Boolean(getFirebaseConfig());
 }
 
-/** Stable device id for this browser (no auth yet). Stored in localStorage. */
+/**
+ * Stable id for Firestore doc `schedules/{id}`. Must survive reload.
+ * If localStorage throws (ITP, blockers), we fall back to sessionStorage — NOT a new id every load
+ * (the old `dev_anon_${Date.now()}` caused every refresh to write a different document).
+ */
 export function getDeviceId() {
+  const makeId = () =>
+    "dev_" +
+    (typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID().replace(/-/g, "").slice(0, 20)
+      : Math.random().toString(36).slice(2, 14)) +
+    "_" +
+    Date.now().toString(36);
+
   try {
-    let id = localStorage.getItem(DEVICE_ID_KEY);
+    let id = localStorage.getItem(DEVICE_ID_KEY) || sessionStorage.getItem(DEVICE_ID_KEY);
     if (!id) {
-      id = "dev_" + Math.random().toString(36).slice(2) + "_" + Date.now().toString(36);
-      localStorage.setItem(DEVICE_ID_KEY, id);
+      id = makeId();
     }
+    try {
+      localStorage.setItem(DEVICE_ID_KEY, id);
+    } catch (_) {}
+    try {
+      sessionStorage.setItem(DEVICE_ID_KEY, id);
+    } catch (_) {}
     return id;
   } catch {
-    return "dev_anon_" + Date.now();
+    try {
+      let id = sessionStorage.getItem(DEVICE_ID_KEY);
+      if (!id) {
+        id = makeId();
+        sessionStorage.setItem(DEVICE_ID_KEY, id);
+      }
+      return id;
+    } catch {
+      if (!lastResortDeviceId) lastResortDeviceId = makeId();
+      return lastResortDeviceId;
+    }
   }
 }
