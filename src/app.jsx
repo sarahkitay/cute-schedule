@@ -2293,9 +2293,15 @@ export default function App() {
     const clean = normalizeText(quickText);
     if (!clean) return;
     const hourKey = normalizeTimeKey(newHour);
-    saveFirestoreImmediateRef.current = true;
     flushSync(() => {
       addTask(hourKey, quickCat, clean, quickRepeat);
+    });
+    // Save directly after flushSync — appStateRef.current is updated synchronously by the commit
+    void cloudStorage.saveFullState({
+      appState: appStateRef.current,
+      notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
+      routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories,
+      patterns: loadPatterns(),
     });
   }
 
@@ -2308,9 +2314,15 @@ export default function App() {
     const hourKey = normalizeTimeKey(parsed.hour);
     const cats = customCategories.length ? customCategories : DEFAULT_CATEGORIES;
     const category = cats.includes(parsed.category) ? parsed.category : cats[0] || "Work";
-    saveFirestoreImmediateRef.current = true;
     flushSync(() => {
       addTask(hourKey, category, taskText);
+    });
+    // Save directly after flushSync — appStateRef.current is updated synchronously by the commit
+    void cloudStorage.saveFullState({
+      appState: appStateRef.current,
+      notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
+      routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories,
+      patterns: loadPatterns(),
     });
     setQuickAddValue("");
     
