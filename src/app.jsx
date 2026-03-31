@@ -231,7 +231,7 @@ function migrateState(saved, categories) {
         newHours[hourKey] = byCat;
         return;
       }
-      const hasLegacy = "RHEA" in byCat || "EPC" in byCat || "Personal" in byCat;
+      const hasLegacy = "RHEA" in byCat || "EPC" in byCat;
       if (!hasLegacy) {
         newHours[hourKey] = byCat;
         return;
