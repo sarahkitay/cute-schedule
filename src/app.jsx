@@ -340,6 +340,41 @@ function mergeSessionTasksIntoCloud(cloudState, sessionState) {
   return result;
 }
 
+/** Hour-slot tasks only for one calendar day (not monthly). */
+function countTasksInDay(day) {
+  if (!day?.hours || typeof day.hours !== "object") return 0;
+  let n = 0;
+  for (const byCat of Object.values(day.hours)) {
+    if (!byCat || typeof byCat !== "object") continue;
+    for (const arr of Object.values(byCat)) {
+      if (Array.isArray(arr)) n += arr.length;
+    }
+  }
+  return n;
+}
+
+/**
+ * Firestore may have an older snapshot for "today" (empty hours) while another day (e.g. Wed) is up to date.
+ * For each date key, if localStorage has MORE tasks than cloud for that date, keep the local day so today isn't wiped.
+ */
+function mergeCloudDaysWithRicherLocalDisk(cloudDays, localDays) {
+  const c = cloudDays && typeof cloudDays === "object" ? { ...cloudDays } : {};
+  for (const [dayKey, localDay] of Object.entries(localDays || {})) {
+    const nL = countTasksInDay(localDay);
+    if (nL === 0) continue;
+    const nC = countTasksInDay(c[dayKey]);
+    if (nL > nC) {
+      c[dayKey] = {
+        ...(c[dayKey] || {}),
+        ...(localDay || {}),
+        hours: { ...(localDay?.hours || {}) },
+        morningRoutine: localDay?.morningRoutine?.length ? localDay.morningRoutine : c[dayKey]?.morningRoutine,
+      };
+    }
+  }
+  return c;
+}
+
 /** Count day tasks + monthly rows so we can prefer the richer snapshot (Firestore vs disk). */
 function countScheduleTasks(state) {
   if (!state || typeof state !== "object") return 0;
@@ -347,13 +382,7 @@ function countScheduleTasks(state) {
   const days = state.days;
   if (days && typeof days === "object") {
     for (const day of Object.values(days)) {
-      const hours = day?.hours || {};
-      for (const byCat of Object.values(hours)) {
-        if (!byCat || typeof byCat !== "object") continue;
-        for (const arr of Object.values(byCat)) {
-          if (Array.isArray(arr)) n += arr.length;
-        }
-      }
+      n += countTasksInDay(day);
     }
   }
   if (Array.isArray(state.monthly)) n += state.monthly.length;
@@ -1579,8 +1608,10 @@ export default function App() {
               ? data.customCategories
               : storedCats;
           const migratedCloud = migrateState(cloudState, catsForMigrate);
-          // Preserve any tasks added in this session that haven't made it to Firestore yet
-          const merged = mergeSessionTasksIntoCloud(migratedCloud, appStateRef.current);
+          const daysMergedDisk = mergeCloudDaysWithRicherLocalDisk(migratedCloud.days, localParsed?.days);
+          const afterDisk = { ...migratedCloud, days: daysMergedDisk };
+          // Session tasks not yet in cloud (and not covered by per-day disk merge)
+          const merged = mergeSessionTasksIntoCloud(afterDisk, appStateRef.current);
           setAppState(merged);
         }
         if (data.notes != null) setNotes(data.notes);
