@@ -31,12 +31,10 @@
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
-      // Register service worker for notifications
+      // Early SW install so push can work as soon as the user enables notifications (idempotent with notifications.js)
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then(registration => console.log('SW registered'))
-            .catch(err => console.log('SW registration failed'));
+          navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
         });
       }
     </script>

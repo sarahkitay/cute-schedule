@@ -19,24 +19,52 @@ class NotificationService {
     return this._checkPromise;
   }
 
+  /**
+   * Register /sw.js and subscribe for push (call from a button click — better permission UX).
+   * Public VAPID key comes from GET /api/push/vapid (server env VAPID_PUBLIC_KEY).
+   */
+  async registerServiceWorker() {
+    if (!("serviceWorker" in navigator)) return null;
+    const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    await navigator.serviceWorker.ready;
+    return registration;
+  }
+
   async enablePush() {
     if (!("serviceWorker" in navigator)) return false;
     try {
-      const reg = await navigator.serviceWorker.ready;
+      const registration = await this.registerServiceWorker();
+      if (!registration) return false;
+
       const permission = await Notification.requestPermission();
       if (permission !== "granted") return false;
+
       const res = await fetch("/api/push/vapid");
-      const { publicKey } = await res.json();
-      if (!publicKey) return false;
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      });
-      await fetch("/api/push/subscribe", {
+      const json = await res.json().catch(() => ({}));
+      const publicKey = json.publicKey;
+      if (!publicKey) {
+        console.warn("Push: no VAPID_PUBLIC_KEY from server — set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY on Vercel");
+        return false;
+      }
+
+      let sub = await registration.pushManager.getSubscription();
+      if (!sub) {
+        sub = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        });
+      }
+
+      const saveRes = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subscription: sub }),
       });
+      if (!saveRes.ok) {
+        console.warn("Push: failed to store subscription on server", await saveRes.text());
+        return false;
+      }
+
       this.permission = "granted";
       return true;
     } catch (e) {
@@ -234,6 +262,9 @@ const _notificationService = new NotificationService();
 export const notificationService = {
   get permission() {
     return _notificationService.permission;
+  },
+  registerServiceWorker() {
+    return _notificationService.registerServiceWorker();
   },
   enablePush() {
     return _notificationService.enablePush();
