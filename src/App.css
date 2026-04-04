@@ -3845,3 +3845,84 @@ button {
   gap: 8px;
   justify-content: flex-end;
 }
+
+/* Habits daily check-in + grocery list */
+.habit-daily-card .habit-checkin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.habit-checkin-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.habit-checkin-row:last-child {
+  border-bottom: none;
+}
+.habit-checkin-label {
+  flex: 1;
+  min-width: 140px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.habit-checkin-name {
+  font-weight: 500;
+  color: var(--text);
+}
+.habit-direction-tag {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface2);
+  color: var(--text-soft);
+}
+.habit-direction-tag.is-build {
+  background: rgba(144, 238, 144, 0.25);
+  color: #2e6b2e;
+}
+.habit-direction-tag.is-break {
+  background: rgba(255, 182, 193, 0.35);
+  color: #8b3a4a;
+}
+.habit-checkin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.grocery-list-btn {
+  padding: 2px 10px !important;
+  min-height: auto;
+  font-size: 12px;
+  font-weight: 600;
+}
+.grocery-modal-items {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+.grocery-modal-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.grocery-modal-item .check {
+  flex: 1;
+  min-width: 0;
+}
+.list-row-grocery {
+  margin-right: 4px;
+}

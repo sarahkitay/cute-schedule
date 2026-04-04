@@ -17,6 +17,15 @@ import {
   GENTLE_ANCHOR_PROMPT
 } from "./gentleAnchor";
 import cloudStorage from "./cloudStorage";
+import {
+  subscribeAuthState,
+  migrateLegacyDeviceScheduleIfNeeded,
+  signInWithGoogle,
+  signUpWithEmail,
+  signInWithEmail as emailPasswordSignIn,
+  authSignOut,
+  isFirebaseEnabled,
+} from "./firebase";
 
 /** ====== Config ====== **/
 const DEFAULT_CATEGORIES = ["Work", "Personal"];
@@ -29,11 +38,74 @@ const MOODBOARD_STORAGE_KEY = "cute_schedule_moodboard_v1";
 const COACH_USER_PROFILE_KEY = "cute_schedule_coach_profile_v1";
 const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
+
+const patternsDirtyListeners = new Set();
+function notifyPatternsDirty() {
+  patternsDirtyListeners.forEach((fn) => {
+    try {
+      fn();
+    } catch (_) {}
+  });
+}
+
+/** Tasks mentioning shopping / errands get an optional checklist (saved on the task, synced via appState). */
+function taskMentionsGroceryErrandStore(text) {
+  return /\b(grocer(?:y|ies)?|store|errand)\b/i.test(String(text || "").trim());
+}
+
+function defaultHabitTracker() {
+  return { habits: [], log: {} };
+}
+
+function loadHabitTrackerFromDisk() {
+  try {
+    const raw = localStorage.getItem(HABITS_STORAGE_KEY);
+    if (!raw) return defaultHabitTracker();
+    const o = JSON.parse(raw);
+    return {
+      habits: Array.isArray(o.habits) ? o.habits : [],
+      log: o.log && typeof o.log === "object" ? o.log : {},
+    };
+  } catch {
+    return defaultHabitTracker();
+  }
+}
+
+function findTaskInAppState(appState, dayKey, hourKey, category, taskId) {
+  const list = appState?.days?.[dayKey]?.hours?.[hourKey]?.[category];
+  if (!Array.isArray(list)) return null;
+  return list.find((t) => t.id === taskId) || null;
+}
+
+function buildHabitSummaryForCoach(tracker, dayKey, lastN = 7) {
+  const habits = tracker?.habits || [];
+  const log = tracker?.log || {};
+  if (habits.length === 0) return null;
+  const lines = [];
+  const d = new Date(dayKey + "T12:00:00");
+  for (let i = 0; i < lastN; i++) {
+    const x = new Date(d);
+    x.setDate(x.getDate() - i);
+    const k = `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+    const dayLog = log[k];
+    if (!dayLog || typeof dayLog !== "object") continue;
+    const parts = [];
+    for (const h of habits) {
+      const v = dayLog[h.id];
+      if (v === "yes" || v === "no") {
+        parts.push(`${h.label} (${h.direction === "break" ? "break bad habit" : "build habit"}): ${v === "yes" ? "positive" : "slip / not today"}`);
+      }
+    }
+    if (parts.length) lines.push(`${k}: ${parts.join("; ")}`);
+  }
+  return lines.length ? lines.join("\n") : "No check-ins logged yet this week.";
+}
 const FINANCE_STORAGE_KEY = "cute_schedule_finance_v1";
 const PROFILE_STORAGE_KEY = "cute_schedule_profile_v1";
 const ROUTINE_TEMPLATE_KEY = "cute_schedule_routine_template_v1";
 const ROUTINE_MORNING_TEMPLATE_KEY = "cute_schedule_routine_morning_v1";
 const ROUTINE_SCHEDULE_KEY = "cute_schedule_routine_schedule_v1"; // { morning: 'every' | [0..6], night: 'every' | [0..6] }
+const HABITS_STORAGE_KEY = "cute_schedule_habits_v1";
 
 const ENERGY_LEVELS = {
   LIGHT: { icon: LightEnergyIcon, label: "Light", color: "#90EE90" },
@@ -648,6 +720,7 @@ function trackTaskCompletion(task, category, hour, dayKey, feeling = null) {
   }
   
   savePatterns(patterns);
+  notifyPatternsDirty();
 }
 
 /** Call when user completes full bedtime routine (all items done) for ADHD sleep correlation */
@@ -657,6 +730,7 @@ function trackBedtimeComplete(dayKey) {
   if (list.includes(dayKey)) return;
   patterns.bedtimeCompletedDates = [...list, dayKey].slice(-60); // keep last 60 days
   savePatterns(patterns);
+  notifyPatternsDirty();
 }
 
 function analyzePatterns() {
@@ -778,7 +852,7 @@ function ProgressSegments({ total, done }) {
 }
 
 // Ultra-minimal hour card with Do/Plan mode
-function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onChangeTaskTime, onOpenDropdown, taskDropdown, editingTaskTime, editTaskTimeValue, setEditTaskTimeValue, setEditingTaskTime, onEditTimeSave, onEditTimeCancel, expandedTaskKey, onExpandTask, mode = "do" }) {
+function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onChangeTaskTime, onOpenDropdown, taskDropdown, editingTaskTime, editTaskTimeValue, setEditTaskTimeValue, setEditingTaskTime, onEditTimeSave, onEditTimeCancel, expandedTaskKey, onExpandTask, onOpenGroceryList, mode = "do" }) {
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   const complete = hourIsComplete(tasksByCat, cats);
   const [open, setOpen] = useState(true);
@@ -894,6 +968,20 @@ function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onTogg
                   
                   {!t.done && (
                     <>
+                      {taskMentionsGroceryErrandStore(t.text) && typeof onOpenGroceryList === "function" && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm grocery-list-btn"
+                          title="Open shopping / errand checklist"
+                          aria-label="Open shopping list for this task"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenGroceryList(hourKey, t.category, t.id);
+                          }}
+                        >
+                          List
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="icon-btn"
@@ -1278,6 +1366,19 @@ export default function App() {
     } catch (_) {}
   }, [finance]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(HABITS_STORAGE_KEY, JSON.stringify(habitTracker));
+    } catch (_) {}
+  }, [habitTracker]);
+
+  const [patternsRev, setPatternsRev] = useState(0);
+  useEffect(() => {
+    const fn = () => setPatternsRev((r) => r + 1);
+    patternsDirtyListeners.add(fn);
+    return () => patternsDirtyListeners.delete(fn);
+  }, []);
+
   const BILL_REMINDER_KEY = "cute_schedule_bill_reminder_date";
   useEffect(() => {
     const today = todayKey();
@@ -1382,6 +1483,18 @@ export default function App() {
   const [newBillAmount, setNewBillAmount] = useState("");
   const [newBillDueDate, setNewBillDueDate] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [firebaseUser, setFirebaseUser] = useState(null);
+  const [firebaseAuthResolved, setFirebaseAuthResolved] = useState(false);
+  const [authUiEmail, setAuthUiEmail] = useState("");
+  const [authUiPassword, setAuthUiPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [habitTracker, setHabitTracker] = useState(() => loadHabitTrackerFromDisk());
+  const [groceryListModal, setGroceryListModal] = useState(null);
+  const [groceryListPrompt, setGroceryListPrompt] = useState(null);
+  const [groceryNewItem, setGroceryNewItem] = useState("");
+  const [newHabitLabel, setNewHabitLabel] = useState("");
+  const [newHabitDirection, setNewHabitDirection] = useState("build");
   const [newTypeName, setNewTypeName] = useState("");
   const [completionCelebration, setCompletionCelebration] = useState(null);
   const [toastNotification, setToastNotification] = useState(null);
@@ -1467,6 +1580,13 @@ export default function App() {
     return list;
   }, [realTodayKey, finance.bills, finance.subscriptions, appState.days, customCategories]);
 
+  const habitsNeedCheckIn = useMemo(() => {
+    const habits = habitTracker.habits || [];
+    if (habits.length === 0) return false;
+    const dayLog = habitTracker.log[realTodayKey] || {};
+    return habits.some((h) => dayLog[h.id] == null);
+  }, [habitTracker, realTodayKey]);
+
   // Coach meta for cooldown and auto-run
   const [coachMeta, setCoachMeta] = useState(() => {
     try {
@@ -1534,7 +1654,20 @@ export default function App() {
     saveState(appState);
   }, [appState]);
 
-  // Firestore: load once on mount, then debounced save when state changes
+  // Firebase Auth → Firestore doc schedules/{uid}. Anonymous sign-in is used when enabled so rules always have a uid.
+  useEffect(() => {
+    if (!isFirebaseEnabled()) {
+      setFirebaseAuthResolved(true);
+      setFirebaseUser(null);
+      return;
+    }
+    return subscribeAuthState((user) => {
+      setFirebaseUser(user);
+      setFirebaseAuthResolved(true);
+    });
+  }, []);
+
+  // Firestore: load after auth is known (uid), then debounced save when state changes
   const [firestoreReady, setFirestoreReady] = useState(false);
   const firestoreSaveTimeoutRef = useRef(null);
   const latestForUnloadRef = useRef(null);
@@ -1562,6 +1695,7 @@ export default function App() {
       moodboard,
       customCategories,
       patterns: loadPatterns(),
+      habitTracker,
     });
   }, [
     appState,
@@ -1576,10 +1710,22 @@ export default function App() {
     coachUserProfile,
     moodboard,
     customCategories,
+    patternsRev,
+    habitTracker,
   ]);
 
   useEffect(() => {
-    cloudStorage.loadFullStateOnce().then((data) => {
+    if (!firebaseAuthResolved) return;
+    setFirestoreReady(false);
+    let cancelled = false;
+    cloudStorage.invalidateLoadCache();
+    void (async () => {
+      if (firebaseUser?.uid) {
+        await migrateLegacyDeviceScheduleIfNeeded(firebaseUser.uid);
+      }
+      const data = await cloudStorage.loadFullStateOnce();
+      if (cancelled) return;
+
       let localParsed = null;
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
@@ -1593,8 +1739,6 @@ export default function App() {
       const nReact = countScheduleTasks(appStateRef.current);
       const localHasSchedule = savedStateHasScheduleData(localParsed);
 
-      // Never replace disk/UI that has MORE scheduled items than Firestore (empty cloud was wiping quick-add tasks).
-      // nCloud >= nReact blocks late hydrate after user added tasks before the fetch returned.
       const shouldApplyCloudAppState =
         cloudState != null &&
         nCloud >= nReact &&
@@ -1610,7 +1754,6 @@ export default function App() {
           const migratedCloud = migrateState(cloudState, catsForMigrate);
           const daysMergedDisk = mergeCloudDaysWithRicherLocalDisk(migratedCloud.days, localParsed?.days);
           const afterDisk = { ...migratedCloud, days: daysMergedDisk };
-          // Session tasks not yet in cloud (and not covered by per-day disk merge)
           const merged = mergeSessionTasksIntoCloud(afterDisk, appStateRef.current);
           setAppState(merged);
         }
@@ -1634,12 +1777,22 @@ export default function App() {
         if (data.patterns != null) {
           try {
             localStorage.setItem(PATTERNS_STORAGE_KEY, JSON.stringify(data.patterns));
+            notifyPatternsDirty();
           } catch (_) {}
+        }
+        if (data.habitTracker != null && typeof data.habitTracker === "object") {
+          setHabitTracker({
+            habits: Array.isArray(data.habitTracker.habits) ? data.habitTracker.habits : [],
+            log: data.habitTracker.log && typeof data.habitTracker.log === "object" ? data.habitTracker.log : {},
+          });
         }
       }
       setFirestoreReady(true);
-    });
-  }, []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [firebaseAuthResolved, firebaseUser?.uid]);
 
   useEffect(() => {
     if (!firestoreReady) return;
@@ -1657,6 +1810,7 @@ export default function App() {
       moodboard,
       customCategories,
       patterns: loadPatterns(),
+      habitTracker,
     };
     if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
     firestoreSaveTimeoutRef.current = setTimeout(() => {
@@ -1666,7 +1820,7 @@ export default function App() {
     return () => {
       if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
     };
-  }, [firestoreReady, appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories]);
+  }, [firestoreReady, appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patternsRev, habitTracker]);
 
   useEffect(() => {
     const flush = () => {
@@ -1693,6 +1847,7 @@ export default function App() {
         moodboard: p.moodboard,
         customCategories: p.customCategories,
         patterns: p.patterns,
+        habitTracker: p.habitTracker,
       });
     };
     const onVis = () => {
@@ -1958,14 +2113,37 @@ export default function App() {
     });
   }
 
+  function updateTaskGroceryList(dayKey, hourKey, category, taskId, recipe) {
+    setAppState((prev) => {
+      const day = prev.days[dayKey];
+      if (!day?.hours) return prev;
+      const hours = { ...day.hours };
+      const byCat = { ...(hours[hourKey] || {}) };
+      const row = (byCat[category] || []).map((t) => {
+        if (t.id !== taskId) return t;
+        const gl = t.groceryList && typeof t.groceryList === "object" ? t.groceryList : { items: [] };
+        const items = Array.isArray(gl.items) ? [...gl.items] : [];
+        const next = recipe({ ...gl, items });
+        return { ...t, groceryList: next };
+      });
+      hours[hourKey] = { ...byCat, [category]: row };
+      return { ...prev, days: { ...prev.days, [dayKey]: { ...day, hours } } };
+    });
+  }
+
   function addTask(hourKey, category, text, repeatType = REPEAT_OPTIONS.NONE, sourceTaskId = null) {
+    const newId = uid();
+    const checkText = normalizeText(text) || String(text || "").trim();
+    if (checkText && taskMentionsGroceryErrandStore(checkText)) {
+      queueMicrotask(() => setGroceryListPrompt({ dayKey: tKey, hourKey, category, taskId: newId }));
+    }
     setAppState((prev) => {
       const day = prev.days[tKey] || { hours: {} };
       const hours = { ...(day.hours || {}) };
       const byCat = hours[hourKey] || emptySlot(customCategories);
 
       const nextTask = { 
-        id: uid(), 
+        id: newId, 
         text, 
         done: false, 
         energyLevel: "MEDIUM", 
@@ -2333,6 +2511,7 @@ export default function App() {
       notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
       routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories,
       patterns: loadPatterns(),
+      habitTracker,
     });
   }
 
@@ -2354,6 +2533,7 @@ export default function App() {
       notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
       routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories,
       patterns: loadPatterns(),
+      habitTracker,
     });
     setQuickAddValue("");
     
@@ -2490,6 +2670,9 @@ export default function App() {
         },
         billsDueSoon: (finance.bills || []).filter((b) => b.dueDate && b.dueDate >= realTodayKey).slice(0, 10),
         subscriptions: (finance.subscriptions || []).map((s) => ({ name: s.name, amount: s.amount, dueDay: s.dueDay })),
+        habits: (habitTracker.habits || []).map((h) => ({ id: h.id, label: h.label, direction: h.direction })),
+        habitLogSummary: buildHabitSummaryForCoach(habitTracker, realTodayKey),
+        habitToday: habitTracker.log[realTodayKey] || {},
         finance: (() => {
           const now = new Date();
           const incomeThisMonth = (finance.incomeEntries || []).reduce((sum, e) => {
@@ -2639,6 +2822,9 @@ export default function App() {
         progress: prog,
         mood: appState.days?.[tKey]?.dailyMood || null,
         patterns: analyzePatterns(),
+        habits: (habitTracker.habits || []).map((h) => ({ id: h.id, label: h.label, direction: h.direction })),
+        habitLogSummary: buildHabitSummaryForCoach(habitTracker, realTodayKey),
+        habitToday: habitTracker.log[realTodayKey] || {},
         finance: {
           incomeThisMonth: (finance.incomeEntries || []).reduce((s, e) => {
             const d = new Date(e.dateISO);
@@ -2773,6 +2959,58 @@ export default function App() {
     });
   }, [todayHours]);
 
+  async function handleGoogleSignIn() {
+    setAuthError("");
+    setAuthBusy(true);
+    try {
+      await signInWithGoogle();
+    } catch (e) {
+      setAuthError(e?.message || String(e));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleEmailSignUpClick() {
+    setAuthError("");
+    if (!authUiEmail.trim() || !authUiPassword) return;
+    setAuthBusy(true);
+    try {
+      await signUpWithEmail(authUiEmail, authUiPassword);
+      setAuthUiPassword("");
+    } catch (e) {
+      setAuthError(e?.message || String(e));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleEmailSignInClick() {
+    setAuthError("");
+    if (!authUiEmail.trim() || !authUiPassword) return;
+    setAuthBusy(true);
+    try {
+      await emailPasswordSignIn(authUiEmail, authUiPassword);
+      setAuthUiPassword("");
+    } catch (e) {
+      setAuthError(e?.message || String(e));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleAuthSignOut() {
+    setAuthError("");
+    setAuthBusy(true);
+    try {
+      await authSignOut();
+    } catch (e) {
+      setAuthError(e?.message || String(e));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
   latestForUnloadRef.current = {
     appState,
     notes,
@@ -2787,6 +3025,7 @@ export default function App() {
     moodboard,
     customCategories,
     patterns: loadPatterns(),
+    habitTracker,
   };
 
   return (
@@ -2926,6 +3165,65 @@ export default function App() {
               </button>
             </form>
 
+            {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
+              <section className="panel habit-daily-card surface-glass" style={{ marginBottom: 14 }}>
+                <div className="panel-title">
+                  <span className="title">Habits · today</span>
+                </div>
+                <p className="settings-hint" style={{ marginBottom: 12 }}>
+                  {habitsNeedCheckIn ? "Quick check-in when you’re ready." : "You’re logged for today — you can change answers anytime."}{" "}
+                  <strong>Build</strong> = habit you want to grow. <strong>Break</strong> = habit you want to drop.
+                </p>
+                <ul className="list habit-checkin-list">
+                  {(habitTracker.habits || []).map((h) => {
+                    const v = (habitTracker.log[realTodayKey] || {})[h.id];
+                    return (
+                      <li key={h.id} className="habit-checkin-row">
+                        <div className="habit-checkin-label">
+                          <span className="habit-checkin-name">{h.label}</span>
+                          <span className={`habit-direction-tag ${h.direction === "break" ? "is-break" : "is-build"}`}>
+                            {h.direction === "break" ? "Break" : "Build"}
+                          </span>
+                        </div>
+                        <div className="habit-checkin-actions">
+                          <button
+                            type="button"
+                            className={`btn btn-sm ${v === "yes" ? "btn-primary" : ""}`}
+                            onClick={() =>
+                              setHabitTracker((prev) => ({
+                                ...prev,
+                                log: {
+                                  ...prev.log,
+                                  [realTodayKey]: { ...(prev.log[realTodayKey] || {}), [h.id]: "yes" },
+                                },
+                              }))
+                            }
+                          >
+                            {h.direction === "break" ? "Avoided" : "Did it"}
+                          </button>
+                          <button
+                            type="button"
+                            className={`btn btn-sm ${v === "no" ? "btn-primary" : ""}`}
+                            onClick={() =>
+                              setHabitTracker((prev) => ({
+                                ...prev,
+                                log: {
+                                  ...prev.log,
+                                  [realTodayKey]: { ...(prev.log[realTodayKey] || {}), [h.id]: "no" },
+                                },
+                              }))
+                            }
+                          >
+                            {h.direction === "break" ? "Slip" : "Not today"}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
+
             {tab === "today" && routineSchedule.enabledMorning !== false && routineAppliesToday(routineSchedule.morning, new Date(tKey + "T12:00:00").getDay()) && effectiveMorningRoutine.length > 0 && (
               <section className="panel" style={{ marginBottom: 14 }}>
                 <MorningRoutine routine={effectiveMorningRoutine} onToggle={toggleMorningRoutine} />
@@ -2972,6 +3270,10 @@ export default function App() {
                           onEditTimeCancel={() => { setEditingTaskTime(null); }}
                           expandedTaskKey={expandedTaskKey}
                           onExpandTask={setExpandedTaskKey}
+                          onOpenGroceryList={(hk, cat, id) => {
+                            setGroceryListModal({ dayKey: tKey, hourKey: hk, category: cat, taskId: id });
+                            setGroceryListPrompt(null);
+                          }}
                           mode={mode}
                         />
                       </div>
@@ -3213,6 +3515,19 @@ export default function App() {
                           <span className={`list-row-title ${t.done ? 'item-text-done' : ''}`}>{t.text}</span>
                         </label>
                         <div className="list-row-actions">
+                        {taskMentionsGroceryErrandStore(t.text) && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm list-row-grocery"
+                            title="Shopping checklist"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setGroceryListModal({ dayKey: tKey, hourKey: t.hour, category: t.category, taskId: t.id });
+                            }}
+                          >
+                            List
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="icon-btn list-row-action list-row-more"
@@ -3952,6 +4267,21 @@ export default function App() {
                         <CalendarIcon style={{ marginRight: '8px' }} />
                         Move to tomorrow
                       </button>
+                      {(() => {
+                        const taskNode = findTaskInAppState(appState, tKey, hourKey, category, id);
+                        return taskNode && taskMentionsGroceryErrandStore(taskNode.text) ? (
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              setGroceryListModal({ dayKey: tKey, hourKey, category, taskId: id });
+                              closeDropdown();
+                            }}
+                          >
+                            Shopping / errand list
+                          </button>
+                        ) : null;
+                      })()}
                       <button type="button" className="dropdown-item" onClick={() => { setEditTaskTimeValue(hourKey); setEditingTaskTime(editKey); }}>
                         Edit time
                       </button>
@@ -3966,6 +4296,128 @@ export default function App() {
           })(),
           document.body
         )}
+
+        {groceryListPrompt && (
+          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grocery-prompt-title" onClick={() => setGroceryListPrompt(null)}>
+            <div className="modal grocery-prompt-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
+              <h3 id="grocery-prompt-title">Shopping or errand list?</h3>
+              <p className="settings-hint">This task mentions groceries, a store, or an errand. Open a checklist on the task — it saves with your schedule and syncs to the cloud.</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setGroceryListModal({ ...groceryListPrompt });
+                    setGroceryListPrompt(null);
+                  }}
+                >
+                  Open list
+                </button>
+                <button type="button" className="btn" onClick={() => setGroceryListPrompt(null)}>
+                  Not now
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {groceryListModal && (() => {
+          const { dayKey, hourKey, category, taskId } = groceryListModal;
+          const task = findTaskInAppState(appState, dayKey, hourKey, category, taskId);
+          if (!task) {
+            return (
+              <div className="modal-overlay" onClick={() => setGroceryListModal(null)}>
+                <div className="modal" onClick={(e) => e.stopPropagation()}>
+                  <p>That task is no longer here.</p>
+                  <button type="button" className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setGroceryListModal(null)}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            );
+          }
+          const items = task.groceryList?.items && Array.isArray(task.groceryList.items) ? task.groceryList.items : [];
+          return (
+            <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grocery-modal-title" onClick={() => setGroceryListModal(null)}>
+              <div className="modal grocery-list-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 440 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                  <h3 id="grocery-modal-title" style={{ margin: 0 }}>
+                    Checklist
+                  </h3>
+                  <button type="button" className="btn-icon" aria-label="Close" onClick={() => setGroceryListModal(null)}>
+                    <CloseIcon style={{ width: 22, height: 22 }} />
+                  </button>
+                </div>
+                <p className="settings-hint" style={{ marginTop: 8 }}>
+                  {task.text}
+                </p>
+                <ul className="list grocery-modal-items">
+                  {items.length === 0 ? (
+                    <li className="settings-hint" style={{ listStyle: "none", padding: "8px 0" }}>
+                      No lines yet — add below.
+                    </li>
+                  ) : (
+                    items.map((it) => (
+                      <li key={it.id} className="grocery-modal-item">
+                        <label className="check">
+                          <input
+                            type="checkbox"
+                            checked={!!it.done}
+                            onChange={() =>
+                              updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
+                                ...gl,
+                                items: gl.items.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)),
+                              }))
+                            }
+                          />
+                          <span className="checkmark" />
+                          <span className={it.done ? "item-text-done" : ""}>{it.text}</span>
+                        </label>
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          onClick={() =>
+                            updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
+                              ...gl,
+                              items: gl.items.filter((x) => x.id !== it.id),
+                            }))
+                          }
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))
+                  )}
+                </ul>
+                <form
+                  className="input-group grocery-add-row"
+                  style={{ marginTop: 12 }}
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const line = normalizeText(groceryNewItem);
+                    if (!line) return;
+                    updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
+                      ...gl,
+                      items: [...gl.items, { id: uid(), text: line, done: false }],
+                    }));
+                    setGroceryNewItem("");
+                  }}
+                >
+                  <input
+                    className="input"
+                    value={groceryNewItem}
+                    onChange={(e) => setGroceryNewItem(e.target.value)}
+                    placeholder="Add item…"
+                    aria-label="Add checklist line"
+                  />
+                  <button type="submit" className="btn btn-primary" disabled={!groceryNewItem.trim()}>
+                    Add
+                  </button>
+                </form>
+              </div>
+            </div>
+          );
+        })()}
 
         {showMonthCalendar && (
           <div className="modal-overlay" onClick={() => setShowMonthCalendar(false)} aria-modal="true" role="dialog" aria-label="Calendar">
@@ -4005,6 +4457,82 @@ export default function App() {
           <div className="modal-overlay" onClick={() => setShowSettings(false)}>
             <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
               <h3>Settings</h3>
+
+              <div className="settings-section">
+                <label className="label">Account &amp; cloud sync</label>
+                {!isFirebaseEnabled() ? (
+                  <p className="settings-hint">Add your Firebase web config (env vars) to sync your schedule, notes, finance, and settings across devices.</p>
+                ) : (
+                  <>
+                    <p className="settings-hint" style={{ marginBottom: 10 }}>
+                      {firebaseUser?.isAnonymous
+                        ? "You’re on a guest session in this browser. Sign in with Google or email so your data is tied to your account."
+                        : firebaseUser?.email
+                          ? `Signed in as ${firebaseUser.email}`
+                          : firebaseUser?.displayName
+                            ? `Signed in as ${firebaseUser.displayName}`
+                            : firebaseUser
+                              ? "Signed in"
+                              : "Not signed in — cloud sync needs Anonymous auth enabled in Firebase, or sign in below."}
+                    </p>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
+                      <button type="button" className="btn btn-primary btn-sm" disabled={authBusy} onClick={() => void handleGoogleSignIn()}>
+                        {firebaseUser?.isAnonymous ? "Continue with Google" : "Sign in with Google"}
+                      </button>
+                      {firebaseUser && !firebaseUser.isAnonymous ? (
+                        <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
+                          Sign out
+                        </button>
+                      ) : null}
+                    </div>
+                    <label className="label" style={{ marginTop: 4 }}>Email</label>
+                    <input
+                      className="input modal-input"
+                      type="email"
+                      autoComplete="email"
+                      value={authUiEmail}
+                      onChange={(e) => setAuthUiEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      aria-label="Email for sign-in"
+                    />
+                    <label className="label" style={{ marginTop: 8 }}>Password</label>
+                    <input
+                      className="input modal-input"
+                      type="password"
+                      autoComplete="current-password"
+                      value={authUiPassword}
+                      onChange={(e) => setAuthUiPassword(e.target.value)}
+                      placeholder="Password"
+                      aria-label="Password"
+                    />
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                      {(firebaseUser?.isAnonymous !== false || !firebaseUser) && (
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          disabled={authBusy || !authUiEmail.trim() || !authUiPassword}
+                          onClick={() => void handleEmailSignUpClick()}
+                        >
+                          {firebaseUser?.isAnonymous ? "Create account (link email)" : "Create account"}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={authBusy || !authUiEmail.trim() || !authUiPassword}
+                        onClick={() => void handleEmailSignInClick()}
+                      >
+                        Sign in with email
+                      </button>
+                    </div>
+                    {authError ? (
+                      <p className="settings-hint" style={{ color: "#b71c1c", marginTop: 10 }} role="alert">
+                        {authError}
+                      </p>
+                    ) : null}
+                  </>
+                )}
+              </div>
 
               <div className="settings-section">
                 <label className="label">Your name</label>
@@ -4143,6 +4671,80 @@ export default function App() {
                       </button>
                     );
                   })}
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Habit check-ins</label>
+                <p className="settings-hint">
+                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them. Your coach uses this in context — no judgment, just awareness.
+                </p>
+                <ul className="routine-template-list">
+                  {(habitTracker.habits || []).map((h) => (
+                    <li key={h.id} className="routine-template-item">
+                      <span className="routine-template-input" style={{ flex: 1 }}>
+                        {h.label}{" "}
+                        <span className="settings-hint" style={{ marginLeft: 6 }}>
+                          ({h.direction === "break" ? "break" : "build"})
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm routine-template-remove"
+                        onClick={() =>
+                          setHabitTracker((prev) => ({
+                            habits: (prev.habits || []).filter((x) => x.id !== h.id),
+                            log: Object.fromEntries(
+                              Object.entries(prev.log || {}).map(([dk, day]) => [
+                                dk,
+                                typeof day === "object" && day != null
+                                  ? Object.fromEntries(Object.entries(day).filter(([k]) => k !== h.id))
+                                  : day,
+                              ])
+                            ),
+                          }))
+                        }
+                        aria-label={`Remove habit ${h.label}`}
+                      >
+                        <TrashIcon style={{ width: 14, height: 14 }} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="settings-add-type" style={{ marginTop: 10 }}>
+                  <input
+                    className="input modal-input"
+                    type="text"
+                    value={newHabitLabel}
+                    onChange={(e) => setNewHabitLabel(e.target.value)}
+                    placeholder="e.g. Stretch 10 min / scroll less"
+                    aria-label="New habit label"
+                  />
+                  <select
+                    className="input"
+                    value={newHabitDirection}
+                    onChange={(e) => setNewHabitDirection(e.target.value)}
+                    aria-label="Build or break habit"
+                    style={{ minWidth: 100 }}
+                  >
+                    <option value="build">Build</option>
+                    <option value="break">Break</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      const label = (newHabitLabel || "").trim();
+                      if (!label) return;
+                      setHabitTracker((prev) => ({
+                        habits: [...(prev.habits || []), { id: uid(), label, direction: newHabitDirection === "break" ? "break" : "build" }],
+                        log: prev.log || {},
+                      }));
+                      setNewHabitLabel("");
+                    }}
+                  >
+                    Add habit
+                  </button>
                 </div>
               </div>
 

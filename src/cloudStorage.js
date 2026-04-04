@@ -1,4 +1,4 @@
-import { getDb, initFirebase, getDeviceId } from "./firebase";
+import { getDb, initFirebase, getScheduleDocId } from "./firebase";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 
 const FIRESTORE_COLLECTION = "schedules";
@@ -79,9 +79,14 @@ class CloudStorage {
     return this._loadFullStateOncePromise;
   }
 
+  /** Call when Firebase auth uid changes so the next load hits the correct document. */
+  invalidateLoadCache() {
+    this._loadFullStateOncePromise = null;
+  }
+
   /** Save full app state to Firestore (and keep localStorage as fallback). */
   async saveFullState(payload) {
-    const { appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patterns } = payload;
+    const { appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patterns, habitTracker } = payload;
     const appStateEncoded = appState != null ? encodeAppStateHourKeys(appState) : null;
     const dataToSave = {
       appState: appStateEncoded,
@@ -97,6 +102,7 @@ class CloudStorage {
       moodboard: cloneForFirestore(moodboard) ?? null,
       customCategories: cloneForFirestore(customCategories) ?? null,
       patterns: cloneForFirestore(patterns) ?? null,
+      habitTracker: cloneForFirestore(habitTracker) ?? null,
       updatedAt: new Date().toISOString(),
       version: "1.0",
     };
@@ -104,8 +110,8 @@ class CloudStorage {
     try {
       const firebaseDb = getDb();
       if (firebaseDb) {
-        const deviceId = getDeviceId();
-        const ref = doc(firebaseDb, FIRESTORE_COLLECTION, deviceId);
+        const docId = getScheduleDocId();
+        const ref = doc(firebaseDb, FIRESTORE_COLLECTION, docId);
         // Full replace — merge:true deep-merges nested maps and can leave stale/empty `hours` vs real tasks.
         await setDoc(ref, dataToSave);
         if (typeof localStorage !== "undefined") {
@@ -131,8 +137,8 @@ class CloudStorage {
       const firebaseDb = getDb();
       if (!firebaseDb) return null;
 
-      const deviceId = getDeviceId();
-      const ref = doc(firebaseDb, FIRESTORE_COLLECTION, deviceId);
+      const docId = getScheduleDocId();
+      const ref = doc(firebaseDb, FIRESTORE_COLLECTION, docId);
       const snap = await getDoc(ref);
       if (!snap.exists()) return null;
 
@@ -152,6 +158,7 @@ class CloudStorage {
         moodboard: data.moodboard ?? null,
         customCategories: data.customCategories ?? null,
         patterns: data.patterns ?? null,
+        habitTracker: data.habitTracker ?? null,
         updatedAt: data.updatedAt ?? null,
       };
     } catch (error) {
@@ -174,8 +181,8 @@ class CloudStorage {
       }
       const firebaseDb = getDb();
       if (firebaseDb) {
-        const deviceId = getDeviceId();
-        const ref = doc(firebaseDb, FIRESTORE_COLLECTION, deviceId);
+        const docId = getScheduleDocId();
+        const ref = doc(firebaseDb, FIRESTORE_COLLECTION, docId);
         await setDoc(ref, { categories: data, updatedAt: new Date().toISOString() }, { merge: true });
       }
       return { success: true };
