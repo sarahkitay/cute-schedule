@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   publicDir: 'public',
   build: {
+    chunkSizeWarningLimit: 900,
     sourcemap: true,
     esbuild: {
       keepNames: true, // avoid minifier renaming variables to same symbol (TDZ "vn" error)

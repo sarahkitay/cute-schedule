@@ -38,6 +38,7 @@ const MOODBOARD_STORAGE_KEY = "cute_schedule_moodboard_v1";
 const COACH_USER_PROFILE_KEY = "cute_schedule_coach_profile_v1";
 const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
+const HABITS_STORAGE_KEY = "cute_schedule_habits_v1";
 
 const patternsDirtyListeners = new Set();
 function notifyPatternsDirty() {
@@ -105,7 +106,6 @@ const PROFILE_STORAGE_KEY = "cute_schedule_profile_v1";
 const ROUTINE_TEMPLATE_KEY = "cute_schedule_routine_template_v1";
 const ROUTINE_MORNING_TEMPLATE_KEY = "cute_schedule_routine_morning_v1";
 const ROUTINE_SCHEDULE_KEY = "cute_schedule_routine_schedule_v1"; // { morning: 'every' | [0..6], night: 'every' | [0..6] }
-const HABITS_STORAGE_KEY = "cute_schedule_habits_v1";
 
 const ENERGY_LEVELS = {
   LIGHT: { icon: LightEnergyIcon, label: "Light", color: "#90EE90" },
@@ -1366,12 +1366,6 @@ export default function App() {
     } catch (_) {}
   }, [finance]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(HABITS_STORAGE_KEY, JSON.stringify(habitTracker));
-    } catch (_) {}
-  }, [habitTracker]);
-
   const [patternsRev, setPatternsRev] = useState(0);
   useEffect(() => {
     const fn = () => setPatternsRev((r) => r + 1);
@@ -1496,6 +1490,13 @@ export default function App() {
   const [newHabitLabel, setNewHabitLabel] = useState("");
   const [newHabitDirection, setNewHabitDirection] = useState("build");
   const [newTypeName, setNewTypeName] = useState("");
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(HABITS_STORAGE_KEY, JSON.stringify(habitTracker));
+    } catch (_) {}
+  }, [habitTracker]);
+
   const [completionCelebration, setCompletionCelebration] = useState(null);
   const [toastNotification, setToastNotification] = useState(null);
   const [taskFeeling, setTaskFeeling] = useState(null);
