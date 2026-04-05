@@ -166,10 +166,12 @@ export async function ensureSignedIn() {
 }
 
 /**
- * Subscribe to auth; ensures anonymous sign-in when there is no user (so Firestore rules can use uid).
+ * Subscribe to Firebase Auth state.
  * @param {(user: import("firebase/auth").User | null) => void} onResolved
+ * @param {{ autoSignInAnonymous?: boolean }} [options] If true, signs in anonymously when signed out (legacy). Default false → show login UI first.
  */
-export function subscribeAuthState(onResolved) {
+export function subscribeAuthState(onResolved, options = {}) {
+  const { autoSignInAnonymous = false } = options;
   const a = getAuthApp();
   if (!a) {
     onResolved(null);
@@ -177,11 +179,15 @@ export function subscribeAuthState(onResolved) {
   }
   return onAuthStateChanged(a, async (user) => {
     if (!user) {
-      try {
-        await signInAnonymously(a);
-      } catch {
-        onResolved(null);
+      if (autoSignInAnonymous) {
+        try {
+          await signInAnonymously(a);
+        } catch {
+          onResolved(null);
+        }
+        return;
       }
+      onResolved(null);
       return;
     }
     onResolved(user);
@@ -241,9 +247,9 @@ export async function signInWithEmail(email, password) {
   return next;
 }
 
+/** Sign out completely. App should show the login gate again (no automatic anonymous session). */
 export async function authSignOut() {
   const a = getAuthApp();
   if (!a) return;
   await signOut(a);
-  await ensureSignedIn();
 }

@@ -3926,3 +3926,97 @@ button {
 .list-row-grocery {
   margin-right: 4px;
 }
+
+/* Full-screen login gate (Firebase required before main app) */
+.login-gate {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-popover, 1200) + 50);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--theme-bg-gradient, linear-gradient(160deg, #f8f5f4 0%, #f1e8e6 100%));
+  background-attachment: fixed;
+}
+.login-gate-loading {
+  z-index: calc(var(--z-popover, 1200) + 60);
+}
+.login-gate-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 28px 24px 32px;
+  border-radius: var(--radius-2xl, 12px);
+  box-shadow: var(--shadow-card, 0 2px 12px rgba(0, 0, 0, 0.06));
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.06));
+}
+.login-gate-loading-inner {
+  text-align: center;
+  padding: 40px 24px;
+}
+.login-gate-brand {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-soft, #5c5c5c);
+  margin: 0 0 8px;
+}
+.login-gate-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 10px;
+  color: var(--text, #1a1a1a);
+  letter-spacing: -0.02em;
+}
+.login-gate-sub {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-soft, #5c5c5c);
+  margin: 0 0 22px;
+}
+.login-gate-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+.login-gate-btn-half {
+  flex: 1;
+  min-width: 0;
+}
+.login-gate-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.login-gate-input {
+  width: 100%;
+  margin-bottom: 10px;
+}
+.login-gate-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+  color: var(--muted, #737373);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.login-gate-divider::before,
+.login-gate-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-subtle, rgba(0, 0, 0, 0.08));
+}
+.login-gate-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-soft, #5c5c5c);
+  margin: 12px 0 0;
+}
+.login-gate-error {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: #b71c1c;
+}

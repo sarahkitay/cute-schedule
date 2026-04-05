@@ -25,6 +25,7 @@ import {
   signInWithEmail as emailPasswordSignIn,
   authSignOut,
   isFirebaseEnabled,
+  ensureSignedIn,
 } from "./firebase";
 
 /** ====== Config ====== **/
@@ -1182,6 +1183,126 @@ function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, on
   );
 }
 
+/** Full-screen first step when Firebase is on: each person signs in to load their own cloud data. */
+function LoginGateScreen() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function run(op) {
+    setError("");
+    setBusy(true);
+    try {
+      await op();
+    } catch (e) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="login-gate" role="main">
+      <div className="login-gate-card surface-glass">
+        <p className="login-gate-brand">PROYOU</p>
+        <h1 className="login-gate-title">Sign in</h1>
+        <p className="login-gate-sub">
+          Use your own account so your schedule, notes, and habits stay private and sync only for you.
+        </p>
+
+        <button
+          type="button"
+          className="btn btn-primary login-gate-btn"
+          disabled={busy}
+          onClick={() => run(() => signInWithGoogle())}
+        >
+          Continue with Google
+        </button>
+
+        <div className="login-gate-divider">
+          <span>or email</span>
+        </div>
+
+        <label className="label" htmlFor="login-gate-email">
+          Email
+        </label>
+        <input
+          id="login-gate-email"
+          className="input login-gate-input"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+        />
+        <label className="label" htmlFor="login-gate-password">
+          Password
+        </label>
+        <input
+          id="login-gate-password"
+          className="input login-gate-input"
+          type="password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+        />
+
+        <div className="login-gate-row">
+          <button
+            type="button"
+            className="btn btn-primary login-gate-btn-half"
+            disabled={busy || !email.trim() || !password}
+            onClick={() => run(() => emailPasswordSignIn(email, password))}
+          >
+            Sign in
+          </button>
+          <button
+            type="button"
+            className="btn login-gate-btn-half"
+            disabled={busy || !email.trim() || !password}
+            onClick={() => run(() => signUpWithEmail(email, password))}
+          >
+            Create account
+          </button>
+        </div>
+
+        <div className="login-gate-divider">
+          <span>or</span>
+        </div>
+
+        <button
+          type="button"
+          className="btn btn-ghost login-gate-btn"
+          disabled={busy}
+          onClick={() =>
+            run(async () => {
+              const u = await ensureSignedIn();
+              if (!u) {
+                throw new Error(
+                  "Guest session failed. In Firebase Console → Authentication → Sign-in method, enable Anonymous."
+                );
+              }
+            })
+          }
+        >
+          Continue on this device only (guest)
+        </button>
+        <p className="login-gate-hint">
+          Guest keeps data on this browser until you sign out. For your own cloud backup across devices, use Google or email.
+        </p>
+
+        {error ? (
+          <p className="login-gate-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 /** ====== Main App ====== **/
 export default function App() {
   const [tab, setTab] = useState("today");
@@ -1717,6 +1838,10 @@ export default function App() {
 
   useEffect(() => {
     if (!firebaseAuthResolved) return;
+    if (isFirebaseEnabled() && !firebaseUser?.uid) {
+      setFirestoreReady(false);
+      return;
+    }
     setFirestoreReady(false);
     let cancelled = false;
     cloudStorage.invalidateLoadCache();
@@ -3005,6 +3130,9 @@ export default function App() {
     setAuthBusy(true);
     try {
       await authSignOut();
+      if (isFirebaseEnabled()) {
+        window.location.reload();
+      }
     } catch (e) {
       setAuthError(e?.message || String(e));
     } finally {
@@ -3029,8 +3157,23 @@ export default function App() {
     habitTracker,
   };
 
+  const firebaseOn = isFirebaseEnabled();
+  const authWaiting = firebaseOn && !firebaseAuthResolved;
+  const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
+
   return (
     <div className="app">
+      {authWaiting && (
+        <div className="login-gate login-gate-loading" aria-busy="true" aria-live="polite">
+          <div className="login-gate-card surface-glass login-gate-loading-inner">
+            <p className="login-gate-brand">PROYOU</p>
+            <p className="login-gate-sub">Loading…</p>
+          </div>
+        </div>
+      )}
+      {showLoginGate && <LoginGateScreen />}
+      {!authWaiting && !showLoginGate && (
+        <>
       {moodboard.text && (
         <div className="moodboard-quote" aria-hidden="true">
           {moodboard.text}
@@ -4975,6 +5118,8 @@ export default function App() {
 
         {/* Gentle Rescheduling Modal */}
       </div>
+        </>
+      )}
     </div>
   );
 }
