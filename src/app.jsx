@@ -1698,7 +1698,6 @@ export default function App() {
   const [firebaseAuthResolved, setFirebaseAuthResolved] = useState(false);
   const moodboardFileInputRef = useRef(null);
   const [authBusy, setAuthBusy] = useState(false);
-  const [authError, setAuthError] = useState("");
   const [habitTracker, setHabitTracker] = useState(() => loadHabitTrackerFromDisk());
   const [groceryListModal, setGroceryListModal] = useState(null);
   const [groceryListPrompt, setGroceryListPrompt] = useState(null);
@@ -3220,20 +3219,7 @@ export default function App() {
     });
   }, [todayHours]);
 
-  async function handleGoogleSignIn() {
-    setAuthError("");
-    setAuthBusy(true);
-    try {
-      await signInWithGoogle();
-    } catch (e) {
-      setAuthError(e?.message || String(e));
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
   async function handleAuthSignOut() {
-    setAuthError("");
     setAuthBusy(true);
     try {
       await authSignOut();
@@ -3241,7 +3227,7 @@ export default function App() {
         window.location.reload();
       }
     } catch (e) {
-      setAuthError(e?.message || String(e));
+      alert(e?.message || String(e));
     } finally {
       setAuthBusy(false);
     }
@@ -5060,36 +5046,32 @@ export default function App() {
               </div>
 
               <div className="settings-section">
-                <label className="label">Account &amp; cloud sync</label>
+                <label className="label">Account</label>
                 {!isFirebaseEnabled() ? (
                   <p className="settings-hint">Add your Firebase web config (env vars) to sync your schedule, notes, finance, and settings across devices.</p>
                 ) : (
                   <>
-                    <p className="settings-hint" style={{ marginBottom: 10 }}>
-                      {firebaseUser?.isAnonymous
-                        ? "You’re on a guest session in this browser. Use Continue with Google to tie your data to your Google account (same as when you open the app)."
-                        : firebaseUser?.email
-                          ? `Signed in as ${firebaseUser.email}`
-                          : firebaseUser?.displayName
-                            ? `Signed in as ${firebaseUser.displayName}`
-                            : firebaseUser
-                              ? "Signed in"
-                              : "Not signed in. Cloud sync needs Anonymous auth enabled in Firebase, or sign in when you open the app."}
+                    <p className="settings-hint settings-account-status" style={{ marginBottom: 12 }}>
+                      {firebaseUser?.isAnonymous ? (
+                        <>Logged in as <strong>guest</strong> (this browser)</>
+                      ) : firebaseUser?.email ? (
+                        <>
+                          Logged in as <strong>{firebaseUser.email}</strong>
+                        </>
+                      ) : firebaseUser?.displayName ? (
+                        <>
+                          Logged in as <strong>{firebaseUser.displayName}</strong>
+                        </>
+                      ) : firebaseUser ? (
+                        "Logged in"
+                      ) : (
+                        "Not signed in."
+                      )}
                     </p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
-                      <button type="button" className="btn btn-primary btn-sm" disabled={authBusy} onClick={() => void handleGoogleSignIn()}>
-                        {firebaseUser?.isAnonymous ? "Continue with Google" : "Sign in with Google"}
+                    {firebaseUser ? (
+                      <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
+                        Log out
                       </button>
-                      {firebaseUser && !firebaseUser.isAnonymous ? (
-                        <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
-                          Sign out
-                        </button>
-                      ) : null}
-                    </div>
-                    {authError ? (
-                      <p className="settings-hint" style={{ color: "#b71c1c", marginTop: 10 }} role="alert">
-                        {authError}
-                      </p>
                     ) : null}
                   </>
                 )}
