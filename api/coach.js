@@ -46,7 +46,7 @@ Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences
       } else if (mode === "unstuck") {
         userContent = `User is overwhelmed. Pick ONE task from: ${JSON.stringify(tasksList)}.${habitBlock} Break it into 3 micro-steps (5-15 min to start). Return JSON: { "summary": "1-2 sentences", "taskId": "...", "taskTitle": "...", "steps": [ { "text": "...", "minutes": 5 } ], "actions": [ { "type": "MICRO_STEPS", "taskId": "...", "steps": [ { "text": "...", "minutes": 5 } ] } ] }.`;
       } else if (mode === "review") {
-        const financeNote = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0) ? ` Finance this month: income $${(finance.incomeThisMonth || 0).toFixed(2)}, spent $${(finance.spentThisMonth || 0).toFixed(2)}, savings $${(finance.totalSavings || 0).toFixed(2)}. If relevant, mention one gentle money habit (e.g. "You logged spending this month—that's a win.").` : "";
+        const financeNote = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || (finance.totalSavings || 0) > 0 || (finance.totalDebt || 0) > 0) ? ` Finance snapshot: income this month $${(finance.incomeThisMonth || 0).toFixed(2)}, spent $${(finance.spentThisMonth || 0).toFixed(2)}, savings $${(finance.totalSavings || 0).toFixed(2)}, debt $${(finance.totalDebt || 0).toFixed(2)}. If relevant, mention one gentle money habit (e.g. "You logged spending this month—that's a win.").` : "";
         userContent = `End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progress?.total || 0}. Schedule: ${JSON.stringify(scheduleData)}. Patterns: ${JSON.stringify(patterns || {})}.${financeNote}${habitBlock} Summarise wins, detect one pattern (e.g. tasks missed at 3pm), suggest one change for tomorrow. If habit data is present, you may note one observation (e.g. consistency on a build habit or compassion after a break-habit slip). Return JSON: { "summary": "2-4 sentences", "wins": ["..."], "pattern": "one sentence", "suggestion": "one sentence", "actions": [] }.`;
       }
       const adhdMessages = [
@@ -68,7 +68,9 @@ Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences
     }
 
     // Build conversation context
-    const hasFinance = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || finance.totalSavings > 0 || (finance.subscriptions && finance.subscriptions.length > 0) || (finance.wishList && finance.wishList.length > 0) || (finance.bankStatementNotes && finance.bankStatementNotes.trim()));
+    const hasSavingsAccounts = finance && Array.isArray(finance.savingsAccounts) && finance.savingsAccounts.length > 0;
+    const hasDebtAccounts = finance && Array.isArray(finance.debtAccounts) && finance.debtAccounts.length > 0;
+    const hasFinance = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || finance.totalSavings > 0 || finance.totalDebt > 0 || hasSavingsAccounts || hasDebtAccounts || (finance.subscriptions && finance.subscriptions.length > 0) || (finance.wishList && finance.wishList.length > 0) || (finance.bankStatementNotes && finance.bankStatementNotes.trim()));
     const systemContent = hasFinance
       ? "You are a calm, direct productivity coach for Sarah. You are also a gentle financial analyst trained in ADHD-friendly money management: you track what's going on with income, spending, savings, subscriptions, and wish lists without overwhelming. When the user asks about money or when finance data is provided, offer 1-2 clear observations and one small, doable next step. Never shame or lecture. Return valid JSON only. No markdown. No code fences."
       : "You are a calm, direct productivity coach for Sarah. Return valid JSON only. No markdown. No code fences.";
@@ -107,7 +109,10 @@ Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences
       ? `\n\nFinance (use for money questions; be gentle and ADHD-aware):
 - Income this month: $${(finance.incomeThisMonth || 0).toFixed(2)}
 - Spent this month: $${(finance.spentThisMonth || 0).toFixed(2)}
-- Total savings (user-set): $${(finance.totalSavings || 0).toFixed(2)}
+- Total savings (sum of accounts): $${(finance.totalSavings || 0).toFixed(2)}
+- Savings by account: ${(finance.savingsAccounts || []).map((a) => `${a.label}: $${Number(a.amount || 0).toFixed(2)}`).join("; ") || "none"}
+- Total debt (sum of debts): $${(finance.totalDebt || 0).toFixed(2)}
+- Debts by type: ${(finance.debtAccounts || []).map((a) => `${a.label}: $${Number(a.amount || 0).toFixed(2)}`).join("; ") || "none"}
 - Subscriptions: ${(finance.subscriptions || []).map(s => `${s.name} $${s.amount}/${s.cycle === 'yearly' ? 'yr' : 'mo'}`).join(", ") || "none"}
 - Wish list: ${(finance.wishList || []).map(w => w.targetAmount != null ? `${w.label} (goal $${w.targetAmount})` : w.label).join("; ") || "none"}
 ${finance.bankStatementNotes ? `- Bank/statement notes (use to spot biggest issues): ${String(finance.bankStatementNotes).slice(0, 1500)}` : ""}`

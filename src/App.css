@@ -3177,8 +3177,32 @@ button {
   align-items: center;
   padding: var(--space-1) 0;
 }
-.finance-total-row.savings { margin-top: var(--space-1); padding-top: var(--space-2); border-top: 1px solid var(--border-subtle); }
+.finance-savings-block {
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+.finance-savings-header { padding-bottom: 0; }
+.finance-savings-hint { margin-bottom: var(--space-2); }
+.finance-savings-list { margin-bottom: var(--space-2); }
+.finance-savings-row { flex-wrap: wrap; }
+.finance-savings-row .input:first-of-type { flex: 1; min-width: 120px; }
+.finance-savings-add { margin-bottom: 0; }
+.finance-total-row.savings { padding-top: var(--space-1); }
+.finance-total-value.savings-total { color: #2d7a4a; }
+.finance-debt-block {
+  padding-top: var(--space-2);
+  margin-top: var(--space-1);
+  border-top: 1px solid var(--border-subtle);
+}
+.finance-debt-header { padding-bottom: 0; }
+.finance-debt-hint { margin-bottom: var(--space-2); }
+.finance-debt-list { margin-bottom: var(--space-2); }
+.finance-debt-row { flex-wrap: wrap; }
+.finance-debt-row .input:first-of-type { flex: 1; min-width: 120px; }
+.finance-debt-add { margin-bottom: 0; }
 .finance-total-row.debt { padding-top: var(--space-1); }
+.finance-total-value.debt-total { color: #b85c4a; }
 .finance-total-row-net { padding-top: var(--space-1); border-top: 1px solid var(--border-subtle); }
 .finance-total-row-total { padding-top: var(--space-2); margin-top: var(--space-1); border-top: 1px solid var(--border-subtle); font-weight: 600; }
 .finance-total-label { font-size: var(--caption); color: var(--text-soft); }
@@ -3187,8 +3211,8 @@ button {
 .finance-total-value.expense { color: #b85c4a; }
 .finance-total-value.net { color: var(--color-ink); }
 .finance-total-value.total { color: var(--color-ink); font-size: var(--text-headline); }
-.finance-savings-input,
-.finance-debt-input,
+.finance-savings-balance-input,
+.finance-debt-balance-input,
 .finance-investments-input { width: 120px; text-align: right; }
 .finance-totals.surface-glass { padding: var(--space-4); border-radius: var(--radius-lg); }
 .finance-total-row-ratio { padding-top: var(--space-1); }

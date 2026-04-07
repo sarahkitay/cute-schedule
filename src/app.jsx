@@ -269,6 +269,58 @@ function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
+function sumSavingsAccounts(accounts) {
+  return (accounts || []).reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+}
+
+function sumDebtAccounts(accounts) {
+  return (accounts || []).reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
+}
+
+/** Normalize finance from disk/API; migrates legacy totals into account lists. */
+function normalizeFinanceLoaded(raw) {
+  const data = raw && typeof raw === "object" ? raw : {};
+  const incomeEntries = data.incomeEntries || [];
+  const expenseEntries = data.expenseEntries || [];
+  let savingsAccounts = Array.isArray(data.savingsAccounts)
+    ? data.savingsAccounts.map((a) => ({
+        id: a.id || uid(),
+        label: String(a.label || "Account").trim() || "Account",
+        amount: Number(a.amount) || 0,
+      }))
+    : [];
+  let totalSavings = Number(data.totalSavings) || 0;
+  if (savingsAccounts.length === 0 && totalSavings > 0) {
+    savingsAccounts = [{ id: uid(), label: "Savings", amount: totalSavings }];
+  }
+  totalSavings = sumSavingsAccounts(savingsAccounts);
+  let debtAccounts = Array.isArray(data.debtAccounts)
+    ? data.debtAccounts.map((a) => ({
+        id: a.id || uid(),
+        label: String(a.label || "Debt").trim() || "Debt",
+        amount: Number(a.amount) || 0,
+      }))
+    : [];
+  let totalDebt = Number(data.totalDebt) || 0;
+  if (debtAccounts.length === 0 && totalDebt > 0) {
+    debtAccounts = [{ id: uid(), label: "Debt", amount: totalDebt }];
+  }
+  totalDebt = sumDebtAccounts(debtAccounts);
+  return {
+    incomeEntries,
+    expenseEntries,
+    savingsAccounts,
+    totalSavings,
+    debtAccounts,
+    totalDebt,
+    totalInvestments: Number(data.totalInvestments) || 0,
+    wishList: data.wishList || [],
+    subscriptions: data.subscriptions || [],
+    bills: data.bills || [],
+    bankStatementNotes: data.bankStatementNotes || "",
+  };
+}
+
 function getStoredCategories() {
   try {
     const raw = localStorage.getItem(CUSTOM_CATEGORIES_KEY);
@@ -1449,36 +1501,15 @@ export default function App() {
     }
   });
 
-  // Finance state
+  // Finance state (account lists + totals kept in sync for coach / ratios)
   const [finance, setFinance] = useState(() => {
     try {
       const saved = localStorage.getItem(FINANCE_STORAGE_KEY);
       if (saved) {
-        const data = JSON.parse(saved);
-        return {
-          incomeEntries: data.incomeEntries || [],
-          expenseEntries: data.expenseEntries || [],
-          totalSavings: typeof data.totalSavings === "number" ? data.totalSavings : 0,
-          totalDebt: typeof data.totalDebt === "number" ? data.totalDebt : 0,
-          totalInvestments: typeof data.totalInvestments === "number" ? data.totalInvestments : 0,
-          wishList: data.wishList || [],
-          subscriptions: data.subscriptions || [],
-          bills: data.bills || [],
-          bankStatementNotes: data.bankStatementNotes || "",
-        };
+        return normalizeFinanceLoaded(JSON.parse(saved));
       }
     } catch (_) {}
-    return {
-      incomeEntries: [],
-      expenseEntries: [],
-      totalSavings: 0,
-      totalDebt: 0,
-      totalInvestments: 0,
-      wishList: [],
-      subscriptions: [],
-      bills: [],
-      bankStatementNotes: "",
-    };
+    return normalizeFinanceLoaded({});
   });
 
   useEffect(() => {
@@ -1588,6 +1619,10 @@ export default function App() {
 
   const [noteSearch, setNoteSearch] = useState("");
   const [financeQuickInput, setFinanceQuickInput] = useState("");
+  const [newSavingsLabel, setNewSavingsLabel] = useState("");
+  const [newSavingsAmount, setNewSavingsAmount] = useState("");
+  const [newDebtLabel, setNewDebtLabel] = useState("");
+  const [newDebtAmount, setNewDebtAmount] = useState("");
   const [newWishLabel, setNewWishLabel] = useState("");
   const [newWishTarget, setNewWishTarget] = useState("");
   const [newSubName, setNewSubName] = useState("");
@@ -1884,7 +1919,7 @@ export default function App() {
           setAppState(merged);
         }
         if (data.notes != null) setNotes(data.notes);
-        if (data.finance != null) setFinance(data.finance);
+        if (data.finance != null) setFinance(normalizeFinanceLoaded(data.finance));
         if (data.profile != null) setProfile(data.profile);
         if (data.theme != null) setTheme(data.theme);
         if (data.routineTemplate != null) setRoutineTemplate(data.routineTemplate);
@@ -2813,7 +2848,9 @@ export default function App() {
             incomeThisMonth,
             spentThisMonth,
             totalSavings: finance.totalSavings || 0,
+            savingsAccounts: (finance.savingsAccounts || []).map((a) => ({ label: a.label, amount: a.amount })),
             totalDebt: finance.totalDebt || 0,
+            debtAccounts: (finance.debtAccounts || []).map((a) => ({ label: a.label, amount: a.amount })),
             totalInvestments: finance.totalInvestments || 0,
             subscriptions: finance.subscriptions || [],
             wishList: finance.wishList || [],
@@ -2963,7 +3000,9 @@ export default function App() {
             return (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) ? s + (e.amount || 0) : s;
           }, 0),
           totalSavings: finance.totalSavings || 0,
+          savingsAccounts: (finance.savingsAccounts || []).map((a) => ({ label: a.label, amount: a.amount })),
           totalDebt: finance.totalDebt || 0,
+          debtAccounts: (finance.debtAccounts || []).map((a) => ({ label: a.label, amount: a.amount })),
           totalInvestments: finance.totalInvestments || 0,
           subscriptions: finance.subscriptions || [],
           wishList: finance.wishList || [],
@@ -4081,31 +4120,163 @@ export default function App() {
                   })()}
                 </span>
               </div>
+              <div className="finance-savings-block">
+                <div className="finance-total-row finance-savings-header">
+                  <span className="finance-total-label">Savings accounts</span>
+                </div>
+                <p className="finance-hint finance-savings-hint">Add each account and its balance; total savings below is the sum.</p>
+                <ul className="finance-list finance-savings-list">
+                  {(finance.savingsAccounts || []).length === 0 && (
+                    <li className="finance-list-empty">No accounts yet — add one with the form below.</li>
+                  )}
+                  {(finance.savingsAccounts || []).map((a) => (
+                    <li key={a.id} className="finance-list-item finance-savings-row">
+                      <input
+                        className="input"
+                        value={a.label}
+                        onChange={(e) => {
+                          const label = e.target.value;
+                          setFinance((prev) => {
+                            const next = (prev.savingsAccounts || []).map((x) => (x.id === a.id ? { ...x, label } : x));
+                            return { ...prev, savingsAccounts: next, totalSavings: sumSavingsAccounts(next) };
+                          });
+                        }}
+                        placeholder="e.g. Emergency fund"
+                        aria-label="Savings account name"
+                      />
+                      <input
+                        className="input finance-savings-balance-input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={a.amount === 0 ? "" : a.amount}
+                        onChange={(e) => {
+                          const amount = parseFloat(e.target.value) || 0;
+                          setFinance((prev) => {
+                            const next = (prev.savingsAccounts || []).map((x) => (x.id === a.id ? { ...x, amount } : x));
+                            return { ...prev, savingsAccounts: next, totalSavings: sumSavingsAccounts(next) };
+                          });
+                        }}
+                        placeholder="0"
+                        aria-label="Balance"
+                      />
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => {
+                          setFinance((prev) => {
+                            const next = (prev.savingsAccounts || []).filter((x) => x.id !== a.id);
+                            return { ...prev, savingsAccounts: next, totalSavings: sumSavingsAccounts(next) };
+                          });
+                        }}
+                        aria-label="Remove account"
+                      >
+                        <TrashIcon />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <form
+                  className="finance-inline-form finance-savings-add"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const label = newSavingsLabel.trim() || "Account";
+                    const amount = parseFloat(newSavingsAmount) || 0;
+                    setFinance((prev) => {
+                      const next = [...(prev.savingsAccounts || []), { id: uid(), label, amount }];
+                      return { ...prev, savingsAccounts: next, totalSavings: sumSavingsAccounts(next) };
+                    });
+                    setNewSavingsLabel("");
+                    setNewSavingsAmount("");
+                  }}
+                >
+                  <input className="input" value={newSavingsLabel} onChange={(e) => setNewSavingsLabel(e.target.value)} placeholder="Account name" />
+                  <input className="input finance-savings-balance-input" type="number" min="0" step="0.01" value={newSavingsAmount} onChange={(e) => setNewSavingsAmount(e.target.value)} placeholder="Balance" />
+                  <button type="submit" className="btn btn-primary">Add account</button>
+                </form>
+              </div>
               <div className="finance-total-row savings">
                 <span className="finance-total-label">Total savings</span>
-                <input
-                  className="input finance-savings-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={finance.totalSavings === 0 ? "" : finance.totalSavings}
-                  onChange={(e) => setFinance((prev) => ({ ...prev, totalSavings: parseFloat(e.target.value) || 0 }))}
-                  onBlur={(e) => setFinance((prev) => ({ ...prev, totalSavings: parseFloat(e.target.value) || 0 }))}
-                  placeholder="0"
-                />
+                <span className="finance-total-value savings-total">${(finance.totalSavings || 0).toFixed(2)}</span>
+              </div>
+              <div className="finance-debt-block">
+                <div className="finance-total-row finance-debt-header">
+                  <span className="finance-total-label">Debts</span>
+                </div>
+                <p className="finance-hint finance-debt-hint">e.g. auto loan, credit cards, student loans — amounts owed; total debt below is the sum.</p>
+                <ul className="finance-list finance-debt-list">
+                  {(finance.debtAccounts || []).length === 0 && (
+                    <li className="finance-list-empty">No debts listed — add one below if you want them in your snapshot.</li>
+                  )}
+                  {(finance.debtAccounts || []).map((a) => (
+                    <li key={a.id} className="finance-list-item finance-debt-row">
+                      <input
+                        className="input"
+                        value={a.label}
+                        onChange={(e) => {
+                          const label = e.target.value;
+                          setFinance((prev) => {
+                            const next = (prev.debtAccounts || []).map((x) => (x.id === a.id ? { ...x, label } : x));
+                            return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
+                          });
+                        }}
+                        placeholder="e.g. Auto loan, Visa"
+                        aria-label="Debt type or name"
+                      />
+                      <input
+                        className="input finance-debt-balance-input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={a.amount === 0 ? "" : a.amount}
+                        onChange={(e) => {
+                          const amount = parseFloat(e.target.value) || 0;
+                          setFinance((prev) => {
+                            const next = (prev.debtAccounts || []).map((x) => (x.id === a.id ? { ...x, amount } : x));
+                            return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
+                          });
+                        }}
+                        placeholder="0"
+                        aria-label="Amount owed"
+                      />
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        onClick={() => {
+                          setFinance((prev) => {
+                            const next = (prev.debtAccounts || []).filter((x) => x.id !== a.id);
+                            return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
+                          });
+                        }}
+                        aria-label="Remove debt"
+                      >
+                        <TrashIcon />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <form
+                  className="finance-inline-form finance-debt-add"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const label = newDebtLabel.trim() || "Debt";
+                    const amount = parseFloat(newDebtAmount) || 0;
+                    setFinance((prev) => {
+                      const next = [...(prev.debtAccounts || []), { id: uid(), label, amount }];
+                      return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
+                    });
+                    setNewDebtLabel("");
+                    setNewDebtAmount("");
+                  }}
+                >
+                  <input className="input" value={newDebtLabel} onChange={(e) => setNewDebtLabel(e.target.value)} placeholder="What it is (auto, card…)" />
+                  <input className="input finance-debt-balance-input" type="number" min="0" step="0.01" value={newDebtAmount} onChange={(e) => setNewDebtAmount(e.target.value)} placeholder="Owed" />
+                  <button type="submit" className="btn btn-primary">Add debt</button>
+                </form>
               </div>
               <div className="finance-total-row debt">
                 <span className="finance-total-label">Total debt</span>
-                <input
-                  className="input finance-debt-input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={finance.totalDebt === 0 ? "" : finance.totalDebt}
-                  onChange={(e) => setFinance((prev) => ({ ...prev, totalDebt: parseFloat(e.target.value) || 0 }))}
-                  onBlur={(e) => setFinance((prev) => ({ ...prev, totalDebt: parseFloat(e.target.value) || 0 }))}
-                  placeholder="0"
-                />
+                <span className="finance-total-value debt-total">${(finance.totalDebt || 0).toFixed(2)}</span>
               </div>
               <div className="finance-total-row finance-total-row-ratio">
                 <span className="finance-total-label">Debt / Savings ratio</span>
