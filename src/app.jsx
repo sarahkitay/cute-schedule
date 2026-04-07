@@ -5034,15 +5034,18 @@ export default function App() {
           <div className="modal-overlay" onClick={() => setShowSettings(false)}>
             <div className="modal settings-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="settings-modal-title">
               <div className="settings-modal-header">
-                <h3 id="settings-modal-title">Settings</h3>
                 <button
                   type="button"
-                  className="btn-icon settings-modal-close"
+                  className="btn-icon settings-modal-close settings-modal-close-left"
                   onClick={() => setShowSettings(false)}
                   aria-label="Close settings"
                 >
                   <CloseIcon style={{ width: 22, height: 22 }} />
                 </button>
+                <h3 id="settings-modal-title" className="settings-modal-title">
+                  Settings
+                </h3>
+                <span className="settings-modal-header-spacer" aria-hidden="true" />
               </div>
 
               <div className="settings-section">
