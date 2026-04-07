@@ -413,7 +413,7 @@ export function MenuIcon({ className = "" }) {
   );
 }
 
-/** Checkmark — line-art, for selected state / success */
+/** Checkmark - line-art, for selected state / success */
 export function CheckIcon({ className = "", style = {} }) {
   return (
     <svg
@@ -433,7 +433,7 @@ export function CheckIcon({ className = "", style = {} }) {
   );
 }
 
-/** Arrow right — for "next" / flow */
+/** Arrow right - for "next" / flow */
 export function ArrowRightIcon({ className = "", style = {} }) {
   return (
     <svg
@@ -454,7 +454,7 @@ export function ArrowRightIcon({ className = "", style = {} }) {
   );
 }
 
-/** Finance / money — line-art dollar for nav and finance UI */
+/** Finance / money - line-art dollar for nav and finance UI */
 export function FinanceIcon({ className = "", style = {} }) {
   return (
     <svg
@@ -476,7 +476,7 @@ export function FinanceIcon({ className = "", style = {} }) {
   );
 }
 
-/** Bullet / dot — subtle separator */
+/** Bullet / dot - subtle separator */
 export function BulletIcon({ className = "", style = {} }) {
   return (
     <svg

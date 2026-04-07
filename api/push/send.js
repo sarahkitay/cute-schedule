@@ -40,6 +40,10 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true, sent });
   } catch (e) {
     console.error("Send error", e);
-    return res.status(500).json({ error: "Failed to send" });
+    const msg = String(e?.message || e);
+    const hint = /KV|kv|Redis|REDIS|ECONNREFUSED|ENOTFOUND|fetch failed/i.test(msg)
+      ? "Link Vercel KV to this project (same as for /api/push/subscribe)."
+      : msg.slice(0, 200);
+    return res.status(500).json({ error: "Failed to send", hint });
   }
 }

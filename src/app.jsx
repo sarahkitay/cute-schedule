@@ -36,6 +36,29 @@ const COACH_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 const COACH_STORAGE_KEY = "cute_schedule_coach_meta_v1";
 const THEME_STORAGE_KEY = "cute_schedule_theme_v1";
 const MOODBOARD_STORAGE_KEY = "cute_schedule_moodboard_v1";
+/** Set to dismissed | installed so we only auto-prompt once per browser. */
+const PWA_INSTALL_PROMPT_KEY = "cute_schedule_pwa_install_v1";
+
+function isRunningAsInstalledPwa() {
+  if (typeof window === "undefined") return true;
+  try {
+    return (
+      window.matchMedia("(display-mode: standalone)").matches ||
+      window.matchMedia("(display-mode: fullscreen)").matches ||
+      window.matchMedia("(display-mode: window-controls-overlay)").matches ||
+      (typeof navigator !== "undefined" && navigator.standalone === true)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isLikelyIosDevice() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/iPad|iPhone|iPod/.test(ua)) return true;
+  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+}
 const COACH_USER_PROFILE_KEY = "cute_schedule_coach_profile_v1";
 const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
@@ -269,6 +292,46 @@ function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
 
+/** Resize for localStorage / Firestore; returns JPEG data URL. */
+function resizeImageFileToDataUrl(file, maxWidth = 960, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith("image/")) {
+      reject(new Error("Not an image"));
+      return;
+    }
+    const img = new Image();
+    const u = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(u);
+      let w = img.naturalWidth;
+      let h = img.naturalHeight;
+      if (w > maxWidth) {
+        h = (h * maxWidth) / w;
+        w = maxWidth;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("Canvas not available"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(u);
+      reject(new Error("Could not read image"));
+    };
+    img.src = u;
+  });
+}
+
 function sumSavingsAccounts(accounts) {
   return (accounts || []).reduce((sum, a) => sum + (Number(a.amount) || 0), 0);
 }
@@ -420,7 +483,7 @@ function savedStateHasScheduleData(state) {
 
 /**
  * When Firestore load wins (shouldApplyCloudAppState=true), merge any tasks the user added
- * in this session that aren't yet in the cloud snapshot — so they aren't silently dropped.
+ * in this session that aren't yet in the cloud snapshot, so they aren't silently dropped.
  */
 function mergeSessionTasksIntoCloud(cloudState, sessionState) {
   if (!sessionState?.days) return cloudState;
@@ -1019,41 +1082,37 @@ function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onTogg
                     </>
                   )}
                   
-                  {!t.done && (
-                    <>
-                      {taskMentionsGroceryErrandStore(t.text) && typeof onOpenGroceryList === "function" && (
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm grocery-list-btn"
-                          title="Open shopping / errand checklist"
-                          aria-label="Open shopping list for this task"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onOpenGroceryList(hourKey, t.category, t.id);
-                          }}
-                        >
-                          List
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        title="Task options"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const dropdownKey = `${hourKey}-${t.category}-${t.id}`;
-                          if (taskDropdown === dropdownKey) {
-                            onOpenDropdown(null, null);
-                          } else {
-                            onOpenDropdown(dropdownKey, e.currentTarget.getBoundingClientRect());
-                          }
-                        }}
-                        data-task-menu-trigger
-                      >
-                        <MenuIcon />
-                      </button>
-                    </>
+                  {!t.done && taskMentionsGroceryErrandStore(t.text) && typeof onOpenGroceryList === "function" && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm grocery-list-btn"
+                      title="Open shopping / errand checklist"
+                      aria-label="Open shopping list for this task"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenGroceryList(hourKey, t.category, t.id);
+                      }}
+                    >
+                      List
+                    </button>
                   )}
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="Task options"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const dropdownKey = `${hourKey}-${t.category}-${t.id}`;
+                      if (taskDropdown === dropdownKey) {
+                        onOpenDropdown(null, null);
+                      } else {
+                        onOpenDropdown(dropdownKey, e.currentTarget.getBoundingClientRect());
+                      }
+                    }}
+                    data-task-menu-trigger
+                  >
+                    <MenuIcon />
+                  </button>
                     <button
                       type="button"
                       className="icon-btn item-expand-btn"
@@ -1413,7 +1472,7 @@ export default function App() {
     } catch (_) {}
   }, [customCategories]);
 
-  // Profile (name, birthday) — persisted
+  // Profile (name, birthday), persisted
   const [profile, setProfile] = useState(() => {
     try {
       const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
@@ -1488,7 +1547,9 @@ export default function App() {
   });
   useEffect(() => {
     localStorage.setItem(MOODBOARD_STORAGE_KEY, JSON.stringify(moodboard));
-    document.documentElement.style.setProperty("--moodboard-image", moodboard.imageUrl ? `url(${moodboard.imageUrl})` : "none");
+    const u = moodboard.imageUrl ? String(moodboard.imageUrl) : "";
+    const safe = u ? `url("${u.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")` : "none";
+    document.documentElement.style.setProperty("--moodboard-image", safe);
   }, [moodboard]);
 
   // Notes state
@@ -1635,8 +1696,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [firebaseAuthResolved, setFirebaseAuthResolved] = useState(false);
-  const [authUiEmail, setAuthUiEmail] = useState("");
-  const [authUiPassword, setAuthUiPassword] = useState("");
+  const moodboardFileInputRef = useRef(null);
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
   const [habitTracker, setHabitTracker] = useState(() => loadHabitTrackerFromDisk());
@@ -1662,6 +1722,11 @@ export default function App() {
   const [taskDropdown, setTaskDropdown] = useState(null); // "hourKey-category-id"
   const dateInputRef = useRef(null);
   const [dropdownAnchorRect, setDropdownAnchorRect] = useState(null); // { top, left, bottom, right } for portal
+  /** Monthly / note / grocery line menus (same popover styling as task menu). */
+  const [secondaryListMenu, setSecondaryListMenu] = useState(null);
+  const [showPwaInstallModal, setShowPwaInstallModal] = useState(false);
+  const [canNativeInstallPwa, setCanNativeInstallPwa] = useState(false);
+  const deferredInstallPromptRef = useRef(null);
   const [editingTaskTime, setEditingTaskTime] = useState(null); // "hourKey-category-id" when showing time editor
   const [editTaskTimeValue, setEditTaskTimeValue] = useState("09:00"); // new time for edit
   const [expandedTaskKey, setExpandedTaskKey] = useState(null); // "hourKey-category-id" for expandable detail
@@ -1778,7 +1843,7 @@ export default function App() {
     localStorage.setItem(COACH_STORAGE_KEY, JSON.stringify(coachMeta));
   }, [coachMeta]);
 
-  // Only add a day when it's missing — never overwrite existing (keeps all days persisted)
+  // Only add a day when it's missing; never overwrite existing (keeps all days persisted)
   useEffect(() => {
     setAppState((prev) => {
       const existing = prev.days?.[tKey];
@@ -2043,6 +2108,29 @@ export default function App() {
     notificationService.checkPermission();
   }, []);
 
+  // PWA: capture install prompt (Chrome, Edge, Android Chrome, etc.). iOS has no API; we show steps instead.
+  useEffect(() => {
+    const onBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      deferredInstallPromptRef.current = e;
+      setCanNativeInstallPwa(true);
+    };
+    const onAppInstalled = () => {
+      try {
+        localStorage.setItem(PWA_INSTALL_PROMPT_KEY, "installed");
+      } catch (_) {}
+      deferredInstallPromptRef.current = null;
+      setCanNativeInstallPwa(false);
+      setShowPwaInstallModal(false);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    window.addEventListener("appinstalled", onAppInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      window.removeEventListener("appinstalled", onAppInstalled);
+    };
+  }, []);
+
   // Sync reminders to server so cron can send push when app is closed
   useEffect(() => {
     if (pushRemindersList.length === 0) return;
@@ -2052,17 +2140,24 @@ export default function App() {
     return () => clearTimeout(t);
   }, [pushRemindersList]);
 
-  // Close dropdown when clicking outside (portal or trigger)
+  // Close dropdowns when clicking outside (portal or trigger)
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (taskDropdown && !e.target.closest('.task-dropdown-portal') && !e.target.closest('[data-task-menu-trigger]')) {
         setTaskDropdown(null);
         setDropdownAnchorRect(null);
       }
+      if (secondaryListMenu && !e.target.closest('.task-dropdown-portal') && !e.target.closest('[data-list-menu-trigger]')) {
+        setSecondaryListMenu(null);
+      }
     };
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [taskDropdown]);
+  }, [taskDropdown, secondaryListMenu]);
+
+  useEffect(() => {
+    if (!groceryListModal) setSecondaryListMenu(null);
+  }, [groceryListModal]);
 
   // ESC closes calendar sheet
   useEffect(() => {
@@ -2072,9 +2167,10 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, [showMonthCalendar]);
 
-  // Scroll to top when switching tabs
+  // Scroll to top when switching tabs; close list menus
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
+    setSecondaryListMenu(null);
   }, [tab]);
 
   // Morning greeting ritual
@@ -2319,7 +2415,7 @@ export default function App() {
 
       hours[hourKey] = nextByCat;
       
-      // Save to repeated tasks if marked for repetition (must not throw — would block React state update)
+      // Save to repeated tasks if marked for repetition (must not throw; would block React state update)
       if (repeatType !== REPEAT_OPTIONS.NONE) {
         try {
           const repeatedTasks = JSON.parse(localStorage.getItem("repeatedTasks") || "[]");
@@ -2666,7 +2762,7 @@ export default function App() {
     flushSync(() => {
       addTask(hourKey, quickCat, clean, quickRepeat);
     });
-    // Save directly after flushSync — appStateRef.current is updated synchronously by the commit
+    // Save directly after flushSync; appStateRef.current is updated synchronously by the commit
     void cloudStorage.saveFullState({
       appState: appStateRef.current,
       notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
@@ -2688,7 +2784,7 @@ export default function App() {
     flushSync(() => {
       addTask(hourKey, category, taskText);
     });
-    // Save directly after flushSync — appStateRef.current is updated synchronously by the commit
+    // Save directly after flushSync; appStateRef.current is updated synchronously by the commit
     void cloudStorage.saveFullState({
       appState: appStateRef.current,
       notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
@@ -3136,34 +3232,6 @@ export default function App() {
     }
   }
 
-  async function handleEmailSignUpClick() {
-    setAuthError("");
-    if (!authUiEmail.trim() || !authUiPassword) return;
-    setAuthBusy(true);
-    try {
-      await signUpWithEmail(authUiEmail, authUiPassword);
-      setAuthUiPassword("");
-    } catch (e) {
-      setAuthError(e?.message || String(e));
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
-  async function handleEmailSignInClick() {
-    setAuthError("");
-    if (!authUiEmail.trim() || !authUiPassword) return;
-    setAuthBusy(true);
-    try {
-      await emailPasswordSignIn(authUiEmail, authUiPassword);
-      setAuthUiPassword("");
-    } catch (e) {
-      setAuthError(e?.message || String(e));
-    } finally {
-      setAuthBusy(false);
-    }
-  }
-
   async function handleAuthSignOut() {
     setAuthError("");
     setAuthBusy(true);
@@ -3199,6 +3267,45 @@ export default function App() {
   const firebaseOn = isFirebaseEnabled();
   const authWaiting = firebaseOn && !firebaseAuthResolved;
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
+
+  useEffect(() => {
+    if (authWaiting || showLoginGate) return;
+    if (isRunningAsInstalledPwa()) return;
+    let alreadyHandled = false;
+    try {
+      const v = localStorage.getItem(PWA_INSTALL_PROMPT_KEY);
+      alreadyHandled = v === "dismissed" || v === "installed";
+    } catch (_) {}
+    if (alreadyHandled) return;
+    const t = window.setTimeout(() => setShowPwaInstallModal(true), 1400);
+    return () => clearTimeout(t);
+  }, [authWaiting, showLoginGate]);
+
+  async function handleNativePwaInstall() {
+    const e = deferredInstallPromptRef.current;
+    if (!e) return;
+    try {
+      await e.prompt();
+      const choice = await e.userChoice;
+      deferredInstallPromptRef.current = null;
+      setCanNativeInstallPwa(false);
+      if (choice?.outcome === "accepted") {
+        try {
+          localStorage.setItem(PWA_INSTALL_PROMPT_KEY, "installed");
+        } catch (_) {}
+        setShowPwaInstallModal(false);
+      }
+    } catch (_) {}
+  }
+
+  function dismissPwaInstallModal() {
+    try {
+      if (localStorage.getItem(PWA_INSTALL_PROMPT_KEY) !== "installed") {
+        localStorage.setItem(PWA_INSTALL_PROMPT_KEY, "dismissed");
+      }
+    } catch (_) {}
+    setShowPwaInstallModal(false);
+  }
 
   return (
     <div className="app">
@@ -3283,7 +3390,7 @@ export default function App() {
           </div>
         </header>
 
-        {/* Bottom navigation — frosted dock, active-tab pill */}
+        {/* Bottom navigation: frosted dock, active-tab pill */}
         <nav className="bottom-nav surface-dock" aria-label="Main">
           <button type="button" className={`bottom-nav-item ${tab === "today" ? "active" : ""}`} onClick={() => { setTab("today"); setShowMonthCalendar(false); }} aria-current={tab === "today" ? "page" : undefined}>
             <CalendarIcon style={{ width: 22, height: 22 }} />
@@ -3331,7 +3438,7 @@ export default function App() {
 
         {tab === "today" ? (
           <>
-            {/* Quick Add — input group with focus ring, CTA disabled until input */}
+            {/* Quick Add: input group with focus ring, CTA disabled until input */}
             <form className="input-group quick-add-bar" onSubmit={quickAddFromNL} autoComplete="off">
               <input
                 className="input quick-add-input"
@@ -3354,7 +3461,7 @@ export default function App() {
                   <span className="title">Habits · today</span>
                 </div>
                 <p className="settings-hint" style={{ marginBottom: 12 }}>
-                  {habitsNeedCheckIn ? "Quick check-in when you’re ready." : "You’re logged for today — you can change answers anytime."}{" "}
+                  {habitsNeedCheckIn ? "Quick check-in when you’re ready." : "You’re logged for today. You can change answers anytime."}{" "}
                   <strong>Build</strong> = habit you want to grow. <strong>Break</strong> = habit you want to drop.
                 </p>
                 <ul className="list habit-checkin-list">
@@ -3443,7 +3550,7 @@ export default function App() {
                           onDeleteHour={deleteHour}
                           onMoveToTomorrow={moveTaskToTomorrow}
                           onChangeTaskTime={changeTaskTime}
-                          onOpenDropdown={(key, rect) => { setTaskDropdown(key); setDropdownAnchorRect(rect || null); }}
+                          onOpenDropdown={(key, rect) => { setSecondaryListMenu(null); setTaskDropdown(key); setDropdownAnchorRect(rect || null); }}
                           taskDropdown={taskDropdown}
                           editingTaskTime={editingTaskTime}
                           editTaskTimeValue={editTaskTimeValue}
@@ -3466,7 +3573,7 @@ export default function App() {
               )}
             </section>
 
-            {/* Next up + Daily progress — below this day's tasks */}
+            {/* Next up + Daily progress, below this day's tasks */}
             {(() => {
               const nextTasks = incompleteTasks.slice(0, 1);
               const next = nextTasks[0];
@@ -3595,7 +3702,7 @@ export default function App() {
               )}
             </section>
 
-            {/* Today's Capacity — Energy + Mood pills (reference) */}
+            {/* Today's Capacity: Energy + Mood pills (reference) */}
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (
               <section className="capacity-card">
                 <div className="panel-title">
@@ -3684,6 +3791,7 @@ export default function App() {
                       className={["list-row", t.energyLevel === "HEAVY" ? "list-row-heavy" : ""].filter(Boolean).join(" ")}
                       onClick={(e) => {
                         if (e.target.closest('.list-row-more, .check, input')) return;
+                        setSecondaryListMenu(null);
                         setTaskDropdown(taskDropdown === dropdownKey ? null : dropdownKey);
                         setDropdownAnchorRect(e.currentTarget.getBoundingClientRect());
                       }}
@@ -3718,7 +3826,11 @@ export default function App() {
                           onClick={(e) => {
                             e.stopPropagation();
                             if (taskDropdown === dropdownKey) { setTaskDropdown(null); setDropdownAnchorRect(null); }
-                            else { setTaskDropdown(dropdownKey); setDropdownAnchorRect(e.currentTarget.getBoundingClientRect()); }
+                            else {
+                              setSecondaryListMenu(null);
+                              setTaskDropdown(dropdownKey);
+                              setDropdownAnchorRect(e.currentTarget.getBoundingClientRect());
+                            }
                           }}
                           data-task-menu-trigger
                           aria-label="Task options"
@@ -3749,33 +3861,53 @@ export default function App() {
             {appState.monthly.length === 0 ? (
               <div className="empty">Add your first monthly objective.</div>
             ) : (
-              <ul className="list">
+              <ul className="list list-page-list monthly-objectives-list">
                 {appState.monthly.map((m) => (
-                  <li key={m.id} className={m.done ? "item item-done" : "item"}>
+                  <li
+                    key={m.id}
+                    className={["list-row", "monthly-list-row", m.done ? "monthly-list-row-done" : ""].filter(Boolean).join(" ")}
+                  >
                     {editingMonthlyId === m.id ? (
-                      <div className="monthly-edit-row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+                      <div className="monthly-edit-row list-row-edit-row">
                         <input
                           className="input"
-                          value={editingMonthlyId === m.id ? editingMonthlyText : m.text}
+                          value={editingMonthlyText}
                           onChange={(e) => setEditingMonthlyText(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') editMonthly(m.id, editingMonthlyText); if (e.key === 'Escape') { setEditingMonthlyId(null); setEditingMonthlyText(''); } }}
-                          style={{ flex: 1, minWidth: 0 }}
+                          onKeyDown={(e) => { if (e.key === "Enter") editMonthly(m.id, editingMonthlyText); if (e.key === "Escape") { setEditingMonthlyId(null); setEditingMonthlyText(""); } }}
                           autoFocus
                         />
-                        <button type="button" className="btn btn-sm btn-primary" onClick={() => editMonthly(m.id, editingMonthlyText)}>Save</button>
-                        <button type="button" className="btn btn-sm" onClick={() => { setEditingMonthlyId(null); setEditingMonthlyText(''); }}>Cancel</button>
+                        <div className="list-row-edit-actions">
+                          <button type="button" className="btn btn-sm btn-primary" onClick={() => editMonthly(m.id, editingMonthlyText)}>Save</button>
+                          <button type="button" className="btn btn-sm" onClick={() => { setEditingMonthlyId(null); setEditingMonthlyText(""); }}>Cancel</button>
+                        </div>
                       </div>
                     ) : (
-                      <>
-                        <label className="check">
+                      <div className="list-row-body monthly-list-row-body">
+                        <label className="list-row-main check monthly-list-check" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
                           <span className="checkmark" />
-                          <span className="item-text">{m.text}</span>
+                          <span className={`list-row-title ${m.done ? "item-text-done" : ""}`}>{m.text}</span>
                         </label>
-                        <button type="button" className="btn btn-sm" title="Edit objective" onClick={() => { setEditingMonthlyId(m.id); setEditingMonthlyText(m.text); }}>
-                          Edit
-                        </button>
-                      </>
+                        <div className="list-row-actions">
+                          <button
+                            type="button"
+                            className="icon-btn list-row-action list-row-more"
+                            title="Objective options"
+                            aria-label="Objective options"
+                            data-list-menu-trigger
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTaskDropdown(null);
+                              setDropdownAnchorRect(null);
+                              setSecondaryListMenu((prev) =>
+                                prev?.kind === "monthly" && prev.id === m.id ? null : { kind: "monthly", id: m.id, rect: e.currentTarget.getBoundingClientRect() }
+                              );
+                            }}
+                          >
+                            <MenuIcon style={{ width: 18, height: 18 }} />
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </li>
                 ))}
@@ -4127,7 +4259,7 @@ export default function App() {
                 <p className="finance-hint finance-savings-hint">Add each account and its balance; total savings below is the sum.</p>
                 <ul className="finance-list finance-savings-list">
                   {(finance.savingsAccounts || []).length === 0 && (
-                    <li className="finance-list-empty">No accounts yet — add one with the form below.</li>
+                    <li className="finance-list-empty">No accounts yet. Add one with the form below.</li>
                   )}
                   {(finance.savingsAccounts || []).map((a) => (
                     <li key={a.id} className="finance-list-item finance-savings-row">
@@ -4203,10 +4335,10 @@ export default function App() {
                 <div className="finance-total-row finance-debt-header">
                   <span className="finance-total-label">Debts</span>
                 </div>
-                <p className="finance-hint finance-debt-hint">e.g. auto loan, credit cards, student loans — amounts owed; total debt below is the sum.</p>
+                <p className="finance-hint finance-debt-hint">e.g. auto loan, credit cards, student loans. Amounts owed; total debt below is the sum.</p>
                 <ul className="finance-list finance-debt-list">
                   {(finance.debtAccounts || []).length === 0 && (
-                    <li className="finance-list-empty">No debts listed — add one below if you want them in your snapshot.</li>
+                    <li className="finance-list-empty">No debts listed. Add one below if you want them in your snapshot.</li>
                   )}
                   {(finance.debtAccounts || []).map((a) => (
                     <li key={a.id} className="finance-list-item finance-debt-row">
@@ -4340,7 +4472,7 @@ export default function App() {
 
             <div className="finance-section">
               <h3 className="finance-section-title">Subscriptions</h3>
-              <p className="finance-hint">Add a due day (1–31) to show &quot;Pay [name]&quot; on your schedule that day each month.</p>
+              <p className="finance-hint">Add a due day (1-31) to show &quot;Pay [name]&quot; on your schedule that day each month.</p>
               <form className="finance-inline-form" onSubmit={(e) => {
                 e.preventDefault();
                 if (newSubName.trim()) {
@@ -4357,7 +4489,7 @@ export default function App() {
                   <option value="monthly">/mo</option>
                   <option value="yearly">/yr</option>
                 </select>
-                <input className="input" type="number" min="1" max="31" value={newSubDueDay} onChange={(e) => setNewSubDueDay(e.target.value)} placeholder="Due day (1–31)" style={{ width: 110 }} title="Day of month it’s due — adds to schedule that day" />
+                <input className="input" type="number" min="1" max="31" value={newSubDueDay} onChange={(e) => setNewSubDueDay(e.target.value)} placeholder="Due day (1-31)" style={{ width: 110 }} title="Day of month it’s due; adds to schedule that day" />
                 <button type="submit" className="btn btn-primary">Add</button>
               </form>
               <ul className="finance-list">
@@ -4479,39 +4611,51 @@ export default function App() {
                 {noteSearch ? "No notes match your search." : "Add your first note or idea."}
               </div>
             ) : (
-              <ul className="list">
+              <ul className="list list-page-list notes-list-page">
                 {filteredNotes.map((note) => (
-                  <li key={note.id} className="item">
-                    <div className="note-content">
-                      <span className="note-date">
-                        {new Date(note.createdAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                      </span>
-                      {editingNoteId === note.id ? (
-                        <div className="note-edit-row" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                          <input
-                            className="input"
-                            value={editingNoteText}
-                            onChange={(e) => setEditingNoteText(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(''); } if (e.key === 'Escape') { setEditingNoteId(null); setEditingNoteText(''); } }}
-                            style={{ flex: 1, minWidth: 0 }}
-                            autoFocus
-                          />
-                          <button type="button" className="btn btn-sm btn-primary" onClick={() => { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(''); }}>Save</button>
-                          <button type="button" className="btn btn-sm" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
+                  <li key={note.id} className="list-row note-list-row">
+                    {editingNoteId === note.id ? (
+                      <div className="note-edit-row list-row-edit-row">
+                        <input
+                          className="input"
+                          value={editingNoteText}
+                          onChange={(e) => setEditingNoteText(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(""); } if (e.key === "Escape") { setEditingNoteId(null); setEditingNoteText(""); } }}
+                          autoFocus
+                        />
+                        <div className="list-row-edit-actions">
+                          <button type="button" className="btn btn-sm btn-primary" onClick={() => { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(""); }}>Save</button>
+                          <button type="button" className="btn btn-sm" onClick={() => { setEditingNoteId(null); setEditingNoteText(""); }}>Cancel</button>
                         </div>
-                      ) : (
-                        <span className="item-text">{note.text}</span>
-                      )}
-                    </div>
-                    {editingNoteId !== note.id && (
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        title="Edit note"
-                        onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text); }}
-                      >
-                        Edit
-                      </button>
+                      </div>
+                    ) : (
+                      <div className="list-row-body note-list-row-body">
+                        <div className="note-list-text-block">
+                          <span className="note-date note-list-date">
+                            {new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                          </span>
+                          <span className="list-row-title note-list-text">{note.text}</span>
+                        </div>
+                        <div className="list-row-actions">
+                          <button
+                            type="button"
+                            className="icon-btn list-row-action list-row-more"
+                            title="Note options"
+                            aria-label="Note options"
+                            data-list-menu-trigger
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setTaskDropdown(null);
+                              setDropdownAnchorRect(null);
+                              setSecondaryListMenu((prev) =>
+                                prev?.kind === "note" && prev.id === note.id ? null : { kind: "note", id: note.id, rect: e.currentTarget.getBoundingClientRect() }
+                              );
+                            }}
+                          >
+                            <MenuIcon style={{ width: 18, height: 18 }} />
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </li>
                 ))}
@@ -4600,10 +4744,123 @@ export default function App() {
                       <button type="button" className="dropdown-item" onClick={() => { setEditTaskTimeValue(hourKey); setEditingTaskTime(editKey); }}>
                         Edit time
                       </button>
-                      <button type="button" className="dropdown-item" onClick={closeDropdown}>
-                        Keep as is
+                      <button
+                        type="button"
+                        className="dropdown-item dropdown-item-danger"
+                        onClick={() => {
+                          deleteTask(hourKey, category, id);
+                          closeDropdown();
+                        }}
+                      >
+                        <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
+                        Delete task
                       </button>
                     </>
+                  )}
+                </div>
+              </div>
+            );
+          })(),
+          document.body
+        )}
+
+        {secondaryListMenu?.rect && ReactDOM.createPortal(
+          (() => {
+            const rect = secondaryListMenu.rect;
+            const pad = 16;
+            const dropdownWidth = 200;
+            const dropdownMaxHeight = 200;
+            const vw = typeof window !== "undefined" ? window.innerWidth : 400;
+            const vh = typeof window !== "undefined" ? window.innerHeight : 600;
+            let left = rect.left;
+            left = Math.max(pad, Math.min(left, vw - pad - dropdownWidth));
+            let top = rect.bottom + 6;
+            if (top + dropdownMaxHeight > vh - pad) {
+              top = Math.max(pad, rect.top - dropdownMaxHeight - 6);
+            }
+            top = Math.max(pad, Math.min(top, vh - pad - 80));
+            const closeSecondary = () => setSecondaryListMenu(null);
+            return (
+              <div
+                className="task-dropdown-portal"
+                style={{ position: "fixed", left, top, zIndex: "var(--z-popover)" }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="task-dropdown">
+                  {secondaryListMenu.kind === "monthly" && (
+                    <>
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => {
+                          const row = appState.monthly.find((x) => x.id === secondaryListMenu.id);
+                          if (row) {
+                            setEditingMonthlyId(row.id);
+                            setEditingMonthlyText(row.text);
+                          }
+                          closeSecondary();
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="dropdown-item dropdown-item-danger"
+                        onClick={() => {
+                          deleteMonthly(secondaryListMenu.id);
+                          closeSecondary();
+                        }}
+                      >
+                        <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
+                        Delete
+                      </button>
+                    </>
+                  )}
+                  {secondaryListMenu.kind === "note" && (
+                    <>
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => {
+                          const n = notes.find((x) => x.id === secondaryListMenu.id);
+                          if (n) {
+                            setEditingNoteId(n.id);
+                            setEditingNoteText(n.text);
+                          }
+                          closeSecondary();
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="dropdown-item dropdown-item-danger"
+                        onClick={() => {
+                          deleteNote(secondaryListMenu.id);
+                          closeSecondary();
+                        }}
+                      >
+                        <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
+                        Delete
+                      </button>
+                    </>
+                  )}
+                  {secondaryListMenu.kind === "grocery" && (
+                    <button
+                      type="button"
+                      className="dropdown-item dropdown-item-danger"
+                      onClick={() => {
+                        const { dayKey, hourKey, category, taskId, itemId } = secondaryListMenu;
+                        updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
+                          ...gl,
+                          items: gl.items.filter((x) => x.id !== itemId),
+                        }));
+                        closeSecondary();
+                      }}
+                    >
+                      <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
+                      Remove line
+                    </button>
                   )}
                 </div>
               </div>
@@ -4616,7 +4873,7 @@ export default function App() {
           <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grocery-prompt-title" onClick={() => setGroceryListPrompt(null)}>
             <div className="modal grocery-prompt-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
               <h3 id="grocery-prompt-title">Shopping or errand list?</h3>
-              <p className="settings-hint">This task mentions groceries, a store, or an errand. Open a checklist on the task — it saves with your schedule and syncs to the cloud.</p>
+              <p className="settings-hint">This task mentions groceries, a store, or an errand. Open a checklist on the task. It saves with your schedule and syncs to the cloud.</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
                 <button
                   type="button"
@@ -4666,40 +4923,59 @@ export default function App() {
                 <p className="settings-hint" style={{ marginTop: 8 }}>
                   {task.text}
                 </p>
-                <ul className="list grocery-modal-items">
+                <ul className="grocery-modal-items">
                   {items.length === 0 ? (
-                    <li className="settings-hint" style={{ listStyle: "none", padding: "8px 0" }}>
-                      No lines yet — add below.
+                    <li className="settings-hint grocery-checklist-empty" style={{ listStyle: "none", padding: "8px 0" }}>
+                      No lines yet. Add below.
                     </li>
                   ) : (
                     items.map((it) => (
-                      <li key={it.id} className="grocery-modal-item">
-                        <label className="check">
-                          <input
-                            type="checkbox"
-                            checked={!!it.done}
-                            onChange={() =>
-                              updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
-                                ...gl,
-                                items: gl.items.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)),
-                              }))
-                            }
-                          />
-                          <span className="checkmark" />
-                          <span className={it.done ? "item-text-done" : ""}>{it.text}</span>
-                        </label>
-                        <button
-                          type="button"
-                          className="btn btn-ghost btn-sm"
-                          onClick={() =>
-                            updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
-                              ...gl,
-                              items: gl.items.filter((x) => x.id !== it.id),
-                            }))
-                          }
-                        >
-                          Remove
-                        </button>
+                      <li key={it.id} className="grocery-modal-item grocery-checklist-row">
+                        <div className="list-row-body grocery-checklist-row-body">
+                          <label className="list-row-main check grocery-checklist-check" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={!!it.done}
+                              onChange={() =>
+                                updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
+                                  ...gl,
+                                  items: gl.items.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)),
+                                }))
+                              }
+                            />
+                            <span className="checkmark" />
+                            <span className={`list-row-title grocery-checklist-text ${it.done ? "item-text-done" : ""}`}>{it.text}</span>
+                          </label>
+                          <div className="list-row-actions">
+                            <button
+                              type="button"
+                              className="icon-btn list-row-action list-row-more"
+                              title="Line options"
+                              aria-label="Checklist line options"
+                              data-list-menu-trigger
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTaskDropdown(null);
+                                setDropdownAnchorRect(null);
+                                setSecondaryListMenu((prev) =>
+                                  prev?.kind === "grocery" && prev.itemId === it.id
+                                    ? null
+                                    : {
+                                        kind: "grocery",
+                                        dayKey,
+                                        hourKey,
+                                        category,
+                                        taskId,
+                                        itemId: it.id,
+                                        rect: e.currentTarget.getBoundingClientRect(),
+                                      }
+                                );
+                              }}
+                            >
+                              <MenuIcon style={{ width: 18, height: 18 }} />
+                            </button>
+                          </div>
+                        </div>
                       </li>
                     ))
                   )}
@@ -4770,8 +5046,18 @@ export default function App() {
 
         {showSettings && (
           <div className="modal-overlay" onClick={() => setShowSettings(false)}>
-            <div className="modal settings-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>Settings</h3>
+            <div className="modal settings-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="settings-modal-title">
+              <div className="settings-modal-header">
+                <h3 id="settings-modal-title">Settings</h3>
+                <button
+                  type="button"
+                  className="btn-icon settings-modal-close"
+                  onClick={() => setShowSettings(false)}
+                  aria-label="Close settings"
+                >
+                  <CloseIcon style={{ width: 22, height: 22 }} />
+                </button>
+              </div>
 
               <div className="settings-section">
                 <label className="label">Account &amp; cloud sync</label>
@@ -4781,14 +5067,14 @@ export default function App() {
                   <>
                     <p className="settings-hint" style={{ marginBottom: 10 }}>
                       {firebaseUser?.isAnonymous
-                        ? "You’re on a guest session in this browser. Sign in with Google or email so your data is tied to your account."
+                        ? "You’re on a guest session in this browser. Use Continue with Google to tie your data to your Google account (same as when you open the app)."
                         : firebaseUser?.email
                           ? `Signed in as ${firebaseUser.email}`
                           : firebaseUser?.displayName
                             ? `Signed in as ${firebaseUser.displayName}`
                             : firebaseUser
                               ? "Signed in"
-                              : "Not signed in — cloud sync needs Anonymous auth enabled in Firebase, or sign in below."}
+                              : "Not signed in. Cloud sync needs Anonymous auth enabled in Firebase, or sign in when you open the app."}
                     </p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 }}>
                       <button type="button" className="btn btn-primary btn-sm" disabled={authBusy} onClick={() => void handleGoogleSignIn()}>
@@ -4799,46 +5085,6 @@ export default function App() {
                           Sign out
                         </button>
                       ) : null}
-                    </div>
-                    <label className="label" style={{ marginTop: 4 }}>Email</label>
-                    <input
-                      className="input modal-input"
-                      type="email"
-                      autoComplete="email"
-                      value={authUiEmail}
-                      onChange={(e) => setAuthUiEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      aria-label="Email for sign-in"
-                    />
-                    <label className="label" style={{ marginTop: 8 }}>Password</label>
-                    <input
-                      className="input modal-input"
-                      type="password"
-                      autoComplete="current-password"
-                      value={authUiPassword}
-                      onChange={(e) => setAuthUiPassword(e.target.value)}
-                      placeholder="Password"
-                      aria-label="Password"
-                    />
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
-                      {(firebaseUser?.isAnonymous !== false || !firebaseUser) && (
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={authBusy || !authUiEmail.trim() || !authUiPassword}
-                          onClick={() => void handleEmailSignUpClick()}
-                        >
-                          {firebaseUser?.isAnonymous ? "Create account (link email)" : "Create account"}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        disabled={authBusy || !authUiEmail.trim() || !authUiPassword}
-                        onClick={() => void handleEmailSignInClick()}
-                      >
-                        Sign in with email
-                      </button>
                     </div>
                     {authError ? (
                       <p className="settings-hint" style={{ color: "#b71c1c", marginTop: 10 }} role="alert">
@@ -4992,7 +5238,7 @@ export default function App() {
               <div className="settings-section">
                 <label className="label">Habit check-ins</label>
                 <p className="settings-hint">
-                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them. Your coach uses this in context — no judgment, just awareness.
+                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them. Your coach uses this in context: no judgment, just awareness.
                 </p>
                 <ul className="routine-template-list">
                   {(habitTracker.habits || []).map((h) => (
@@ -5142,14 +5388,53 @@ export default function App() {
 
               <div className="settings-section">
                 <label className="label">Custom background (moodboard)</label>
-                <p className="settings-hint">Use your own image and a short phrase. Great for a visual moodboard.</p>
+                <p className="settings-hint">Pick a photo from your phone or computer (saved in this browser, resized), or paste an image URL. Add an optional short phrase.</p>
+                <input
+                  ref={moodboardFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="moodboard-file-input"
+                  aria-label="Choose moodboard photo"
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!f) return;
+                    try {
+                      const dataUrl = await resizeImageFileToDataUrl(f);
+                      setMoodboard((m) => ({ ...m, imageUrl: dataUrl }));
+                    } catch (err) {
+                      alert(err?.message || "Could not use that image. Try another photo or use a URL.");
+                    }
+                  }}
+                />
+                <div className="moodboard-actions-row">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => moodboardFileInputRef.current?.click()}
+                  >
+                    Choose photo
+                  </button>
+                  {moodboard.imageUrl ? (
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={() => {
+                        setMoodboard((m) => ({ ...m, imageUrl: "" }));
+                      }}
+                    >
+                      Clear image
+                    </button>
+                  ) : null}
+                </div>
                 <input
                   className="input modal-input"
                   type="url"
-                  value={moodboard.imageUrl}
+                  value={moodboard.imageUrl?.startsWith("data:") ? "" : moodboard.imageUrl}
                   onChange={(e) => setMoodboard((m) => ({ ...m, imageUrl: e.target.value }))}
-                  placeholder="Image URL (e.g. https://…)"
-                  style={{ marginBottom: 8 }}
+                  placeholder="Or image URL (https://…)"
+                  style={{ marginTop: 8, marginBottom: 8 }}
                 />
                 <input
                   className="input modal-input"
@@ -5178,22 +5463,70 @@ export default function App() {
               </div>
               <div className="settings-section">
                 <label className="label">Push (PWA)</label>
-                <p className="settings-hint">Add to Home Screen, then enable for reminders when the app is closed.</p>
-                <button
-                  className="btn btn-primary"
-                  onClick={async () => {
-                    const ok = await notificationService.enablePush();
-                    if (ok) {
-                      await notificationService.syncRemindersToServer(pushRemindersList);
-                      alert('Push enabled. You\'ll get reminders even when the app is closed.');
-                    } else {
-                      alert('Push failed. Add to Home Screen first (iOS), or check VAPID keys (Vercel).');
-                    }
-                  }}
-                >
-                  Enable Push Notifications
-                </button>
+                <p className="settings-hint">
+                  Needs{" "}
+                  <strong>VAPID_PUBLIC_KEY</strong>, <strong>VAPID_PRIVATE_KEY</strong>, and a linked{" "}
+                  <strong>Vercel KV</strong> on this project. On iPhone, add the app to your Home Screen and open it from that icon first.
+                  After enabling, use &quot;Send test push&quot; to confirm (cron also delivers scheduled reminders).
+                </p>
+                <div className="settings-push-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={async () => {
+                      const result = await notificationService.enablePush();
+                      if (result?.ok) {
+                        await notificationService.syncRemindersToServer(pushRemindersList);
+                        alert("Push enabled. Reminders can sync to the server when you have tasks scheduled.");
+                      } else {
+                        alert(result?.hint || "Push could not be enabled. See the hint above and Vercel logs.");
+                      }
+                    }}
+                  >
+                    Enable push notifications
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={async () => {
+                      const res = await fetch("/api/push/send", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ title: "Test push", body: "If you see this, VAPID + KV + subscription are working." }),
+                      });
+                      const j = await res.json().catch(() => ({}));
+                      if (res.ok && j.sent > 0) {
+                        alert(`Sent test to ${j.sent} device(s). Check your notification tray.`);
+                      } else if (res.ok && j.sent === 0) {
+                        alert("No saved push subscriptions yet. Tap “Enable push notifications” first, then try again.");
+                      } else {
+                        alert(j.hint || j.error || `Test failed (${res.status}). Check Vercel env vars and KV.`);
+                      }
+                    }}
+                  >
+                    Send test push
+                  </button>
+                </div>
               </div>
+
+              {!isRunningAsInstalledPwa() && (
+                <div className="settings-section">
+                  <label className="label">Install on home screen</label>
+                  <p className="settings-hint">
+                    Open the add-to-home-screen helper again (one-tap on Chrome/Android, or step-by-step on iPhone).
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      setShowSettings(false);
+                      setShowPwaInstallModal(true);
+                    }}
+                  >
+                    Add PROYOU to home screen
+                  </button>
+                </div>
+              )}
 
               <div className="modal-actions">
                 <button className="btn btn-primary" onClick={() => setShowSettings(false)}>
@@ -5204,7 +5537,7 @@ export default function App() {
           </div>
         )}
 
-        {/* In-app task banner — Start / Snooze / Skip or Wrap it up */}
+        {/* In-app task banner: Start / Snooze / Skip or Wrap it up */}
         {taskBanner && (
           <div className="inapp-banner">
             <div className="inapp-banner-content">
@@ -5283,6 +5616,55 @@ export default function App() {
                   </div>
                 );
               })()}
+            </div>
+          </div>
+        )}
+
+        {showPwaInstallModal && !isRunningAsInstalledPwa() && (
+          <div
+            className="modal-overlay pwa-install-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pwa-install-title"
+            onClick={() => dismissPwaInstallModal()}
+          >
+            <div className="modal pwa-install-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="pwa-install-modal-header">
+                <h3 id="pwa-install-title">Add PROYOU to your home screen</h3>
+                <button type="button" className="btn-icon pwa-install-close" onClick={() => dismissPwaInstallModal()} aria-label="Close">
+                  <CloseIcon style={{ width: 22, height: 22 }} />
+                </button>
+              </div>
+              <p className="settings-hint pwa-install-lead">
+                Install once and open PROYOU like an app. You get a full-screen experience and better support for reminders on your phone.
+              </p>
+              {canNativeInstallPwa ? (
+                <>
+                  <p className="settings-hint">Your browser can add it in one tap.</p>
+                  <button type="button" className="btn btn-primary pwa-install-cta" onClick={() => void handleNativePwaInstall()}>
+                    Add to home screen
+                  </button>
+                </>
+              ) : isLikelyIosDevice() ? (
+                <ol className="pwa-install-steps">
+                  <li>
+                    Tap the <strong>Share</strong> button (square with an arrow) in Safari, usually at the bottom bar.
+                  </li>
+                  <li>
+                    Scroll and tap <strong>Add to Home Screen</strong>
+                  </li>
+                  <li>
+                    Tap <strong>Add</strong>. Next time, open PROYOU from your home screen icon.
+                  </li>
+                </ol>
+              ) : (
+                <p className="settings-hint">
+                  Look for &quot;Install app&quot; or an install icon in your browser address bar, or open the browser menu and choose Install. If nothing appears yet, use the app for a moment and try again.
+                </p>
+              )}
+              <button type="button" className="btn btn-ghost pwa-install-later" onClick={() => dismissPwaInstallModal()}>
+                Not now
+              </button>
             </div>
           </div>
         )}

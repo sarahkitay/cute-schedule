@@ -1,4 +1,4 @@
-// Cron: run every 5 min. Send stored reminders when due (bills, subscriptions, task reminders) so they fire even when app is closed.
+// Cron: schedule is set in vercel.json (default */5 * * * *). Sends stored reminders when due. Requires VAPID_* env + Vercel KV.
 import webpush from "web-push";
 import { kv } from "@vercel/kv";
 

@@ -36,7 +36,7 @@ export default async function handler(req, res) {
       const scheduleData = schedule || today || {};
       const habitBlock =
         Array.isArray(habits) && habits.length > 0
-          ? ` User habits (build = cultivate, break = reduce): ${JSON.stringify(habits)}. Recent check-ins: ${String(habitLogSummary || "none")}. Today: ${JSON.stringify(habitToday || {})}. Mention gently in review if relevant — no shame.`
+          ? ` User habits (build = cultivate, break = reduce): ${JSON.stringify(habits)}. Recent check-ins: ${String(habitLogSummary || "none")}. Today: ${JSON.stringify(habitToday || {})}. Mention gently in review if relevant; no shame.`
           : "";
       const systemContent = `You are an ADHD planning assistant for this app. You can only reorder existing tasks, propose time blocks, suggest micro-steps for existing tasks, or suggest breaks. You cannot invent new tasks. Return valid JSON only. No markdown. No code fences.`;
       let userContent = "";
@@ -46,7 +46,7 @@ Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences
       } else if (mode === "unstuck") {
         userContent = `User is overwhelmed. Pick ONE task from: ${JSON.stringify(tasksList)}.${habitBlock} Break it into 3 micro-steps (5-15 min to start). Return JSON: { "summary": "1-2 sentences", "taskId": "...", "taskTitle": "...", "steps": [ { "text": "...", "minutes": 5 } ], "actions": [ { "type": "MICRO_STEPS", "taskId": "...", "steps": [ { "text": "...", "minutes": 5 } ] } ] }.`;
       } else if (mode === "review") {
-        const financeNote = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || (finance.totalSavings || 0) > 0 || (finance.totalDebt || 0) > 0) ? ` Finance snapshot: income this month $${(finance.incomeThisMonth || 0).toFixed(2)}, spent $${(finance.spentThisMonth || 0).toFixed(2)}, savings $${(finance.totalSavings || 0).toFixed(2)}, debt $${(finance.totalDebt || 0).toFixed(2)}. If relevant, mention one gentle money habit (e.g. "You logged spending this month—that's a win.").` : "";
+        const financeNote = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || (finance.totalSavings || 0) > 0 || (finance.totalDebt || 0) > 0) ? ` Finance snapshot: income this month $${(finance.incomeThisMonth || 0).toFixed(2)}, spent $${(finance.spentThisMonth || 0).toFixed(2)}, savings $${(finance.totalSavings || 0).toFixed(2)}, debt $${(finance.totalDebt || 0).toFixed(2)}. If relevant, mention one gentle money habit (e.g. "You logged spending this month; that's a win.").` : "";
         userContent = `End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progress?.total || 0}. Schedule: ${JSON.stringify(scheduleData)}. Patterns: ${JSON.stringify(patterns || {})}.${financeNote}${habitBlock} Summarise wins, detect one pattern (e.g. tasks missed at 3pm), suggest one change for tomorrow. If habit data is present, you may note one observation (e.g. consistency on a build habit or compassion after a break-habit slip). Return JSON: { "summary": "2-4 sentences", "wins": ["..."], "pattern": "one sentence", "suggestion": "one sentence", "actions": [] }.`;
       }
       const adhdMessages = [

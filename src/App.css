@@ -764,6 +764,52 @@
   animation: modalSlideUp 0.3s var(--ease-out-soft);
   border: 1px solid rgba(255, 255, 255, 0.65);
 }
+
+.pwa-install-overlay {
+  z-index: calc(var(--z-modal, 1100) + 5);
+}
+.pwa-install-modal {
+  max-width: 420px;
+}
+.pwa-install-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.pwa-install-modal-header h3 {
+  margin: 0;
+  font-size: var(--h2);
+  line-height: 1.25;
+  flex: 1;
+}
+.pwa-install-close {
+  flex-shrink: 0;
+  color: var(--text-soft);
+}
+.pwa-install-lead {
+  margin-bottom: var(--space-3);
+}
+.pwa-install-cta {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+.pwa-install-steps {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.25rem;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.pwa-install-steps li {
+  margin-bottom: var(--space-2);
+}
+.pwa-install-later {
+  width: 100%;
+  margin-top: var(--space-3);
+}
+
 .settings-modal {
   max-height: 85vh;
   overflow-y: auto;
@@ -771,7 +817,43 @@
   display: flex;
   flex-direction: column;
 }
+.settings-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  flex-shrink: 0;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.settings-modal-header h3 {
+  margin: 0;
+  flex: 1;
+  font-size: var(--h2);
+}
+.settings-modal-close {
+  flex-shrink: 0;
+  color: var(--text-soft);
+}
+.settings-modal-close:hover {
+  color: var(--text);
+}
 .settings-modal .modal-actions { margin-top: auto; flex-shrink: 0; padding-top: var(--space-3); }
+.moodboard-file-input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.moodboard-actions-row,
+.settings-push-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
 
 @media (max-width: 640px) {
   .modal-overlay {
@@ -1373,7 +1455,7 @@ button {
   border-left: 3px solid var(--theme-accent);
 }
 
-/* Item text styling — readable, not small */
+/* Item text styling - readable, not small */
 .card .item-text,
 .item-text {
   font-size: 17px;
@@ -1478,7 +1560,7 @@ button {
   white-space: nowrap;
 }
 
-/* App Shell — responsive, max-width container, optional rail */
+/* App Shell - responsive, max-width container, optional rail */
 .shell {
   width: 100%;
   max-width: 1120px;
@@ -1585,7 +1667,7 @@ button {
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
-/* Old style: no colored block — plain header with PROYOU as text only */
+/* Old style: no colored block - plain header with PROYOU as text only */
 .top-plain {
   background: rgba(255, 250, 249, 0.4);
   backdrop-filter: blur(24px) saturate(135%);
@@ -1706,7 +1788,7 @@ button {
   opacity: 0.9;
 }
 
-/* Header pill button — Reset available / Focus */
+/* Header pill button - Reset available / Focus */
 .top-actions .btn-pill {
   padding: 8px 16px;
   background: rgba(255, 252, 250, 0.6);
@@ -1727,7 +1809,7 @@ button {
   box-shadow: var(--shadow-soft);
 }
 
-/* Tabs — hidden in header (moved to bottom nav) */
+/* Tabs - hidden in header (moved to bottom nav) */
 .tabs {
   display: none;
 }
@@ -1759,7 +1841,7 @@ button {
   max-width: 100% !important;
 }
 
-/* Date Controls — control group: icon buttons + date pill with inset */
+/* Date Controls - control group: icon buttons + date pill with inset */
 .date-control-group .date-controls-top {
   display: grid !important;
   grid-template-columns: 44px 1fr 44px !important;
@@ -1842,7 +1924,7 @@ button {
   -webkit-backdrop-filter: blur(32px) saturate(160%);
   box-shadow: 0 4px 20px rgba(140, 100, 90, 0.12), var(--glass-highlight);
   align-items: center;
-  /* Fix iOS cursor offset — prevent transform/translate on the container */
+  /* Fix iOS cursor offset - prevent transform/translate on the container */
   transform: translateZ(0);
 }
 .quick-add-bar.input-group .quick-add-input,
@@ -1973,7 +2055,7 @@ button {
   to { opacity: 1; transform: translateY(0); }
 }
 
-.focus-strip { /* legacy alias — glass */
+.focus-strip { /* legacy alias - glass */
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -2177,7 +2259,7 @@ button {
   font-size: var(--body);
 }
 
-/* Input — consistent focus ring */
+/* Input - consistent focus ring */
 .input {
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--border-subtle);
@@ -2386,7 +2468,7 @@ button {
   border-radius: var(--radius-sm);
 }
 
-/* Segmented bars – task groups */
+/* Segmented bars - task groups */
 .progress-segments {
   display: flex;
   flex-wrap: wrap;
@@ -2641,7 +2723,7 @@ button {
   to { transform: translateY(-50%) scaleX(1); transform-origin: left; }
 }
 
-/* Checkbox — single visible control: native input hidden (fixes double checkbox), .checkmark is the only visible UI */
+/* Checkbox - single visible control: native input hidden (fixes double checkbox), .checkmark is the only visible UI */
 .check {
   display: flex;
   align-items: center;
@@ -2788,7 +2870,7 @@ button {
   gap: var(--spacing-sm);
 }
 
-/* Vertical timeline — dashed line + dots + mono time labels (reference) */
+/* Vertical timeline - dashed line + dots + mono time labels (reference) */
 .timeline-wrap {
   display: flex;
   flex-direction: column;
@@ -2858,7 +2940,7 @@ button {
 .timeline-labels { display: none; }
 .timeline-label { font-family: var(--font-mono); }
 
-/* Today's Capacity glass — stay below popovers */
+/* Today's Capacity glass - stay below popovers */
 .capacity-card {
   position: relative;
   z-index: var(--z-base);
@@ -2939,7 +3021,7 @@ button {
   background: rgba(0, 0, 0, 0.04);
 }
 
-/* List page: row — checkbox + full title + time; actions via row tap / more */
+/* List page: row - checkbox + full title + time; actions via row tap / more */
 .list-page-header {
   margin-bottom: var(--space-3);
 }
@@ -3329,7 +3411,7 @@ button {
   margin-left: -1px;
 }
 
-/* FAB: above tab bar — "Add" text, no plus */
+/* FAB: above tab bar - "Add" text, no plus */
 .fab {
   z-index: var(--z-fab);
   position: fixed;
@@ -3632,7 +3714,7 @@ button {
   color: #666;
 }
 
-/* Footer — visually removed per spec; keep class for layout if needed */
+/* Footer - visually removed per spec; keep class for layout if needed */
 .foot {
   display: none;
 }
@@ -3775,7 +3857,7 @@ button {
   border: 1px solid var(--border-subtle);
 }
 
-/* Task Dropdown Menu — in-portal popover, viewport-safe on mobile */
+/* Task Dropdown Menu - in-portal popover, viewport-safe on mobile */
 .task-dropdown-portal {
   position: fixed;
   z-index: var(--z-popover);
@@ -3845,6 +3927,68 @@ button {
 
 .dropdown-item:active {
   background: rgba(0, 0, 0, 0.05);
+}
+
+.dropdown-item-danger {
+  color: #b85c4a;
+}
+.dropdown-item-danger:hover {
+  background: rgba(184, 92, 74, 0.1);
+}
+
+.monthly-list-row,
+.note-list-row {
+  cursor: default;
+}
+.monthly-list-row .list-row-body,
+.note-list-row .list-row-body {
+  width: 100%;
+}
+.monthly-list-check,
+.grocery-checklist-check {
+  pointer-events: auto;
+}
+.list-row-edit-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  width: 100%;
+}
+.list-row-edit-row .input {
+  width: 100%;
+}
+.list-row-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.note-list-text-block {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.note-list-date {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.note-list-text {
+  -webkit-line-clamp: 4;
+}
+.grocery-checklist-row {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.grocery-checklist-row:last-child {
+  border-bottom: none;
+}
+.grocery-checklist-row-body {
+  align-items: flex-start;
+}
+.grocery-checklist-text {
+  -webkit-line-clamp: 6;
 }
 
 .dropdown-edit-time {
@@ -3935,7 +4079,7 @@ button {
   max-height: 45vh;
   overflow-y: auto;
 }
-.grocery-modal-item {
+.grocery-modal-item:not(.grocery-checklist-row) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -3943,7 +4087,7 @@ button {
   padding: 8px 0;
   border-bottom: 1px solid var(--border-subtle);
 }
-.grocery-modal-item .check {
+.grocery-modal-item:not(.grocery-checklist-row) .check {
   flex: 1;
   min-width: 0;
 }

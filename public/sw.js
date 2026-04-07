@@ -1,6 +1,6 @@
 /* global self */
 /**
- * Service worker — required for Web Push (Push API delivers to SW; SW shows the notification).
+ * Service worker - required for Web Push (Push API delivers to SW; SW shows the notification).
  * Registered from the client as /sw.js (see notifications.js and index.html).
  */
 self.addEventListener("install", (event) => {

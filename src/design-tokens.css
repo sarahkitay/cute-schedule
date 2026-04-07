@@ -1,5 +1,5 @@
 /**
- * Design system — tokens + component anatomy
+ * Design system - tokens + component anatomy
  */
 
 :root {
@@ -136,7 +136,7 @@
 }
 .segmented-control [role="tab"]:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
-/* Primary button — gradient CTA, disabled state */
+/* Primary button - gradient CTA, disabled state */
 .btn-primary {
   background: var(--color-cta);
   color: #fff;

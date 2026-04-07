@@ -15,7 +15,7 @@ function cloneForFirestore(value) {
 }
 
 /**
- * Encode `hours` map keys (e.g. "09:00") for Firestore — some SDK/console paths mishandle ":" in map keys.
+ * Encode `hours` map keys (e.g. "09:00") for Firestore - some SDK/console paths mishandle ":" in map keys.
  * Round-trip: decode on read. Plain keys without "%" pass through decodeURIComponent unchanged.
  */
 function encodeHoursMapKeys(hours) {
@@ -112,7 +112,7 @@ class CloudStorage {
       if (firebaseDb) {
         const docId = getScheduleDocId();
         const ref = doc(firebaseDb, FIRESTORE_COLLECTION, docId);
-        // Full replace — merge:true deep-merges nested maps and can leave stale/empty `hours` vs real tasks.
+        // Full replace - merge:true deep-merges nested maps and can leave stale/empty `hours` vs real tasks.
         await setDoc(ref, dataToSave);
         if (typeof localStorage !== "undefined") {
           localStorage.setItem(this.syncKey, Date.now().toString());
@@ -123,7 +123,7 @@ class CloudStorage {
       console.error("Firestore save failed:", error?.code ?? error);
       if (error?.code === "permission-denied") {
         console.error(
-          "Firestore: permission denied — in Firebase Console → Firestore → Rules, allow read/write on schedules/{id} for this app."
+          "Firestore: permission denied - in Firebase Console → Firestore → Rules, allow read/write on schedules/{id} for this app."
         );
       }
     }

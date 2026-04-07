@@ -20,7 +20,7 @@ class NotificationService {
   }
 
   /**
-   * Register /sw.js and subscribe for push (call from a button click — better permission UX).
+   * Register /sw.js and subscribe for push (call from a button click - better permission UX).
    * Public VAPID key comes from GET /api/push/vapid (server env VAPID_PUBLIC_KEY).
    */
   async registerServiceWorker() {
@@ -31,65 +31,103 @@ class NotificationService {
   }
 
   async enablePush() {
-    if (!("serviceWorker" in navigator)) return false;
+    if (!("serviceWorker" in navigator)) {
+      return { ok: false, hint: "This browser does not support service workers (use HTTPS and a recent browser)." };
+    }
+    if (!("PushManager" in window)) {
+      return {
+        ok: false,
+        hint: "Push is not available here. On iPhone, add the app to your Home Screen first, then open it from the icon and try again.",
+      };
+    }
     try {
       const registration = await this.registerServiceWorker();
-      if (!registration) return false;
+      if (!registration) {
+        return { ok: false, hint: "Could not register the service worker. Check that /sw.js loads (deploy includes public/sw.js)." };
+      }
 
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") return false;
+      let permission = Notification.permission;
+      if (permission === "default") {
+        permission = await Notification.requestPermission();
+      }
+      this.permission = permission;
+      if (permission !== "granted") {
+        return { ok: false, hint: "Notification permission was not granted. Allow notifications for this site in browser or system settings." };
+      }
 
       const res = await fetch("/api/push/vapid");
       const json = await res.json().catch(() => ({}));
       const publicKey = json.publicKey;
       if (!publicKey) {
-        console.warn("Push: no VAPID_PUBLIC_KEY from server — set VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY on Vercel");
-        return false;
+        console.warn("Push: no VAPID_PUBLIC_KEY from server");
+        return {
+          ok: false,
+          hint: json.hint || "Server missing VAPID_PUBLIC_KEY. Add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to Vercel env (same project as this deploy).",
+        };
       }
 
       let sub = await registration.pushManager.getSubscription();
       if (!sub) {
-        sub = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(publicKey),
-        });
+        try {
+          sub = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(publicKey),
+          });
+        } catch (subErr) {
+          console.warn("pushManager.subscribe failed", subErr);
+          return {
+            ok: false,
+            hint:
+              subErr?.message ||
+              "Subscribe failed. Confirm VAPID keys are a matching pair from `npx web-push generate-vapid-keys` and that public/private are not swapped.",
+          };
+        }
       }
+
+      const subscriptionPayload = typeof sub.toJSON === "function" ? sub.toJSON() : sub;
 
       const saveRes = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscription: sub }),
+        body: JSON.stringify({ subscription: subscriptionPayload }),
       });
+      const saveRaw = await saveRes.text();
+      let saveJson = {};
+      try {
+        saveJson = saveRaw ? JSON.parse(saveRaw) : {};
+      } catch {
+        saveJson = {};
+      }
       if (!saveRes.ok) {
-        console.warn("Push: failed to store subscription on server", await saveRes.text());
-        return false;
+        console.warn("Push: subscribe API error", saveRes.status, saveJson, saveRaw);
+        return {
+          ok: false,
+          hint:
+            saveJson.hint ||
+            saveJson.detail ||
+            saveJson.error ||
+            (saveRes.status === 500
+              ? "Server could not save your subscription. Link Vercel KV to this project (required for push)."
+              : `Server returned ${saveRes.status}`),
+        };
       }
 
       this.permission = "granted";
-      return true;
+      return { ok: true };
     } catch (e) {
       console.warn("Push subscribe failed", e);
-      return false;
+      return { ok: false, hint: e?.message || String(e) };
     }
   }
 
   async checkPermission() {
-    if (!('Notification' in window)) {
+    if (!("Notification" in window)) {
+      this.permission = "denied";
       return false;
     }
-    
-    if (Notification.permission === 'granted') {
-      this.permission = 'granted';
-      return true;
-    }
-    
-    if (Notification.permission === 'default') {
-      const permission = await Notification.requestPermission();
-      this.permission = permission;
-      return permission === 'granted';
-    }
-    
-    return false;
+    const p = Notification.permission;
+    this.permission = p;
+    return p === "granted";
   }
 
   async requestPermission() {
