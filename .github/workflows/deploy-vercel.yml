@@ -1,0 +1,47 @@
+# Deploys to Vercel when you push to `main`, even if Vercel’s GitHub integration
+# shows no deployments or logs (broken webhook, wrong repo, etc.).
+#
+# One-time GitHub setup (repo → Settings → Secrets and variables → Actions):
+#   1. VERCEL_TOKEN: Vercel → Account Settings → Tokens → Create
+#   2. VERCEL_ORG_ID: Vercel → Team/Account Settings (or project → Settings → General)
+#   3. VERCEL_PROJECT_ID: Project → Settings → General → Project ID
+#
+# If the project does not exist yet: Vercel Dashboard → Add New → Import your GitHub repo
+# (that also fixes the native integration). This workflow is a backup + gives you GitHub logs.
+
+name: Deploy to Vercel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel env (production)
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build (Vercel)
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy prebuilt to production
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}

@@ -4,16 +4,20 @@
   "version": "0.0.0",
   "type": "module",
   "engines": {
-    "node": "24.x"
+    "node": "20.x"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "trigger-deploy": "curl -s -X POST 'https://api.vercel.com/v1/integrations/deploy/prj_ukI3ZkO1WY6Nm0vEWjfbAEq273fA/1MFxzdx9JS'"
+    "trigger-deploy": "curl -s -X POST 'https://api.vercel.com/v1/integrations/deploy/prj_ukI3ZkO1WY6Nm0vEWjfbAEq273fA/1MFxzdx9JS'",
+    "cap:sync": "npm run build && npx cap sync",
+    "cap:ios": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor/core": "^7.4.3",
+    "@capacitor/ios": "^7.4.3",
     "@vercel/kv": "^3.0.0",
     "firebase": "^12.10.0",
     "react": "^19.2.0",
@@ -21,6 +25,7 @@
     "web-push": "^3.6.7"
   },
   "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
     "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
@@ -29,6 +34,7 @@
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
+    "typescript": "^6.0.3",
     "vite": "^7.2.4"
   }
 }

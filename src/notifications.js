@@ -1,5 +1,7 @@
 // Notification Service for Task Reminders and Completions + PWA Web Push
 
+import { apiUrl, publicUrl } from "./apiBase";
+
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -21,11 +23,11 @@ class NotificationService {
 
   /**
    * Register /sw.js and subscribe for push (call from a button click - better permission UX).
-   * Public VAPID key comes from GET /api/push/vapid (server env VAPID_PUBLIC_KEY).
+   * Public key comes from GET /api/push/vapid (server configuration).
    */
   async registerServiceWorker() {
     if (!("serviceWorker" in navigator)) return null;
-    const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    const registration = await navigator.serviceWorker.register(publicUrl("sw.js"), { scope: import.meta.env.BASE_URL || "./" });
     await navigator.serviceWorker.ready;
     return registration;
   }
@@ -55,14 +57,16 @@ class NotificationService {
         return { ok: false, hint: "Notification permission was not granted. Allow notifications for this site in browser or system settings." };
       }
 
-      const res = await fetch("/api/push/vapid");
+      const res = await fetch(apiUrl("/api/push/vapid"));
       const json = await res.json().catch(() => ({}));
       const publicKey = json.publicKey;
       if (!publicKey) {
-        console.warn("Push: no VAPID_PUBLIC_KEY from server");
+        console.warn("Push: no public key from server");
         return {
           ok: false,
-          hint: json.hint || "Server missing VAPID_PUBLIC_KEY. Add VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY to Vercel env (same project as this deploy).",
+          hint:
+            json.hint ||
+            "Server is not configured for background push. Check your deployment environment for push keys and storage.",
         };
       }
 
@@ -79,14 +83,14 @@ class NotificationService {
             ok: false,
             hint:
               subErr?.message ||
-              "Subscribe failed. Confirm VAPID keys are a matching pair from `npx web-push generate-vapid-keys` and that public/private are not swapped.",
+              "Subscribe failed. Confirm the server push key pair is valid and not swapped.",
           };
         }
       }
 
       const subscriptionPayload = typeof sub.toJSON === "function" ? sub.toJSON() : sub;
 
-      const saveRes = await fetch("/api/push/subscribe", {
+      const saveRes = await fetch(apiUrl("/api/push/subscribe"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subscription: subscriptionPayload }),
@@ -146,8 +150,8 @@ class NotificationService {
     }
 
     const defaultOptions = {
-      icon: '/vite.svg',
-      badge: '/vite.svg',
+      icon: publicUrl("pwa-192.png"),
+      badge: publicUrl("pwa-192.png"),
       tag: `task-${Date.now()}`,
       requireInteraction: false,
       ...options
@@ -283,7 +287,7 @@ class NotificationService {
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (!sub) return false;
-      const res = await fetch("/api/push/reminders", {
+      const res = await fetch(apiUrl("/api/push/reminders"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subscription: sub, reminders }),

@@ -1,9 +1,13 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import {
   getAuth,
+  initializeAuth,
+  browserLocalPersistence,
+  indexedDBLocalPersistence,
   onAuthStateChanged,
   GoogleAuthProvider,
+  OAuthProvider,
   signInWithPopup,
   linkWithPopup,
   signOut,
@@ -12,6 +16,7 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   linkWithCredential,
+  deleteUser,
 } from "firebase/auth";
 
 const DEVICE_ID_KEY = "cute_schedule_device_id_v1";
@@ -46,7 +51,17 @@ export function initFirebase() {
   try {
     app = initializeApp(config);
     db = getFirestore(app);
-    auth = getAuth(app);
+    try {
+      auth = initializeAuth(app, {
+        persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+      });
+    } catch (e) {
+      if (e?.code === "auth/already-initialized") {
+        auth = getAuth(app);
+      } else {
+        throw e;
+      }
+    }
     return { app, db, auth };
   } catch (err) {
     console.warn("Firebase init failed:", err);
@@ -152,6 +167,13 @@ export async function migrateScheduleDocBetweenUsers(fromUid, toUid) {
 
 const googleProvider = new GoogleAuthProvider();
 
+function getAppleAuthProvider() {
+  const provider = new OAuthProvider("apple.com");
+  provider.addScope("email");
+  provider.addScope("name");
+  return provider;
+}
+
 export async function ensureSignedIn() {
   const a = getAuthApp();
   if (!a) return null;
@@ -209,6 +231,48 @@ export async function signInWithGoogle() {
     await migrateScheduleDocBetweenUsers(prevUid, next.uid);
   }
   return next;
+}
+
+/** Sign in with Apple (required alongside other OAuth on iOS when those are offered). Enable Apple in Firebase Auth → Sign-in method. */
+export async function signInWithApple() {
+  const a = getAuthApp();
+  if (!a) throw new Error("Firebase not configured");
+  const appleProvider = getAppleAuthProvider();
+  const u = a.currentUser;
+  if (u?.isAnonymous) {
+    await linkWithPopup(u, appleProvider);
+    return a.currentUser;
+  }
+  const prevUid = u?.uid ?? null;
+  await signInWithPopup(a, appleProvider);
+  const next = a.currentUser;
+  if (prevUid && next && prevUid !== next.uid) {
+    await migrateScheduleDocBetweenUsers(prevUid, next.uid);
+  }
+  return next;
+}
+
+/** Remove this user’s Firestore schedule doc (best-effort before Auth account deletion). */
+export async function deleteFirestoreScheduleForUid(uid) {
+  const firebaseDb = getDb();
+  if (!firebaseDb || !uid) return;
+  try {
+    await deleteDoc(doc(firebaseDb, FIRESTORE_COLLECTION, uid));
+  } catch (e) {
+    console.warn("deleteFirestoreScheduleForUid:", e?.code ?? e);
+  }
+}
+
+/**
+ * Permanently delete the current Firebase Auth user (and their schedule doc).
+ * May throw `auth/requires-recent-login` — user must sign in again then retry.
+ */
+export async function deleteCurrentUserAccount() {
+  const a = getAuthApp();
+  if (!a?.currentUser) throw new Error("Not signed in");
+  const uid = a.currentUser.uid;
+  await deleteFirestoreScheduleForUid(uid);
+  await deleteUser(a.currentUser);
 }
 
 export async function signUpWithEmail(email, password) {

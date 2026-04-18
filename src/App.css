@@ -125,30 +125,36 @@
 .app-bg {
   position: relative;
   min-height: 100vh;
-  background: linear-gradient(180deg, #fff8f7 0%, #fef5f3 25%, #fceeea 50%, #faf0ed 75%, #fff9f7 100%);
-  background-image: linear-gradient(180deg, rgba(255,248,247,0.72) 0%, rgba(254,245,243,0.68) 25%, rgba(252,238,234,0.65) 50%, rgba(250,240,237,0.68) 75%, rgba(255,249,247,0.72) 100%), var(--moodboard-image, none);
+  /* Theme-driven base so color scheme changes read across the full canvas */
+  background: var(--theme-bg-gradient, linear-gradient(180deg, #fff8f7 0%, #fef5f3 25%, #fceeea 50%, #faf0ed 75%, #fff9f7 100%));
+  background-image: var(--theme-bg-gradient, linear-gradient(180deg, rgba(255,248,247,0.88) 0%, rgba(254,245,243,0.82) 30%, rgba(252,238,234,0.8) 50%, rgba(250,240,237,0.82) 70%, rgba(255,249,247,0.88) 100%)), var(--moodboard-image, none);
   background-size: 100% 100%, cover;
   background-position: 0 0, center;
   background-repeat: no-repeat;
   overflow: hidden;
+  transition: background 0.45s var(--ease-soft), background-image 0.45s var(--ease-soft);
 }
 .app-bg::before {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(400px 300px at 30% 10%, var(--theme-bg-glow), transparent 55%),
-              radial-gradient(350px 250px at 75% 85%, rgba(252, 235, 240, 0.25), transparent 50%);
-  filter: blur(40px);
+  /* Single top glow on wider viewports — avoids a large pink wash at the bottom on tablets/desktop */
+  background: radial-gradient(480px 360px at 25% 12%, var(--theme-bg-glow), transparent 58%);
+  filter: blur(48px);
+  opacity: 0.95;
   pointer-events: none;
   z-index: 0;
+  transition: background 0.45s var(--ease-soft), opacity 0.45s var(--ease-soft);
 }
 .app-bg::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: radial-gradient(220px at 85% 15%, rgba(255, 245, 248, 0.4), transparent 45%);
+  background: radial-gradient(260px at 86% 10%, var(--theme-accent), transparent 52%);
+  opacity: 0.14;
   pointer-events: none;
   z-index: 0;
+  transition: background 0.45s var(--ease-soft), opacity 0.45s var(--ease-soft);
 }
 @media (max-width: 414px) {
   .app-bg {
@@ -156,11 +162,11 @@
     background-position: top center, center;
   }
   .app-bg::before {
-    background: radial-gradient(420px 320px at 50% 5%, var(--theme-bg-glow), transparent 55%),
-                radial-gradient(280px 200px at 80% 90%, rgba(252, 235, 240, 0.2), transparent 50%);
+    background: radial-gradient(440px 340px at 50% 8%, var(--theme-bg-glow), transparent 58%),
+                radial-gradient(300px 220px at 82% 92%, var(--theme-secondary, rgba(252, 235, 240, 0.28)), transparent 52%);
   }
   .app-bg {
-    background-image: linear-gradient(180deg, rgba(255,248,247,0.55) 0%, rgba(254,245,243,0.50) 30%, rgba(252,238,234,0.48) 50%, rgba(250,240,237,0.50) 70%, rgba(255,249,247,0.55) 100%), var(--moodboard-image, none);
+    background-image: var(--theme-bg-gradient, linear-gradient(180deg, rgba(255,248,247,0.78) 0%, rgba(254,245,243,0.72) 30%, rgba(252,238,234,0.7) 50%, rgba(250,240,237,0.72) 70%, rgba(255,249,247,0.78) 100%)), var(--moodboard-image, none);
   }
 }
 .app-bg-texture {
@@ -861,6 +867,63 @@
   color: var(--text);
 }
 .settings-modal .modal-actions { margin-top: auto; flex-shrink: 0; padding-top: var(--space-3); }
+
+.settings-privacy-footer {
+  text-align: center;
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+.settings-privacy-link {
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-1);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--theme-accent, #c85a7a);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.settings-privacy-link:hover {
+  opacity: 0.9;
+}
+
+.privacy-policy-overlay {
+  z-index: calc(var(--z-modal) + 5);
+}
+.privacy-policy-modal {
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.privacy-policy-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.privacy-policy-modal-title {
+  margin: 0;
+  font-size: var(--h2);
+  line-height: 1.25;
+  flex: 1;
+}
+.privacy-policy-body {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text);
+}
+.privacy-policy-body p {
+  margin: 0 0 var(--space-3);
+}
+.privacy-policy-body p:last-child {
+  margin-bottom: 0;
+}
 .moodboard-file-input {
   position: absolute;
   width: 0;
@@ -1939,13 +2002,14 @@ button {
 .quick-add-bar.input-group {
   padding: var(--space-2) var(--space-3);
   margin: 0 var(--space-3) var(--space-4);
-  border: 1.5px solid rgba(236, 140, 160, 0.35);
+  /* Center with the round button: stretch was stretching the input tall and skewing the caret on WebKit */
+  align-items: center;
+  border: 1.5px solid color-mix(in srgb, var(--theme-accent, #e8b8b0) 38%, white);
   border-radius: var(--radius-btn);
-  background: rgba(255, 250, 249, 0.72);
+  background: color-mix(in srgb, var(--theme-primary, #f5d5d0) 14%, rgba(255, 250, 249, 0.78));
   backdrop-filter: blur(32px) saturate(160%);
   -webkit-backdrop-filter: blur(32px) saturate(160%);
   box-shadow: 0 4px 20px rgba(140, 100, 90, 0.12), var(--glass-highlight);
-  align-items: center;
   /* Fix iOS cursor offset - prevent transform/translate on the container */
   transform: translateZ(0);
 }
@@ -1954,13 +2018,17 @@ button {
   border: none;
   outline: none;
   background: transparent;
-  padding: 12px 0 12px 4px;
+  padding: 11px 12px;
+  min-height: 44px;
+  box-sizing: border-box;
+  line-height: 1.35;
   box-shadow: none;
   /* Prevent iOS from shifting caret position */
   -webkit-appearance: none;
   appearance: none;
   transform: none;
   position: relative;
+  align-self: center;
 }
 .quick-add-bar .quick-add-input:focus {
   outline: none;
@@ -1968,10 +2036,9 @@ button {
   box-shadow: none;
 }
 .quick-add-bar.input-group:focus-within {
-  border-color: rgba(236, 140, 160, 0.55);
-  box-shadow: 0 0 0 4px rgba(236, 140, 160, 0.18);
+  border-color: color-mix(in srgb, var(--theme-accent, #e8b8b0) 58%, white);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--theme-accent, #e8b8b0) 22%, transparent), 0 4px 20px rgba(140, 100, 90, 0.12), var(--glass-highlight);
 }
-.quick-add-bar .quick-add-input { padding-left: var(--space-2); }
 
 .quick-add-bar .btn-primary {
   border-radius: 50%;
@@ -2621,18 +2688,19 @@ button {
     padding-left: var(--screen-margin);
     width: 52px;
     padding-top: var(--space-3);
+    padding-right: 12px;
   }
   .timeline-track {
-    left: calc(var(--screen-margin) + 24px);
+    left: calc(var(--screen-margin) + 10px);
   }
   .timeline-dot {
-    left: calc(var(--screen-margin) + 20px);
+    left: calc(var(--screen-margin) + 6px);
     width: 10px;
     height: 10px;
     top: 14px;
   }
   .timeline-blocks {
-    padding: 0 var(--screen-margin) var(--space-3) var(--space-2);
+    padding: 0 var(--screen-margin) var(--space-3) 0;
   }
   .timeline-row .card {
     margin: 0 0 var(--space-3);
@@ -2902,7 +2970,7 @@ button {
 }
 .timeline-track {
   position: absolute;
-  left: 55px;
+  left: 18px;
   top: 6px;
   bottom: 6px;
   width: 2px;
@@ -2928,12 +2996,12 @@ button {
   flex-shrink: 0;
   width: 58px;
   padding-top: 12px;
-  padding-right: 8px;
+  padding-right: 14px;
   text-align: right;
 }
 .timeline-dot {
   position: absolute;
-  left: 55px;
+  left: 12px;
   top: 12px;
   width: 14px;
   height: 14px;
@@ -2953,7 +3021,7 @@ button {
 .timeline-blocks {
   flex: 1;
   min-width: 0;
-  padding: 12px 0 14px 10px;
+  padding: 12px 0 14px 2px;
 }
 .timeline-row:focus-within .card,
 .timeline-row:hover .card {
@@ -3736,6 +3804,285 @@ button {
   color: #666;
 }
 
+/* Coach V2 — premium suggestion surface */
+.coach-body-v2 .coach-message {
+  font-size: 1.02rem;
+  line-height: 1.55;
+}
+
+.coach-insight-block {
+  border-left: 3px solid rgba(90, 110, 140, 0.45);
+  padding-left: 14px;
+}
+
+.coach-insight-text {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--soft-charcoal);
+  line-height: 1.5;
+  opacity: 0.92;
+}
+
+.coach-v2-suggestions-hint {
+  margin-bottom: 14px !important;
+  opacity: 0.78;
+}
+
+.coach-v2-suggest-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.coach-v2-card {
+  border-radius: 14px;
+  padding: 16px 18px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.06);
+}
+
+.coach-v2-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(55, 65, 80, 0.55);
+  margin-bottom: 10px;
+}
+
+.coach-v2-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.coach-v2-why {
+  margin-bottom: 14px;
+}
+
+.coach-v2-why-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: rgba(55, 65, 80, 0.5);
+  margin-bottom: 6px;
+}
+
+.coach-v2-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: rgba(55, 65, 80, 0.65);
+}
+
+.coach-v2-energy {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.coach-v2-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.coach-v2-card-title {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin-bottom: 6px;
+  color: var(--soft-charcoal);
+}
+
+.coach-v2-desc {
+  font-size: 0.88rem;
+  margin: 0 0 8px;
+  opacity: 0.85;
+  line-height: 1.45;
+}
+
+.coach-v2-reason {
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0;
+  color: rgba(55, 65, 80, 0.88);
+}
+
+.coach-v2-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.coach-toast {
+  margin-bottom: var(--spacing-md);
+  padding: 12px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  animation: coach-toast-in 0.35s ease both;
+}
+
+@keyframes coach-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.coach-toast-ok {
+  background: rgba(34, 160, 107, 0.1);
+}
+
+.coach-toast-info {
+  background: rgba(100, 120, 160, 0.12);
+}
+
+.coach-toast-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.coach-toast-detail {
+  margin-top: 4px;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.coach-edit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.coach-edit-modal {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 16px;
+  padding: 20px 22px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18);
+}
+
+.coach-edit-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.coach-edit-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.coach-edit-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.coach-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+/* Account deletion (App Store account-deletion requirement) */
+.delete-account-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.delete-account-modal {
+  width: 100%;
+  max-width: 420px;
+  border-radius: 16px;
+  padding: 22px 24px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+  max-height: min(90vh, 640px);
+  overflow-y: auto;
+}
+
+.delete-account-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.delete-account-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+
+.delete-account-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.delete-account-lead {
+  margin: 0;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: var(--soft-charcoal);
+}
+
+.delete-account-list {
+  margin: 0;
+  padding-left: 1.2rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: rgba(55, 65, 80, 0.9);
+}
+
+.delete-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.delete-account-inline-error {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #b42318;
+  line-height: 1.45;
+}
+
+.delete-account-success .delete-account-lead {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+
 /* Footer - visually removed per spec; keep class for layout if needed */
 .foot {
   display: none;
@@ -4169,6 +4516,37 @@ button {
   width: 100%;
   margin-top: 4px;
 }
+/* Sign in with Apple: high-contrast primary action (Guideline 4.8 visibility). */
+.login-gate-apple {
+  margin-top: 0;
+  background: #000;
+  color: #fff;
+  border: 1px solid #000;
+  font-weight: 600;
+}
+.login-gate-apple:hover:not(:disabled) {
+  background: #1a1a1a;
+  border-color: #1a1a1a;
+  color: #fff;
+}
+.login-gate-apple:disabled {
+  opacity: 0.55;
+}
+.settings-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.settings-delete-account-btn {
+  margin-top: 10px;
+  color: #b71c1c;
+  border-color: color-mix(in srgb, #b71c1c 35%, transparent);
+  background: transparent;
+}
+.settings-delete-account-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, #b71c1c 8%, transparent);
+}
 .login-gate-btn-half {
   flex: 1;
   min-width: 0;
@@ -4209,4 +4587,147 @@ button {
   margin: 14px 0 0;
   font-size: 13px;
   color: #b71c1c;
+}
+
+/* First-launch onboarding wizard */
+.onboarding-root {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(20px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px))
+    calc(24px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
+  background: rgba(30, 24, 22, 0.35);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.onboarding-card {
+  width: 100%;
+  max-width: 440px;
+  max-height: min(88vh, 720px);
+  overflow: auto;
+  padding: 24px 22px 20px;
+  border-radius: var(--radius-xl, 12px);
+  box-shadow: var(--shadow-lg, 0 12px 40px rgba(0, 0, 0, 0.12));
+}
+.onboarding-progress {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.onboarding-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  line-height: 1.25;
+  color: var(--text);
+}
+.onboarding-lead {
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--text-soft);
+  margin: 0 0 18px;
+}
+.onboarding-input {
+  width: 100%;
+  margin-bottom: 10px;
+}
+.onboarding-textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  font-family: inherit;
+  margin-bottom: 8px;
+}
+.onboarding-habit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.onboarding-habit-row .onboarding-input {
+  flex: 1 1 160px;
+  margin-bottom: 0;
+}
+.onboarding-select {
+  width: auto;
+  min-width: 92px;
+  margin-bottom: 0;
+}
+.onboarding-habit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.onboarding-habit-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 15px;
+}
+.onboarding-habit-meta {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+.onboarding-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.onboarding-theme-chip {
+  position: relative;
+  min-height: 72px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  padding: 8px;
+}
+.onboarding-theme-chip.selected {
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.08);
+}
+.onboarding-theme-label {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(0, 0, 0, 0.55);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.6);
+  text-align: left;
+  max-width: 90%;
+}
+.onboarding-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  font-size: 15px;
+  color: var(--text);
+}
+.onboarding-check input {
+  width: 18px;
+  height: 18px;
+}
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 22px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.onboarding-actions .btn {
+  min-width: 88px;
 }

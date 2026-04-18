@@ -6,42 +6,73 @@ import {
   LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, FireIcon, MenuIcon,
   CheckIcon, ArrowRightIcon, FinanceIcon, BulletIcon
 } from "./Icons";
+import { Capacitor } from "@capacitor/core";
+import { apiUrl } from "./apiBase";
 import { notificationService } from "./notifications";
 import { generateCompletionMessage, checkEnergyBalance } from "./completionRitual";
 import { 
   getTimeOfDay, 
   inferEmotionalState, 
-  generateReminderMessage,
   generateWindDownMessage,
   getRandomQuote,
   GENTLE_ANCHOR_PROMPT
 } from "./gentleAnchor";
 import cloudStorage from "./cloudStorage";
+import { THEMES } from "./themes";
+import { OnboardingFlow } from "./OnboardingFlow";
+import {
+  COACH_SUGGESTION_SOURCE,
+  buildCoachIntelligenceSnapshot,
+  formatIntelligenceForApi,
+  generateCoachV2Fallback,
+  isAffirmationToCoach,
+  loadCoachLearning,
+  parseCoachApiPayload,
+  recordCoachSuggestedTaskAbandoned,
+  recordCoachSuggestedTaskCompleted,
+  recordCoachSuggestedTaskPostponed,
+  recordSuggestionAccepted,
+  recordSuggestionDeclined,
+} from "./coach";
 import {
   subscribeAuthState,
   migrateLegacyDeviceScheduleIfNeeded,
+  signInWithApple,
   signInWithGoogle,
   signUpWithEmail,
   signInWithEmail as emailPasswordSignIn,
   authSignOut,
+  deleteCurrentUserAccount,
   isFirebaseEnabled,
   ensureSignedIn,
 } from "./firebase";
 
 /** ====== Config ====== **/
-const DEFAULT_CATEGORIES = ["Work", "Personal"];
+const DEFAULT_CATEGORIES = ["Work", "School", "Personal"];
 const CUSTOM_CATEGORIES_KEY = "cute_schedule_categories_v1";
 const STORAGE_KEY = "cute_schedule_v3";
 const COACH_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 const COACH_STORAGE_KEY = "cute_schedule_coach_meta_v1";
 const THEME_STORAGE_KEY = "cute_schedule_theme_v1";
-const MOODBOARD_STORAGE_KEY = "cute_schedule_moodboard_v1";
+/** Legacy payloads may include moodboard; we no longer persist custom background images. */
+const EMPTY_MOODBOARD = Object.freeze({ imageUrl: "", text: "" });
+const ACCOUNT_DELETE_CONFIRM_PHRASE = "DELETE";
 /** Set to dismissed | installed so we only auto-prompt once per browser. */
 const PWA_INSTALL_PROMPT_KEY = "cute_schedule_pwa_install_v1";
+
+/** True when running inside the Capacitor iOS/Android shell (not the browser site). */
+function isCapacitorNativeApp() {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
 
 function isRunningAsInstalledPwa() {
   if (typeof window === "undefined") return true;
   try {
+    if (Capacitor.isNativePlatform()) return true;
     return (
       window.matchMedia("(display-mode: standalone)").matches ||
       window.matchMedia("(display-mode: fullscreen)").matches ||
@@ -63,13 +94,23 @@ const COACH_USER_PROFILE_KEY = "cute_schedule_coach_profile_v1";
 const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
 const HABITS_STORAGE_KEY = "cute_schedule_habits_v1";
+const ONBOARDING_DONE_KEY = "cute_schedule_onboarding_done_v1";
+const BIRTHDAY_NOTIF_KEY = "cute_schedule_birthday_notif_date_v1";
+
+function readOnboardingDone() {
+  try {
+    return localStorage.getItem(ONBOARDING_DONE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 const patternsDirtyListeners = new Set();
 function notifyPatternsDirty() {
   patternsDirtyListeners.forEach((fn) => {
     try {
       fn();
-    } catch (_) {}
+    } catch {}
   });
 }
 
@@ -144,110 +185,6 @@ const REPEAT_OPTIONS = {
   OPTIONAL: "optional"
 };
 
-// Themes: gradient affects background + all colored buttons; name used in picker
-const THEMES = {
-  "Classic Pink": {
-    primary: "#F3A6B8",
-    secondary: "#E889A3",
-    accent: "#F48FB1",
-    gradient: "linear-gradient(135deg, #F3A6B8 0%, #E889A3 100%)",
-    headerGradient: "linear-gradient(135deg, #F48FB1 0%, #F8BBD0 100%)",
-    backgroundGradient: "linear-gradient(160deg, #F8F5F4 0%, #F1E8E6 100%)",
-    backgroundGlow: "rgba(232, 180, 192, 0.15)",
-    name: "Classic Pink"
-  },
-  "Rose Gold": {
-    primary: "#F4C2C2",
-    secondary: "#E8B4B8",
-    accent: "#D4A5A5",
-    gradient: "linear-gradient(135deg, #F4C2C2 0%, #E8B4B8 50%, #D4A5A5 100%)",
-    headerGradient: "linear-gradient(135deg, #D4A5A5 0%, #F4C2C2 100%)",
-    backgroundGradient: "linear-gradient(145deg, #F8F2F0 0%, #F0E0E0 50%, #EDE5E2 100%)",
-    backgroundGlow: "rgba(212, 165, 165, 0.2)",
-    name: "Rose Gold"
-  },
-  "Blush": {
-    primary: "#FFE5E5",
-    secondary: "#FFD6D6",
-    accent: "#FFC7C7",
-    gradient: "linear-gradient(135deg, #FFE5E5 0%, #FFD6D6 50%, #FFC7C7 100%)",
-    headerGradient: "linear-gradient(135deg, #FFC7C7 0%, #FFE5E5 100%)",
-    backgroundGradient: "linear-gradient(145deg, #FFF5F5 0%, #FFE8EC 50%, #FDF0ED 100%)",
-    backgroundGlow: "rgba(255, 199, 199, 0.2)",
-    name: "Blush"
-  },
-  "Lavender": {
-    primary: "#E6D5F7",
-    secondary: "#D4B5F0",
-    accent: "#C295E9",
-    gradient: "linear-gradient(135deg, #E6D5F7 0%, #D4B5F0 50%, #C295E9 100%)",
-    headerGradient: "linear-gradient(135deg, #C295E9 0%, #E6D5F7 100%)",
-    backgroundGradient: "linear-gradient(145deg, #F4F0FA 0%, #EDE4F5 50%, #E8E2F0 100%)",
-    backgroundGlow: "rgba(194, 149, 233, 0.18)",
-    name: "Lavender"
-  },
-  "Peach": {
-    primary: "#FFE4D6",
-    secondary: "#FFD4C4",
-    accent: "#FFC4B2",
-    gradient: "linear-gradient(135deg, #FFE4D6 0%, #FFD4C4 50%, #FFC4B2 100%)",
-    headerGradient: "linear-gradient(135deg, #FFC4B2 0%, #FFE4D6 100%)",
-    backgroundGradient: "linear-gradient(145deg, #FDF6F2 0%, #FCE8E0 50%, #F5E8E2 100%)",
-    backgroundGlow: "rgba(255, 196, 178, 0.2)",
-    name: "Peach"
-  },
-  "Neutral": {
-    primary: "#D4C8C4",
-    secondary: "#C4B8B4",
-    accent: "#A89890",
-    gradient: "linear-gradient(135deg, #E8E2DE 0%, #D4C8C4 50%, #C4B8B4 100%)",
-    headerGradient: "linear-gradient(135deg, #A89890 0%, #D4C8C4 100%)",
-    backgroundGradient: "linear-gradient(145deg, #F2EFED 0%, #E8E4E0 50%, #E2DED8 100%)",
-    backgroundGlow: "rgba(168, 152, 144, 0.12)",
-    name: "Neutral"
-  },
-  "Slate": {
-    primary: "#A8B8C8",
-    secondary: "#8A9CB0",
-    accent: "#6B7C94",
-    gradient: "linear-gradient(135deg, #C8D4E0 0%, #A8B8C8 50%, #8A9CB0 100%)",
-    headerGradient: "linear-gradient(135deg, #6B7C94 0%, #A8B8C8 100%)",
-    backgroundGradient: "linear-gradient(145deg, #EEF2F6 0%, #E2E8F0 50%, #D8DEE8 100%)",
-    backgroundGlow: "rgba(107, 124, 148, 0.15)",
-    name: "Slate"
-  },
-  "Sage": {
-    primary: "#B8C8B8",
-    secondary: "#9CB09C",
-    accent: "#7A9478",
-    gradient: "linear-gradient(135deg, #D4E0D4 0%, #B8C8B8 50%, #9CB09C 100%)",
-    headerGradient: "linear-gradient(135deg, #7A9478 0%, #B8C8B8 100%)",
-    backgroundGradient: "linear-gradient(145deg, #F0F4EE 0%, #E4ECE2 50%, #DCE4DA 100%)",
-    backgroundGlow: "rgba(122, 148, 120, 0.14)",
-    name: "Sage"
-  },
-  "Elegant": {
-    primary: "#C4B4B0",
-    secondary: "#B0A098",
-    accent: "#8C7A72",
-    gradient: "linear-gradient(135deg, #E0D8D4 0%, #C4B4B0 50%, #B0A098 100%)",
-    headerGradient: "linear-gradient(135deg, #8C7A72 0%, #C4B4B0 100%)",
-    backgroundGradient: "linear-gradient(145deg, #F6F2F0 0%, #EDE6E2 45%, #E6DED8 100%)",
-    backgroundGlow: "rgba(140, 122, 114, 0.12)",
-    name: "Elegant"
-  },
-  "Berry": {
-    primary: "#E8C4D4",
-    secondary: "#D8A8BC",
-    accent: "#C888A4",
-    gradient: "linear-gradient(135deg, #F0D8E4 0%, #E8C4D4 50%, #D8A8BC 100%)",
-    headerGradient: "linear-gradient(135deg, #C888A4 0%, #E8C4D4 100%)",
-    backgroundGradient: "linear-gradient(145deg, #FAF2F6 0%, #F4E4EC 50%, #EFDAE4 100%)",
-    backgroundGlow: "rgba(200, 136, 164, 0.18)",
-    name: "Berry"
-  }
-};
-
 const BEDTIME_ROUTINE = [
   { id: "skincare", text: "Skincare routine" },
   { id: "teeth", text: "Brush your teeth" },
@@ -280,56 +217,8 @@ function todayKey(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
-function prettyToday(d = new Date()) {
-  return d.toLocaleDateString(undefined, {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-}
-
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
-}
-
-/** Resize for localStorage / Firestore; returns JPEG data URL. */
-function resizeImageFileToDataUrl(file, maxWidth = 960, quality = 0.82) {
-  return new Promise((resolve, reject) => {
-    if (!file || !file.type.startsWith("image/")) {
-      reject(new Error("Not an image"));
-      return;
-    }
-    const img = new Image();
-    const u = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(u);
-      let w = img.naturalWidth;
-      let h = img.naturalHeight;
-      if (w > maxWidth) {
-        h = (h * maxWidth) / w;
-        w = maxWidth;
-      }
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("Canvas not available"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      try {
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      } catch (e) {
-        reject(e);
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(u);
-      reject(new Error("Could not read image"));
-    };
-    img.src = u;
-  });
 }
 
 function sumSavingsAccounts(accounts) {
@@ -617,11 +506,6 @@ function getTimeBlockKey(hourKey) {
   return "21";
 }
 
-function formatDateInput(key) {
-  // key is YYYY-MM-DD already
-  return key;
-}
-
 function addDaysKey(dayKeyStr, deltaDays) {
   const [y, m, d] = dayKeyStr.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
@@ -641,59 +525,45 @@ function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES) {
   let hour = "09:00";
   let category = cats[0] || "Work";
   let text = s;
-  for (const c of cats) {
-    const re = new RegExp(`^${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+`, "i");
-    const m = s.match(re);
-    if (m) {
-      category = cats.find((x) => x.toUpperCase() === m[0].trim().toUpperCase()) || c;
-      text = s.slice(m[0].length).trim();
-      break;
-    }
-  }
-  const time12 = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
-  if (time12) {
-    let h = parseInt(time12[1], 10);
-    const mins = time12[2] ? parseInt(time12[2], 10) : 0;
-    if (time12[3].toLowerCase() === "pm" && h < 12) h += 12;
-    if (time12[3].toLowerCase() === "am" && h === 12) h = 0;
-    hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-    text = text.replace(time12[0], "").replace(/\s+/g, " ").trim();
-  } else {
-    const time24 = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-    if (time24) {
-      const h = parseInt(time24[1], 10);
-      const mins = parseInt(time24[2], 10);
-      hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-      text = text.replace(time24[0], "").replace(/\s+/g, " ").trim();
-    }
-  }
-  if (!text) text = s;
-  return { hour: normalizeTimeKey(hour), category, text: text.trim() };
-}
 
-function getDayLabel(dayKey, todayKey) {
-  if (isSameDayKey(dayKey, todayKey)) {
-    return null; // Will show as "Today"
+  const time12In = s.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  if (time12In) {
+    let h = parseInt(time12In[1], 10);
+    const mins = time12In[2] ? parseInt(time12In[2], 10) : 0;
+    if (time12In[3].toLowerCase() === "pm" && h < 12) h += 12;
+    if (time12In[3].toLowerCase() === "am" && h === 12) h = 0;
+    hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+    text = s.replace(time12In[0], "").replace(/\s+/g, " ").trim();
+  } else {
+    const time24In = s.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+    if (time24In) {
+      const h = parseInt(time24In[1], 10);
+      const mins = parseInt(time24In[2], 10);
+      hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+      text = s.replace(time24In[0], "").replace(/\s+/g, " ").trim();
+    }
   }
-  
-  const tomorrowKey = addDaysKey(todayKey, 1);
-  if (isSameDayKey(dayKey, tomorrowKey)) {
-    return "Tomorrow";
+
+  const rest = text.trim();
+  const looksLikeVerbWorkOn = /^work\s+on\s+/i.test(rest) && cats.some((c) => c.toLowerCase() === "work");
+  if (!looksLikeVerbWorkOn) {
+    const sortedCats = [...cats].sort((a, b) => b.length - a.length);
+    for (const c of sortedCats) {
+      const re = new RegExp(`^${c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s+`, "i");
+      const m = rest.match(re);
+      if (m) {
+        category = cats.find((x) => x.toUpperCase() === m[0].trim().toUpperCase()) || c;
+        text = rest.slice(m[0].length).trim();
+        break;
+      }
+    }
+  } else {
+    text = rest;
+    category = cats[0] || "Work";
   }
-  
-  // Check if it's in the future (after tomorrow)
-  const [y, m, d] = dayKey.split("-").map(Number);
-  const [ty, tm, td] = todayKey.split("-").map(Number);
-  const dayDate = new Date(y, m - 1, d);
-  const todayDate = new Date(ty, tm - 1, td);
-  const tomorrowDate = new Date(ty, tm - 1, td + 1);
-  
-  if (dayDate.getTime() > tomorrowDate.getTime()) {
-    return "Future";
-  }
-  
-  // Past date - return null to show formatted date
-  return null;
+
+  if (!text) text = s.replace(/\s+/g, " ").trim();
+  return { hour: normalizeTimeKey(hour), category, text: text.trim() };
 }
 
 function allTasksInDay(hours, categories = DEFAULT_CATEGORIES) {
@@ -759,24 +629,6 @@ function formatWeekday(dayKey) {
   return new Date(dayKey + "T00:00:00").toLocaleDateString(undefined, { weekday: "long" });
 }
 
-function formatWrittenDate(dayKey) {
-  const d = new Date(dayKey + "T00:00:00");
-  const day = d.getDate();
-  const suffix = day === 1 || day === 21 || day === 31 ? "st" : day === 2 || day === 22 ? "nd" : day === 3 || day === 23 ? "rd" : "th";
-  return d.toLocaleDateString(undefined, { month: "long" }) + " " + day + suffix;
-}
-
-function formatBannerDate(dayKey, realTodayKey) {
-  const d = new Date(dayKey + "T00:00:00");
-  if (isSameDayKey(dayKey, realTodayKey)) {
-    return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-  }
-  const label = getDayLabel(dayKey, realTodayKey);
-  if (label === "Tomorrow") return "Tomorrow · " + d.toLocaleDateString(undefined, { month: "long", day: "numeric" });
-  if (label === "Future") return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-  return d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" });
-}
-
 /** ====== Pattern Tracking ====== **/
 function loadPatterns() {
   const defaultPatterns = {
@@ -814,7 +666,7 @@ function trackTaskCompletion(task, category, hour, dayKey, feeling = null) {
   const dayOfWeek = completedAt.getDay();
   const hourNum = completedAt.getHours();
   
-  patterns.completions.push({
+  const completionEntry = {
     dayKey,
     taskId: task.id,
     category,
@@ -822,8 +674,18 @@ function trackTaskCompletion(task, category, hour, dayKey, feeling = null) {
     completedAt: completedAt.toISOString(),
     feeling,
     dayOfWeek,
-    hourNum
-  });
+    hourNum,
+  };
+  if (task.coachSuggestionId) {
+    completionEntry.coachSuggestionId = task.coachSuggestionId;
+    completionEntry.source = task.source || COACH_SUGGESTION_SOURCE;
+    if (task.sourceSuggestionType) completionEntry.sourceSuggestionType = task.sourceSuggestionType;
+    if (task.sourceTaskId) completionEntry.sourceTaskId = task.sourceTaskId;
+    if (typeof task.coachSuggestionEdited === "boolean") {
+      completionEntry.coachSuggestionEdited = task.coachSuggestionEdited;
+    }
+  }
+  patterns.completions.push(completionEntry);
   
   patterns.completionTimes.push({ hour: hourNum, dayOfWeek });
   
@@ -968,7 +830,7 @@ function ProgressSegments({ total, done }) {
 }
 
 // Ultra-minimal hour card with Do/Plan mode
-function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onChangeTaskTime, onOpenDropdown, taskDropdown, editingTaskTime, editTaskTimeValue, setEditTaskTimeValue, setEditingTaskTime, onEditTimeSave, onEditTimeCancel, expandedTaskKey, onExpandTask, onOpenGroceryList, mode = "do" }) {
+function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onOpenDropdown, taskDropdown, expandedTaskKey, onExpandTask, onOpenGroceryList, mode = "do" }) {
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   const complete = hourIsComplete(tasksByCat, cats);
   const [open, setOpen] = useState(true);
@@ -1110,6 +972,7 @@ function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onTogg
                       }
                     }}
                     data-task-menu-trigger
+                    data-task-dropdown-key={`${hourKey}-${t.category}-${t.id}`}
                   >
                     <MenuIcon />
                   </button>
@@ -1189,8 +1052,7 @@ function MorningRoutine({ routine, onToggle }) {
 
 function BedtimeRoutine({ routine, onToggle, allTasksDone }) {
   const allDone = (routine || []).every((r) => r.done);
-  const timeOfDay = getTimeOfDay();
-  
+
   // Use Gentle Anchor wind-down messages
   const windDownMsg = generateWindDownMessage(allTasksDone);
   const quote = getRandomQuote();
@@ -1324,6 +1186,15 @@ function LoginGateScreen() {
 
         <button
           type="button"
+          className="btn login-gate-btn login-gate-apple"
+          disabled={busy}
+          onClick={() => run(() => signInWithApple())}
+        >
+          Sign in with Apple
+        </button>
+
+        <button
+          type="button"
           className="btn btn-primary login-gate-btn"
           disabled={busy}
           onClick={() => run(() => signInWithGoogle())}
@@ -1363,6 +1234,7 @@ function LoginGateScreen() {
         <div className="login-gate-row">
           <button
             type="button"
+            id="login-email-sign-in"
             className="btn btn-primary login-gate-btn-half"
             disabled={busy || !email.trim() || !password}
             onClick={() => run(() => emailPasswordSignIn(email, password))}
@@ -1371,6 +1243,7 @@ function LoginGateScreen() {
           </button>
           <button
             type="button"
+            id="login-email-create-account"
             className="btn login-gate-btn-half"
             disabled={busy || !email.trim() || !password}
             onClick={() => run(() => signUpWithEmail(email, password))}
@@ -1401,7 +1274,7 @@ function LoginGateScreen() {
           Continue on this device only (guest)
         </button>
         <p className="login-gate-hint">
-          Guest keeps data on this browser until you sign out. For your own cloud backup across devices, use Google or email.
+          Guest keeps data on this browser until you sign out. For your own cloud backup across devices, use Sign in with Apple, Google, or email.
         </p>
 
         {error ? (
@@ -1469,7 +1342,7 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(CUSTOM_CATEGORIES_KEY, JSON.stringify(customCategories));
-    } catch (_) {}
+    } catch {}
   }, [customCategories]);
 
   // Profile (name, birthday), persisted
@@ -1480,7 +1353,7 @@ export default function App() {
         const p = JSON.parse(raw);
         return { userName: p.userName || "", userBirthday: p.userBirthday || "" };
       }
-    } catch (_) {}
+    } catch {}
     return { userName: "", userBirthday: "" };
   });
 
@@ -1492,7 +1365,7 @@ export default function App() {
         const arr = JSON.parse(raw);
         return Array.isArray(arr) && arr.length ? arr : BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
       }
-    } catch (_) {}
+    } catch {}
     return BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
   });
 
@@ -1504,7 +1377,7 @@ export default function App() {
         const arr = JSON.parse(raw);
         return Array.isArray(arr) && arr.length ? arr : MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
       }
-    } catch (_) {}
+    } catch {}
     return MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
   });
 
@@ -1521,7 +1394,7 @@ export default function App() {
           enabledNight: o.enabledNight !== false,
         };
       }
-    } catch (_) {}
+    } catch {}
     return { morning: "every", night: "every", enabledMorning: true, enabledNight: true };
   });
 
@@ -1535,22 +1408,12 @@ export default function App() {
     }
   });
 
-  // Custom background / moodboard (image URL + text)
-  const [moodboard, setMoodboard] = useState(() => {
-    try {
-      const raw = localStorage.getItem(MOODBOARD_STORAGE_KEY);
-      const o = raw ? JSON.parse(raw) : {};
-      return { imageUrl: o.imageUrl || "", text: o.text || "" };
-    } catch {
-      return { imageUrl: "", text: "" };
-    }
-  });
   useEffect(() => {
-    localStorage.setItem(MOODBOARD_STORAGE_KEY, JSON.stringify(moodboard));
-    const u = moodboard.imageUrl ? String(moodboard.imageUrl) : "";
-    const safe = u ? `url("${u.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}")` : "none";
-    document.documentElement.style.setProperty("--moodboard-image", safe);
-  }, [moodboard]);
+    document.documentElement.style.setProperty("--moodboard-image", "none");
+    try {
+      localStorage.removeItem("cute_schedule_moodboard_v1");
+    } catch {}
+  }, []);
 
   // Notes state
   const [notes, setNotes] = useState(() => {
@@ -1569,14 +1432,14 @@ export default function App() {
       if (saved) {
         return normalizeFinanceLoaded(JSON.parse(saved));
       }
-    } catch (_) {}
+    } catch {}
     return normalizeFinanceLoaded({});
   });
 
   useEffect(() => {
     try {
       localStorage.setItem(FINANCE_STORAGE_KEY, JSON.stringify(finance));
-    } catch (_) {}
+    } catch {}
   }, [finance]);
 
   const [patternsRev, setPatternsRev] = useState(0);
@@ -1628,25 +1491,25 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
-    } catch (_) {}
+    } catch {}
   }, [profile]);
 
   useEffect(() => {
     try {
       localStorage.setItem(ROUTINE_TEMPLATE_KEY, JSON.stringify(routineTemplate));
-    } catch (_) {}
+    } catch {}
   }, [routineTemplate]);
 
   useEffect(() => {
     try {
       localStorage.setItem(ROUTINE_MORNING_TEMPLATE_KEY, JSON.stringify(morningRoutineTemplate));
-    } catch (_) {}
+    } catch {}
   }, [morningRoutineTemplate]);
 
   useEffect(() => {
     try {
       localStorage.setItem(ROUTINE_SCHEDULE_KEY, JSON.stringify(routineSchedule));
-    } catch (_) {}
+    } catch {}
   }, [routineSchedule]);
 
   // Reset bedtime routine when day changes to today
@@ -1694,10 +1557,14 @@ export default function App() {
   const [newBillAmount, setNewBillAmount] = useState("");
   const [newBillDueDate, setNewBillDueDate] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [firebaseAuthResolved, setFirebaseAuthResolved] = useState(false);
-  const moodboardFileInputRef = useRef(null);
   const [authBusy, setAuthBusy] = useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
+  const [deleteAccountPhase, setDeleteAccountPhase] = useState("intro");
+  const [deleteAccountPhrase, setDeleteAccountPhrase] = useState("");
+  const [deleteAccountError, setDeleteAccountError] = useState("");
   const [habitTracker, setHabitTracker] = useState(() => loadHabitTrackerFromDisk());
   const [groceryListModal, setGroceryListModal] = useState(null);
   const [groceryListPrompt, setGroceryListPrompt] = useState(null);
@@ -1709,21 +1576,18 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem(HABITS_STORAGE_KEY, JSON.stringify(habitTracker));
-    } catch (_) {}
+    } catch {}
   }, [habitTracker]);
 
-  const [completionCelebration, setCompletionCelebration] = useState(null);
   const [toastNotification, setToastNotification] = useState(null);
-  const [taskFeeling, setTaskFeeling] = useState(null);
-  const [missedTasks, setMissedTasks] = useState([]);
-  const [windDownMode, setWindDownMode] = useState(false);
   const [morningGreeting, setMorningGreeting] = useState(false);
   const [taskDropdown, setTaskDropdown] = useState(null); // "hourKey-category-id"
-  const dateInputRef = useRef(null);
   const [dropdownAnchorRect, setDropdownAnchorRect] = useState(null); // { top, left, bottom, right } for portal
   /** Monthly / note / grocery line menus (same popover styling as task menu). */
   const [secondaryListMenu, setSecondaryListMenu] = useState(null);
   const [showPwaInstallModal, setShowPwaInstallModal] = useState(false);
+  const [onboardingActive, setOnboardingActive] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
   const [canNativeInstallPwa, setCanNativeInstallPwa] = useState(false);
   const deferredInstallPromptRef = useRef(null);
   const [editingTaskTime, setEditingTaskTime] = useState(null); // "hourKey-category-id" when showing time editor
@@ -1733,8 +1597,8 @@ export default function App() {
   const [quickAddValue, setQuickAddValue] = useState("");
   const [taskBanner, setTaskBanner] = useState(null); // { type: 'start'|'wrapup', task, nextTask?, hourKey }
   
-  // Define todayHours before useEffects that use it
-  const todayHours = appState.days?.[tKey]?.hours || {};
+  // Define todayHours before useEffects that use it (memoized so hook dependency lists stay stable)
+  const todayHours = useMemo(() => appState.days?.[tKey]?.hours || {}, [appState.days, tKey]);
   const todayHoursWithSubs = useMemo(
     () => mergeSubscriptionTasksIntoHours(todayHours, tKey, finance.subscriptions, customCategories),
     [todayHours, tKey, finance.subscriptions, customCategories]
@@ -1818,7 +1682,7 @@ export default function App() {
     }
   });
 
-  const [coachOpen, setCoachOpen] = useState(false);
+  const [, setCoachOpen] = useState(false);
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState("");
   const [coachResult, setCoachResult] = useState(null);
@@ -1835,12 +1699,26 @@ export default function App() {
     }
   });
   const [coachStructuredResult, setCoachStructuredResult] = useState(null); // { summary, followUp, actions }
+  const [coachLearning, setCoachLearning] = useState(() => loadCoachLearning());
+  const [coachToast, setCoachToast] = useState(null);
+  const [coachEdit, setCoachEdit] = useState(null);
+  const coachResultRef = useRef(null);
   const [sprintEndsAt, setSprintEndsAt] = useState(null); // timestamp; when set, 10-min sprint is active
   const [sprintTick, setSprintTick] = useState(0); // force re-render every second during sprint
 
   useEffect(() => {
     localStorage.setItem(COACH_STORAGE_KEY, JSON.stringify(coachMeta));
   }, [coachMeta]);
+
+  useEffect(() => {
+    coachResultRef.current = coachResult;
+  }, [coachResult]);
+
+  useEffect(() => {
+    if (!coachToast) return;
+    const t = setTimeout(() => setCoachToast(null), 4200);
+    return () => clearTimeout(t);
+  }, [coachToast]);
 
   // Only add a day when it's missing; never overwrite existing (keeps all days persisted)
   useEffect(() => {
@@ -1870,7 +1748,7 @@ export default function App() {
             return;
           }
         }
-      } catch (_) {}
+      } catch {}
     }
     saveState(appState);
   }, [appState]);
@@ -1882,10 +1760,30 @@ export default function App() {
       setFirebaseUser(null);
       return;
     }
-    return subscribeAuthState((user) => {
+    let cancelled = false;
+    const authTimeoutMs = 15000;
+    const deadline = window.setTimeout(() => {
+      if (cancelled) return;
+      setFirebaseAuthResolved((prev) => {
+        if (prev) return prev;
+        console.warn(
+          "Firebase auth did not resolve in time (common in some WebViews). Showing sign-in. If sign-in fails, add this app’s origin under Firebase → Authentication → Settings → Authorized domains."
+        );
+        setFirebaseUser(null);
+        return true;
+      });
+    }, authTimeoutMs);
+    const unsub = subscribeAuthState((user) => {
+      window.clearTimeout(deadline);
+      if (cancelled) return;
       setFirebaseUser(user);
       setFirebaseAuthResolved(true);
     });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(deadline);
+      unsub();
+    };
   }, []);
 
   // Firestore: load after auth is known (uid), then debounced save when state changes
@@ -1913,7 +1811,7 @@ export default function App() {
       routineSchedule,
       coachMeta,
       coachUserProfile,
-      moodboard,
+      moodboard: EMPTY_MOODBOARD,
       customCategories,
       patterns: loadPatterns(),
       habitTracker,
@@ -1929,7 +1827,6 @@ export default function App() {
     routineSchedule,
     coachMeta,
     coachUserProfile,
-    moodboard,
     customCategories,
     patternsRev,
     habitTracker,
@@ -1955,7 +1852,7 @@ export default function App() {
       try {
         const raw = localStorage.getItem(STORAGE_KEY);
         if (raw) localParsed = JSON.parse(raw);
-      } catch (_) {}
+      } catch {}
 
       const storedCats = getStoredCategories() || DEFAULT_CATEGORIES;
       const cloudState = data?.appState ?? null;
@@ -1991,7 +1888,6 @@ export default function App() {
         if (data.routineSchedule != null) setRoutineSchedule(data.routineSchedule);
         if (data.coachMeta != null) setCoachMeta(data.coachMeta);
         if (data.coachUserProfile != null) setCoachUserProfile(data.coachUserProfile);
-        if (data.moodboard != null) setMoodboard(data.moodboard);
         if (
           data.customCategories != null &&
           data.customCategories.length &&
@@ -2003,7 +1899,7 @@ export default function App() {
           try {
             localStorage.setItem(PATTERNS_STORAGE_KEY, JSON.stringify(data.patterns));
             notifyPatternsDirty();
-          } catch (_) {}
+          } catch {}
         }
         if (data.habitTracker != null && typeof data.habitTracker === "object") {
           setHabitTracker({
@@ -2032,7 +1928,7 @@ export default function App() {
       routineSchedule,
       coachMeta,
       coachUserProfile,
-      moodboard,
+      moodboard: EMPTY_MOODBOARD,
       customCategories,
       patterns: loadPatterns(),
       habitTracker,
@@ -2045,7 +1941,34 @@ export default function App() {
     return () => {
       if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
     };
-  }, [firestoreReady, appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patternsRev, habitTracker]);
+  }, [firestoreReady, appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, customCategories, patternsRev, habitTracker]);
+
+  useEffect(() => {
+    if (!firestoreReady) return;
+    const md = (profile.userBirthday || "").replace(/\D/g, "").padStart(4, "0").slice(-4);
+    if (md.length !== 4) return;
+    const now = new Date();
+    const monthDay = `${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    if (md !== monthDay) return;
+    const today = realTodayKey;
+    let last = "";
+    try {
+      last = localStorage.getItem(BIRTHDAY_NOTIF_KEY) || "";
+    } catch {}
+    if (last === today) return;
+    void (async () => {
+      const ok = await notificationService.checkPermission();
+      if (!ok) return;
+      const name = (profile.userName || "").trim();
+      notificationService.showNotification(`Happy birthday${name ? `, ${name}` : ""}!`, {
+        body: "Hope you have a gentle, good day.",
+        tag: "birthday-" + today,
+      });
+      try {
+        localStorage.setItem(BIRTHDAY_NOTIF_KEY, today);
+      } catch {}
+    })();
+  }, [firestoreReady, realTodayKey, profile.userBirthday, profile.userName]);
 
   useEffect(() => {
     const flush = () => {
@@ -2053,7 +1976,7 @@ export default function App() {
       if (!p) return;
       try {
         saveState(p.appState);
-      } catch (_) {}
+      } catch {}
       if (firestoreSaveTimeoutRef.current) {
         clearTimeout(firestoreSaveTimeoutRef.current);
         firestoreSaveTimeoutRef.current = null;
@@ -2069,7 +1992,7 @@ export default function App() {
         routineSchedule: p.routineSchedule,
         coachMeta: p.coachMeta,
         coachUserProfile: p.coachUserProfile,
-        moodboard: p.moodboard,
+        moodboard: EMPTY_MOODBOARD,
         customCategories: p.customCategories,
         patterns: p.patterns,
         habitTracker: p.habitTracker,
@@ -2107,8 +2030,9 @@ export default function App() {
     notificationService.checkPermission();
   }, []);
 
-  // PWA: capture install prompt (Chrome, Edge, Android Chrome, etc.). iOS has no API; we show steps instead.
+  // PWA: capture install prompt (Chrome, Edge, Android Chrome, etc.). Skip in Capacitor; not applicable in the store app.
   useEffect(() => {
+    if (isCapacitorNativeApp()) return;
     const onBeforeInstallPrompt = (e) => {
       e.preventDefault();
       deferredInstallPromptRef.current = e;
@@ -2117,7 +2041,7 @@ export default function App() {
     const onAppInstalled = () => {
       try {
         localStorage.setItem(PWA_INSTALL_PROMPT_KEY, "installed");
-      } catch (_) {}
+      } catch {}
       deferredInstallPromptRef.current = null;
       setCanNativeInstallPwa(false);
       setShowPwaInstallModal(false);
@@ -2154,6 +2078,25 @@ export default function App() {
     return () => document.removeEventListener('click', handleClickOutside);
   }, [taskDropdown, secondaryListMenu]);
 
+  useLayoutEffect(() => {
+    if (!taskDropdown) return;
+    const esc =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(taskDropdown)
+        : String(taskDropdown).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    const tick = () => {
+      const n = document.querySelector(`[data-task-dropdown-key="${esc}"]`);
+      if (n) setDropdownAnchorRect(n.getBoundingClientRect());
+    };
+    tick();
+    window.addEventListener("scroll", tick, true);
+    window.addEventListener("resize", tick);
+    return () => {
+      window.removeEventListener("scroll", tick, true);
+      window.removeEventListener("resize", tick);
+    };
+  }, [taskDropdown]);
+
   useEffect(() => {
     if (!groceryListModal) setSecondaryListMenu(null);
   }, [groceryListModal]);
@@ -2174,8 +2117,9 @@ export default function App() {
 
   // Morning greeting ritual
   useEffect(() => {
+    if (onboardingActive) return;
     if (!isSameDayKey(tKey, realTodayKey)) return;
-    
+
     const lastGreeting = localStorage.getItem(`morning-greeting-${realTodayKey}`);
     const now = new Date();
     const hour = now.getHours();
@@ -2187,7 +2131,7 @@ export default function App() {
         localStorage.setItem(`morning-greeting-${realTodayKey}`, 'true');
       }, 500);
     }
-  }, [tKey, realTodayKey]);
+  }, [tKey, realTodayKey, onboardingActive]);
 
   // Monitor tasks and schedule transition notifications
   useEffect(() => {
@@ -2251,7 +2195,7 @@ export default function App() {
         nextTask.category
       );
     }
-  }, [tKey, realTodayKey, todayHours, appState]);
+  }, [tKey, realTodayKey, todayHours, customCategories, appState]);
 
   const sortedHourKeys = useMemo(() => Object.keys(todayHoursWithSubs).sort(), [todayHoursWithSubs]);
 
@@ -2311,7 +2255,10 @@ export default function App() {
 
   const prog = useMemo(() => dayProgress(todayHours, customCategories), [todayHours, customCategories]);
   const starred = useMemo(() => dayIsStarred(todayHours, customCategories), [todayHours, customCategories]);
-  const patternInsights = useMemo(() => analyzePatterns(), [prog.done, prog.total, appState.bedtimeRoutine]);
+  const patternInsights = useMemo(() => {
+    void patternsRev;
+    return analyzePatterns();
+  }, [patternsRev]);
 
   const [starPulse, setStarPulse] = useState(false);
   useEffect(() => {
@@ -2334,7 +2281,6 @@ export default function App() {
   // Update lastProgressAt whenever tasks change
   useEffect(() => {
     setCoachMeta((prev) => ({ ...prev, lastProgressAt: Date.now() }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prog.done, prog.total]);
 
   // Coach cooldown calculations
@@ -2387,8 +2333,14 @@ export default function App() {
     });
   }
 
-  function addTask(hourKey, category, text, repeatType = REPEAT_OPTIONS.NONE, sourceTaskId = null) {
+  function addTask(hourKey, category, text, repeatType = REPEAT_OPTIONS.NONE, sourceTaskId = null, extras = null) {
     const newId = uid();
+    const ex = extras && typeof extras === "object" ? extras : {};
+    const energyFromExtras = ex.energyLevel;
+    const energyLevel =
+      energyFromExtras === "LIGHT" || energyFromExtras === "MEDIUM" || energyFromExtras === "HEAVY"
+        ? energyFromExtras
+        : "MEDIUM";
     const checkText = normalizeText(text) || String(text || "").trim();
     if (checkText && taskMentionsGroceryErrandStore(checkText)) {
       queueMicrotask(() => setGroceryListPrompt({ dayKey: tKey, hourKey, category, taskId: newId }));
@@ -2402,7 +2354,7 @@ export default function App() {
         id: newId, 
         text, 
         done: false, 
-        energyLevel: "MEDIUM", 
+        energyLevel, 
         completedAt: null, 
         feeling: null,
         repeat: repeatType,
@@ -2410,6 +2362,13 @@ export default function App() {
         originalTaskId: sourceTaskId,
         createdAt: new Date().toISOString()
       };
+      if (ex.coachSuggestionId) {
+        nextTask.coachSuggestionId = String(ex.coachSuggestionId);
+        nextTask.source = ex.source || COACH_SUGGESTION_SOURCE;
+        if (ex.sourceSuggestionType) nextTask.sourceSuggestionType = String(ex.sourceSuggestionType);
+        if (ex.sourceTaskId) nextTask.sourceTaskId = String(ex.sourceTaskId);
+        if (typeof ex.coachSuggestionEdited === "boolean") nextTask.coachSuggestionEdited = ex.coachSuggestionEdited;
+      }
       const nextByCat = { ...byCat, [category]: [...(byCat[category] || []), nextTask] };
 
       hours[hourKey] = nextByCat;
@@ -2424,7 +2383,7 @@ export default function App() {
             hour: hourKey,
           });
           localStorage.setItem("repeatedTasks", JSON.stringify(repeatedTasks));
-        } catch (_) {}
+        } catch {}
       }
       
       // Schedule notification for task reminder
@@ -2434,20 +2393,6 @@ export default function App() {
       
       return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
     });
-  }
-
-  // Get past repeated tasks
-  function getPastRepeatedTasks(category = null) {
-    try {
-      const repeatedTasks = JSON.parse(localStorage.getItem('repeatedTasks') || '[]');
-      return repeatedTasks.filter(task => {
-        if (category && task.category !== category) return false;
-        // Filter by repeat type
-        return task.repeat !== REPEAT_OPTIONS.NONE;
-      });
-    } catch {
-      return [];
-    }
   }
 
   // Get repeatable tasks (optional repeats that can be added)
@@ -2462,6 +2407,23 @@ export default function App() {
 
   function toggleTask(hourKey, category, taskId) {
     if (String(taskId).startsWith("sub-")) return;
+    const flatBefore = allTasksInDay(todayHours, customCategories);
+    const priorTask = flatBefore.find(
+      (x) => x.id === taskId && x.hour === hourKey && x.category === category
+    );
+    const willComplete = priorTask && !priorTask.done;
+    if (willComplete && priorTask.coachSuggestionId) {
+      const el = priorTask.energyLevel === "LIGHT" || priorTask.energyLevel === "HEAVY" ? priorTask.energyLevel : "MEDIUM";
+      setCoachLearning((prev) =>
+        recordCoachSuggestedTaskCompleted(prev, {
+          type: priorTask.sourceSuggestionType || "ADD_TASK",
+          edited: priorTask.coachSuggestionEdited === true,
+          category: priorTask.category,
+          energyLevel: el,
+          titleSnippet: String(priorTask.text || ""),
+        })
+      );
+    }
     setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day) return prev;
@@ -2489,9 +2451,6 @@ export default function App() {
             
             // Generate contextual completion message using Gentle Anchor
             const message = generateCompletionMessage(t, category, completedToday, energyLevel, emotionalState);
-            
-            // Show toast only (mood is collected end-of-day, not per task)
-            setCompletionCelebration(null);
             
             // Show toast notification that auto-dismisses
             setToastNotification({
@@ -2551,34 +2510,6 @@ export default function App() {
         // Could show a gentle notification about energy balance
       }
     }, 100);
-  }
-
-  function saveTaskFeeling(taskId, feeling) {
-    setAppState((prev) => {
-      const day = prev.days[tKey];
-      if (!day) return prev;
-      const hours = { ...(day.hours || {}) };
-      
-      Object.keys(hours).forEach(hourKey => {
-        Object.keys(hours[hourKey]).forEach(cat => {
-          const list = hours[hourKey][cat].map(t => {
-            if (t.id === taskId) {
-              // Update feeling and re-track with feeling
-              if (t.completedAt && !t.feeling) {
-                trackTaskCompletion(t, cat, hourKey, tKey, feeling);
-              }
-              return { ...t, feeling };
-            }
-            return t;
-          });
-          hours[hourKey][cat] = list;
-        });
-      });
-      
-      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
-    });
-    setTaskFeeling(null);
-    setCompletionCelebration(null);
   }
 
   function setDailyMood(mood) {
@@ -2655,8 +2586,21 @@ export default function App() {
     setFinance((prev) => ({ ...prev, bills: (prev.bills || []).filter((b) => b.id !== id) }));
   }
 
-  function deleteTask(hourKey, category, taskId) {
+  function deleteTask(hourKey, category, taskId, opts = null) {
     if (String(taskId).startsWith("sub-")) return;
+    const skipCoach = opts && typeof opts === "object" && opts.skipCoachLearning;
+    const flatBefore = allTasksInDay(todayHours, customCategories);
+    const priorTask = flatBefore.find(
+      (x) => x.id === taskId && x.hour === hourKey && x.category === category
+    );
+    if (!skipCoach && priorTask?.coachSuggestionId && !priorTask.done) {
+      setCoachLearning((prev) =>
+        recordCoachSuggestedTaskAbandoned(prev, {
+          type: priorTask.sourceSuggestionType || "ADD_TASK",
+          titleSnippet: String(priorTask.text || ""),
+        })
+      );
+    }
     setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day) return prev;
@@ -2681,7 +2625,16 @@ export default function App() {
     const task = (byCat[category] || []).find((t) => t.id === taskId);
     if (!task) return;
 
-    deleteTask(hourKey, category, taskId);
+    deleteTask(hourKey, category, taskId, { skipCoachLearning: true });
+
+    if (task.coachSuggestionId) {
+      setCoachLearning((prev) =>
+        recordCoachSuggestedTaskPostponed(prev, {
+          type: task.sourceSuggestionType || "ADD_TASK",
+          titleSnippet: String(task.text || ""),
+        })
+      );
+    }
 
     const tomorrowKey = addDaysKey(realTodayKey, 1);
     const tomorrowHour = "09:00";
@@ -2727,6 +2680,14 @@ export default function App() {
     hours[newHourKey] = { ...nextByCat, [category]: nextList };
 
     setAppState((prev) => ({ ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } }));
+    if (task.coachSuggestionId && !task.done) {
+      setCoachLearning((prev) =>
+        recordCoachSuggestedTaskPostponed(prev, {
+          type: task.sourceSuggestionType || "ADD_TASK",
+          titleSnippet: String(task.text || ""),
+        })
+      );
+    }
     setTaskDropdown(null);
     setEditingTaskTime(null);
   }
@@ -2765,7 +2726,7 @@ export default function App() {
     void cloudStorage.saveFullState({
       appState: appStateRef.current,
       notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
-      routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories,
+      routineSchedule, coachMeta, coachUserProfile, moodboard: EMPTY_MOODBOARD, customCategories,
       patterns: loadPatterns(),
       habitTracker,
     });
@@ -2787,7 +2748,7 @@ export default function App() {
     void cloudStorage.saveFullState({
       appState: appStateRef.current,
       notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
-      routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories,
+      routineSchedule, coachMeta, coachUserProfile, moodboard: EMPTY_MOODBOARD, customCategories,
       patterns: loadPatterns(),
       habitTracker,
     });
@@ -2860,6 +2821,14 @@ export default function App() {
     setNewNote("");
   }
 
+  function appendNoteFromTask(hourKey, category, taskId) {
+    const task = findTaskInAppState(appState, tKey, hourKey, category, taskId);
+    const taskText = task?.text ? String(task.text).trim() : "";
+    if (!taskText) return;
+    const line = `From Today task (${to12Hour(hourKey)} · ${category}): ${taskText}`;
+    setNotes((prev) => [...prev, { id: uid(), text: line, createdAt: new Date().toISOString() }]);
+  }
+
   function deleteNote(id) {
     setNotes((prev) => prev.filter((n) => n.id !== id));
   }
@@ -2894,11 +2863,29 @@ export default function App() {
       
       // Analyze patterns for observant coach insights
       const patterns = analyzePatterns();
-      
+      const taskLite = allTasks.map((t) => ({
+        hour: t.hour,
+        category: t.category,
+        text: t.text,
+        done: t.done,
+        energyLevel: t.energyLevel,
+      }));
+      const coachIntelSnapshot = buildCoachIntelligenceSnapshot({
+        emotionalState,
+        timeOfDay,
+        tasks: taskLite,
+        patterns,
+        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text })),
+        learning: coachLearning,
+      });
+      const coachIntelligenceText = formatIntelligenceForApi(coachIntelSnapshot);
+      const coachFeedbackJson = JSON.stringify((coachLearning.recentFeedback || []).slice(-8));
+
       const payload = {
         systemPrompt: GENTLE_ANCHOR_PROMPT,
         dayKey: tKey,
         prettyDate: new Date(tKey + "T00:00:00").toLocaleDateString(),
+        mood: appState.days?.[tKey]?.dailyMood || null,
         progress: prog,
         today: todayHours,
         monthly: (appState.monthly || []).map((m) => ({ id: m.id, text: m.text, done: m.done })),
@@ -2910,7 +2897,9 @@ export default function App() {
         totalTasks,
         energyBalance: checkEnergyBalance(todayHours),
         userQuestion: userQuestion || null,
-        conversation: userQuestion ? coachConversation : [],
+        conversation: userQuestion
+          ? [...coachConversation, { role: "user", content: userQuestion }]
+          : [],
         userProfile: coachUserProfile.filled ? {
           biggestChallenge: coachUserProfile.biggestChallenge,
           bestEnergyTime: coachUserProfile.bestEnergyTime,
@@ -2952,9 +2941,11 @@ export default function App() {
             bankStatementNotes: (finance.bankStatementNotes || "").slice(0, 2000),
           };
         })(),
+        coachIntelligenceText,
+        coachFeedbackJson,
       };
 
-      const res = await fetch("/api/coach", {
+      const res = await fetch(apiUrl("/api/coach"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -2963,52 +2954,76 @@ export default function App() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        // Fallback to local gentle responses if API fails
-        const localResponse = generateLocalGentleResponse(emotionalState, prog, completedToday, totalTasks);
+        const localResponse = generateCoachV2Fallback({
+          emotionalState,
+          completed: completedToday,
+          total: totalTasks,
+          tasks: taskLite,
+          timeOfDay,
+          patterns,
+          categories: customCategories,
+          todayHours,
+          intelligence: coachIntelSnapshot,
+        });
         setCoachResult(localResponse);
         if (userQuestion) {
-          setCoachConversation(prev => [...prev, { role: 'assistant', content: localResponse.message }]);
+          setCoachConversation((prev) => [...prev, { role: "assistant", content: localResponse.message }]);
+        } else {
+          setCoachConversation([]);
         }
         setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
         setCoachLoading(false);
         return;
       }
 
-      const shaped = {
-        message: data?.message || "",
-        highlights: data?.highlights || [],
-        suggestions: (data?.suggestions || []).map((x) => ({
-          id: x.id || uid(),
-          hour: x.hour || "09:00",
-          category: customCategories.includes(x.category) ? x.category : (customCategories[0] || "Work"),
-          text: x.text || "",
-        })),
-        ignoredMonthlies: (data?.ignoredMonthlies || []).map((x) => ({
-          id: x.id || uid(),
-          text: x.text || String(x),
-        })),
-        percentSummary: data?.percentSummary || "",
-      };
+      const shaped = parseCoachApiPayload(
+        data && typeof data === "object" ? data : {},
+        customCategories,
+        todayHours
+      );
 
-      // Add AI response to conversation if it was a question
       if (userQuestion) {
-        setCoachConversation(prev => [...prev, { role: 'assistant', content: shaped.message }]);
-        // Don't show structured result for questions - just conversation
-        setCoachResult(null);
+        setCoachConversation((prev) => [...prev, { role: "assistant", content: shaped.message }]);
       } else {
-        setCoachResult(shaped);
+        setCoachConversation([]);
       }
+      setCoachResult(shaped);
       
       setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
-    } catch (err) {
-      // Fallback to local responses
-      const allTasks = allTasksInDay(todayHours, customCategories);
-      const emotionalState = inferEmotionalState(allTasks, getTimeOfDay());
-      const completedToday = allTasks.filter(t => t.done).length;
-      const localResponse = generateLocalGentleResponse(emotionalState, prog, completedToday, allTasks.length);
+    } catch {
+      const allTasksCatch = allTasksInDay(todayHours, customCategories);
+      const emotionalStateCatch = inferEmotionalState(allTasksCatch, getTimeOfDay());
+      const completedCatch = allTasksCatch.filter((t) => t.done).length;
+      const patternsCatch = analyzePatterns();
+      const taskLiteCatch = allTasksCatch.map((t) => ({
+        hour: t.hour,
+        category: t.category,
+        text: t.text,
+        done: t.done,
+        energyLevel: t.energyLevel,
+      }));
+      const snapCatch = buildCoachIntelligenceSnapshot({
+        emotionalState: emotionalStateCatch,
+        timeOfDay: getTimeOfDay(),
+        tasks: taskLiteCatch,
+        patterns: patternsCatch,
+        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text })),
+        learning: coachLearning,
+      });
+      const localResponse = generateCoachV2Fallback({
+        emotionalState: emotionalStateCatch,
+        completed: completedCatch,
+        total: allTasksCatch.length,
+        tasks: taskLiteCatch,
+        timeOfDay: getTimeOfDay(),
+        patterns: patternsCatch,
+        categories: customCategories,
+        todayHours,
+        intelligence: snapCatch,
+      });
       setCoachResult(localResponse);
       if (userQuestion) {
-        setCoachConversation(prev => [...prev, { role: 'assistant', content: localResponse.message }]);
+        setCoachConversation((prev) => [...prev, { role: "assistant", content: localResponse.message }]);
       }
     } finally {
       setCoachLoading(false);
@@ -3019,51 +3034,154 @@ export default function App() {
     e.preventDefault();
     const question = normalizeText(coachQuestion);
     if (!question) return;
-    
+    const pending = coachResultRef.current;
+    if (isAffirmationToCoach(question) && pending?.suggestions?.length === 1) {
+      acceptCoachSuggestion(pending.suggestions[0]);
+      setCoachQuestion("");
+      return;
+    }
     askCoach(question);
     setCoachQuestion("");
   }
 
-  function generateLocalGentleResponse(emotionalState, progress, completed, total) {
-    let message = "";
-    const highlights = [];
-    
-    if (emotionalState === "overloaded") {
-      message = "You have a lot planned today. We can adjust if needed.";
-      highlights.push("Consider moving some tasks to tomorrow");
-      highlights.push("Heavy tasks need space between them");
-    } else if (emotionalState === "drained") {
-      message = "You've been working. It's okay to slow down.";
-      highlights.push("Rest is part of the process");
-    } else if (emotionalState === "focused") {
-      message = "You're in a good flow. Keep going when it feels right.";
-      highlights.push("You're making steady progress");
-    } else if (completed >= 3) {
-      message = "You did enough for today. The rest can wait.";
-    } else if (total === 0) {
-      message = "No tasks planned yet. When you're ready, we can add some.";
-    } else {
-      message = "Here's where things stand. What feels doable?";
-    }
-    
-    return {
-      message,
-      highlights,
-      suggestions: [],
-      ignoredMonthlies: [],
-      percentSummary: total > 0 ? `${completed}/${total} completed` : ""
-    };
+  function removeCoachSuggestionById(suggestionId) {
+    setCoachResult((prev) => {
+      if (!prev?.suggestions?.length) return prev;
+      return { ...prev, suggestions: prev.suggestions.filter((x) => x.id !== suggestionId) };
+    });
   }
 
-  function acceptCoachSuggestion(s) {
-    const hour = s?.hour || "09:00";
-    const cat = customCategories.includes(s?.category) ? s.category : (customCategories[0] || "Work");
-    const text = normalizeText(s?.text);
-    if (!text) return;
-    ensureHour(hour);
-    addTask(hour, cat, text);
-    setCoachOpen(false);
+  function declineCoachSuggestion(s) {
+    setCoachLearning((prev) =>
+      recordSuggestionDeclined(prev, {
+        type: s.type,
+        category: s.category,
+        energyLevel: s.energyLevel,
+        title: s.title,
+      })
+    );
+    removeCoachSuggestionById(s.id);
   }
+
+  function coachSuggestionWhenLine(hhmm) {
+    const raw = normalizeTimeKey(hhmm || "12:00");
+    const h = parseInt(raw.split(":")[0], 10);
+    if (Number.isNaN(h)) return "Suggested for your day";
+    if (h >= 17 && h <= 23) return "Suggested for tonight";
+    if (h >= 12 && h < 17) return "Suggested for this afternoon";
+    if (h >= 5 && h < 12) return "Suggested for this morning";
+    if (h < 5) return "Suggested for late night";
+    return "Suggested for your day";
+  }
+
+  function renderCoachSuggestionCards(suggestions) {
+    if (!suggestions?.length) return null;
+    return (
+      <div className="coach-block coach-v2-suggestions-block">
+        <p className="settings-hint coach-v2-suggestions-hint">
+          Nothing is added until you approve.
+        </p>
+        <div className="coach-v2-suggest-list">
+          {suggestions.map((s) => {
+            const canAuto = s.type === "ADD_TASK" || s.type === "BREAK" || s.type === "SPLIT_TASK";
+            const whenLine = coachSuggestionWhenLine(s.hour || s.start);
+            return (
+              <div key={s.id} className="coach-v2-card surface-glass">
+                <div className="coach-v2-eyebrow">{whenLine}</div>
+                <div className="coach-v2-card-top">
+                  <span className="coach-v2-meta">
+                    <Pill label={s.category} />
+                    <span className="coach-v2-energy">{s.energyLevel}</span>
+                    <span className="coach-v2-time">{to12Hour(s.hour || s.start)}</span>
+                  </span>
+                </div>
+                <div className="coach-v2-card-title">{s.title}</div>
+                {s.description ? <p className="coach-v2-desc">{s.description}</p> : null}
+                <div className="coach-v2-why">
+                  <div className="coach-v2-why-label">Why this fits</div>
+                  <p className="coach-v2-reason">{s.reason}</p>
+                </div>
+                <div className="coach-v2-actions">
+                  {canAuto ? (
+                    <button type="button" className="btn btn-primary" onClick={() => acceptCoachSuggestion(s)}>
+                      Approve
+                    </button>
+                  ) : (
+                    <button type="button" className="btn" disabled title="Reorder and timebox controls live in Plan mode for now">
+                      Not auto-applied
+                    </button>
+                  )}
+                  {canAuto ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() =>
+                        setCoachEdit({
+                          s,
+                          title: s.title,
+                          hour: normalizeTimeKey(s.hour || s.start || "09:00"),
+                          category: s.category,
+                        })
+                      }
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                  <button type="button" className="btn btn-ghost" onClick={() => declineCoachSuggestion(s)}>
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  function acceptCoachSuggestion(s, overrides = null) {
+    const ov = overrides && typeof overrides === "object" ? overrides : {};
+    const hour = normalizeTimeKey(ov.hour || s.hour || s.start || "09:00");
+    const cat = customCategories.includes(ov.category || s.category)
+      ? ov.category || s.category
+      : customCategories[0] || "Work";
+    const titleBase = normalizeText(ov.title || s.title);
+    if (!titleBase) return;
+    const edited = Boolean(overrides && (ov.title || ov.hour || ov.category));
+    const canAutoAdd = s.type === "ADD_TASK" || s.type === "BREAK" || s.type === "SPLIT_TASK";
+    if (!canAutoAdd) {
+      setCoachToast({ text: "That suggestion is not auto-applied yet — adjust blocks in Plan mode.", kind: "info" });
+      removeCoachSuggestionById(s.id);
+      return;
+    }
+    const label = s.type === "SPLIT_TASK" ? `First slice: ${titleBase}` : titleBase;
+    const repeat = s.recurring ? REPEAT_OPTIONS.DAILY : REPEAT_OPTIONS.NONE;
+    const splitParentId =
+      s.type === "SPLIT_TASK" && s.targetTaskId && String(s.targetTaskId).trim()
+        ? String(s.targetTaskId).trim()
+        : undefined;
+    ensureHour(hour);
+    addTask(hour, cat, label, repeat, null, {
+      energyLevel: s.energyLevel || "MEDIUM",
+      coachSuggestionId: s.id,
+      source: COACH_SUGGESTION_SOURCE,
+      sourceSuggestionType: s.type,
+      ...(splitParentId ? { sourceTaskId: splitParentId } : {}),
+      coachSuggestionEdited: edited,
+    });
+    setCoachLearning((prev) =>
+      recordSuggestionAccepted(prev, {
+        type: s.type,
+        category: cat,
+        energyLevel: s.energyLevel || "MEDIUM",
+        edited,
+        titleLower: label.toLowerCase(),
+      })
+    );
+    removeCoachSuggestionById(s.id);
+    setCoachToast({ text: `Added — ${to12Hour(hour)}`, detail: label, kind: "ok" });
+  }
+
 
   async function callCoach(adhdMode) {
     setCoachError("");
@@ -3103,7 +3221,7 @@ export default function App() {
           wishList: finance.wishList || [],
         },
       };
-      const res = await fetch("/api/coach", {
+      const res = await fetch(apiUrl("/api/coach"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...payload, mode: adhdMode }),
@@ -3118,7 +3236,7 @@ export default function App() {
         followUp: data.followUp || null,
         actions: Array.isArray(data.actions) ? data.actions : [],
       });
-    } catch (err) {
+    } catch {
       setCoachError("Network error");
     } finally {
       setCoachLoading(false);
@@ -3217,7 +3335,7 @@ export default function App() {
       if (aEnergy !== bEnergy) return aEnergy - bEnergy;
       return a.hour.localeCompare(b.hour);
     });
-  }, [todayHours]);
+  }, [todayHoursWithSubs, customCategories]);
 
   async function handleAuthSignOut() {
     setAuthBusy(true);
@@ -3228,6 +3346,49 @@ export default function App() {
       }
     } catch (e) {
       alert(e?.message || String(e));
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  function openDeleteAccountFlow() {
+    setShowPrivacyPolicy(false);
+    setShowSettings(false);
+    setDeleteAccountError("");
+    setDeleteAccountPhrase("");
+    setDeleteAccountPhase("intro");
+    setDeleteAccountOpen(true);
+  }
+
+  function closeDeleteAccountFlow() {
+    setDeleteAccountOpen(false);
+    setDeleteAccountPhase("intro");
+    setDeleteAccountPhrase("");
+    setDeleteAccountError("");
+  }
+
+  async function executeAccountDeletion() {
+    if (!firebaseUser) return;
+    if (deleteAccountPhrase.trim() !== ACCOUNT_DELETE_CONFIRM_PHRASE) return;
+    setAuthBusy(true);
+    setDeleteAccountError("");
+    try {
+      await deleteCurrentUserAccount();
+      try {
+        cloudStorage.invalidateLoadCache();
+      } catch {}
+      setDeleteAccountPhase("success");
+      window.setTimeout(() => {
+        window.location.reload();
+      }, 2200);
+    } catch (e) {
+      let msg = e?.message || String(e);
+      if (e?.code === "auth/requires-recent-login") {
+        msg =
+          "For your security, sign out, sign in again, then return here to delete your account.";
+      }
+      setDeleteAccountError(msg);
+      setDeleteAccountPhase("error");
     } finally {
       setAuthBusy(false);
     }
@@ -3244,7 +3405,7 @@ export default function App() {
     routineSchedule,
     coachMeta,
     coachUserProfile,
-    moodboard,
+    moodboard: EMPTY_MOODBOARD,
     customCategories,
     patterns: loadPatterns(),
     habitTracker,
@@ -3255,17 +3416,55 @@ export default function App() {
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
 
   useEffect(() => {
-    if (authWaiting || showLoginGate) return;
+    if (authWaiting || showLoginGate || onboardingActive) return;
+    if (isCapacitorNativeApp()) return;
     if (isRunningAsInstalledPwa()) return;
     let alreadyHandled = false;
     try {
       const v = localStorage.getItem(PWA_INSTALL_PROMPT_KEY);
       alreadyHandled = v === "dismissed" || v === "installed";
-    } catch (_) {}
+    } catch {}
     if (alreadyHandled) return;
     const t = window.setTimeout(() => setShowPwaInstallModal(true), 1400);
     return () => clearTimeout(t);
-  }, [authWaiting, showLoginGate]);
+  }, [authWaiting, showLoginGate, onboardingActive]);
+
+  useEffect(() => {
+    if (authWaiting || showLoginGate || !firestoreReady) return;
+    if (readOnboardingDone()) return;
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const p = raw ? JSON.parse(raw) : null;
+      if (savedStateHasScheduleData(p)) {
+        localStorage.setItem(ONBOARDING_DONE_KEY, "1");
+        setOnboardingActive(false);
+        return;
+      }
+    } catch {}
+    if (countScheduleTasks(appState) > 0) {
+      try {
+        localStorage.setItem(ONBOARDING_DONE_KEY, "1");
+      } catch {}
+      setOnboardingActive(false);
+      return;
+    }
+    if ((habitTracker.habits || []).length > 0) {
+      try {
+        localStorage.setItem(ONBOARDING_DONE_KEY, "1");
+      } catch {}
+      setOnboardingActive(false);
+      return;
+    }
+    setOnboardingActive(true);
+  }, [authWaiting, showLoginGate, firestoreReady, appState, habitTracker.habits]);
+
+  function finishOnboardingWizard() {
+    try {
+      localStorage.setItem(ONBOARDING_DONE_KEY, "1");
+    } catch {}
+    setOnboardingActive(false);
+    setOnboardingStep(0);
+  }
 
   async function handleNativePwaInstall() {
     const e = deferredInstallPromptRef.current;
@@ -3278,10 +3477,10 @@ export default function App() {
       if (choice?.outcome === "accepted") {
         try {
           localStorage.setItem(PWA_INSTALL_PROMPT_KEY, "installed");
-        } catch (_) {}
+        } catch {}
         setShowPwaInstallModal(false);
       }
-    } catch (_) {}
+    } catch {}
   }
 
   function dismissPwaInstallModal() {
@@ -3289,7 +3488,7 @@ export default function App() {
       if (localStorage.getItem(PWA_INSTALL_PROMPT_KEY) !== "installed") {
         localStorage.setItem(PWA_INSTALL_PROMPT_KEY, "dismissed");
       }
-    } catch (_) {}
+    } catch {}
     setShowPwaInstallModal(false);
   }
 
@@ -3306,11 +3505,6 @@ export default function App() {
       {showLoginGate && <LoginGateScreen />}
       {!authWaiting && !showLoginGate && (
         <>
-      {moodboard.text && (
-        <div className="moodboard-quote" aria-hidden="true">
-          {moodboard.text}
-        </div>
-      )}
       <div
         className="shell"
         data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (appState.days?.[tKey]?.dailyMood || "") : ""}
@@ -3365,6 +3559,7 @@ export default function App() {
               )}
               <button
                 type="button"
+                id="settings-open"
                 className="btn-icon"
                 onClick={() => setShowSettings(true)}
                 title="Settings"
@@ -3521,9 +3716,6 @@ export default function App() {
                   <div className="timeline-track" aria-hidden="true" />
                   {visibleHourKeys.map((hourKey) => (
                     <div key={hourKey} className="timeline-row">
-                      <div className="timeline-time-cell">
-                        <span className="timeline-time">{to12Hour(hourKey)}</span>
-                      </div>
                       <span className="timeline-dot" aria-hidden="true" />
                       <div className="timeline-blocks">
                         <HourCard
@@ -3535,15 +3727,8 @@ export default function App() {
                           onDeleteTask={deleteTask}
                           onDeleteHour={deleteHour}
                           onMoveToTomorrow={moveTaskToTomorrow}
-                          onChangeTaskTime={changeTaskTime}
                           onOpenDropdown={(key, rect) => { setSecondaryListMenu(null); setTaskDropdown(key); setDropdownAnchorRect(rect || null); }}
                           taskDropdown={taskDropdown}
-                          editingTaskTime={editingTaskTime}
-                          editTaskTimeValue={editTaskTimeValue}
-                          setEditTaskTimeValue={setEditTaskTimeValue}
-                          setEditingTaskTime={setEditingTaskTime}
-                          onEditTimeSave={(h, c, id, newTime) => { changeTaskTime(h, c, id, newTime); setEditingTaskTime(null); setTaskDropdown(null); setDropdownAnchorRect(null); }}
-                          onEditTimeCancel={() => { setEditingTaskTime(null); }}
                           expandedTaskKey={expandedTaskKey}
                           onExpandTask={setExpandedTaskKey}
                           onOpenGroceryList={(hk, cat, id) => {
@@ -3778,8 +3963,10 @@ export default function App() {
                       onClick={(e) => {
                         if (e.target.closest('.list-row-more, .check, input')) return;
                         setSecondaryListMenu(null);
-                        setTaskDropdown(taskDropdown === dropdownKey ? null : dropdownKey);
-                        setDropdownAnchorRect(e.currentTarget.getBoundingClientRect());
+                        const opening = taskDropdown !== dropdownKey;
+                        setTaskDropdown(opening ? dropdownKey : null);
+                        const btn = e.currentTarget.querySelector("[data-task-menu-trigger]");
+                        setDropdownAnchorRect(opening && btn ? btn.getBoundingClientRect() : null);
                       }}
                     >
                       <div className="list-row-top">
@@ -3819,6 +4006,7 @@ export default function App() {
                             }
                           }}
                           data-task-menu-trigger
+                          data-task-dropdown-key={dropdownKey}
                           aria-label="Task options"
                         >
                           <MenuIcon style={{ width: 18, height: 18 }} />
@@ -4037,6 +4225,8 @@ export default function App() {
                 <button className="btn" type="button" onClick={() => {
                   setCoachResult(null);
                   setCoachConversation([]);
+                  setCoachEdit(null);
+                  setCoachToast(null);
                 }}>
                   Clear
                 </button>
@@ -4046,6 +4236,13 @@ export default function App() {
             {coachError && (
               <div className="coach-error">
                 {coachError}
+              </div>
+            )}
+
+            {coachToast && (
+              <div className={`coach-toast ${coachToast.kind === "info" ? "coach-toast-info" : "coach-toast-ok"}`} role="status">
+                <div className="coach-toast-title">{coachToast.text}</div>
+                {coachToast.detail ? <div className="coach-toast-detail">{coachToast.detail}</div> : null}
               </div>
             )}
 
@@ -4087,34 +4284,23 @@ export default function App() {
               </div>
             )}
 
-            {/* Show conversation history for questions */}
-            {coachConversation.length > 0 && (
-              <div className="coach-body">
-                {coachConversation.map((msg, idx) => (
-                  <div key={idx} style={{ marginBottom: 'var(--spacing-md)' }}>
-                    {msg.role === 'user' && (
-                      <div className="coach-message" style={{ background: 'rgba(255, 255, 255, 0.1)', padding: '12px 16px', borderRadius: '12px', marginBottom: '8px' }}>
-                        <strong>You:</strong> {msg.content}
-                      </div>
-                    )}
-                    {msg.role === 'assistant' && (
-                      <div className="coach-message">{msg.content}</div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Show structured result for general check-ins */}
+            {/* Structured result: full card when no chat thread; below chat when in Q&A (no duplicate message) */}
             {coachResult && coachConversation.length === 0 && (
-              <div className="coach-body">
+              <div className="coach-body coach-body-v2">
                 {coachResult.message && (
                   <div className="coach-message">{coachResult.message}</div>
                 )}
 
+                {coachResult.insight ? (
+                  <div className="coach-block coach-insight-block">
+                    <div className="coach-block-title">Observation</div>
+                    <p className="coach-insight-text">{coachResult.insight}</p>
+                  </div>
+                ) : null}
+
                 {coachResult.highlights && coachResult.highlights.length > 0 && (
                   <div className="coach-block">
-                    <div className="coach-block-title">Today's Focus</div>
+                    <div className="coach-block-title">Today&apos;s focus</div>
                     <ul className="coach-list">
                       {coachResult.highlights.map((h, i) => (
                         <li key={i}>{h}</li>
@@ -4123,34 +4309,18 @@ export default function App() {
                   </div>
                 )}
 
-                {coachResult.suggestions && coachResult.suggestions.length > 0 && (
+                {(coachResult.followUp || coachResult.question) ? (
                   <div className="coach-block">
-                    <div className="coach-block-title">Suggested Tasks</div>
-                    <div className="coach-suggest-grid">
-                      {coachResult.suggestions.map((s) => (
-                        <div key={s.id} className="coach-suggest">
-                          <div className="coach-suggest-top">
-                            <Pill label={s.category} />
-                            <span className="coach-time">{to12Hour(s.hour)}</span>
-                          </div>
-                          <div className="coach-suggest-text">{s.text}</div>
-                          <button
-                            className="btn btn-primary"
-                            type="button"
-                            style={{ width: '100%', marginTop: 8 }}
-                            onClick={() => acceptCoachSuggestion(s)}
-                          >
-                            Add to Today
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                    <div className="coach-block-title">A question</div>
+                    <p className="coach-message" style={{ marginTop: 0 }}>{coachResult.followUp || coachResult.question}</p>
                   </div>
-                )}
+                ) : null}
+
+                {renderCoachSuggestionCards(coachResult.suggestions)}
 
                 {coachResult.ignoredMonthlies && coachResult.ignoredMonthlies.length > 0 && (
                   <div className="coach-block">
-                    <div className="coach-block-title">Monthlies You Might Be Ignoring</div>
+                    <div className="coach-block-title">Monthlies you might be ignoring</div>
                     <ul className="coach-list">
                       {coachResult.ignoredMonthlies.map((m) => (
                         <li key={m.id || m.text}>{m.text}</li>
@@ -4161,12 +4331,116 @@ export default function App() {
 
                 {coachResult.percentSummary && (
                   <div className="coach-block">
-                    <div className="coach-block-title">Completion Snapshot</div>
+                    <div className="coach-block-title">Completion snapshot</div>
                     <div className="coach-mono">{coachResult.percentSummary}</div>
                   </div>
                 )}
               </div>
             )}
+
+            {coachResult && coachConversation.length > 0 && (
+              <div className="coach-body coach-body-chat-followup coach-body-v2">
+                {coachResult.insight ? (
+                  <div className="coach-block coach-insight-block">
+                    <div className="coach-block-title">Observation</div>
+                    <p className="coach-insight-text">{coachResult.insight}</p>
+                  </div>
+                ) : null}
+
+                {coachResult.highlights && coachResult.highlights.length > 0 && (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Today&apos;s focus</div>
+                    <ul className="coach-list">
+                      {coachResult.highlights.map((h, i) => (
+                        <li key={i}>{h}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {(coachResult.followUp || coachResult.question) ? (
+                  <div className="coach-block">
+                    <div className="coach-block-title">A question</div>
+                    <p className="coach-message" style={{ marginTop: 0 }}>{coachResult.followUp || coachResult.question}</p>
+                  </div>
+                ) : null}
+
+                {renderCoachSuggestionCards(coachResult.suggestions)}
+
+                {coachResult.ignoredMonthlies && coachResult.ignoredMonthlies.length > 0 && (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Monthlies you might be ignoring</div>
+                    <ul className="coach-list">
+                      {coachResult.ignoredMonthlies.map((m) => (
+                        <li key={m.id || m.text}>{m.text}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {coachResult.percentSummary && (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Completion snapshot</div>
+                    <div className="coach-mono">{coachResult.percentSummary}</div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {coachEdit ? (
+              <div className="coach-edit-overlay" role="dialog" aria-modal="true" aria-labelledby="coach-edit-heading">
+                <div className="coach-edit-modal surface-glass">
+                  <div className="coach-edit-head">
+                    <h3 id="coach-edit-heading" className="coach-edit-title">Edit before adding</h3>
+                    <button type="button" className="icon-btn" aria-label="Close" onClick={() => setCoachEdit(null)}>
+                      <CloseIcon />
+                    </button>
+                  </div>
+                  <div className="coach-edit-body">
+                    <label className="label" htmlFor="coach-edit-title-field">Title</label>
+                    <input
+                      id="coach-edit-title-field"
+                      className="input"
+                      value={coachEdit.title}
+                      onChange={(e) => setCoachEdit((prev) => ({ ...prev, title: e.target.value }))}
+                    />
+                    <label className="label" htmlFor="coach-edit-time">Time</label>
+                    <input
+                      id="coach-edit-time"
+                      className="input"
+                      type="time"
+                      value={coachEdit.hour}
+                      onChange={(e) => setCoachEdit((prev) => ({ ...prev, hour: normalizeTimeKey(e.target.value) }))}
+                    />
+                    <label className="label" htmlFor="coach-edit-cat">Category</label>
+                    <select
+                      id="coach-edit-cat"
+                      className="input"
+                      value={coachEdit.category}
+                      onChange={(e) => setCoachEdit((prev) => ({ ...prev, category: e.target.value }))}
+                    >
+                      {customCategories.map((c) => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="coach-edit-actions">
+                    <button type="button" className="btn" onClick={() => setCoachEdit(null)}>Cancel</button>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => {
+                        const { s, title, hour, category } = coachEdit;
+                        acceptCoachSuggestion(s, { title, hour, category });
+                        setCoachEdit(null);
+                      }}
+                    >
+                      Approve
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </section>
         ) : tab === "finance" ? (
           <section className="panel finance-panel surface-glass section-finance">
@@ -4727,8 +5001,21 @@ export default function App() {
                           </button>
                         ) : null;
                       })()}
+                      <button
+                        type="button"
+                        className="dropdown-item"
+                        onClick={() => {
+                          appendNoteFromTask(hourKey, category, id);
+                          closeDropdown();
+                        }}
+                      >
+                        Add to Notes
+                      </button>
                       <button type="button" className="dropdown-item" onClick={() => { setEditTaskTimeValue(hourKey); setEditingTaskTime(editKey); }}>
                         Edit time
+                      </button>
+                      <button type="button" className="dropdown-item" onClick={() => { closeDropdown(); }}>
+                        Keep task
                       </button>
                       <button
                         type="button"
@@ -5031,13 +5318,22 @@ export default function App() {
         )}
 
         {showSettings && (
-          <div className="modal-overlay" onClick={() => setShowSettings(false)}>
+          <div
+            className="modal-overlay"
+            onClick={() => {
+              setShowPrivacyPolicy(false);
+              setShowSettings(false);
+            }}
+          >
             <div className="modal settings-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="settings-modal-title">
               <div className="settings-modal-header">
                 <button
                   type="button"
                   className="btn-icon settings-modal-close settings-modal-close-left"
-                  onClick={() => setShowSettings(false)}
+                  onClick={() => {
+                    setShowPrivacyPolicy(false);
+                    setShowSettings(false);
+                  }}
                   aria-label="Close settings"
                 >
                   <CloseIcon style={{ width: 22, height: 22 }} />
@@ -5072,9 +5368,25 @@ export default function App() {
                       )}
                     </p>
                     {firebaseUser ? (
-                      <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
-                        Log out
-                      </button>
+                      <>
+                        <div className="settings-account-actions">
+                          <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
+                            Log out
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          id="delete-account-entry"
+                          className="btn btn-sm settings-delete-account-btn"
+                          disabled={authBusy}
+                          onClick={() => openDeleteAccountFlow()}
+                        >
+                          {firebaseUser.isAnonymous ? "Delete guest data" : "Delete account"}
+                        </button>
+                        <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                          Opens a short flow. Your account is removed permanently (not deactivated), then this device reloads.
+                        </p>
+                      </>
                     ) : null}
                   </>
                 )}
@@ -5298,7 +5610,7 @@ export default function App() {
                 <label className="label">Task types</label>
                 <p className="settings-hint">Types for organizing tasks (e.g. Work, Personal). Quick add and tasks use these.</p>
                 <ul className="routine-template-list">
-                  {customCategories.map((cat, idx) => (
+                  {customCategories.map((cat) => (
                     <li key={cat} className="routine-template-item">
                       <span className="routine-template-input" style={{ flex: 1 }}>{cat}</span>
                       <button
@@ -5372,65 +5684,6 @@ export default function App() {
               </div>
 
               <div className="settings-section">
-                <label className="label">Custom background (moodboard)</label>
-                <p className="settings-hint">Pick a photo from your phone or computer (saved in this browser, resized), or paste an image URL. Add an optional short phrase.</p>
-                <input
-                  ref={moodboardFileInputRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="moodboard-file-input"
-                  aria-label="Choose moodboard photo"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    e.target.value = "";
-                    if (!f) return;
-                    try {
-                      const dataUrl = await resizeImageFileToDataUrl(f);
-                      setMoodboard((m) => ({ ...m, imageUrl: dataUrl }));
-                    } catch (err) {
-                      alert(err?.message || "Could not use that image. Try another photo or use a URL.");
-                    }
-                  }}
-                />
-                <div className="moodboard-actions-row">
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary"
-                    onClick={() => moodboardFileInputRef.current?.click()}
-                  >
-                    Choose photo
-                  </button>
-                  {moodboard.imageUrl ? (
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() => {
-                        setMoodboard((m) => ({ ...m, imageUrl: "" }));
-                      }}
-                    >
-                      Clear image
-                    </button>
-                  ) : null}
-                </div>
-                <input
-                  className="input modal-input"
-                  type="url"
-                  value={moodboard.imageUrl?.startsWith("data:") ? "" : moodboard.imageUrl}
-                  onChange={(e) => setMoodboard((m) => ({ ...m, imageUrl: e.target.value }))}
-                  placeholder="Or image URL (https://…)"
-                  style={{ marginTop: 8, marginBottom: 8 }}
-                />
-                <input
-                  className="input modal-input"
-                  type="text"
-                  value={moodboard.text}
-                  onChange={(e) => setMoodboard((m) => ({ ...m, text: e.target.value }))}
-                  placeholder="Short phrase or quote (optional)"
-                />
-              </div>
-
-              <div className="settings-section">
                 <label className="label">Notifications</label>
                 <button
                   className="btn btn-primary"
@@ -5439,20 +5692,23 @@ export default function App() {
                     if (granted) {
                       alert('Notifications enabled! You\'ll get reminders for tasks and completion alerts.');
                     } else {
-                      alert('Please enable notifications in your browser settings to receive task reminders.');
+                      alert(
+                        isCapacitorNativeApp()
+                          ? "Please enable notifications in Settings → PROYOU to receive task reminders."
+                          : "Please enable notifications in your browser settings to receive task reminders."
+                      );
                     }
                   }}
                 >
                   {notificationService.permission === 'granted' ? <><CheckIcon style={{ width: 16, height: 16, marginRight: 6, verticalAlign: 'middle' }} />Enabled</> : 'Enable Notifications'}
                 </button>
               </div>
+              {!isCapacitorNativeApp() && (
               <div className="settings-section">
-                <label className="label">Push (PWA)</label>
+                <label className="label">Background reminders (browser)</label>
                 <p className="settings-hint">
-                  Needs{" "}
-                  <strong>VAPID_PUBLIC_KEY</strong>, <strong>VAPID_PRIVATE_KEY</strong>, and a linked{" "}
-                  <strong>Vercel KV</strong> on this project. On iPhone, add the app to your Home Screen and open it from that icon first.
-                  After enabling, use &quot;Send test push&quot; to confirm (cron also delivers scheduled reminders).
+                  Optional: connect this device to your hosted deployment so reminder pings can arrive after you close the tab.
+                  On iPhone Safari, install from the Share menu first, then enable here. Use &quot;Send test&quot; after enabling to confirm it works.
                 </p>
                 <div className="settings-push-actions">
                   <button
@@ -5462,39 +5718,40 @@ export default function App() {
                       const result = await notificationService.enablePush();
                       if (result?.ok) {
                         await notificationService.syncRemindersToServer(pushRemindersList);
-                        alert("Push enabled. Reminders can sync to the server when you have tasks scheduled.");
+                        alert("Connected. Reminders can sync when you have tasks scheduled.");
                       } else {
-                        alert(result?.hint || "Push could not be enabled. See the hint above and Vercel logs.");
+                        alert(result?.hint || "Could not enable background reminders.");
                       }
                     }}
                   >
-                    Enable push notifications
+                    Enable background reminders
                   </button>
                   <button
                     type="button"
                     className="btn btn-sm"
                     onClick={async () => {
-                      const res = await fetch("/api/push/send", {
+                      const res = await fetch(apiUrl("/api/push/send"), {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ title: "Test push", body: "If you see this, VAPID + KV + subscription are working." }),
+                        body: JSON.stringify({ title: "Test", body: "If you see this, background reminders are working." }),
                       });
                       const j = await res.json().catch(() => ({}));
                       if (res.ok && j.sent > 0) {
                         alert(`Sent test to ${j.sent} device(s). Check your notification tray.`);
                       } else if (res.ok && j.sent === 0) {
-                        alert("No saved push subscriptions yet. Tap “Enable push notifications” first, then try again.");
+                        alert("No saved device connection yet. Tap “Enable background reminders” first, then try again.");
                       } else {
-                        alert(j.hint || j.error || `Test failed (${res.status}). Check Vercel env vars and KV.`);
+                        alert(j.hint || j.error || `Test failed (${res.status}).`);
                       }
                     }}
                   >
-                    Send test push
+                    Send test
                   </button>
                 </div>
               </div>
+              )}
 
-              {!isRunningAsInstalledPwa() && (
+              {!isRunningAsInstalledPwa() && !isCapacitorNativeApp() && (
                 <div className="settings-section">
                   <label className="label">Install on home screen</label>
                   <p className="settings-hint">
@@ -5504,6 +5761,7 @@ export default function App() {
                     type="button"
                     className="btn btn-sm btn-primary"
                     onClick={() => {
+                      setShowPrivacyPolicy(false);
                       setShowSettings(false);
                       setShowPwaInstallModal(true);
                     }}
@@ -5513,10 +5771,63 @@ export default function App() {
                 </div>
               )}
 
+              <div className="settings-privacy-footer">
+                <button
+                  type="button"
+                  className="settings-privacy-link"
+                  id="settings-privacy-policy"
+                  onClick={() => setShowPrivacyPolicy(true)}
+                >
+                  Privacy Policy
+                </button>
+              </div>
+
               <div className="modal-actions">
-                <button className="btn btn-primary" onClick={() => setShowSettings(false)}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setShowPrivacyPolicy(false);
+                    setShowSettings(false);
+                  }}
+                >
                   Done
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showSettings && showPrivacyPolicy && (
+          <div
+            className="modal-overlay privacy-policy-overlay"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="privacy-policy-title"
+            onClick={() => setShowPrivacyPolicy(false)}
+          >
+            <div className="modal privacy-policy-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="privacy-policy-modal-header">
+                <h3 id="privacy-policy-title" className="privacy-policy-modal-title">
+                  Privacy Policy
+                </h3>
+                <button
+                  type="button"
+                  className="btn-icon settings-modal-close"
+                  onClick={() => setShowPrivacyPolicy(false)}
+                  aria-label="Close privacy policy"
+                >
+                  <CloseIcon style={{ width: 22, height: 22 }} />
+                </button>
+              </div>
+              <div className="privacy-policy-body">
+                <p>
+                  ProYou collects limited account information, including email address and account identifiers, for
+                  login and authentication.
+                </p>
+                <p>
+                  ProYou does not collect, transmit, or store the tasks, notes, schedules, or other personal planning
+                  content users create in the app, which remains on the user's device.
+                </p>
               </div>
             </div>
           </div>
@@ -5605,7 +5916,35 @@ export default function App() {
           </div>
         )}
 
-        {showPwaInstallModal && !isRunningAsInstalledPwa() && (
+        {onboardingActive && !authWaiting && !showLoginGate && (
+          <OnboardingFlow
+            step={onboardingStep}
+            setStep={setOnboardingStep}
+            onExitComplete={finishOnboardingWizard}
+            onExitSkipAll={finishOnboardingWizard}
+            firebaseOn={firebaseOn}
+            profile={profile}
+            setProfile={setProfile}
+            theme={theme}
+            setTheme={setTheme}
+            themesMap={THEMES}
+            habitTracker={habitTracker}
+            setHabitTracker={setHabitTracker}
+            routineTemplate={routineTemplate}
+            setRoutineTemplate={setRoutineTemplate}
+            morningRoutineTemplate={morningRoutineTemplate}
+            setMorningRoutineTemplate={setMorningRoutineTemplate}
+            routineSchedule={routineSchedule}
+            setRoutineSchedule={setRoutineSchedule}
+            customCategories={customCategories}
+            setCustomCategories={setCustomCategories}
+            suggestedCategories={DEFAULT_CATEGORIES}
+            fallbackMorningTemplate={MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }))}
+            fallbackNightTemplate={BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }))}
+          />
+        )}
+
+        {showPwaInstallModal && !isRunningAsInstalledPwa() && !isCapacitorNativeApp() && (
           <div
             className="modal-overlay pwa-install-overlay"
             role="dialog"
@@ -5653,6 +5992,119 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {deleteAccountOpen &&
+          ReactDOM.createPortal(
+            <div
+              className="delete-account-overlay"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="delete-account-title"
+              onClick={(e) => {
+                if (e.target === e.currentTarget && deleteAccountPhase === "intro") closeDeleteAccountFlow();
+              }}
+            >
+              <div className="delete-account-modal surface-glass" onClick={(e) => e.stopPropagation()}>
+                <div className="delete-account-modal-head">
+                  <h2 id="delete-account-title" className="delete-account-title">
+                    {firebaseUser?.isAnonymous ? "Delete guest data" : "Delete account"}
+                  </h2>
+                  <button type="button" className="icon-btn" aria-label="Close" onClick={() => closeDeleteAccountFlow()}>
+                    <CloseIcon />
+                  </button>
+                </div>
+
+                {deleteAccountPhase === "intro" ? (
+                  <div className="delete-account-body">
+                    <p className="delete-account-lead">
+                      This permanently deletes your PROYOU account and synced data from our servers—not a pause or hide.
+                    </p>
+                    <ul className="delete-account-list">
+                      <li>Your schedule, notes, finance entries, habits, and coach profile in sync storage</li>
+                      <li>Your sign-in for this app (you can create a new account later if you want)</li>
+                    </ul>
+                    <p className="settings-hint" style={{ marginBottom: 0 }}>
+                      When deletion succeeds, you&apos;ll see a short confirmation, then this device reloads.
+                    </p>
+                    <div className="delete-account-actions">
+                      <button type="button" className="btn" onClick={() => closeDeleteAccountFlow()}>
+                        Cancel
+                      </button>
+                      <button type="button" className="btn btn-primary" onClick={() => setDeleteAccountPhase("confirm")}>
+                        Continue
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {deleteAccountPhase === "confirm" ? (
+                  <div className="delete-account-body">
+                    <p className="delete-account-lead">
+                      To confirm, type <strong>{ACCOUNT_DELETE_CONFIRM_PHRASE}</strong> in the box, then tap delete.
+                    </p>
+                    <label className="label" htmlFor="delete-account-confirm-input">
+                      Confirmation
+                    </label>
+                    <input
+                      id="delete-account-confirm-input"
+                      className="input"
+                      type="text"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      value={deleteAccountPhrase}
+                      onChange={(e) => setDeleteAccountPhrase(e.target.value)}
+                      placeholder={ACCOUNT_DELETE_CONFIRM_PHRASE}
+                    />
+                    <div className="delete-account-actions">
+                      <button type="button" className="btn" onClick={() => { setDeleteAccountPhase("intro"); setDeleteAccountPhrase(""); setDeleteAccountError(""); }}>
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        className="btn settings-delete-account-btn"
+                        disabled={authBusy || deleteAccountPhrase.trim() !== ACCOUNT_DELETE_CONFIRM_PHRASE}
+                        onClick={() => void executeAccountDeletion()}
+                      >
+                        {firebaseUser?.isAnonymous ? "Permanently delete guest data" : "Permanently delete account"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {deleteAccountPhase === "success" ? (
+                  <div className="delete-account-body delete-account-success">
+                    <p className="delete-account-lead" style={{ marginBottom: 0 }}>
+                      <strong>Account removed.</strong> Signing you out and reloading…
+                    </p>
+                  </div>
+                ) : null}
+
+                {deleteAccountPhase === "error" ? (
+                  <div className="delete-account-body">
+                    <p className="delete-account-inline-error">{deleteAccountError || "Something went wrong."}</p>
+                    <div className="delete-account-actions">
+                      <button type="button" className="btn" onClick={() => closeDeleteAccountFlow()}>
+                        Close
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => {
+                          setDeleteAccountError("");
+                          setDeleteAccountPhrase("");
+                          setDeleteAccountPhase("confirm");
+                        }}
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>,
+            document.body
+          )}
 
         {/* Gentle Rescheduling Modal */}
       </div>

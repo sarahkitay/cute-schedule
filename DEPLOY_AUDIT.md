@@ -6,6 +6,15 @@
 
 ---
 
+## 0. Nothing shows under Vercel “Deployments” (no rows, no logs)
+
+That usually means **this GitHub repo is not linked to a Vercel project** (or you’re logged into the wrong Vercel account/team).
+
+1. Open [vercel.com/new](https://vercel.com/new) → **Import** `sarahkitay/cute-schedule` → deploy once. After that, the **Git** integration and deployment list should work.
+2. **Backup:** This repo includes **GitHub Actions** (`.github/workflows/deploy-vercel.yml`). After you add secrets `VERCEL_TOKEN`, `VERCEL_ORG_ID`, and `VERCEL_PROJECT_ID` under **GitHub → repo → Settings → Secrets and variables → Actions**, every push to `main` (or **Run workflow** manually) will deploy and you’ll see logs under the **Actions** tab even if Vercel’s Git UI is empty.
+
+---
+
 ## 1. Repo status (OK)
 
 | Check | Result |
@@ -106,7 +115,7 @@ That triggers a deployment from the current Git state without relying on GitHub 
 If the deploy hook returns `PENDING` but the deployment never succeeds:
 
 1. **See the actual error:** Vercel Dashboard → **Deployments** → click the latest deployment → open **Building** in the logs. The red error line is the cause (e.g. `vite: command not found`, Node too old, missing env var).
-2. **Node version:** This project sets `engines.node >= 20` and includes `.nvmrc` with `20` so Vercel uses Node 20. If your build still fails, check the log for a Node version error.
+2. **Node version:** `package.json` sets `engines.node` to `20.x` and `.nvmrc` is `20` so Vercel matches local installs. In the Vercel dashboard, **Settings → General → Node.js Version** should be **20.x** (or “Match .nvmrc” if offered). If it was pinned to an older major, the build can fail; redeploy after aligning.
 3. **Explicit build:** `vercel.json` sets `buildCommand`, `outputDirectory`, and `installCommand` so Vercel doesn’t rely on auto-detect.
 
 ---
@@ -117,3 +126,37 @@ If the deploy hook returns `PENDING` but the deployment never succeeds:
 - **Likely cause:** Vercel not receiving push events (integration/permissions) or Production Branch / Ignored Build Step.  
 - **If job is created but build fails:** Check deployment **Build logs** (Section 6 above).  
 - **Optional:** Use `npm run trigger-deploy` to deploy on demand.
+
+---
+
+## 7. App Store vs PWA and production readiness (2026-03-29)
+
+This repo is a **Vite + React** web app deployed to **Vercel** with a **PWA** (`manifest.json`, `sw.js`, installable). It is **not** an Xcode / native iOS binary. **Apple’s App Store** normally requires a **native wrapper** (e.g. Capacitor, Cordova) or a **separate native app**; a website alone is listed via **Safari → Add to Home Screen** or you can ship a **wrapper** that loads your HTTPS origin and then submit **that** to the store (with privacy policy, account sign-in disclosures, etc.).
+
+### Environment variables (mirror Vercel locally)
+
+Copy `.env.local.example` → `.env.local` (gitignored). Match Vercel names:
+
+| Variable | Where used |
+|----------|------------|
+| `VITE_FIREBASE_*` | Client (`src/firebase.js`) |
+| `OPENAI_API_KEY` | Server `api/coach.js` (Production/Preview on Vercel is fine) |
+| `VAPID_PUBLIC_KEY` or `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | Server push routes (public key is also returned by `GET /api/push/vapid`) |
+| `VAPID_PRIVATE_KEY` | Server push only (never expose to client) |
+| `VAPID_SUBJECT` | Optional; defaults to `mailto:hello@proyou.app` in code |
+
+Push and reminders also need **Vercel KV** linked; cron uses `vercel.json`.
+
+### PWA / “store-like” checklist
+
+- [x] **HTTPS** in production (Vercel default).
+- [x] **Web app manifest** with `name`, `icons` (192 + 512), `theme_color`, `start_url`, `display: standalone`.
+- [x] **Service worker** registered for push/offline behavior as implemented.
+- [ ] **Privacy policy URL**: required for many store submissions and for apps that use auth, analytics, or AI; host a page and link it from Settings or footer when you wrap for store.
+- [ ] **Accessibility**: viewport uses `user-scalable=no` (common for “app feel” but hurts zoom accessibility); document or relax if App Review flags it.
+- [ ] **Native App Store**: if you need a true App Store listing, plan Capacitor (or similar), icons/splash per Apple HIG, and App Store Connect metadata.
+
+### Security notes
+
+- Firebase **web API key** in `VITE_*` is expected to be embeddable; lock down with **Firestore rules** and **Auth**, not by hiding the key.
+- **Never** put `VAPID_PRIVATE_KEY` or `OPENAI_API_KEY` in `VITE_*` variables.

@@ -1,12 +1,13 @@
 // Cron: schedule is set in vercel.json (default */5 * * * *). Sends stored reminders when due. Requires VAPID_* env + Vercel KV.
 import webpush from "web-push";
 import { kv } from "@vercel/kv";
+import { getVapidPublicKey, getVapidPrivateKey, getVapidSubject } from "../lib/vapidEnv.js";
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT || "mailto:hello@proyou.app",
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
+const vapidPub = getVapidPublicKey();
+const vapidPriv = getVapidPrivateKey();
+if (vapidPub && vapidPriv) {
+  webpush.setVapidDetails(getVapidSubject(), vapidPub, vapidPriv);
+}
 
 export const config = { maxDuration: 30 };
 
@@ -14,7 +15,7 @@ export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).end();
   }
-  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+  if (!vapidPub || !vapidPriv) {
     return res.status(200).json({ ok: true, sent: 0, reason: "push not configured" });
   }
 

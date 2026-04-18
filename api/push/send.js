@@ -1,11 +1,12 @@
 import webpush from "web-push";
 import { kv } from "@vercel/kv";
+import { getVapidPublicKey, getVapidPrivateKey, getVapidSubject } from "../lib/vapidEnv.js";
 
-webpush.setVapidDetails(
-  process.env.VAPID_SUBJECT || "mailto:hello@proyou.app",
-  process.env.VAPID_PUBLIC_KEY,
-  process.env.VAPID_PRIVATE_KEY
-);
+const vapidPub = getVapidPublicKey();
+const vapidPriv = getVapidPrivateKey();
+if (vapidPub && vapidPriv) {
+  webpush.setVapidDetails(getVapidSubject(), vapidPub, vapidPriv);
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -15,7 +16,7 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Content-Type", "application/json");
 
-  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) {
+  if (!vapidPub || !vapidPriv) {
     return res.status(503).json({ error: "Push not configured" });
   }
 
