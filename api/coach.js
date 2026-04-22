@@ -56,6 +56,7 @@ export default async function handler(req, res) {
       subscriptions,
       coachIntelligenceText,
       coachFeedbackJson,
+      weekAtAGlance,
     } = req.body || {};
     if (!dayKey) return res.status(400).json({ error: "Missing dayKey" });
 
@@ -94,7 +95,12 @@ End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progres
       const r = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify({ model: "gpt-4o-mini", temperature: 0.3, messages: adhdMessages }),
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          temperature: 0.3,
+          messages: adhdMessages,
+          response_format: { type: "json_object" },
+        }),
       });
       const raw = await r.json().catch(() => ({}));
       if (!r.ok) return res.status(r.status).json({ error: "OpenAI request failed", detail: raw?.error?.message || raw });
@@ -133,9 +139,11 @@ Banned sentence openers (do not start the message with these): "To help you", "Y
 
 Start the message with an observation about their data OR a reframing — not a preamble about helping.
 
-Suggestions (Coach V2): When a concrete move fits, return 0–4 items in "suggestions". Each item MUST use this shape:
-{ "type":"ADD_TASK"|"BREAK"|"SPLIT_TASK"|"DEFER"|"REORDER"|"TIMEBOX", "title":"short label", "description":"optional detail", "reason":"one sentence tied to THIS user's data", "category":"one of their categories", "energyLevel":"LIGHT"|"MEDIUM"|"HEAVY", "start":"HH:MM", "end":"HH:MM or null", "durationMinutes": number, "recurring": false, "confidence": 0.0-1.0, "requiresApproval": true, "targetTaskId": "existing id or null" }.
+Suggestions (Coach V2): When a concrete move fits, return 0–6 items in "suggestions". Each item MUST use this shape:
+{ "type":"ADD_TASK"|"BREAK"|"SPLIT_TASK"|"DEFER"|"REORDER"|"TIMEBOX", "title":"short label", "description":"optional detail", "reason":"one sentence tied to THIS user's data", "category":"one of their categories", "energyLevel":"LIGHT"|"MEDIUM"|"HEAVY", "start":"HH:MM", "end":"HH:MM or null", "durationMinutes": number, "recurring": false, "recurrencePattern":"none"|"daily"|"weekly", "targetDayKey":"YYYY-MM-DD or null (which calendar day to place the block; default the request dayKey)", "weekPlanLabel":"short UI label e.g. Wed 7:30p", "confidence": 0.0-1.0, "requiresApproval": true, "targetTaskId": "existing id or null" }.
 Use ADD_TASK or BREAK for new items the app can insert after approval. Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply — requiresApproval is always true for user-facing rows. Use [] when no concrete suggestion fits.
+
+Week / recurring planning: If the user asks to spread habits (e.g. art, dog walks) across the week, use weekAtAGlance + today's schedule to infer lighter blocks and propose multiple ADD_TASK rows on different targetDayKey values with realistic times. Prefer recurrencePattern weekly for habits they want a few times per week; daily for true every-day anchors. Mention tradeoffs in "message" when the week already looks dense.
 
 Anti-drift:
 - Do not sound like a therapist, life coach, or inspirational quote account.
@@ -227,6 +235,11 @@ Use these to detect recurring struggles, goals, constraints, or self-observation
       ? `\n\nRecent suggestion decisions (local only): ${String(coachFeedbackJson).slice(0, 1500)}`
       : "";
 
+    const weekBlock =
+      Array.isArray(weekAtAGlance) && weekAtAGlance.length
+        ? `\n\nLast 7 days — per-day hour blocks {hour, total tasks, openHeavy count} (infer lighter windows; do not invent past events):\n${JSON.stringify(weekAtAGlance).slice(0, 12000)}`
+        : "";
+
     // Finance context for gentle financial analyst
     const financeContext = hasFinance
       ? `\n\nFinance (use for money questions; be gentle and ADHD-aware):
@@ -246,7 +259,7 @@ ${finance.bankStatementNotes ? `- Bank/statement notes (use to spot biggest issu
 Day: ${dayKey}${prettyDate ? ` (${prettyDate})` : ""}
 Completion: ${progress?.done || 0}/${progress?.total || 0} (${progress?.pct || 0}%)
 Today's schedule: ${JSON.stringify(today || {})}
-Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesContext}${financeContext}${habitContext}${profileBlock}${pacingBlock}${categoriesLine}${billsBlock}${subsBlock}${intelBlock}${feedbackBlock}
+Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesContext}${financeContext}${habitContext}${profileBlock}${pacingBlock}${categoriesLine}${billsBlock}${subsBlock}${intelBlock}${feedbackBlock}${weekBlock}
 `.trim();
 
     let replyDirective;
@@ -308,6 +321,7 @@ Return JSON EXACTLY in this schema (Coach V2):
           model: "gpt-4o-mini",
           temperature: 0.4,
           messages: messages,
+          response_format: { type: "json_object" },
         }),
       });
 

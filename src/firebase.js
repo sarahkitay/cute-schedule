@@ -9,7 +9,10 @@ import {
   GoogleAuthProvider,
   OAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   linkWithPopup,
+  linkWithRedirect,
   signOut,
   signInAnonymously,
   EmailAuthProvider,
@@ -20,6 +23,8 @@ import {
 } from "firebase/auth";
 
 const DEVICE_ID_KEY = "cute_schedule_device_id_v1";
+/** Before `signInWithRedirect` (non-anonymous), prior uid for schedule migration after return. */
+const OAUTH_REDIRECT_PREV_UID_KEY = "cute_schedule_oauth_redirect_prev_uid_v1";
 
 /** Only if both localStorage and sessionStorage throw (extremely rare). */
 let lastResortDeviceId = null;
@@ -174,6 +179,53 @@ function getAppleAuthProvider() {
   return provider;
 }
 
+/** Web Apple sign-in should use Firebase’s OAuth provider flow (not native iOS token exchange). */
+function preferAppleWebRedirect() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isIOS =
+    /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  // Safari / WebKit on iOS often blocks or mishandles popups; redirect matches Firebase’s web guidance.
+  const isSafariFamily = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|Chrome/i.test(ua);
+  return isIOS && isSafariFamily;
+}
+
+/**
+ * Call once on web app load after `initFirebase` so `signInWithRedirect` / `linkWithRedirect` can finish.
+ * Resolves to `{ user, error }` — `error` is set when Apple returned an error (e.g. account collision).
+ */
+export async function completeAuthRedirectIfNeeded() {
+  const a = getAuthApp();
+  if (!a) return { user: null, error: null };
+  let prevUid = null;
+  try {
+    prevUid = sessionStorage.getItem(OAUTH_REDIRECT_PREV_UID_KEY) || null;
+  } catch {
+    prevUid = null;
+  }
+  try {
+    const result = await getRedirectResult(a);
+    if (!result?.user) return { user: null, error: null };
+    if (prevUid && result.user.uid !== prevUid) {
+      await migrateScheduleDocBetweenUsers(prevUid, result.user.uid);
+    }
+    await migrateLegacyDeviceScheduleIfNeeded(result.user.uid);
+    try {
+      sessionStorage.removeItem(OAUTH_REDIRECT_PREV_UID_KEY);
+    } catch {
+      /* ignore */
+    }
+    return { user: result.user, error: null };
+  } catch (e) {
+    try {
+      sessionStorage.removeItem(OAUTH_REDIRECT_PREV_UID_KEY);
+    } catch {
+      /* ignore */
+    }
+    return { user: null, error: e };
+  }
+}
+
 export async function ensureSignedIn() {
   const a = getAuthApp();
   if (!a) return null;
@@ -233,23 +285,55 @@ export async function signInWithGoogle() {
   return next;
 }
 
-/** Sign in with Apple (required alongside other OAuth on iOS when those are offered). Enable Apple in Firebase Auth → Sign-in method. */
+/**
+ * Sign in with Apple on web: Firebase `OAuthProvider("apple.com")` + popup or redirect (not native iOS ID token).
+ * Enable Apple in Firebase Auth → Sign-in method. Uses redirect on iOS Safari; popup elsewhere, with redirect fallback if the popup is blocked.
+ */
 export async function signInWithApple() {
   const a = getAuthApp();
   if (!a) throw new Error("Firebase not configured");
   const appleProvider = getAppleAuthProvider();
   const u = a.currentUser;
-  if (u?.isAnonymous) {
-    await linkWithPopup(u, appleProvider);
-    return a.currentUser;
+
+  const signInWithAppleRedirect = async () => {
+    if (u?.isAnonymous) {
+      await linkWithRedirect(u, appleProvider);
+      return null;
+    }
+    try {
+      if (u?.uid) sessionStorage.setItem(OAUTH_REDIRECT_PREV_UID_KEY, u.uid);
+    } catch {
+      /* ignore */
+    }
+    await signInWithRedirect(a, appleProvider);
+    return null;
+  };
+
+  const signInWithApplePopup = async () => {
+    if (u?.isAnonymous) {
+      await linkWithPopup(u, appleProvider);
+      return a.currentUser;
+    }
+    const prevUid = u?.uid ?? null;
+    await signInWithPopup(a, appleProvider);
+    const next = a.currentUser;
+    if (prevUid && next && prevUid !== next.uid) {
+      await migrateScheduleDocBetweenUsers(prevUid, next.uid);
+    }
+    return next;
+  };
+
+  if (preferAppleWebRedirect()) {
+    return signInWithAppleRedirect();
   }
-  const prevUid = u?.uid ?? null;
-  await signInWithPopup(a, appleProvider);
-  const next = a.currentUser;
-  if (prevUid && next && prevUid !== next.uid) {
-    await migrateScheduleDocBetweenUsers(prevUid, next.uid);
+  try {
+    return await signInWithApplePopup();
+  } catch (e) {
+    if (e?.code === "auth/popup-blocked" || e?.code === "auth/operation-not-supported-in-this-environment") {
+      return signInWithAppleRedirect();
+    }
+    throw e;
   }
-  return next;
 }
 
 /** Remove this user’s Firestore schedule doc (best-effort before Auth account deletion). */

@@ -3850,6 +3850,13 @@ button {
   margin-bottom: 10px;
 }
 
+.coach-v2-plan-day {
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  color: var(--theme-accent, #c4687e);
+}
+
 .coach-v2-card-top {
   display: flex;
   flex-wrap: wrap;

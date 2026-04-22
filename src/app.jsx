@@ -36,6 +36,7 @@ import {
 } from "./coach";
 import {
   subscribeAuthState,
+  completeAuthRedirectIfNeeded,
   migrateLegacyDeviceScheduleIfNeeded,
   signInWithApple,
   signInWithGoogle,
@@ -165,6 +166,46 @@ function buildHabitSummaryForCoach(tracker, dayKey, lastN = 7) {
     if (parts.length) lines.push(`${k}: ${parts.join("; ")}`);
   }
   return lines.length ? lines.join("\n") : "No check-ins logged yet this week.";
+}
+
+/** Compact 7-day view for coach: where hours had tasks / heavy load (client-only). */
+function buildCoachWeekAtAGlance(days, categories, centerKey) {
+  if (!days || typeof days !== "object" || !centerKey) return [];
+  const d0 = new Date(`${centerKey}T12:00:00`);
+  if (Number.isNaN(d0.getTime())) return [];
+  const start = new Date(d0);
+  start.setDate(start.getDate() - 6);
+  const rows = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dayNum = String(d.getDate()).padStart(2, "0");
+    const key = `${y}-${m}-${dayNum}`;
+    const day = days[key];
+    const hours = (day && day.hours) || {};
+    const blocks = [];
+    for (const hk of Object.keys(hours).sort()) {
+      const byCat = hours[hk] || {};
+      let total = 0;
+      let openHeavy = 0;
+      for (const cat of categories) {
+        const arr = Array.isArray(byCat[cat]) ? byCat[cat] : [];
+        for (const t of arr) {
+          total += 1;
+          if (!t.done && t.energyLevel === "HEAVY") openHeavy += 1;
+        }
+      }
+      if (total > 0) blocks.push({ hour: hk, total, openHeavy });
+    }
+    rows.push({
+      date: key,
+      weekday: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()],
+      blocks,
+    });
+  }
+  return rows;
 }
 const FINANCE_STORAGE_KEY = "cute_schedule_finance_v1";
 const PROFILE_STORAGE_KEY = "cute_schedule_profile_v1";
@@ -1157,7 +1198,7 @@ function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, on
 }
 
 /** Full-screen first step when Firebase is on: each person signs in to load their own cloud data. */
-function LoginGateScreen() {
+function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1168,6 +1209,7 @@ function LoginGateScreen() {
     setBusy(true);
     try {
       await op();
+      onConsumeRedirectError?.();
     } catch (e) {
       setError(e?.message || String(e));
     } finally {
@@ -1277,6 +1319,11 @@ function LoginGateScreen() {
           Guest keeps data on this browser until you sign out. For your own cloud backup across devices, use Sign in with Apple, Google, or email.
         </p>
 
+        {redirectAuthError ? (
+          <p className="login-gate-error" role="alert">
+            {redirectAuthError}
+          </p>
+        ) : null}
         {error ? (
           <p className="login-gate-error" role="alert">
             {error}
@@ -1560,6 +1607,7 @@ export default function App() {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [firebaseAuthResolved, setFirebaseAuthResolved] = useState(false);
+  const [firebaseRedirectAuthError, setFirebaseRedirectAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [deleteAccountPhase, setDeleteAccountPhase] = useState("intro");
@@ -1761,6 +1809,7 @@ export default function App() {
       return;
     }
     let cancelled = false;
+    const unsubRef = { current: () => {} };
     const authTimeoutMs = 15000;
     const deadline = window.setTimeout(() => {
       if (cancelled) return;
@@ -1773,16 +1822,25 @@ export default function App() {
         return true;
       });
     }, authTimeoutMs);
-    const unsub = subscribeAuthState((user) => {
-      window.clearTimeout(deadline);
+    void (async () => {
+      const { error: redirectErr } = await completeAuthRedirectIfNeeded();
       if (cancelled) return;
-      setFirebaseUser(user);
-      setFirebaseAuthResolved(true);
-    });
+      if (redirectErr?.code || redirectErr?.message) {
+        const msg = redirectErr.message || redirectErr.code || String(redirectErr);
+        setFirebaseRedirectAuthError(msg);
+        console.warn("Apple / OAuth redirect sign-in:", redirectErr?.code ?? redirectErr);
+      }
+      unsubRef.current = subscribeAuthState((user) => {
+        window.clearTimeout(deadline);
+        if (cancelled) return;
+        setFirebaseUser(user);
+        setFirebaseAuthResolved(true);
+      });
+    })();
     return () => {
       cancelled = true;
       window.clearTimeout(deadline);
-      unsub();
+      unsubRef.current();
     };
   }, []);
 
@@ -2304,14 +2362,18 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tKey, realTodayKey, prog.total, prog.done, tab]);
 
-  function ensureHour(hourKey) {
+  function ensureHour(hourKey, optionalDayKey) {
+    const dk =
+      optionalDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(optionalDayKey).trim())
+        ? String(optionalDayKey).trim()
+        : tKey;
     setAppState((prev) => {
-      const day = prev.days[tKey] || { hours: {} };
+      const day = prev.days[dk] || { hours: {} };
       const hours = day.hours || {};
       if (hours[hourKey]) return prev;
 
       const empty = emptySlot(customCategories);
-      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours: { ...hours, [hourKey]: empty } } } };
+      return { ...prev, days: { ...prev.days, [dk]: { ...(prev.days[dk] || {}), hours: { ...hours, [hourKey]: empty } } } };
     });
   }
 
@@ -2341,12 +2403,16 @@ export default function App() {
       energyFromExtras === "LIGHT" || energyFromExtras === "MEDIUM" || energyFromExtras === "HEAVY"
         ? energyFromExtras
         : "MEDIUM";
+    const dayKeyForAdd =
+      ex.targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(ex.targetDayKey).trim())
+        ? String(ex.targetDayKey).trim()
+        : tKey;
     const checkText = normalizeText(text) || String(text || "").trim();
     if (checkText && taskMentionsGroceryErrandStore(checkText)) {
-      queueMicrotask(() => setGroceryListPrompt({ dayKey: tKey, hourKey, category, taskId: newId }));
+      queueMicrotask(() => setGroceryListPrompt({ dayKey: dayKeyForAdd, hourKey, category, taskId: newId }));
     }
     setAppState((prev) => {
-      const day = prev.days[tKey] || { hours: {} };
+      const day = prev.days[dayKeyForAdd] || { hours: {} };
       const hours = { ...(day.hours || {}) };
       const byCat = hours[hourKey] || emptySlot(customCategories);
 
@@ -2387,11 +2453,20 @@ export default function App() {
       }
       
       // Schedule notification for task reminder
-      if (isSameDayKey(tKey, realTodayKey)) {
+      if (isSameDayKey(dayKeyForAdd, realTodayKey)) {
         notificationService.scheduleTaskReminder(nextTask, hourKey, category);
       }
       
-      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
+      return {
+        ...prev,
+        days: {
+          ...prev.days,
+          [dayKeyForAdd]: {
+            ...(prev.days[dayKeyForAdd] || {}),
+            hours,
+          },
+        },
+      };
     });
   }
 
@@ -2943,6 +3018,7 @@ export default function App() {
         })(),
         coachIntelligenceText,
         coachFeedbackJson,
+        weekAtAGlance: buildCoachWeekAtAGlance(appState.days, customCategories, tKey),
       };
 
       const res = await fetch(apiUrl("/api/coach"), {
@@ -2951,10 +3027,21 @@ export default function App() {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const rawText = await res.text();
+      const trimmed = rawText.trim();
+      const looksLikeHtml =
+        trimmed.startsWith("<") || trimmed.startsWith("<!") || trimmed.toLowerCase().includes("<!doctype");
+      let data = {};
+      if (!looksLikeHtml && trimmed) {
+        try {
+          data = JSON.parse(trimmed);
+        } catch {
+          data = {};
+        }
+      }
 
-      if (!res.ok) {
-        const localResponse = generateCoachV2Fallback({
+      const fallbackPayload = () =>
+        generateCoachV2Fallback({
           emotionalState,
           completed: completedToday,
           total: totalTasks,
@@ -2965,6 +3052,15 @@ export default function App() {
           todayHours,
           intelligence: coachIntelSnapshot,
         });
+
+      if (!res.ok || looksLikeHtml) {
+        const hint = looksLikeHtml
+          ? "Coach could not reach the API (got a web page instead of JSON). Run vercel dev on port 3000 next to Vite, use the deployed site, or set VITE_APP_ORIGIN for native builds."
+          : typeof data?.error === "string"
+            ? data.error
+            : String(data?.detail || data?.hint || `Coach request failed (${res.status}).`);
+        setCoachError(hint);
+        const localResponse = fallbackPayload();
         setCoachResult(localResponse);
         if (userQuestion) {
           setCoachConversation((prev) => [...prev, { role: "assistant", content: localResponse.message }]);
@@ -2982,12 +3078,37 @@ export default function App() {
         todayHours
       );
 
+      const isEmptyReply =
+        !String(shaped.message || "").trim() &&
+        !(shaped.highlights && shaped.highlights.length) &&
+        !(shaped.suggestions && shaped.suggestions.length);
+
+      const finalShaped = isEmptyReply
+        ? (() => {
+            const fb = fallbackPayload();
+            return {
+              ...fb,
+              followUp: shaped.followUp || fb.followUp,
+              insight: shaped.insight || fb.insight,
+              suggestions: shaped.suggestions?.length ? shaped.suggestions : fb.suggestions,
+            };
+          })()
+        : shaped;
+
+      if (isEmptyReply) {
+        setCoachError(
+          "Coach returned an empty reply (often a proxy or API shape issue). Showing a local summary instead."
+        );
+      } else {
+        setCoachError("");
+      }
+
       if (userQuestion) {
-        setCoachConversation((prev) => [...prev, { role: "assistant", content: shaped.message }]);
+        setCoachConversation((prev) => [...prev, { role: "assistant", content: finalShaped.message }]);
       } else {
         setCoachConversation([]);
       }
-      setCoachResult(shaped);
+      setCoachResult(finalShaped);
       
       setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
     } catch {
@@ -3085,9 +3206,15 @@ export default function App() {
           {suggestions.map((s) => {
             const canAuto = s.type === "ADD_TASK" || s.type === "BREAK" || s.type === "SPLIT_TASK";
             const whenLine = coachSuggestionWhenLine(s.hour || s.start);
+            const planDayLine =
+              s.weekPlanLabel ||
+              (s.targetDayKey && s.targetDayKey !== tKey ? `Planned for ${s.targetDayKey}` : null);
             return (
               <div key={s.id} className="coach-v2-card surface-glass">
-                <div className="coach-v2-eyebrow">{whenLine}</div>
+                <div className="coach-v2-eyebrow">
+                  {whenLine}
+                  {planDayLine ? <span className="coach-v2-plan-day"> · {planDayLine}</span> : null}
+                </div>
                 <div className="coach-v2-card-top">
                   <span className="coach-v2-meta">
                     <Pill label={s.category} />
@@ -3155,12 +3282,20 @@ export default function App() {
       return;
     }
     const label = s.type === "SPLIT_TASK" ? `First slice: ${titleBase}` : titleBase;
-    const repeat = s.recurring ? REPEAT_OPTIONS.DAILY : REPEAT_OPTIONS.NONE;
+    const dayKey =
+      s.targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(s.targetDayKey).trim())
+        ? String(s.targetDayKey).trim()
+        : tKey;
+    let repeat = REPEAT_OPTIONS.NONE;
+    if (s.recurrencePattern === "weekly") repeat = REPEAT_OPTIONS.WEEKLY;
+    else if (s.recurrencePattern === "daily") repeat = REPEAT_OPTIONS.DAILY;
+    else if (s.recurrencePattern === "none") repeat = REPEAT_OPTIONS.NONE;
+    else if (s.recurring) repeat = REPEAT_OPTIONS.DAILY;
     const splitParentId =
       s.type === "SPLIT_TASK" && s.targetTaskId && String(s.targetTaskId).trim()
         ? String(s.targetTaskId).trim()
         : undefined;
-    ensureHour(hour);
+    ensureHour(hour, dayKey);
     addTask(hour, cat, label, repeat, null, {
       energyLevel: s.energyLevel || "MEDIUM",
       coachSuggestionId: s.id,
@@ -3168,6 +3303,7 @@ export default function App() {
       sourceSuggestionType: s.type,
       ...(splitParentId ? { sourceTaskId: splitParentId } : {}),
       coachSuggestionEdited: edited,
+      ...(dayKey !== tKey ? { targetDayKey: dayKey } : {}),
     });
     setCoachLearning((prev) =>
       recordSuggestionAccepted(prev, {
@@ -3226,13 +3362,28 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...payload, mode: adhdMode }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setCoachError(data?.error || "Something went wrong");
+      const rawText = await res.text();
+      const trimmed = rawText.trim();
+      const looksLikeHtml =
+        trimmed.startsWith("<") || trimmed.startsWith("<!") || trimmed.toLowerCase().includes("<!doctype");
+      let data = {};
+      if (!looksLikeHtml && trimmed) {
+        try {
+          data = JSON.parse(trimmed);
+        } catch {
+          data = {};
+        }
+      }
+      if (!res.ok || looksLikeHtml) {
+        setCoachError(
+          looksLikeHtml
+            ? "Could not reach the coach API (HTML instead of JSON). Run vercel dev on port 3000 with Vite, or open the deployed app."
+            : data?.error || data?.detail || "Something went wrong"
+        );
         return;
       }
       setCoachStructuredResult({
-        summary: data.summary || "",
+        summary: data.summary || data.message || "",
         followUp: data.followUp || null,
         actions: Array.isArray(data.actions) ? data.actions : [],
       });
@@ -3502,7 +3653,12 @@ export default function App() {
           </div>
         </div>
       )}
-      {showLoginGate && <LoginGateScreen />}
+      {showLoginGate && (
+        <LoginGateScreen
+          redirectAuthError={firebaseRedirectAuthError}
+          onConsumeRedirectError={() => setFirebaseRedirectAuthError("")}
+        />
+      )}
       {!authWaiting && !showLoginGate && (
         <>
       <div

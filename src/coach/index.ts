@@ -3,6 +3,7 @@ export type {
   CoachFeedbackEvent,
   CoachIntelligenceSnapshot,
   CoachLearningStateV1,
+  CoachRecurrencePattern,
   CoachSuggestionType,
   CoachSuggestionV2,
   NormalizedCoachResult,

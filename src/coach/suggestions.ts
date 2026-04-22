@@ -55,6 +55,12 @@ export function isAffirmationToCoach(text: string): boolean {
   return affirm.test(t);
 }
 
+function coerceRecurrencePattern(v: unknown): "none" | "daily" | "weekly" | null {
+  const s = String(v || "").toLowerCase().trim();
+  if (s === "weekly" || s === "daily" || s === "none") return s;
+  return null;
+}
+
 export function normalizeRawSuggestion(
   row: Record<string, unknown>,
   categories: string[],
@@ -77,6 +83,11 @@ export function normalizeRawSuggestion(
   const reason = String(row.reason || row.why || row.rationale || "Fits what you have on the board today.").slice(0, 500);
   const confidence = clamp01(coerceNumber(row.confidence, 0.75));
   const recurring = coerceBool(row.recurring, false);
+  const recurrencePattern = coerceRecurrencePattern(row.recurrencePattern);
+  const targetDayRaw = row.targetDayKey != null ? String(row.targetDayKey).trim() : "";
+  const targetDayKey = /^\d{4}-\d{2}-\d{2}$/.test(targetDayRaw) ? targetDayRaw : null;
+  const weekPlanLabel =
+    row.weekPlanLabel != null ? String(row.weekPlanLabel).trim().slice(0, 120) : null;
   const requiresApproval = coerceBool(row.requiresApproval, true);
   const hour = pickInsertionHourKey(start, todayHours);
   const energyLevel = coerceEnergy(row.energyLevel);
@@ -95,6 +106,9 @@ export function normalizeRawSuggestion(
     end,
     durationMinutes: duration,
     recurring,
+    recurrencePattern,
+    targetDayKey,
+    weekPlanLabel: weekPlanLabel || null,
     confidence,
     requiresApproval,
     source: COACH_SUGGESTION_SOURCE,
@@ -111,11 +125,22 @@ export function parseCoachApiPayload(
   categories: string[],
   todayHours: Record<string, unknown>
 ): NormalizedCoachResult {
-  const message = String(raw.message || "").trim();
+  const messageFromFields = String(
+    raw.message ??
+      raw.reply ??
+      raw.answer ??
+      raw.content ??
+      raw.advice ??
+      raw.text ??
+      ""
+  ).trim();
   const insightRaw = raw.insight != null ? String(raw.insight).trim() : "";
   const highlights = Array.isArray(raw.highlights)
     ? (raw.highlights as unknown[]).map((x) => String(x || "").trim()).filter(Boolean)
     : [];
+  const message =
+    messageFromFields ||
+    (highlights.length ? highlights.join(" ") : "");
   const insight =
     insightRaw ||
     (highlights.length ? highlights[0].slice(0, 280) : null);

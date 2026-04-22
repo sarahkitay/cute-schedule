@@ -10,6 +10,8 @@ export type CoachSuggestionType =
   | "SPLIT_TASK"
   | "DEFER";
 
+export type CoachRecurrencePattern = "none" | "daily" | "weekly";
+
 export interface CoachSuggestionV2 {
   id: string;
   type: CoachSuggestionType;
@@ -23,6 +25,12 @@ export interface CoachSuggestionV2 {
   end?: string | null;
   durationMinutes: number;
   recurring: boolean;
+  /** When set, overrides boolean recurring for add-task (daily / weekly / none) */
+  recurrencePattern?: CoachRecurrencePattern | null;
+  /** Add to this calendar day (YYYY-MM-DD); defaults to coach "today" dayKey */
+  targetDayKey?: string | null;
+  /** Short label for UI, e.g. "Thu · 2:30pm" */
+  weekPlanLabel?: string | null;
   confidence: number;
   requiresApproval: boolean;
   source: typeof COACH_SUGGESTION_SOURCE;
