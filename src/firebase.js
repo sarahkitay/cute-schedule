@@ -191,39 +191,56 @@ function preferAppleWebRedirect() {
 }
 
 /**
- * Call once on web app load after `initFirebase` so `signInWithRedirect` / `linkWithRedirect` can finish.
- * Resolves to `{ user, error }` — `error` is set when Apple returned an error (e.g. account collision).
+ * Single-flight: React StrictMode (and fast re-mounts) can invoke this twice; a second
+ * `getRedirectResult` often throws `auth/argument-error` because the pending redirect was already consumed.
  */
-export async function completeAuthRedirectIfNeeded() {
+let completeRedirectPromise = null;
+
+/**
+ * Call on web app load after `initFirebase` so `signInWithRedirect` / `linkWithRedirect` can finish.
+ * Resolves to `{ user, error }` — `error` only for real failures (e.g. account collision), not benign SDK noise.
+ */
+export function completeAuthRedirectIfNeeded() {
   const a = getAuthApp();
-  if (!a) return { user: null, error: null };
-  let prevUid = null;
-  try {
-    prevUid = sessionStorage.getItem(OAUTH_REDIRECT_PREV_UID_KEY) || null;
-  } catch {
-    prevUid = null;
-  }
-  try {
-    const result = await getRedirectResult(a);
-    if (!result?.user) return { user: null, error: null };
-    if (prevUid && result.user.uid !== prevUid) {
-      await migrateScheduleDocBetweenUsers(prevUid, result.user.uid);
-    }
-    await migrateLegacyDeviceScheduleIfNeeded(result.user.uid);
+  if (!a) return Promise.resolve({ user: null, error: null });
+  if (completeRedirectPromise) return completeRedirectPromise;
+  completeRedirectPromise = (async () => {
+    let prevUid = null;
     try {
-      sessionStorage.removeItem(OAUTH_REDIRECT_PREV_UID_KEY);
+      prevUid = sessionStorage.getItem(OAUTH_REDIRECT_PREV_UID_KEY) || null;
     } catch {
-      /* ignore */
+      prevUid = null;
     }
-    return { user: result.user, error: null };
-  } catch (e) {
     try {
-      sessionStorage.removeItem(OAUTH_REDIRECT_PREV_UID_KEY);
-    } catch {
-      /* ignore */
+      const result = await getRedirectResult(a);
+      if (!result?.user) {
+        return { user: null, error: null };
+      }
+      if (prevUid && result.user.uid !== prevUid) {
+        await migrateScheduleDocBetweenUsers(prevUid, result.user.uid);
+      }
+      await migrateLegacyDeviceScheduleIfNeeded(result.user.uid);
+      try {
+        sessionStorage.removeItem(OAUTH_REDIRECT_PREV_UID_KEY);
+      } catch {
+        /* ignore */
+      }
+      return { user: result.user, error: null };
+    } catch (e) {
+      const code = e?.code;
+      // No pending redirect, or redirect already handled — not a user-facing Apple failure.
+      if (code === "auth/argument-error" || code === "auth/no-auth-event") {
+        return { user: null, error: null };
+      }
+      try {
+        sessionStorage.removeItem(OAUTH_REDIRECT_PREV_UID_KEY);
+      } catch {
+        /* ignore */
+      }
+      return { user: null, error: e };
     }
-    return { user: null, error: e };
-  }
+  })();
+  return completeRedirectPromise;
 }
 
 export async function ensureSignedIn() {

@@ -1828,7 +1828,9 @@ export default function App() {
       if (redirectErr?.code || redirectErr?.message) {
         const msg = redirectErr.message || redirectErr.code || String(redirectErr);
         setFirebaseRedirectAuthError(msg);
-        console.warn("Apple / OAuth redirect sign-in:", redirectErr?.code ?? redirectErr);
+        if (redirectErr?.code !== "auth/argument-error" && redirectErr?.code !== "auth/no-auth-event") {
+          console.warn("Apple / OAuth redirect sign-in:", redirectErr?.code ?? redirectErr);
+        }
       }
       unsubRef.current = subscribeAuthState((user) => {
         window.clearTimeout(deadline);
