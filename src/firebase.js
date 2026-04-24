@@ -1,5 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+import { Capacitor } from "@capacitor/core";
+import { SignInWithApple } from "@capacitor-community/apple-sign-in";
+import { getAppOrigin } from "./apiBase.js";
 import {
   getAuth,
   initializeAuth,
@@ -19,12 +22,15 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   linkWithCredential,
+  signInWithCredential,
   deleteUser,
 } from "firebase/auth";
 
 const DEVICE_ID_KEY = "cute_schedule_device_id_v1";
 /** Before `signInWithRedirect` (non-anonymous), prior uid for schedule migration after return. */
 const OAUTH_REDIRECT_PREV_UID_KEY = "cute_schedule_oauth_redirect_prev_uid_v1";
+/** Set immediately before Apple OAuth redirect; `getRedirectResult` runs only when this is set (avoids `auth/argument-error` on normal loads). */
+const PENDING_OAUTH_REDIRECT_KEY = "cute_schedule_pending_oauth_redirect_v1";
 
 /** Only if both localStorage and sessionStorage throw (extremely rare). */
 let lastResortDeviceId = null;
@@ -33,14 +39,17 @@ function getFirebaseConfig() {
   const apiKey = import.meta.env.VITE_FIREBASE_API_KEY;
   const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID;
   if (!apiKey || !projectId) return null;
-  return {
+
+  const firebaseConfig = {
     apiKey,
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || undefined,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "cute-schedule.vercel.app",
     projectId,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID || undefined,
     storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || undefined,
     messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || undefined,
-    appId: import.meta.env.VITE_FIREBASE_APP_ID || undefined,
   };
+
+  return firebaseConfig;
 }
 
 let app = null;
@@ -175,12 +184,30 @@ const googleProvider = new GoogleAuthProvider();
 function getAppleAuthProvider() {
   const provider = new OAuthProvider("apple.com");
   provider.addScope("email");
-  provider.addScope("name");
+  // "name" is only sent on first Apple consent; omit in Capacitor WKWebView where it occasionally triggers `auth/argument-error`.
+  if (!isCapacitorNativeShell()) {
+    provider.addScope("name");
+  }
   return provider;
+}
+
+/** Capacitor / WKWebView — `window.Capacitor` is injected by the native shell at runtime. */
+function isCapacitorNativeShell() {
+  if (typeof window === "undefined") return false;
+  try {
+    const c = window.Capacitor;
+    return Boolean(c && typeof c.isNativePlatform === "function" && c.isNativePlatform());
+  } catch {
+    return false;
+  }
 }
 
 /** Web Apple sign-in should use Firebase’s OAuth provider flow (not native iOS token exchange). */
 function preferAppleWebRedirect() {
+  // Capacitor Android: try popup (redirect relied on deprecated Firebase Dynamic Links for Cordova-style flows).
+  if (isCapacitorNativeShell() && Capacitor.getPlatform() === "android") return false;
+  // Capacitor iOS uses native Sign in with Apple + signInWithCredential (see signInWithApple); this branch is unused on iOS.
+  if (isCapacitorNativeShell()) return true;
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent || "";
   const isIOS =
@@ -190,21 +217,39 @@ function preferAppleWebRedirect() {
   return isIOS && isSafariFamily;
 }
 
-/**
- * Single-flight: React StrictMode (and fast re-mounts) can invoke this twice; a second
- * `getRedirectResult` often throws `auth/argument-error` because the pending redirect was already consumed.
- */
-let completeRedirectPromise = null;
+/** Avoid overlapping `getRedirectResult` (e.g. React StrictMode). */
+let oauthRedirectGetResultInFlight = false;
+
+function isBenignRedirectResultError(e) {
+  const code = String(e?.code || "");
+  if (code === "auth/argument-error" || code === "auth/no-auth-event") return true;
+  const msg = String(e?.message || "").toLowerCase();
+  return msg.includes("argument-error") || msg.includes("no-auth-event");
+}
 
 /**
  * Call on web app load after `initFirebase` so `signInWithRedirect` / `linkWithRedirect` can finish.
- * Resolves to `{ user, error }` — `error` only for real failures (e.g. account collision), not benign SDK noise.
+ * Only calls `getRedirectResult` if we previously set `PENDING_OAUTH_REDIRECT_KEY` (avoids `auth/argument-error` on every load).
  */
 export function completeAuthRedirectIfNeeded() {
   const a = getAuthApp();
   if (!a) return Promise.resolve({ user: null, error: null });
-  if (completeRedirectPromise) return completeRedirectPromise;
-  completeRedirectPromise = (async () => {
+
+  let awaitingRedirect = false;
+  try {
+    awaitingRedirect = sessionStorage.getItem(PENDING_OAUTH_REDIRECT_KEY) === "1";
+  } catch {
+    awaitingRedirect = false;
+  }
+  if (!awaitingRedirect) {
+    return Promise.resolve({ user: null, error: null });
+  }
+  if (oauthRedirectGetResultInFlight) {
+    return Promise.resolve({ user: null, error: null });
+  }
+  oauthRedirectGetResultInFlight = true;
+
+  return (async () => {
     let prevUid = null;
     try {
       prevUid = sessionStorage.getItem(OAUTH_REDIRECT_PREV_UID_KEY) || null;
@@ -227,9 +272,7 @@ export function completeAuthRedirectIfNeeded() {
       }
       return { user: result.user, error: null };
     } catch (e) {
-      const code = e?.code;
-      // No pending redirect, or redirect already handled — not a user-facing Apple failure.
-      if (code === "auth/argument-error" || code === "auth/no-auth-event") {
+      if (isBenignRedirectResultError(e)) {
         return { user: null, error: null };
       }
       try {
@@ -238,9 +281,15 @@ export function completeAuthRedirectIfNeeded() {
         /* ignore */
       }
       return { user: null, error: e };
+    } finally {
+      oauthRedirectGetResultInFlight = false;
+      try {
+        sessionStorage.removeItem(PENDING_OAUTH_REDIRECT_KEY);
+      } catch {
+        /* ignore */
+      }
     }
   })();
-  return completeRedirectPromise;
 }
 
 export async function ensureSignedIn() {
@@ -285,6 +334,80 @@ export function subscribeAuthState(onResolved, options = {}) {
   });
 }
 
+function randomRawNonce(length = 28) {
+  const chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  let out = "";
+  for (let i = 0; i < length; i++) out += chars[bytes[i] % chars.length];
+  return out;
+}
+
+/**
+ * Capacitor iOS: Firebase JS `signInWithRedirect` for OAuth depended on Firebase Dynamic Links (sunset Aug 2025)
+ * and commonly throws `auth/argument-error`. Use native Apple + `signInWithCredential` instead.
+ * @param {import("firebase/auth").Auth} auth
+ * @param {ReturnType<typeof getFirebaseConfig>} cfg
+ */
+async function signInWithAppleNativeIOS(auth, cfg) {
+  const clientId = String(
+    import.meta.env.VITE_APPLE_IOS_CLIENT_ID || import.meta.env.VITE_APPLE_SERVICE_ID || ""
+  ).trim();
+  if (!clientId) {
+    throw new Error(
+      "Set VITE_APPLE_IOS_CLIENT_ID (recommended: your iOS bundle id, e.g. app.proyou.proyou) or VITE_APPLE_SERVICE_ID in .env for native Sign in with Apple."
+    );
+  }
+  const redirectURI = String(
+    import.meta.env.VITE_APPLE_REDIRECT_URI || `https://${cfg.authDomain}/__/auth/handler`
+  ).trim();
+
+  // Native ASAuthorizationAppleIDRequest sets `nonce` as-is; Apple SHA256-hashes it for the ID token.
+  // Firebase `rawNonce` must be that same string (do not pre-hash — unlike the plugin’s web/AppleID JS path).
+  const rawNonce = randomRawNonce(32);
+
+  const res = await SignInWithApple.authorize({
+    clientId,
+    redirectURI,
+    scopes: "email name",
+    state: `fp_${Date.now()}`,
+    nonce: rawNonce,
+  });
+
+  const idToken = res?.response?.identityToken;
+  if (!idToken) throw new Error("Apple Sign In did not return an identity token.");
+
+  const appleProvider = new OAuthProvider("apple.com");
+  const credential = appleProvider.credential({
+    idToken,
+    rawNonce,
+  });
+
+  const u = auth.currentUser;
+  if (u?.isAnonymous) {
+    try {
+      await linkWithCredential(u, credential);
+    } catch (e) {
+      const alt =
+        (typeof OAuthProvider.credentialFromError === "function" && OAuthProvider.credentialFromError(e)) ||
+        e?.credential;
+      if (e?.code === "auth/credential-already-in-use" && alt) {
+        await signInWithCredential(auth, alt);
+      } else {
+        throw e;
+      }
+    }
+    return auth.currentUser;
+  }
+  const prevUid = u?.uid ?? null;
+  await signInWithCredential(auth, credential);
+  const next = auth.currentUser;
+  if (prevUid && next && prevUid !== next.uid) {
+    await migrateScheduleDocBetweenUsers(prevUid, next.uid);
+  }
+  return next;
+}
+
 export async function signInWithGoogle() {
   const a = getAuthApp();
   if (!a) throw new Error("Firebase not configured");
@@ -303,16 +426,38 @@ export async function signInWithGoogle() {
 }
 
 /**
- * Sign in with Apple on web: Firebase `OAuthProvider("apple.com")` + popup or redirect (not native iOS ID token).
- * Enable Apple in Firebase Auth → Sign-in method. Uses redirect on iOS Safari; popup elsewhere, with redirect fallback if the popup is blocked.
+ * Sign in with Apple: web uses Firebase `OAuthProvider("apple.com")` + popup/redirect.
+ * Capacitor iOS uses native Sign in with Apple + `signInWithCredential` (Firebase web redirect broke when Dynamic Links shut down).
  */
 export async function signInWithApple() {
   const a = getAuthApp();
   if (!a) throw new Error("Firebase not configured");
+  const cfg = getFirebaseConfig();
+  if (!cfg?.authDomain || !String(cfg.authDomain).trim().includes(".")) {
+    throw new Error(
+      "Firebase authDomain is missing or invalid. Set VITE_FIREBASE_AUTH_DOMAIN (e.g. your-project.firebaseapp.com)."
+    );
+  }
+  if (isCapacitorNativeShell() && Capacitor.getPlatform() === "ios") {
+    return signInWithAppleNativeIOS(a, cfg);
+  }
+  if (isCapacitorNativeShell() && Capacitor.getPlatform() !== "ios") {
+    const origin = getAppOrigin();
+    if (!origin || !/^https:\/\//i.test(String(origin).trim())) {
+      throw new Error(
+        "Capacitor needs VITE_APP_ORIGIN=https://your-live-site.com in the build (same host as Firebase authorized domains) for Sign in with Apple to return correctly."
+      );
+    }
+  }
   const appleProvider = getAppleAuthProvider();
   const u = a.currentUser;
 
   const signInWithAppleRedirect = async () => {
+    try {
+      sessionStorage.setItem(PENDING_OAUTH_REDIRECT_KEY, "1");
+    } catch {
+      /* if sessionStorage fails, getRedirectResult may still work; continue */
+    }
     if (u?.isAnonymous) {
       await linkWithRedirect(u, appleProvider);
       return null;

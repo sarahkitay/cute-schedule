@@ -16,10 +16,12 @@
     "cap:ios": "npx cap open ios"
   },
   "dependencies": {
+    "@capacitor-community/apple-sign-in": "^7.1.0",
+    "@capacitor-firebase/authentication": "^7.5.0",
     "@capacitor/core": "^7.4.3",
     "@capacitor/ios": "^7.4.3",
     "@vercel/kv": "^3.0.0",
-    "firebase": "^12.10.0",
+    "firebase": "^12.12.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "web-push": "^3.6.7"

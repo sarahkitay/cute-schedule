@@ -4,6 +4,7 @@ import Capacitor
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
+    /// Connected in `Main.storyboard` for Capacitor. Xcode may surface scene-lifecycle notes here; that is normal for this template and does not affect Sign in with Apple.
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {

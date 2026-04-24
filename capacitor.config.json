@@ -1,11 +1,25 @@
 {
-  "appId": "app.prouyou.proyou",
+  "appId": "app.proyou.proyou",
   "appName": "PROYOU",
   "webDir": "dist",
   "ios": {
     "contentInset": "automatic"
   },
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "allowNavigation": [
+      "https://*.firebaseapp.com",
+      "https://*.googleapis.com",
+      "https://appleid.apple.com",
+      "https://*.apple.com",
+      "https://cute-schedule.vercel.app"
+    ]
+  },
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": ["apple.com", "google.com"],
+      "authDomain": "cute-schedule.vercel.app"
+    }
   }
 }
