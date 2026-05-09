@@ -6,7 +6,7 @@ function trimSlash(s) {
 }
 
 /** Production API host for PROYOU when a native build shipped without VITE_APP_ORIGIN (Capacitor WKWebView cannot use relative /api/*). */
-const NATIVE_FALLBACK_API_ORIGIN = "https://cute-schedule.vercel.app";
+export const NATIVE_FALLBACK_API_ORIGIN = "https://cute-schedule.vercel.app";
 
 /**
  * Deployed site origin (e.g. https://your-app.vercel.app).

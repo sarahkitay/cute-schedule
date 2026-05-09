@@ -31,10 +31,13 @@ export default async function handler(req, res) {
   const body = typeof req.body === "object" && req.body != null ? req.body : {};
   const { title = "PROYOU", body: textBody = "Test notification", url = "/" } = body;
 
-  // --- Native iOS test (APNs); does not use VAPID ---
-  if (body.nativeIos === true) {
+  // --- Native iOS test (APNs); does not use VAPID / Web PushSubscription ---
+  const wantsNativeIos =
+    body.nativeIos === true || body.nativeIos === "true" || body.nativeIos === 1 || body.nativeIos === "1";
+  if (wantsNativeIos) {
     /** Connectivity probe from Capacitor Settings (no token, no APNs send). */
-    if (body.testOnly === true) {
+    const testOnly = body.testOnly === true || body.testOnly === "true" || body.testOnly === 1 || body.testOnly === "1";
+    if (testOnly) {
       return res.status(200).json({
         ok: true,
         probe: true,

@@ -2,7 +2,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
-import { apiUrl, publicUrl, getApiBaseDebug } from "./apiBase";
+import { apiUrl, publicUrl, getApiBaseDebug, NATIVE_FALLBACK_API_ORIGIN } from "./apiBase";
 
 /** @type {Set<(s: Record<string, unknown>) => void>} */
 const nativeDebugSubscribers = new Set();
@@ -25,6 +25,8 @@ export const nativePushDebugDefault = () => ({
   lastTestSendUrl: null,
   /** Redacted JSON string of the last real send-test POST body (no raw token). */
   lastTestSendRequestBodyRedacted: null,
+  /** Non-secret: what the last send-test JSON body contained (keys, lengths). */
+  lastTestSendDiag: null,
   lastTestSendStatus: null,
   lastTestSendResponseText: null,
   lastTestSendErrorName: null,
@@ -121,6 +123,40 @@ function hydrateNativeDeviceKeyFromStorage() {
   }
 }
 
+/** Recover anon `deviceKey` from the last register-native JSON we kept in debug (memory can desync after navigation). */
+function syncLastNativeDeviceKeyFromRegisterResponseCache() {
+  hydrateNativeDeviceKeyFromStorage();
+  const raw = nativePushDebug.lastRegisterNativeResponseText;
+  if (!raw || typeof raw !== "string") return;
+  try {
+    const j = JSON.parse(raw);
+    if (typeof j.deviceKey === "string" && /^native:ios:/.test(j.deviceKey.trim())) {
+      lastNativeDeviceKey = j.deviceKey.trim();
+      try {
+        localStorage.setItem(NATIVE_DEVICE_KEY_LS, lastNativeDeviceKey);
+      } catch {
+        /* ignore */
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Production native builds sometimes resolve API to https://localhost; real push must hit the deployed host. */
+function rewriteNativePushSendUrlIfLocalhost(url) {
+  if (!url || typeof url !== "string" || !Capacitor.isNativePlatform() || !import.meta.env.PROD) return url;
+  try {
+    const host = new URL(url).hostname;
+    if (host === "localhost" || host.endsWith(".localhost")) {
+      return `${NATIVE_FALLBACK_API_ORIGIN}/api/push/send`;
+    }
+  } catch {
+    /* ignore */
+  }
+  return url;
+}
+
 /** Same API host as last successful register-native when possible (avoids WKWebView failures if api origin drifts from probe). */
 function resolveNativePushApiSendUrl() {
   const reg = nativePushDebug.lastRegisterNativeUrl;
@@ -128,12 +164,12 @@ function resolveNativePushApiSendUrl() {
     try {
       const u = new URL(reg);
       u.pathname = "/api/push/send";
-      return u.toString();
+      return rewriteNativePushSendUrlIfLocalhost(u.toString());
     } catch {
       /* ignore */
     }
   }
-  return apiUrl("/api/push/send");
+  return rewriteNativePushSendUrlIfLocalhost(apiUrl("/api/push/send"));
 }
 
 function buildNativeTestSendRequestBody() {
@@ -706,11 +742,13 @@ class NotificationService {
    */
   async sendNativeTestPush() {
     if (!Capacitor.isNativePlatform()) return { ok: false, hint: "Not native" };
-    hydrateNativeDeviceKeyFromStorage();
+    syncLastNativeDeviceKeyFromRegisterResponseCache();
     const tokenOk = lastNativeDeviceToken && String(lastNativeDeviceToken).trim().length >= 16;
     const dk = lastNativeDeviceKey ? String(lastNativeDeviceKey).trim() : "";
     const keyOk = /^native:ios:/.test(dk);
     if (!tokenOk && !keyOk) {
+      nativePushDebug.lastTestSendDiag = { error: "no_token_or_devicekey_before_send" };
+      emitNativeDebug();
       return {
         ok: false,
         hint:
@@ -723,6 +761,7 @@ class NotificationService {
     nativePushDebug.lastTestSendDetail = null;
     nativePushDebug.lastTestSendUrl = null;
     nativePushDebug.lastTestSendRequestBodyRedacted = null;
+    nativePushDebug.lastTestSendDiag = null;
     nativePushDebug.lastTestSendStatus = null;
     nativePushDebug.lastTestSendResponseText = null;
     nativePushDebug.lastTestSendErrorName = null;
@@ -732,15 +771,41 @@ class NotificationService {
     emitNativeDebug();
 
     const { payload, redactedJson } = buildNativeTestSendRequestBody();
+    if (!payload.token && !payload.deviceKey) {
+      nativePushDebug.lastTestSendDiag = {
+        error: "missing_token_and_deviceKey_in_payload",
+        keys: Object.keys(payload),
+        inMemoryTokenLen: lastNativeDeviceToken ? String(lastNativeDeviceToken).trim().length : 0,
+        deviceKeyCached: Boolean(lastNativeDeviceKey && /^native:ios:/.test(String(lastNativeDeviceKey))),
+      };
+      nativePushDebug.lastTestSendOk = false;
+      nativePushDebug.lastTestSendDetail = "Send body had no token or deviceKey (would not call server).";
+      emitNativeDebug();
+      return {
+        ok: false,
+        hint: "Could not build send body: missing APNs token and deviceKey. Enable native push again, or open Settings after a successful register-native.",
+        ...nativePushDebug.lastTestSendDiag,
+      };
+    }
+
     const jsonBody = JSON.stringify(payload);
     nativePushDebug.lastTestSendRequestBodyRedacted = redactedJson;
+    nativePushDebug.lastTestSendDiag = {
+      nativeIos: Boolean(payload.nativeIos),
+      hasToken: Boolean(payload.token),
+      hasDeviceKey: Boolean(payload.deviceKey),
+      tokenLength: typeof payload.token === "string" ? payload.token.length : 0,
+      jsonKeys: Object.keys(payload).sort().join(","),
+    };
     const url = resolveNativePushApiSendUrl();
     nativePushDebug.lastTestSendUrl = url;
     emitNativeDebug();
 
-    if (import.meta.env.DEV) {
-      console.log("[Native push] send test push POST", { url, bodyRedacted: redactedJson });
-    }
+    console.log("[Native push] send test POST", {
+      url,
+      diag: nativePushDebug.lastTestSendDiag,
+      bodyRedacted: redactedJson,
+    });
 
     try {
       const res = await fetch(url, {

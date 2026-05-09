@@ -6706,6 +6706,14 @@ export default function App() {
                       {nativePushDebug.lastTestSendRequestBodyRedacted ? (
                         <div>send test request (redacted): {nativePushDebug.lastTestSendRequestBodyRedacted}</div>
                       ) : null}
+                      {nativePushDebug.lastTestSendDiag != null ? (
+                        <div>
+                          send test diag:{" "}
+                          {typeof nativePushDebug.lastTestSendDiag === "object"
+                            ? JSON.stringify(nativePushDebug.lastTestSendDiag)
+                            : String(nativePushDebug.lastTestSendDiag)}
+                        </div>
+                      ) : null}
                       {nativePushDebug.lastTestSendStatus != null ? (
                         <div>send test HTTP: {nativePushDebug.lastTestSendStatus}</div>
                       ) : null}
