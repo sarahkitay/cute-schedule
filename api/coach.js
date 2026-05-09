@@ -1,7 +1,13 @@
+import { applyApiCors } from "./lib/cors.js";
+import { assertCoachRateLimit } from "./lib/coachRateLimit.js";
+import { clientSafeDetail, logServerError } from "./lib/safeJsonError.js";
+
+const isProd = process.env.NODE_ENV === "production";
+
 export default async function handler(req, res) {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    applyApiCors(req, res);
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     return res.status(200).end();
@@ -12,18 +18,32 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "POST only" });
   }
 
-  // Set CORS headers
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  applyApiCors(req, res);
   res.setHeader("Content-Type", "application/json");
+
+  const rate = await assertCoachRateLimit(req);
+  if (!rate.ok) {
+    res.setHeader("Retry-After", String(rate.retryAfterSec));
+    return res.status(429).json({
+      error: "Too many requests",
+      retryAfterSec: rate.retryAfterSec,
+    });
+  }
+
+  // TODO(security): Verify Firebase ID token (Firebase Admin on Vercel) before calling OpenAI.
 
   try {
     const key = process.env.OPENAI_API_KEY;
 
     if (!key) {
-      return res.status(500).json({
-        error: "Missing OPENAI_API_KEY in Vercel env vars",
-        hint: "Add an OpenAI key that starts with sk- or sk-proj-",
-      });
+      return res.status(500).json(
+        isProd
+          ? { error: "Coach service is not configured." }
+          : {
+              error: "Missing OPENAI_API_KEY in Vercel env vars",
+              hint: "Add an OpenAI key that starts with sk- or sk-proj-",
+            }
+      );
     }
 
     const {
@@ -74,17 +94,17 @@ export default async function handler(req, res) {
       const systemContent = `You are an ADHD-aware planning coach: emotionally steady, never shaming, and logically precise with the user's real schedule. You only reorder existing tasks, propose time blocks, suggest micro-steps for tasks already listed, or suggest breaks. Do not invent new obligations. Name overload when the task list implies it; offer one tiny on-ramp. Vary sentence shape (observational, practical); avoid therapy-speak. ${OUTPUT_RULES}`;
       let userContent = "";
       if (mode === "plan") {
-        userContent = `Tone for this mode: calm strategist — clear structure over emotional processing; still kind.
+        userContent = `Tone for this mode: calm strategist: clear structure over emotional processing; still kind.
 
 Plan my day. Date: ${dayKey}. Current schedule (time -> categories -> tasks): ${JSON.stringify(scheduleData)}. Incomplete tasks: ${JSON.stringify(tasksList)}. Mood: ${mood || "not set"}.${habitBlock}
 Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences", "followUp": "one optional question or null", "actions": [ { "type": "TIMEBOX", "taskId": "...", "start": "HH:MM", "end": "HH:MM" }, { "type": "REORDER", "taskIds": ["id1","id2"] }, { "type": "BREAK", "start": "HH:MM", "end": "HH:MM", "label": "Short break" } ] }. Use only taskIds that exist in the input.`;
       } else if (mode === "unstuck") {
-        userContent = `Tone for this mode: friction-reducer — very small steps, low pressure; reduce activation energy, not maximize output.
+        userContent = `Tone for this mode: friction-reducer: very small steps, low pressure; reduce activation energy, not maximize output.
 
 User is overwhelmed. Pick ONE task from: ${JSON.stringify(tasksList)}.${habitBlock} Break it into 3 micro-steps (5-15 min to start). Return JSON: { "summary": "1-2 sentences", "taskId": "...", "taskTitle": "...", "steps": [ { "text": "...", "minutes": 5 } ], "actions": [ { "type": "MICRO_STEPS", "taskId": "...", "steps": [ { "text": "...", "minutes": 5 } ] } ] }.`;
       } else if (mode === "review") {
         const financeNote = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || (finance.totalSavings || 0) > 0 || (finance.totalDebt || 0) > 0) ? ` Finance snapshot: income this month $${(finance.incomeThisMonth || 0).toFixed(2)}, spent $${(finance.spentThisMonth || 0).toFixed(2)}, savings $${(finance.totalSavings || 0).toFixed(2)}, debt $${(finance.totalDebt || 0).toFixed(2)}. If relevant, mention one gentle money habit (e.g. "You logged spending this month; that's a win.").` : "";
-        userContent = `Tone for this mode: reflective pattern-noticer — precise, one real pattern, one clean adjustment for tomorrow.
+        userContent = `Tone for this mode: reflective pattern-noticer: precise, one real pattern, one clean adjustment for tomorrow.
 
 End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progress?.total || 0}. Schedule: ${JSON.stringify(scheduleData)}. Patterns: ${JSON.stringify(patterns || {})}.${financeNote}${habitBlock} Summarise wins, detect one pattern (e.g. tasks missed at 3pm), suggest one change for tomorrow. If habit data is present, you may note one observation (e.g. consistency on a build habit or compassion after a break-habit slip). Return JSON: { "summary": "2-4 sentences", "wins": ["..."], "pattern": "one sentence", "suggestion": "one sentence", "actions": [] }.`;
       }
@@ -103,11 +123,25 @@ End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progres
         }),
       });
       const raw = await r.json().catch(() => ({}));
-      if (!r.ok) return res.status(r.status).json({ error: "OpenAI request failed", detail: raw?.error?.message || raw });
+      if (!r.ok) {
+        if (!isProd) console.warn("OpenAI adhd mode error", raw?.error || raw);
+        return res.status(r.status).json(
+          isProd
+            ? { error: "Coach request could not be completed." }
+            : { error: "OpenAI request failed", detail: raw?.error?.message || raw }
+        );
+      }
       const text = raw?.choices?.[0]?.message?.content || "{}";
       const cleaned = String(text).replace(/```json|```/g, "").trim();
       let parsed;
-      try { parsed = JSON.parse(cleaned); } catch { return res.status(500).json({ error: "Model did not return valid JSON", raw: cleaned }); }
+      try {
+        parsed = JSON.parse(cleaned);
+      } catch {
+        if (!isProd) console.warn("OpenAI JSON parse fail (adhd mode)", cleaned.slice(0, 400));
+        return res.status(500).json(
+          isProd ? { error: "Coach response was invalid." } : { error: "Model did not return valid JSON", raw: cleaned }
+        );
+      }
       return res.status(200).json({ summary: parsed.summary || "", followUp: parsed.followUp || null, actions: Array.isArray(parsed.actions) ? parsed.actions : [] });
     }
 
@@ -122,12 +156,12 @@ End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progres
       : "";
 
     const antiGeneric = `
-Voice: observant, calm, slightly surgical — this product, not a productivity blog.
+Voice: observant, calm, slightly surgical. This product, not a productivity blog.
 
 When the user asks for advice:
 - First interpret what their current schedule or pacing is likely doing to them (use today's JSON: blocks, tasks, times, categories).
 - Then name the mechanism in plain language (e.g. late blocks still demand decisions; mental load carries past the last task).
-- Then suggest changes in scheduling vocabulary: move, shrink, swap, buffer, or remove tasks — tied to their real hours/blocks, not abstract wellness.
+- Then suggest changes in scheduling vocabulary: move, shrink, swap, buffer, or remove tasks, tied to their real hours/blocks, not abstract wellness.
 - If you name a low-effort wind-down or replacement activity, give at least one concrete example (journaling, plan tomorrow in 10 min, light reset/tidy, low-effort admin, reading).
 
 Sleep / waking / fatigue:
@@ -137,11 +171,11 @@ Sleep / waking / fatigue:
 
 Banned sentence openers (do not start the message with these): "To help you", "You can try", "Consider", "It's important to", "In order to".
 
-Start the message with an observation about their data OR a reframing — not a preamble about helping.
+Start the message with an observation about their data OR a reframing, not a preamble about helping.
 
 Suggestions (Coach V2): When a concrete move fits, return 0–6 items in "suggestions". Each item MUST use this shape:
 { "type":"ADD_TASK"|"BREAK"|"SPLIT_TASK"|"DEFER"|"REORDER"|"TIMEBOX", "title":"short label", "description":"optional detail", "reason":"one sentence tied to THIS user's data", "category":"one of their categories", "energyLevel":"LIGHT"|"MEDIUM"|"HEAVY", "start":"HH:MM", "end":"HH:MM or null", "durationMinutes": number, "recurring": false, "recurrencePattern":"none"|"daily"|"weekly", "targetDayKey":"YYYY-MM-DD or null (which calendar day to place the block; default the request dayKey)", "weekPlanLabel":"short UI label e.g. Wed 7:30p", "confidence": 0.0-1.0, "requiresApproval": true, "targetTaskId": "existing id or null" }.
-Use ADD_TASK or BREAK for new items the app can insert after approval. Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply — requiresApproval is always true for user-facing rows. Use [] when no concrete suggestion fits.
+Use ADD_TASK or BREAK for new items the app can insert after approval. Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply; requiresApproval is always true for user-facing rows. Use [] when no concrete suggestion fits.
 
 Week / recurring planning: If the user asks to spread habits (e.g. art, dog walks) across the week, use weekAtAGlance + today's schedule to infer lighter blocks and propose multiple ADD_TASK rows on different targetDayKey values with realistic times. Prefer recurrencePattern weekly for habits they want a few times per week; daily for true every-day anchors. Mention tradeoffs in "message" when the week already looks dense.
 
@@ -167,7 +201,7 @@ ${OUTPUT_RULES}`;
     const hasConv = conv.length > 0;
     const hasUserQuestion = Boolean(String(userQuestion || "").trim());
 
-    // Thread turns only (short). Schedule + instructions come in the final user message — avoids duplicating the latest question in both history and prompt.
+    // Thread turns only (short). Schedule + instructions come in the final user message to avoid duplicating the latest question in both history and prompt.
     if (hasConv) {
       for (const msg of conv) {
         const role = msg.role === "assistant" ? "assistant" : "user";
@@ -237,7 +271,7 @@ Use these to detect recurring struggles, goals, constraints, or self-observation
 
     const weekBlock =
       Array.isArray(weekAtAGlance) && weekAtAGlance.length
-        ? `\n\nLast 7 days — per-day hour blocks {hour, total tasks, openHeavy count} (infer lighter windows; do not invent past events):\n${JSON.stringify(weekAtAGlance).slice(0, 12000)}`
+        ? `\n\nLast 7 days: per-day hour blocks {hour, total tasks, openHeavy count} (infer lighter windows; do not invent past events):\n${JSON.stringify(weekAtAGlance).slice(0, 12000)}`
         : "";
 
     // Finance context for gentle financial analyst
@@ -265,7 +299,7 @@ Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesCon
     let replyDirective;
     if (hasConv) {
       replyDirective = `Reply to the conversation above. The latest user message is what you are answering now.
-Use the schedule JSON below as the single source of truth for today's plan. Anchor every claim in their blocks, tasks, times, or categories — not generic advice.
+Use the schedule JSON below as the single source of truth for today's plan. Anchor every claim in their blocks, tasks, times, or categories, not generic advice.
 If the question is ambiguous, state one brief assumption. Return JSON in the schema below.`;
     } else if (hasUserQuestion) {
       replyDirective = `Their message:
@@ -326,8 +360,10 @@ Return JSON EXACTLY in this schema (Coach V2):
       });
 
       const raw = await r.json().catch(() => ({}));
-      console.log("OpenAI status:", r.status);
-      if (raw?.error) console.log("OpenAI error:", raw.error);
+      if (!isProd) {
+        console.log("OpenAI status:", r.status);
+        if (raw?.error) console.log("OpenAI error:", raw.error);
+      }
 
       // Retry 429s with exponential backoff
       if (r.status === 429 && tryNum < 3) {
@@ -342,19 +378,24 @@ Return JSON EXACTLY in this schema (Coach V2):
     const { r: response, raw } = await callOpenAI(0);
 
     if (!response.ok) {
-      return res.status(response.status).json({
-        error: "OpenAI request failed",
-        status: response.status,
-        detail: raw?.error?.message || raw,
-        type: raw?.error?.type,
-        code: raw?.error?.code,
-        hint:
-          response.status === 401
-            ? "Invalid API key"
-            : response.status === 429
-            ? "Rate limit or quota. Check OpenAI Platform billing + limits."
-            : undefined,
-      });
+      if (!isProd) console.warn("OpenAI coach error", raw?.error || raw);
+      return res.status(response.status).json(
+        isProd
+          ? { error: "Coach request could not be completed." }
+          : {
+              error: "OpenAI request failed",
+              status: response.status,
+              detail: raw?.error?.message || raw,
+              type: raw?.error?.type,
+              code: raw?.error?.code,
+              hint:
+                response.status === 401
+                  ? "Invalid API key"
+                  : response.status === 429
+                    ? "Rate limit or quota. Check OpenAI Platform billing + limits."
+                    : undefined,
+            }
+      );
     }
 
     const text = raw?.choices?.[0]?.message?.content || "{}";
@@ -364,15 +405,16 @@ Return JSON EXACTLY in this schema (Coach V2):
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      return res.status(500).json({
-        error: "Model did not return valid JSON",
-        raw: cleaned,
-      });
+      if (!isProd) console.warn("OpenAI JSON parse fail (coach)", cleaned.slice(0, 400));
+      return res.status(500).json(
+        isProd ? { error: "Coach response was invalid." } : { error: "Model did not return valid JSON", raw: cleaned }
+      );
     }
 
     return res.status(200).json(parsed);
   } catch (e) {
-    console.error("Server error:", e);
-    return res.status(500).json({ error: "Server error", detail: String(e) });
+    logServerError("Coach handler", e);
+    const detail = clientSafeDetail(e, isProd);
+    return res.status(500).json(detail ? { error: "Server error", detail } : { error: "Server error" });
   }
 }

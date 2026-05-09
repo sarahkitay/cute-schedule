@@ -80,7 +80,7 @@ function suggestBuffer(intel: CoachIntelligenceSnapshot, categories: string[], t
     id: newId(),
     type: "BREAK",
     title: "15-minute recovery buffer",
-    description: "No new inputs — walk, water, or stare out a window.",
+    description: "No new inputs: walk, water, or stare out a window.",
     reason: "Multiple heavy items still open; spacing protects sustainable pace.",
     category: cat,
     energyLevel: "LIGHT",
@@ -115,23 +115,23 @@ export function generateCoachV2Fallback(input: {
   let highlights: string[] = [];
 
   if (emotionalState === "overloaded") {
-    message = `${heavyUndone} heavy item${heavyUndone === 1 ? "" : "s"} still open — the board is asking for sustained attention, not heroics.`;
+    message = `${heavyUndone} heavy item${heavyUndone === 1 ? "" : "s"} still open; the board is asking for sustained attention, not heroics.`;
     highlights = [
       `You are at ${completed}/${total} done today.`,
       intelligence.weakCategory
-        ? `Historically, ${intelligence.weakCategory} tasks are easier to defer — shrink or move one, not all.`
+        ? `Historically, ${intelligence.weakCategory} tasks are easier to defer; shrink or move one, not all.`
         : "Tradeoff: keep one heavy, shrink one, or add a buffer between two.",
     ];
   } else if (emotionalState === "drained") {
     message =
       completed === 0
-        ? `${total} task${total === 1 ? "" : "s"} on the board, none checked yet — that often reads as thin fuel, not lack of care.`
-        : `${completed} of ${total} moved — quiet progress still shifts the shape of the day.`;
+        ? `${total} task${total === 1 ? "" : "s"} on the board, none checked yet; that often reads as thin fuel, not lack of care.`
+        : `${completed} of ${total} moved; quiet progress still shifts the shape of the day.`;
     highlights = ["Pick one visible 5-minute starter; completion is optional.", `Current band: ${timeOfDay}.`];
   } else if (emotionalState === "avoidant") {
     message =
       heavyUndone >= 1
-        ? `Heavy work is still waiting while the list stays small — that usually signals friction on the first slice, not capacity.`
+        ? `Heavy work is still waiting while the list stays small; that usually signals friction on the first slice, not capacity.`
         : "Small lists can still feel sticky when the next step is fuzzy.";
     highlights = ["Name the smallest physical first action (open doc, one sentence, one tab)."];
   } else if (emotionalState === "closing") {

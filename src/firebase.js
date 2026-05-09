@@ -9,7 +9,6 @@ import {
   browserLocalPersistence,
   indexedDBLocalPersistence,
   onAuthStateChanged,
-  GoogleAuthProvider,
   OAuthProvider,
   signInWithPopup,
   signInWithRedirect,
@@ -179,8 +178,6 @@ export async function migrateScheduleDocBetweenUsers(fromUid, toUid) {
   }
 }
 
-const googleProvider = new GoogleAuthProvider();
-
 function getAppleAuthProvider() {
   const provider = new OAuthProvider("apple.com");
   provider.addScope("email");
@@ -191,7 +188,7 @@ function getAppleAuthProvider() {
   return provider;
 }
 
-/** Capacitor / WKWebView — `window.Capacitor` is injected by the native shell at runtime. */
+/** Capacitor / WKWebView: `window.Capacitor` is injected by the native shell at runtime. */
 function isCapacitorNativeShell() {
   if (typeof window === "undefined") return false;
   try {
@@ -334,13 +331,24 @@ export function subscribeAuthState(onResolved, options = {}) {
   });
 }
 
-function randomRawNonce(length = 28) {
-  const chars = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+/** URL/base64-safe characters only (Firebase Apple + native ASAuthorization). */
+const APPLE_RAW_NONCE_CHARSET =
+  "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._";
+
+function randomNonceString(length = 32) {
   const bytes = new Uint8Array(length);
   crypto.getRandomValues(bytes);
   let out = "";
-  for (let i = 0; i < length; i++) out += chars[bytes[i] % chars.length];
+  const n = APPLE_RAW_NONCE_CHARSET.length;
+  for (let i = 0; i < length; i++) out += APPLE_RAW_NONCE_CHARSET[bytes[i] % n];
   return out;
+}
+
+/** Lowercase hex SHA-256 of UTF-8 string (matches Firebase Apple samples for `request.nonce`). */
+async function sha256HexUtf8(plain) {
+  const data = new TextEncoder().encode(plain);
+  const buf = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
@@ -362,16 +370,23 @@ async function signInWithAppleNativeIOS(auth, cfg) {
     import.meta.env.VITE_APPLE_REDIRECT_URI || `https://${cfg.authDomain}/__/auth/handler`
   ).trim();
 
-  // Native ASAuthorizationAppleIDRequest sets `nonce` as-is; Apple SHA256-hashes it for the ID token.
-  // Firebase `rawNonce` must be that same string (do not pre-hash — unlike the plugin’s web/AppleID JS path).
-  const rawNonce = randomRawNonce(32);
+  // Firebase Apple pattern: rawNonce for `OAuthProvider.credential`; Apple request uses SHA-256(hex)
+  // of rawNonce so the ID token nonce matches what Firebase verifies (see Firebase iOS Apple guide).
+  const rawNonce = randomNonceString(32);
+  const appleRequestNonce = await sha256HexUtf8(rawNonce);
+
+  if (import.meta.env.DEV) {
+    console.log("[Apple Sign-In dev] rawNonce:", rawNonce);
+    console.log("[Apple Sign-In dev] sha256(rawNonce) hex:", appleRequestNonce);
+    console.log("[Apple Sign-In dev] Apple request nonce:", appleRequestNonce);
+  }
 
   const res = await SignInWithApple.authorize({
     clientId,
     redirectURI,
     scopes: "email name",
     state: `fp_${Date.now()}`,
-    nonce: rawNonce,
+    nonce: appleRequestNonce,
   });
 
   const idToken = res?.response?.identityToken;
@@ -402,23 +417,6 @@ async function signInWithAppleNativeIOS(auth, cfg) {
   const prevUid = u?.uid ?? null;
   await signInWithCredential(auth, credential);
   const next = auth.currentUser;
-  if (prevUid && next && prevUid !== next.uid) {
-    await migrateScheduleDocBetweenUsers(prevUid, next.uid);
-  }
-  return next;
-}
-
-export async function signInWithGoogle() {
-  const a = getAuthApp();
-  if (!a) throw new Error("Firebase not configured");
-  const u = a.currentUser;
-  if (u?.isAnonymous) {
-    await linkWithPopup(u, googleProvider);
-    return a.currentUser;
-  }
-  const prevUid = u?.uid ?? null;
-  await signInWithPopup(a, googleProvider);
-  const next = a.currentUser;
   if (prevUid && next && prevUid !== next.uid) {
     await migrateScheduleDocBetweenUsers(prevUid, next.uid);
   }
@@ -511,7 +509,7 @@ export async function deleteFirestoreScheduleForUid(uid) {
 
 /**
  * Permanently delete the current Firebase Auth user (and their schedule doc).
- * May throw `auth/requires-recent-login` — user must sign in again then retry.
+ * May throw `auth/requires-recent-login`; user must sign in again then retry.
  */
 export async function deleteCurrentUserAccount() {
   const a = getAuthApp();

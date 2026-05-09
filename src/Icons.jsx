@@ -139,7 +139,7 @@ export function MoonIcon({ className = "", style = {} }) {
   );
 }
 
-export function CelebrateIcon({ className = "" }) {
+export function CelebrateIcon({ className = "", style = {} }) {
   return (
     <svg
       className={className}
@@ -147,10 +147,11 @@ export function CelebrateIcon({ className = "" }) {
       height="18"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="var(--rose-quartz, #E79AB5)"
+      stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
+      style={style}
     >
       <circle cx="12" cy="12" r="10" />
       <path d="M12 6v6l4 2" />

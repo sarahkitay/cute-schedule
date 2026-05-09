@@ -1,6 +1,269 @@
-// Notification Service for Task Reminders and Completions + PWA Web Push
+// Notification Service: Capacitor native push (iOS APNs / Android FCM token) + PWA Web Push (VAPID + service worker).
 
-import { apiUrl, publicUrl } from "./apiBase";
+import { Capacitor } from "@capacitor/core";
+import { PushNotifications } from "@capacitor/push-notifications";
+import { apiUrl, publicUrl, getApiBaseDebug } from "./apiBase";
+
+/** @type {Set<(s: Record<string, unknown>) => void>} */
+const nativeDebugSubscribers = new Set();
+
+export const nativePushDebugDefault = () => ({
+  permission: "unknown",
+  nativePlatform: Capacitor.isNativePlatform(),
+  tokenRegistered: false,
+  lastTokenPrefix: null,
+  lastRegistrationError: null,
+  /** Exact URL last used for POST /api/push/register-native */
+  lastRegisterNativeUrl: null,
+  /** HTTP status from last register-native fetch (null if threw before response) */
+  lastRegisterNativeStatus: null,
+  /** First ~400 chars of response body from last register-native */
+  lastRegisterNativeResponseText: null,
+  lastRemindersNativeUrl: null,
+  lastRemindersNativeStatus: null,
+  lastRemindersNativeResponseText: null,
+  lastTestSendUrl: null,
+  lastTestSendStatus: null,
+  lastTestSendResponseText: null,
+  lastPushReceivedAt: null,
+  lastActionAt: null,
+  lastTestSendAt: null,
+  lastTestSendOk: null,
+  lastTestSendDetail: null,
+  /** From apiBase: baked VITE_APP_ORIGIN at build time + resolved origin used for /api/* */
+  apiOriginFromEnv: null,
+  apiOriginResolved: null,
+  apiOriginSource: null,
+});
+
+/** @type {ReturnType<typeof nativePushDebugDefault>} */
+let nativePushDebug = nativePushDebugDefault();
+
+function emitNativeDebug() {
+  if (Capacitor.isNativePlatform()) {
+    const api = getApiBaseDebug();
+    nativePushDebug.apiOriginFromEnv = api.rawViteAppOrigin;
+    nativePushDebug.apiOriginResolved = api.resolvedOrigin;
+    nativePushDebug.apiOriginSource = api.source;
+  }
+  const snap = { ...nativePushDebug };
+  nativeDebugSubscribers.forEach((fn) => {
+    try {
+      fn(snap);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+/** Subscribe to native push debug updates (Capacitor only; no-op on web). */
+export function subscribeNativePushDebug(fn) {
+  if (typeof fn !== "function") return () => {};
+  nativeDebugSubscribers.add(fn);
+  emitNativeDebug();
+  return () => nativeDebugSubscribers.delete(fn);
+}
+
+export function getNativePushDebugSnapshot() {
+  return { ...nativePushDebug };
+}
+
+function mapCapacitorReceive(receive) {
+  if (receive === "granted") return "granted";
+  if (receive === "denied") return "denied";
+  if (receive === "prompt") return "prompt";
+  return "unknown";
+}
+
+function mapReceiveToNotificationPermission(receive) {
+  if (receive === "granted") return "granted";
+  if (receive === "denied") return "denied";
+  return "default";
+}
+
+function shortenTokenForLog(token) {
+  const t = String(token || "");
+  if (t.length <= 12) return t ? `${t.slice(0, 4)}…` : "";
+  return `${t.slice(0, 6)}…${t.slice(-4)}`;
+}
+
+async function getOptionalFirebaseIdToken() {
+  try {
+    const { getAuthApp } = await import("./firebase.js");
+    const u = getAuthApp()?.currentUser;
+    if (!u) return null;
+    return await u.getIdToken();
+  } catch {
+    return null;
+  }
+}
+
+let lastNativeDeviceToken = null;
+let nativeListenersAttached = false;
+
+function waitForNativeToken(maxMs = 6000) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    const tick = () => {
+      if (lastNativeDeviceToken && lastNativeDeviceToken.length >= 16) return resolve(true);
+      if (Date.now() - start >= maxMs) return resolve(false);
+      setTimeout(tick, 120);
+    };
+    tick();
+  });
+}
+
+async function postRegisterNative(token, platform) {
+  const url = apiUrl("/api/push/register-native");
+  nativePushDebug.lastRegisterNativeUrl = url;
+  nativePushDebug.lastRegisterNativeStatus = null;
+  nativePushDebug.lastRegisterNativeResponseText = null;
+  emitNativeDebug();
+
+  const idToken = await getOptionalFirebaseIdToken();
+  let res;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      },
+      body: JSON.stringify({ token, platform, ...(idToken ? { idToken } : {}) }),
+    });
+  } catch (e) {
+    const msg = e?.message || String(e);
+    nativePushDebug.lastRegisterNativeStatus = null;
+    nativePushDebug.lastRegisterNativeResponseText = null;
+    nativePushDebug.lastRegistrationError = msg;
+    emitNativeDebug();
+    console.error("[Native push] register-native fetch threw:", msg, "url=", url);
+    return { ok: false, status: null, text: "" };
+  }
+
+  const text = await res.text();
+  nativePushDebug.lastRegisterNativeStatus = res.status;
+  nativePushDebug.lastRegisterNativeResponseText = text.slice(0, 400);
+  emitNativeDebug();
+
+  if (!res.ok) {
+    let errMsg = `HTTP ${res.status}`;
+    try {
+      const j = JSON.parse(text);
+      errMsg = j.error || j.hint || errMsg;
+    } catch {
+      if (text) errMsg = text.slice(0, 200);
+    }
+    nativePushDebug.lastRegistrationError = errMsg;
+    emitNativeDebug();
+    console.warn("[Native push] register-native failed:", res.status, text.slice(0, 300), "url=", url);
+  } else {
+    nativePushDebug.lastRegistrationError = null;
+    emitNativeDebug();
+    if (import.meta.env.DEV) console.log("[Native push] register-native OK", res.status, "url=", url);
+  }
+
+  return { ok: res.ok, status: res.status, text };
+}
+
+/**
+ * Attach PushNotifications listeners once (safe to call multiple times).
+ */
+async function attachNativePushListenersOnce() {
+  if (!Capacitor.isNativePlatform() || nativeListenersAttached) return;
+  nativeListenersAttached = true;
+
+  await PushNotifications.addListener("registration", async (token) => {
+    const value = token?.value ? String(token.value).trim() : "";
+    lastNativeDeviceToken = value || null;
+    nativePushDebug.tokenRegistered = value.length >= 16;
+    nativePushDebug.lastTokenPrefix = value ? shortenTokenForLog(value) : null;
+    nativePushDebug.lastRegistrationError = null;
+    if (import.meta.env.DEV && value) {
+      console.log("[Native push] registration ok, token:", shortenTokenForLog(value));
+    }
+    emitNativeDebug();
+    if (value.length >= 16) {
+      await postRegisterNative(value, Capacitor.getPlatform());
+    }
+  });
+
+  await PushNotifications.addListener("registrationError", (err) => {
+    const msg = err?.error || err?.message || String(err);
+    nativePushDebug.lastRegistrationError = msg;
+    nativePushDebug.tokenRegistered = false;
+    console.error("[Native push] registrationError:", msg);
+    emitNativeDebug();
+  });
+
+  await PushNotifications.addListener("pushNotificationReceived", (notif) => {
+    nativePushDebug.lastPushReceivedAt = Date.now();
+    if (import.meta.env.DEV) {
+      console.log("[Native push] received:", notif?.title || "", notif?.body || "");
+    }
+    emitNativeDebug();
+  });
+
+  await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+    nativePushDebug.lastActionAt = Date.now();
+    if (import.meta.env.DEV) {
+      console.log("[Native push] action:", action?.actionId, action?.notification?.title);
+    }
+    emitNativeDebug();
+  });
+}
+
+/**
+ * On native startup: attach listeners and register with APNs if permission already granted (no extra prompt).
+ */
+export async function bootstrapNativePushOnStartup() {
+  if (typeof window === "undefined" || !Capacitor.isNativePlatform()) return;
+  await attachNativePushListenersOnce();
+  try {
+    const perm = await PushNotifications.checkPermissions();
+    nativePushDebug.permission = mapCapacitorReceive(perm.receive);
+    emitNativeDebug();
+    if (perm.receive === "granted") {
+      await PushNotifications.register();
+      await waitForNativeToken(4000);
+    }
+  } catch (e) {
+    nativePushDebug.lastRegistrationError = e?.message || String(e);
+    emitNativeDebug();
+  }
+}
+
+/**
+ * Request permission + register; POST device token to backend.
+ */
+export async function registerNativePushFull() {
+  if (typeof window === "undefined" || !Capacitor.isNativePlatform()) {
+    return { ok: false, skipped: true };
+  }
+  try {
+    await attachNativePushListenersOnce();
+    const perm = await PushNotifications.requestPermissions();
+    nativePushDebug.permission = mapCapacitorReceive(perm.receive);
+    emitNativeDebug();
+    if (perm.receive !== "granted") {
+      return { ok: false, hint: "Push permission not granted", receive: perm.receive };
+    }
+    await PushNotifications.register();
+    const got = await waitForNativeToken();
+    if (!got) {
+      return {
+        ok: false,
+        hint: "APNs did not return a device token yet. Reopen Settings and try again, or confirm Push capability + provisioning profile on Xcode.",
+      };
+    }
+    return { ok: true, native: true };
+  } catch (e) {
+    const msg = e?.message || String(e);
+    nativePushDebug.lastRegistrationError = msg;
+    emitNativeDebug();
+    return { ok: false, hint: msg };
+  }
+}
 
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -12,7 +275,6 @@ function urlBase64ToUint8Array(base64String) {
 class NotificationService {
   constructor() {
     this.permission = null;
-    // Defer checkPermission to first use so we don't run async code at import time (avoids init-order/TDZ issues in prod bundle)
     this._checkPromise = null;
   }
 
@@ -21,11 +283,8 @@ class NotificationService {
     return this._checkPromise;
   }
 
-  /**
-   * Register /sw.js and subscribe for push (call from a button click - better permission UX).
-   * Public key comes from GET /api/push/vapid (server configuration).
-   */
   async registerServiceWorker() {
+    if (Capacitor.isNativePlatform()) return null;
     if (!("serviceWorker" in navigator)) return null;
     const registration = await navigator.serviceWorker.register(publicUrl("sw.js"), { scope: import.meta.env.BASE_URL || "./" });
     await navigator.serviceWorker.ready;
@@ -33,13 +292,21 @@ class NotificationService {
   }
 
   async enablePush() {
+    if (Capacitor.isNativePlatform()) {
+      const r = await registerNativePushFull();
+      if (r.skipped) return { ok: false, hint: "Not running in native shell." };
+      if (!r.ok) return { ok: false, hint: r.hint || "Native push registration failed." };
+      this.permission = "granted";
+      return { ok: true, native: true };
+    }
+
     if (!("serviceWorker" in navigator)) {
       return { ok: false, hint: "This browser does not support service workers (use HTTPS and a recent browser)." };
     }
     if (!("PushManager" in window)) {
       return {
         ok: false,
-        hint: "Push is not available here. On iPhone, add the app to your Home Screen first, then open it from the icon and try again.",
+        hint: "Push is not available here. On iPhone, add the app to the Home Screen first, then open it from the icon and try again.",
       };
     }
     try {
@@ -117,7 +384,7 @@ class NotificationService {
       }
 
       this.permission = "granted";
-      return { ok: true };
+      return { ok: true, native: false };
     } catch (e) {
       console.warn("Push subscribe failed", e);
       return { ok: false, hint: e?.message || String(e) };
@@ -125,6 +392,18 @@ class NotificationService {
   }
 
   async checkPermission() {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const perm = await PushNotifications.checkPermissions();
+        nativePushDebug.permission = mapCapacitorReceive(perm.receive);
+        this.permission = mapReceiveToNotificationPermission(perm.receive);
+        emitNativeDebug();
+        return perm.receive === "granted";
+      } catch {
+        this.permission = "denied";
+        return false;
+      }
+    }
     if (!("Notification" in window)) {
       this.permission = "denied";
       return false;
@@ -135,17 +414,28 @@ class NotificationService {
   }
 
   async requestPermission() {
-    if (!('Notification' in window)) {
+    if (Capacitor.isNativePlatform()) {
+      await attachNativePushListenersOnce();
+      const perm = await PushNotifications.requestPermissions();
+      nativePushDebug.permission = mapCapacitorReceive(perm.receive);
+      this.permission = mapReceiveToNotificationPermission(perm.receive);
+      emitNativeDebug();
+      if (perm.receive === "granted") {
+        await PushNotifications.register();
+        await waitForNativeToken(4000);
+      }
+      return perm.receive === "granted";
+    }
+    if (!("Notification" in window)) {
       return false;
     }
-    
     const permission = await Notification.requestPermission();
     this.permission = permission;
-    return permission === 'granted';
+    return permission === "granted";
   }
 
   showNotification(title, options = {}) {
-    if (!('Notification' in window) || this.permission !== 'granted') {
+    if (!("Notification" in window) || this.permission !== "granted") {
       return null;
     }
 
@@ -154,13 +444,13 @@ class NotificationService {
       badge: publicUrl("pwa-192.png"),
       tag: `task-${Date.now()}`,
       requireInteraction: false,
-      ...options
+      ...options,
     };
 
     try {
       return new Notification(title, defaultOptions);
     } catch (error) {
-      console.error('Error showing notification:', error);
+      console.error("Error showing notification:", error);
       return null;
     }
   }
@@ -168,20 +458,18 @@ class NotificationService {
   scheduleTaskReminder(task, hour, category) {
     try {
       const now = new Date();
-      const [hours, minutes] = hour.split(':').map(Number);
+      const [hours, minutes] = hour.split(":").map(Number);
       const reminderTime = new Date(now);
       reminderTime.setHours(hours, minutes, 0, 0);
-      
-      // If time has passed today, schedule for tomorrow
+
       if (reminderTime < now) {
         reminderTime.setDate(reminderTime.getDate() + 1);
       }
-      
+
       const delay = reminderTime.getTime() - now.getTime();
-      
-      if (delay > 0 && delay < 24 * 60 * 60 * 1000) { // Only schedule if within 24 hours
+
+      if (delay > 0 && delay < 24 * 60 * 60 * 1000) {
         setTimeout(() => {
-          // Use gentle anchor reminder tone
           const currentHour = new Date().getHours();
           let reminderText;
           if (currentHour >= 5 && currentHour < 12) {
@@ -193,95 +481,132 @@ class NotificationService {
           } else {
             reminderText = "Quick check-in. Do you want to keep going or slow it down?";
           }
-          
-          this.showNotification(
-            reminderText,
-            {
-              body: `${task.text} (${category})`,
-              tag: `reminder-${task.id}`,
-              requireInteraction: false
-            }
-          );
+
+          this.showNotification(reminderText, {
+            body: `${task.text} (${category})`,
+            tag: `reminder-${task.id}`,
+            requireInteraction: false,
+          });
         }, delay);
-        
+
         return reminderTime;
       }
     } catch (error) {
-      console.error('Error scheduling reminder:', error);
+      console.error("Error scheduling reminder:", error);
     }
     return null;
   }
 
   notifyTaskComplete(task, category) {
-    // Use gentle, calm notification tone
-    this.showNotification(
-      'Done.',
-      {
-        body: `${task.text}`,
-        tag: `complete-${task.id}`,
-        requireInteraction: false
-      }
-    );
+    this.showNotification("Done.", {
+      body: `${task.text}`,
+      tag: `complete-${task.id}`,
+      requireInteraction: false,
+    });
   }
 
-  scheduleTaskTransition(currentTask, nextTask, hour, category) {
+  scheduleTaskTransition(currentTask, nextTask, hour, _category) {
     try {
       const now = new Date();
-      const [hours, minutes] = hour.split(':').map(Number);
+      const [hours, minutes] = hour.split(":").map(Number);
       const taskTime = new Date(now);
       taskTime.setHours(hours, minutes, 0, 0);
-      
-      // Skip if time has passed
+
       if (taskTime < now) {
         return null;
       }
 
-      // Schedule "wrap up" notification 10 minutes before task time
       const wrapUpTime = new Date(taskTime.getTime() - 10 * 60 * 1000);
       const wrapUpDelay = wrapUpTime.getTime() - now.getTime();
-      
+
       if (wrapUpDelay > 0 && wrapUpDelay < 24 * 60 * 60 * 1000) {
         setTimeout(() => {
           let wrapUpMessage = "Time to wrap up.";
           let wrapUpBody = currentTask ? `Finishing up: ${currentTask.text}` : "Wrapping up current task";
-          
+
           if (nextTask) {
             wrapUpBody += `\nNext: ${nextTask.text} at ${hour}`;
           }
-          
+
           this.showNotification(wrapUpMessage, {
             body: wrapUpBody,
             tag: `wrapup-${currentTask?.id || Date.now()}`,
-            requireInteraction: false
+            requireInteraction: false,
           });
         }, wrapUpDelay);
       }
 
-      // Schedule "next task" notification at task time
       const nextTaskDelay = taskTime.getTime() - now.getTime();
       if (nextTaskDelay > 0 && nextTaskDelay < 24 * 60 * 60 * 1000) {
         setTimeout(() => {
-          this.showNotification(
-            "Next task starting",
-            {
-              body: `${nextTask.text} (${category})`,
-              tag: `next-${nextTask.id}`,
-              requireInteraction: false
-            }
-          );
+          this.showNotification("Next task starting", {
+            body: `${nextTask.text} (${category})`,
+            tag: `next-${nextTask.id}`,
+            requireInteraction: false,
+          });
         }, nextTaskDelay);
       }
-      
+
       return { wrapUpTime, taskTime };
     } catch (error) {
-      console.error('Error scheduling task transition:', error);
+      console.error("Error scheduling task transition:", error);
       return null;
     }
   }
 
-  /** Sync reminders to server so cron can send push when app is closed. */
+  async getWebPushSubscription() {
+    if (Capacitor.isNativePlatform()) return null;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) return null;
+      return typeof sub.toJSON === "function" ? sub.toJSON() : null;
+    } catch {
+      return null;
+    }
+  }
+
   async syncRemindersToServer(reminders) {
     if (!Array.isArray(reminders) || reminders.length === 0) return false;
+
+    if (Capacitor.isNativePlatform()) {
+      const token = lastNativeDeviceToken;
+      if (!token) return false;
+      const url = apiUrl("/api/push/reminders-native");
+      nativePushDebug.lastRemindersNativeUrl = url;
+      nativePushDebug.lastRemindersNativeStatus = null;
+      nativePushDebug.lastRemindersNativeResponseText = null;
+      emitNativeDebug();
+      try {
+        const idToken = await getOptionalFirebaseIdToken();
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+          },
+          body: JSON.stringify({
+            token,
+            platform: Capacitor.getPlatform(),
+            reminders,
+            ...(idToken ? { idToken } : {}),
+          }),
+        });
+        const text = await res.text();
+        nativePushDebug.lastRemindersNativeStatus = res.status;
+        nativePushDebug.lastRemindersNativeResponseText = text.slice(0, 400);
+        emitNativeDebug();
+        if (!res.ok) console.warn("[Native push] reminders-native", res.status, text.slice(0, 200), url);
+        return res.ok;
+      } catch (e) {
+        nativePushDebug.lastRemindersNativeResponseText = e?.message || String(e);
+        emitNativeDebug();
+        console.warn("Sync native reminders failed", e, url);
+        return false;
+      }
+    }
+
     if (!("serviceWorker" in navigator)) return false;
     try {
       const reg = await navigator.serviceWorker.ready;
@@ -296,6 +621,60 @@ class NotificationService {
     } catch (e) {
       console.warn("Sync reminders failed", e);
       return false;
+    }
+  }
+
+  /**
+   * Native iOS/Android: POST APNs test via server. Updates {@link nativePushDebug}.
+   */
+  async sendNativeTestPush() {
+    if (!Capacitor.isNativePlatform()) return { ok: false, hint: "Not native" };
+    const token = lastNativeDeviceToken;
+    if (!token) return { ok: false, hint: "No device token yet. Enable push first." };
+    nativePushDebug.lastTestSendAt = Date.now();
+    nativePushDebug.lastTestSendOk = null;
+    nativePushDebug.lastTestSendDetail = null;
+    nativePushDebug.lastTestSendUrl = null;
+    nativePushDebug.lastTestSendStatus = null;
+    nativePushDebug.lastTestSendResponseText = null;
+    emitNativeDebug();
+    const url = apiUrl("/api/push/send");
+    nativePushDebug.lastTestSendUrl = url;
+    emitNativeDebug();
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nativeIos: true,
+          token,
+          title: "PROYOU",
+          body: "If you see this, native push is working.",
+        }),
+      });
+      const text = await res.text();
+      nativePushDebug.lastTestSendStatus = res.status;
+      nativePushDebug.lastTestSendResponseText = text.slice(0, 400);
+      let j = {};
+      try {
+        j = text ? JSON.parse(text) : {};
+      } catch {
+        j = {};
+      }
+      const ok = res.ok && j.sent >= 1;
+      nativePushDebug.lastTestSendOk = ok;
+      nativePushDebug.lastTestSendDetail = ok ? "sent" : j.error || j.detail || j.hint || `HTTP ${res.status}`;
+      emitNativeDebug();
+      if (!ok) console.warn("[Native push] send test", res.status, text.slice(0, 300), url);
+      return { ok, status: res.status, ...j };
+    } catch (e) {
+      nativePushDebug.lastTestSendOk = false;
+      nativePushDebug.lastTestSendStatus = null;
+      nativePushDebug.lastTestSendResponseText = e?.message || String(e);
+      nativePushDebug.lastTestSendDetail = nativePushDebug.lastTestSendResponseText;
+      emitNativeDebug();
+      console.error("[Native push] send test fetch threw:", e, "url=", url);
+      return { ok: false, hint: nativePushDebug.lastTestSendDetail };
     }
   }
 }
@@ -332,4 +711,15 @@ export const notificationService = {
   syncRemindersToServer(reminders) {
     return _notificationService.syncRemindersToServer(reminders);
   },
+  getWebPushSubscription() {
+    return _notificationService.getWebPushSubscription();
+  },
+  sendNativeTestPush() {
+    return _notificationService.sendNativeTestPush();
+  },
 };
+
+/** @deprecated Use bootstrapNativePushOnStartup */
+export async function registerCapacitorPushIfNative() {
+  return bootstrapNativePushOnStartup();
+}

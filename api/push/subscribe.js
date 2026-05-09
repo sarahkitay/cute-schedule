@@ -1,11 +1,12 @@
 import { kv } from "@vercel/kv";
+import { applyApiCors } from "../lib/cors.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).end();
   }
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  applyApiCors(req, res);
   res.setHeader("Content-Type", "application/json");
 
   const { subscription } = req.body || {};
@@ -15,7 +16,9 @@ export default async function handler(req, res) {
 
   try {
     const id = `sub:${Buffer.from(subscription.endpoint).toString("base64").replace(/=/g, "")}`;
-    await kv.set(id, subscription);
+    /** @type {import("../lib/pushTarget.d.ts").PushTarget} */
+    const target = { type: "web", subscription, updatedAt: Date.now() };
+    await kv.set(id, target);
     await kv.sadd("push:subs", id);
     return res.status(200).json({ ok: true });
   } catch (e) {

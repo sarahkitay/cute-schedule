@@ -194,7 +194,7 @@ export function recordCoachSuggestedTaskPostponed(
   return next;
 }
 
-/** Short block for the model — product-local, not personal surveillance */
+/** Short block for the model: product-local, not personal surveillance */
 export function summarizeLearningForPrompt(s: CoachLearningStateV1): string {
   const topAccepted = Object.entries(s.acceptedByType)
     .sort((a, b) => b[1] - a[1])

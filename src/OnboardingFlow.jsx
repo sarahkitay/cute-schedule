@@ -20,6 +20,8 @@ export function OnboardingFlow({
   setStep,
   onExitComplete,
   onExitSkipAll,
+  /** Called when the user leaves the last step: null = app only, "quick" | "full" = start feature tour */
+  onFinishSetup,
   firebaseOn,
   profile,
   setProfile,
@@ -85,7 +87,8 @@ export function OnboardingFlow({
     if (step === 5) applyRoutineDrafts();
     if (step === 7) applyCategories();
     if (step >= totalSteps - 1) {
-      onExitComplete();
+      if (typeof onFinishSetup === "function") onFinishSetup(null);
+      else onExitComplete();
       return;
     }
     setStep((s) => s + 1);
@@ -102,7 +105,8 @@ export function OnboardingFlow({
       setCustomCategories(suggestedCategories);
     }
     if (step >= totalSteps - 1) {
-      onExitComplete();
+      if (typeof onFinishSetup === "function") onFinishSetup(null);
+      else onExitComplete();
       return;
     }
     setStep((s) => s + 1);
@@ -112,7 +116,10 @@ export function OnboardingFlow({
     const label = habitLabel.trim();
     if (!label) return;
     setHabitTracker((prev) => ({
-      habits: [...(prev.habits || []), { id: rid(), label, direction: habitDir === "break" ? "break" : "build" }],
+      habits: [
+        ...(prev.habits || []),
+        { id: rid(), label, direction: habitDir === "break" ? "break" : "build", reminderSchedule: "none", reminderHours: [] },
+      ],
       log: prev.log || {},
     }));
     setHabitLabel("");
@@ -131,8 +138,8 @@ export function OnboardingFlow({
             </h2>
             <p className="onboarding-lead">
               {firebaseOn
-                ? "You’re signed in. Over the next few screens you can add your name, birthday, habits, colors, routines, and task types, or skip anything you’d rather set up later in Settings."
-                : "Let’s walk through a few quick choices so the app feels like yours. You can skip any step and change everything later in Settings."}
+                ? "You’re signed in. Over the next few screens you can add your name, birthday, habits, colors, routines, and task types, or skip anything you’d rather set up later in Settings. At the end you can open a quick or full tour of how each tab works."
+                : "Let’s walk through a few quick choices so the app feels like yours. You can skip any step and change everything later in Settings. When you finish, you can choose a quick or full walkthrough of the app (your choice)."}
             </p>
           </>
         )}
@@ -305,22 +312,51 @@ export function OnboardingFlow({
             <h2 id="onboarding-title" className="onboarding-title">
               You&apos;re all set
             </h2>
-            <p className="onboarding-lead">Everything here can be changed in Settings. Enjoy your customized PROYOU.</p>
+            <p className="onboarding-lead">
+              Everything here can be changed in Settings. Below you can jump straight into the app, or take a short or full tour of tabs and features (the full tour only saves as “done” after you finish the last slide).
+            </p>
           </>
         )}
-        <div className="onboarding-actions">
-          {step > 0 && (
-            <button type="button" className="btn btn-ghost" onClick={() => setStep((s) => Math.max(0, s - 1))}>
-              Back
+        {step === 8 ? (
+          <div className="onboarding-actions onboarding-actions-final">
+            <p className="onboarding-walkthrough-prompt">Want a guided tour of the app?</p>
+            <button
+              type="button"
+              className="btn btn-primary btn-block-onboarding"
+              onClick={() => (typeof onFinishSetup === "function" ? onFinishSetup("full") : onExitComplete())}
+            >
+              Show me full walkthrough
             </button>
-          )}
-          <button type="button" className="btn btn-ghost" onClick={goSkip}>
-            {step === 0 ? "Skip setup" : "Skip"}
-          </button>
-          <button type="button" className="btn btn-primary" onClick={goNext}>
-            {step === 8 ? "Continue to app" : "Next"}
-          </button>
-        </div>
+            <button
+              type="button"
+              className="btn btn-ghost btn-block-onboarding"
+              onClick={() => (typeof onFinishSetup === "function" ? onFinishSetup("quick") : onExitComplete())}
+            >
+              Quick tour
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost btn-block-onboarding"
+              onClick={() => (typeof onFinishSetup === "function" ? onFinishSetup(null) : onExitComplete())}
+            >
+              Continue to app
+            </button>
+          </div>
+        ) : (
+          <div className="onboarding-actions">
+            {step > 0 && (
+              <button type="button" className="btn btn-ghost" onClick={() => setStep((s) => Math.max(0, s - 1))}>
+                Back
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost" onClick={goSkip}>
+              {step === 0 ? "Skip setup" : "Skip"}
+            </button>
+            <button type="button" className="btn btn-primary" onClick={goNext}>
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

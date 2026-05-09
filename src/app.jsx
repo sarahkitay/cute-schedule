@@ -4,11 +4,11 @@ import {
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
   SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
   LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, FireIcon, MenuIcon,
-  CheckIcon, ArrowRightIcon, FinanceIcon, BulletIcon
+  CheckIcon, FinanceIcon, BulletIcon
 } from "./Icons";
 import { Capacitor } from "@capacitor/core";
 import { apiUrl } from "./apiBase";
-import { notificationService } from "./notifications";
+import { notificationService, bootstrapNativePushOnStartup, subscribeNativePushDebug, getNativePushDebugSnapshot } from "./notifications";
 import { generateCompletionMessage, checkEnergyBalance } from "./completionRitual";
 import { 
   getTimeOfDay, 
@@ -20,6 +20,7 @@ import {
 import cloudStorage from "./cloudStorage";
 import { THEMES } from "./themes";
 import { OnboardingFlow } from "./OnboardingFlow";
+import { FeatureWalkthrough } from "./FeatureWalkthrough";
 import {
   COACH_SUGGESTION_SOURCE,
   buildCoachIntelligenceSnapshot,
@@ -39,7 +40,6 @@ import {
   completeAuthRedirectIfNeeded,
   migrateLegacyDeviceScheduleIfNeeded,
   signInWithApple,
-  signInWithGoogle,
   signUpWithEmail,
   signInWithEmail as emailPasswordSignIn,
   authSignOut,
@@ -96,6 +96,8 @@ const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
 const HABITS_STORAGE_KEY = "cute_schedule_habits_v1";
 const ONBOARDING_DONE_KEY = "cute_schedule_onboarding_done_v1";
+const FULL_WALKTHROUGH_DONE_KEY = "cute_schedule_full_walkthrough_done_v1";
+const QUICK_WALKTHROUGH_DONE_KEY = "cute_schedule_quick_walkthrough_done_v1";
 const BIRTHDAY_NOTIF_KEY = "cute_schedule_birthday_notif_date_v1";
 
 function readOnboardingDone() {
@@ -129,8 +131,9 @@ function loadHabitTrackerFromDisk() {
     const raw = localStorage.getItem(HABITS_STORAGE_KEY);
     if (!raw) return defaultHabitTracker();
     const o = JSON.parse(raw);
+    const rawHabits = Array.isArray(o.habits) ? o.habits : [];
     return {
-      habits: Array.isArray(o.habits) ? o.habits : [],
+      habits: rawHabits.map(normalizeHabitRow).filter(Boolean),
       log: o.log && typeof o.log === "object" ? o.log : {},
     };
   } catch {
@@ -554,6 +557,96 @@ function addDaysKey(dayKeyStr, deltaDays) {
   return todayKey(dt);
 }
 
+/** Stable habit row incl. reminder fields (local + cloud). */
+function normalizeHabitRow(h) {
+  if (!h || typeof h !== "object" || h.id == null) return null;
+  const sch = h.reminderSchedule;
+  const reminderSchedule = sch === "hourly" || sch === "hours" ? sch : "none";
+  const rawHours = Array.isArray(h.reminderHours) ? h.reminderHours : [];
+  const reminderHours =
+    reminderSchedule === "hours"
+      ? [...new Set(rawHours.map((t) => normalizeTimeKey(t)).filter(Boolean))].sort()
+      : [];
+  return {
+    ...h,
+    id: String(h.id),
+    label: String(h.label || "").trim() || "Habit",
+    direction: h.direction === "break" ? "break" : "build",
+    reminderSchedule,
+    reminderHours,
+  };
+}
+
+/** Push reminder rows for habits (hourly during 6–21, or explicit HH:mm slots). */
+function habitReminderPushEntries(habits, dayKeyToday, nowMs, maxAtMs) {
+  const out = [];
+  if (!Array.isArray(habits)) return out;
+  for (const h of habits) {
+    const row = normalizeHabitRow(h);
+    if (!row) continue;
+    const sch = row.reminderSchedule;
+    if (sch === "hourly") {
+      let cursor = new Date(nowMs);
+      cursor.setSeconds(0, 0);
+      cursor.setMilliseconds(0);
+      if (cursor.getMinutes() !== 0) {
+        cursor.setMinutes(0, 0, 0);
+        cursor.setHours(cursor.getHours() + 1);
+      } else if (cursor.getTime() <= nowMs) {
+        cursor.setHours(cursor.getHours() + 1);
+      }
+      let hops = 0;
+      while (cursor.getTime() <= maxAtMs && hops < 32) {
+        const hr = cursor.getHours();
+        if (hr >= 6 && hr <= 21) {
+          out.push({
+            at: cursor.toISOString(),
+            title: "Habit reminder",
+            body: row.label,
+            tag: `habit-h-${row.id}-${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}-${hr}`,
+          });
+        }
+        cursor.setHours(cursor.getHours() + 1);
+        hops += 1;
+      }
+    } else if (sch === "hours" && row.reminderHours.length > 0) {
+      for (let dayOffset = 0; dayOffset <= 1; dayOffset += 1) {
+        const dayKey = dayOffset === 0 ? dayKeyToday : addDaysKey(dayKeyToday, 1);
+        for (const hm of row.reminderHours) {
+          const atDate = new Date(`${dayKey}T${hm}:00`);
+          const t = atDate.getTime();
+          if (t >= nowMs && t <= maxAtMs) {
+            out.push({
+              at: atDate.toISOString(),
+              title: "Habit reminder",
+              body: row.label,
+              tag: `habit-t-${row.id}-${dayKey}-${hm}`,
+            });
+          }
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Viewport-safe fixed position for task / list dropdowns. */
+function computeDropdownPosition(rect, opts = {}) {
+  const pad = 16;
+  const vw = typeof window !== "undefined" ? window.innerWidth : 400;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 700;
+  const maxH = opts.maxHeight ?? 280;
+  const panelW = Math.min(opts.panelWidth ?? 200, vw - pad * 2);
+  let left = rect.left;
+  left = Math.max(pad, Math.min(left, vw - pad - panelW));
+  let top = rect.bottom + 6;
+  if (top + maxH > vh - pad) {
+    top = Math.max(pad, rect.top - maxH - 6);
+  }
+  top = Math.max(pad, Math.min(top, vh - pad - 48));
+  return { left, top, width: panelW };
+}
+
 function isSameDayKey(a, b) {
   return String(a) === String(b);
 }
@@ -838,6 +931,22 @@ function analyzePatterns() {
   };
 }
 
+/** Reveal scroll-reveal sections that already overlap the viewport (IO can miss first paint or post-hydration DOM). */
+function flushScrollRevealsInViewport() {
+  if (typeof document === "undefined") return;
+  const vh = Math.max(
+    typeof window !== "undefined" ? window.innerHeight || 0 : 0,
+    document.documentElement?.clientHeight || 0,
+    1
+  );
+  document.querySelectorAll(".scroll-reveal:not(.scroll-reveal-visible)").forEach((node) => {
+    const r = node.getBoundingClientRect();
+    if (r.bottom > -20 && r.top < vh + 200) {
+      node.classList.add("scroll-reveal-visible");
+    }
+  });
+}
+
 /** ====== UI Components ====== **/
 function Pill({ label }) {
   return <span className="pill pill-personal">{label}</span>;
@@ -870,8 +979,8 @@ function ProgressSegments({ total, done }) {
   );
 }
 
-// Ultra-minimal hour card with Do/Plan mode
-function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onOpenDropdown, taskDropdown, expandedTaskKey, onExpandTask, onOpenGroceryList, mode = "do" }) {
+// Ultra-minimal hour card with Daily Progress Type/Details mode
+function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onOpenDropdown, taskDropdown, expandedTaskKey, onExpandTask, onOpenGroceryList, mode = "type" }) {
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   const complete = hourIsComplete(tasksByCat, cats);
   const [open, setOpen] = useState(true);
@@ -910,7 +1019,7 @@ function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onTogg
           <span className="chev" style={{ fontSize: '14px', opacity: 0.6 }}>{open ? "▾" : "▸"}</span>
         </button>
 
-        {mode === "plan" && (
+        {mode === "details" && (
           <button type="button" className="icon-btn danger" title="Remove this hour" onClick={() => onDeleteHour(hourKey)}>
             <CloseIcon />
           </button>
@@ -935,7 +1044,7 @@ function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onTogg
                     <span className="checkmark" />
                     <span className={`item-text ${t.done ? 'item-text-done' : ''}`}>
                       {null}
-                      {mode === "plan" && (
+                      {mode === "details" && (
                         <span className="energy-badge" style={{ 
                           marginLeft: '8px',
                           fontSize: '14px',
@@ -953,7 +1062,7 @@ function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onTogg
                   </label>
 
                   <div className="item-actions" style={{ position: 'relative' }}>
-                  {mode === "plan" && (
+                  {mode === "details" && (
                     <>
                       <button
                         type="button"
@@ -1034,7 +1143,7 @@ function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onTogg
                   <div className="item-detail" onClick={(e) => e.stopPropagation()}>
                     <div className="item-detail-row">
                       <span className="item-detail-time">{to12Hour(hourKey)}</span>
-                      {mode === "plan" && (
+                      {mode === "details" && (
                         <span className="energy-badge" style={{ fontSize: '12px', color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color }}>
                           {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: 12, height: 12 } })}
                           {ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label}
@@ -1235,15 +1344,6 @@ function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError }) {
           Sign in with Apple
         </button>
 
-        <button
-          type="button"
-          className="btn btn-primary login-gate-btn"
-          disabled={busy}
-          onClick={() => run(() => signInWithGoogle())}
-        >
-          Continue with Google
-        </button>
-
         <div className="login-gate-divider">
           <span>or email</span>
         </div>
@@ -1316,7 +1416,7 @@ function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError }) {
           Continue on this device only (guest)
         </button>
         <p className="login-gate-hint">
-          Guest keeps data on this browser until you sign out. For your own cloud backup across devices, use Sign in with Apple, Google, or email.
+          Guest keeps data on this browser until you sign out. For your own cloud backup across devices, use Sign in with Apple or email.
         </p>
 
         {redirectAuthError ? (
@@ -1340,7 +1440,7 @@ export default function App() {
   const realTodayKey = todayKey();
   const [selectedDayKey, setSelectedDayKey] = useState(realTodayKey);
   const tKey = selectedDayKey;
-  const [mode, setMode] = useState("do"); // "do" | "plan"
+  const [mode, setMode] = useState("type"); // Daily Progress timeline: "type" | "details"
   const [showMonthCalendar, setShowMonthCalendar] = useState(false);
   const [monthCalendarMonth, setMonthCalendarMonth] = useState(() => {
     const d = new Date();
@@ -1619,6 +1719,9 @@ export default function App() {
   const [groceryNewItem, setGroceryNewItem] = useState("");
   const [newHabitLabel, setNewHabitLabel] = useState("");
   const [newHabitDirection, setNewHabitDirection] = useState("build");
+  /** `habitId` → draft `HH:mm` for "Add time" in settings */
+  const [habitReminderDraft, setHabitReminderDraft] = useState({});
+  const habitReminderFiredRef = useRef(new Set());
   const [newTypeName, setNewTypeName] = useState("");
 
   useEffect(() => {
@@ -1636,6 +1739,8 @@ export default function App() {
   const [showPwaInstallModal, setShowPwaInstallModal] = useState(false);
   const [onboardingActive, setOnboardingActive] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  /** After setup, optional one-time product tour */
+  const [featureWalkthroughMode, setFeatureWalkthroughMode] = useState(null);
   const [canNativeInstallPwa, setCanNativeInstallPwa] = useState(false);
   const deferredInstallPromptRef = useRef(null);
   const [editingTaskTime, setEditingTaskTime] = useState(null); // "hourKey-category-id" when showing time editor
@@ -1710,8 +1815,9 @@ export default function App() {
         }
       }
     }
+    list.push(...habitReminderPushEntries(habitTracker.habits, today, now, maxAt));
     return list;
-  }, [realTodayKey, finance.bills, finance.subscriptions, appState.days, customCategories]);
+  }, [realTodayKey, finance.bills, finance.subscriptions, appState.days, customCategories, habitTracker.habits]);
 
   const habitsNeedCheckIn = useMemo(() => {
     const habits = habitTracker.habits || [];
@@ -1962,8 +2068,9 @@ export default function App() {
           } catch {}
         }
         if (data.habitTracker != null && typeof data.habitTracker === "object") {
+          const rawH = Array.isArray(data.habitTracker.habits) ? data.habitTracker.habits : [];
           setHabitTracker({
-            habits: Array.isArray(data.habitTracker.habits) ? data.habitTracker.habits : [],
+            habits: rawH.map(normalizeHabitRow).filter(Boolean),
             log: data.habitTracker.log && typeof data.habitTracker.log === "object" ? data.habitTracker.log : {},
           });
         }
@@ -2090,6 +2197,19 @@ export default function App() {
     notificationService.checkPermission();
   }, []);
 
+  // Capacitor: attach push listeners; register with APNs if permission already granted (no extra prompt).
+  useEffect(() => {
+    if (!isCapacitorNativeApp()) return;
+    bootstrapNativePushOnStartup();
+  }, []);
+
+  const [nativePushDebug, setNativePushDebug] = useState(null);
+  useEffect(() => {
+    if (!isCapacitorNativeApp()) return;
+    setNativePushDebug(getNativePushDebugSnapshot());
+    return subscribeNativePushDebug(setNativePushDebug);
+  }, []);
+
   // PWA: capture install prompt (Chrome, Edge, Android Chrome, etc.). Skip in Capacitor; not applicable in the store app.
   useEffect(() => {
     if (isCapacitorNativeApp()) return;
@@ -2122,6 +2242,59 @@ export default function App() {
     }, 2000);
     return () => clearTimeout(t);
   }, [pushRemindersList]);
+
+  // In-app habit reminders (hourly at 6am–9pm on the hour, or custom times) when notifications are allowed
+  useEffect(() => {
+    const maybeNotify = async () => {
+      await notificationService.checkPermission();
+      if (notificationService.permission !== "granted") return;
+      const now = new Date();
+      const dayKey = realTodayKey;
+      const hh = String(now.getHours()).padStart(2, "0");
+      const mm = String(now.getMinutes()).padStart(2, "0");
+      const slot = `${hh}:${mm}`;
+      const habits = habitTracker.habits || [];
+      for (const h of habits) {
+        const row = normalizeHabitRow(h);
+        if (!row) continue;
+        if (row.reminderSchedule === "hourly") {
+          const hr = now.getHours();
+          if (hr >= 6 && hr <= 21) {
+            const tag = `habit-live-h-${row.id}-${dayKey}-${hr}`;
+            if (!habitReminderFiredRef.current.has(tag)) {
+              const isStartOfHour = now.getMinutes() === 0;
+              if (isStartOfHour) {
+                habitReminderFiredRef.current.add(tag);
+                notificationService.showNotification(`Habit: ${row.label}`, {
+                  body: "Quick check-in when you’re ready.",
+                  tag,
+                  requireInteraction: false,
+                });
+              }
+            }
+          }
+        } else if (row.reminderSchedule === "hours" && row.reminderHours.length > 0) {
+          if (row.reminderHours.includes(slot)) {
+            const tag = `habit-live-t-${row.id}-${dayKey}-${slot}`;
+            if (!habitReminderFiredRef.current.has(tag)) {
+              habitReminderFiredRef.current.add(tag);
+              notificationService.showNotification(`Habit: ${row.label}`, {
+                body: "Reminder: log it on Today when you can.",
+                tag,
+                requireInteraction: false,
+              });
+            }
+          }
+        }
+      }
+      if (habitReminderFiredRef.current.size > 400) {
+        habitReminderFiredRef.current = new Set();
+      }
+    };
+    const id = setInterval(maybeNotify, 20_000);
+    maybeNotify();
+    return () => clearInterval(id);
+  }, [habitTracker.habits, realTodayKey]);
 
   // Close dropdowns when clicking outside (portal or trigger)
   useEffect(() => {
@@ -2169,10 +2342,14 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleEsc);
   }, [showMonthCalendar]);
 
-  // Scroll to top when switching tabs; close list menus
+  // Scroll to top when switching tabs; close list menus; re-flush reveals after DOM swap
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    window.scrollTo({ top: 0, behavior: "instant" });
     setSecondaryListMenu(null);
+    requestAnimationFrame(() => {
+      flushScrollRevealsInViewport();
+      requestAnimationFrame(() => flushScrollRevealsInViewport());
+    });
   }, [tab]);
 
   // Morning greeting ritual
@@ -2279,6 +2456,60 @@ export default function App() {
     const start = idx >= 0 ? idx : 0;
     return sortedHourKeys.slice(start, start + 2);
   }, [focusMode, isOverwhelmedMode, sortedHourKeys]);
+
+  /** Re-run scroll-reveal when Today’s hours/tasks change (e.g. Firestore hydrate) or tab returns. */
+  const scrollRevealScheduleSig = useMemo(() => {
+    const keys = Object.keys(todayHoursWithSubs || {}).sort().join(",");
+    const n = allTasksInDay(todayHoursWithSubs, customCategories).length;
+    return `${keys}:${n}`;
+  }, [todayHoursWithSubs, customCategories]);
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (tab !== "today") return;
+    let rafA = 0;
+    let rafB = 0;
+    rafA = requestAnimationFrame(() => {
+      flushScrollRevealsInViewport();
+      rafB = requestAnimationFrame(() => flushScrollRevealsInViewport());
+    });
+    return () => {
+      if (rafA) cancelAnimationFrame(rafA);
+      if (rafB) cancelAnimationFrame(rafB);
+    };
+  }, [tab, scrollRevealScheduleSig, firestoreReady]);
+
+  // Fade/slide-in for main panels as they enter the viewport (respects reduced motion)
+  useEffect(() => {
+    let io = null;
+    let cancelled = false;
+    const tid = window.setTimeout(() => {
+      if (cancelled || typeof window === "undefined" || typeof IntersectionObserver === "undefined") return;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        document.querySelectorAll(".scroll-reveal").forEach((n) => n.classList.add("scroll-reveal-visible"));
+        return;
+      }
+      io = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((en) => {
+            if (en.isIntersecting) en.target.classList.add("scroll-reveal-visible");
+          });
+        },
+        { threshold: 0.02, rootMargin: "0px 0px 0px 0px" }
+      );
+      document.querySelectorAll(".scroll-reveal").forEach((node) => io.observe(node));
+      requestAnimationFrame(() => {
+        flushScrollRevealsInViewport();
+        requestAnimationFrame(() => flushScrollRevealsInViewport());
+      });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(tid);
+      if (io) io.disconnect();
+    };
+  }, [tab, tKey, firestoreReady, scrollRevealScheduleSig]);
 
   // In-app banner: every 20s, current/next task → Start / Snooze / Skip or Wrap it up
   useEffect(() => {
@@ -2790,16 +3021,58 @@ export default function App() {
   const [quickText, setQuickText] = useState("");
   const [quickRepeat, setQuickRepeat] = useState(REPEAT_OPTIONS.NONE);
   const [showPastRepeats, setShowPastRepeats] = useState(false);
+  /** "type" = natural-language bar; "details" = time, category, repeat, energy */
+  const [quickEntryMode, setQuickEntryMode] = useState("type");
+  const [quickDetailEnergy, setQuickDetailEnergy] = useState("MEDIUM");
+  const [quickAddJustAdded, setQuickAddJustAdded] = useState(false);
+  const quickAddFlashTimerRef = useRef(null);
+
+  useEffect(() => {
+    setQuickAddJustAdded(false);
+    if (quickAddFlashTimerRef.current) {
+      clearTimeout(quickAddFlashTimerRef.current);
+      quickAddFlashTimerRef.current = null;
+    }
+  }, [quickEntryMode]);
+
+  useEffect(() => {
+    return () => {
+      if (quickAddFlashTimerRef.current) clearTimeout(quickAddFlashTimerRef.current);
+    };
+  }, []);
+
+  function flashQuickAddButton() {
+    if (quickAddFlashTimerRef.current) clearTimeout(quickAddFlashTimerRef.current);
+    setQuickAddJustAdded(true);
+    quickAddFlashTimerRef.current = setTimeout(() => {
+      setQuickAddJustAdded(false);
+      quickAddFlashTimerRef.current = null;
+    }, 1600);
+  }
+
+  /** Replay product tours from Settings (clears one-time key so Done can run again). */
+  function startReplayFeatureTour(mode) {
+    try {
+      if (mode === "quick") localStorage.removeItem(QUICK_WALKTHROUGH_DONE_KEY);
+      if (mode === "full") localStorage.removeItem(FULL_WALKTHROUGH_DONE_KEY);
+    } catch {}
+    setShowSettings(false);
+    setShowPrivacyPolicy(false);
+    setFeatureWalkthroughMode(mode);
+  }
 
   function quickAdd(e) {
     e.preventDefault();
     const clean = normalizeText(quickText);
     if (!clean) return;
     const hourKey = normalizeTimeKey(newHour);
+    const el =
+      quickDetailEnergy === "LIGHT" || quickDetailEnergy === "MEDIUM" || quickDetailEnergy === "HEAVY"
+        ? quickDetailEnergy
+        : "MEDIUM";
     flushSync(() => {
-      addTask(hourKey, quickCat, clean, quickRepeat);
+      addTask(hourKey, quickCat, clean, quickRepeat, null, { energyLevel: el });
     });
-    // Save directly after flushSync; appStateRef.current is updated synchronously by the commit
     void cloudStorage.saveFullState({
       appState: appStateRef.current,
       notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
@@ -2807,6 +3080,15 @@ export default function App() {
       patterns: loadPatterns(),
       habitTracker,
     });
+    setQuickText("");
+    setQuickRepeat(REPEAT_OPTIONS.NONE);
+    setToastNotification({
+      message: "Task added",
+      taskText: clean,
+      type: "added",
+    });
+    setTimeout(() => setToastNotification(null), 2500);
+    flashQuickAddButton();
   }
 
   function quickAddFromNL(e) {
@@ -2844,6 +3126,7 @@ export default function App() {
     
     setQuickText("");
     setQuickRepeat(REPEAT_OPTIONS.NONE);
+    flashQuickAddButton();
   }
 
   const [monthlyText, setMonthlyText] = useState("");
@@ -2919,6 +3202,19 @@ export default function App() {
     const searchLower = noteSearch.toLowerCase();
     return notes.filter((n) => n.text.toLowerCase().includes(searchLower));
   }, [notes, noteSearch]);
+
+  const noteSearchDropdownItems = useMemo(
+    () => (noteSearch.trim() ? filteredNotes.slice(0, 10) : []),
+    [noteSearch, filteredNotes]
+  );
+
+  const newNoteTextareaRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = newNoteTextareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, 56), 280)}px`;
+  }, [newNote, tab]);
 
   async function askCoach(userQuestion = null) {
     if (coachLocked && !userQuestion) return;
@@ -3058,9 +3354,11 @@ export default function App() {
       if (!res.ok || looksLikeHtml) {
         const hint = looksLikeHtml
           ? "Coach could not reach the API (got a web page instead of JSON). Run vercel dev on port 3000 next to Vite, use the deployed site, or set VITE_APP_ORIGIN for native builds."
-          : typeof data?.error === "string"
-            ? data.error
-            : String(data?.detail || data?.hint || `Coach request failed (${res.status}).`);
+          : res.status === 429
+            ? `Too many coach requests. Try again in about ${Number(data?.retryAfterSec) || 60} seconds.`
+            : typeof data?.error === "string"
+              ? data.error
+              : String(data?.detail || data?.hint || `Coach request failed (${res.status}).`);
         setCoachError(hint);
         const localResponse = fallbackPayload();
         setCoachResult(localResponse);
@@ -3236,7 +3534,7 @@ export default function App() {
                       Approve
                     </button>
                   ) : (
-                    <button type="button" className="btn" disabled title="Reorder and timebox controls live in Plan mode for now">
+                    <button type="button" className="btn" disabled title="Reorder and timebox controls live in Details mode for now">
                       Not auto-applied
                     </button>
                   )}
@@ -3279,7 +3577,7 @@ export default function App() {
     const edited = Boolean(overrides && (ov.title || ov.hour || ov.category));
     const canAutoAdd = s.type === "ADD_TASK" || s.type === "BREAK" || s.type === "SPLIT_TASK";
     if (!canAutoAdd) {
-      setCoachToast({ text: "That suggestion is not auto-applied yet — adjust blocks in Plan mode.", kind: "info" });
+      setCoachToast({ text: "That suggestion is not auto-applied yet. Adjust blocks in Details mode (Daily Progress).", kind: "info" });
       removeCoachSuggestionById(s.id);
       return;
     }
@@ -3317,7 +3615,7 @@ export default function App() {
       })
     );
     removeCoachSuggestionById(s.id);
-    setCoachToast({ text: `Added — ${to12Hour(hour)}`, detail: label, kind: "ok" });
+    setCoachToast({ text: `Added at ${to12Hour(hour)}`, detail: label, kind: "ok" });
   }
 
 
@@ -3380,7 +3678,9 @@ export default function App() {
         setCoachError(
           looksLikeHtml
             ? "Could not reach the coach API (HTML instead of JSON). Run vercel dev on port 3000 with Vite, or open the deployed app."
-            : data?.error || data?.detail || "Something went wrong"
+            : res.status === 429
+              ? `Too many coach requests. Try again in about ${Number(data?.retryAfterSec) || 60} seconds.`
+              : data?.error || data?.detail || "Something went wrong"
         );
         return;
       }
@@ -3582,8 +3882,9 @@ export default function App() {
     return () => clearTimeout(t);
   }, [authWaiting, showLoginGate, onboardingActive]);
 
-  useEffect(() => {
-    if (authWaiting || showLoginGate || !firestoreReady) return;
+  useLayoutEffect(() => {
+    if (authWaiting || showLoginGate) return;
+    if (onboardingActive) return;
     if (readOnboardingDone()) return;
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -3609,14 +3910,37 @@ export default function App() {
       return;
     }
     setOnboardingActive(true);
-  }, [authWaiting, showLoginGate, firestoreReady, appState, habitTracker.habits]);
+  }, [authWaiting, showLoginGate, onboardingActive, appState, habitTracker.habits]);
 
-  function finishOnboardingWizard() {
+  function finishOnboardingWizard(tour = null) {
     try {
       localStorage.setItem(ONBOARDING_DONE_KEY, "1");
     } catch {}
     setOnboardingActive(false);
     setOnboardingStep(0);
+    if (tour === "quick") {
+      try {
+        if (localStorage.getItem(QUICK_WALKTHROUGH_DONE_KEY) === "1") return;
+      } catch {}
+      setFeatureWalkthroughMode("quick");
+    } else if (tour === "full") {
+      try {
+        if (localStorage.getItem(FULL_WALKTHROUGH_DONE_KEY) === "1") return;
+      } catch {}
+      setFeatureWalkthroughMode("full");
+    }
+  }
+
+  function completeFeatureWalkthrough() {
+    try {
+      if (featureWalkthroughMode === "full") localStorage.setItem(FULL_WALKTHROUGH_DONE_KEY, "1");
+      if (featureWalkthroughMode === "quick") localStorage.setItem(QUICK_WALKTHROUGH_DONE_KEY, "1");
+    } catch {}
+    setFeatureWalkthroughMode(null);
+  }
+
+  function dismissFeatureWalkthrough() {
+    setFeatureWalkthroughMode(null);
   }
 
   async function handleNativePwaInstall() {
@@ -3777,25 +4101,207 @@ export default function App() {
 
         {tab === "today" ? (
           <>
-            {/* Quick Add: input group with focus ring, CTA disabled until input */}
-            <form className="input-group quick-add-bar" onSubmit={quickAddFromNL} autoComplete="off">
-              <input
-                className="input quick-add-input"
-                type="text"
-                name="quickAddTask"
-                value={quickAddValue}
-                onChange={(e) => setQuickAddValue(e.target.value)}
-                placeholder="Add a task… e.g. Call Martin 11am, Work 3pm"
-                aria-label="Quick add task"
-                autoComplete="off"
-              />
-              <button type="submit" className="btn-primary" disabled={!quickAddValue.trim()} aria-label="Add task">
-                Add
-              </button>
-            </form>
+            {/* Add bar: Type (natural language) vs Details (time, category, repeat, energy); above the add field */}
+            <div className="quick-add-stack scroll-reveal">
+              <div className="quick-add-entry-mode" role="tablist" aria-label="Add task entry">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={quickEntryMode === "type"}
+                  className="quick-add-entry-mode-btn"
+                  onClick={() => setQuickEntryMode("type")}
+                >
+                  Type
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={quickEntryMode === "details"}
+                  className="quick-add-entry-mode-btn"
+                  onClick={() => setQuickEntryMode("details")}
+                >
+                  Details
+                </button>
+              </div>
+              {quickEntryMode === "details" ? (
+                <p className="quick-add-details-hint settings-hint">
+                  In <strong>Details</strong>, use the fields below: <strong>time</strong> (clock picker), <strong>category</strong>, <strong>task</strong> text, <strong>repeat</strong> (none, daily, weekly, or option to repeat), <strong>energy</strong> level, and <strong>Past tasks</strong> for tasks you saved as repeatable.
+                </p>
+              ) : null}
+              {quickEntryMode === "type" ? (
+                <form className="input-group quick-add-bar" onSubmit={quickAddFromNL} autoComplete="off">
+                  <input
+                    className="input quick-add-input"
+                    type="text"
+                    name="quickAddTask"
+                    value={quickAddValue}
+                    onChange={(e) => setQuickAddValue(e.target.value)}
+                    placeholder="Add a task… e.g. Call Martin 11am, Work 3pm"
+                    aria-label="Quick add task"
+                    autoComplete="off"
+                  />
+                  <button
+                    type="submit"
+                    className={["btn-primary", "quick-add-submit-btn", quickAddJustAdded ? "quick-add-submit-added" : ""].filter(Boolean).join(" ")}
+                    disabled={!quickAddValue.trim() || quickAddJustAdded}
+                    aria-label={quickAddJustAdded ? "Task added" : "Add task"}
+                  >
+                    {quickAddJustAdded ? "Added" : "Add"}
+                  </button>
+                </form>
+              ) : (
+                <form className="quick quick-add-details-form" onSubmit={quickAdd} autoComplete="off">
+                  <div className="quick-row">
+                    <label className="label" htmlFor="quick-detail-time">
+                      Time
+                    </label>
+                    <input
+                      id="quick-detail-time"
+                      className="input"
+                      type="time"
+                      value={newHour}
+                      onChange={(e) => setNewHour(e.target.value)}
+                      aria-label="Task time"
+                    />
+                  </div>
+                  <div className="quick-row">
+                    <label className="label" htmlFor="quick-detail-cat">
+                      Category
+                    </label>
+                    <select
+                      id="quick-detail-cat"
+                      className="input"
+                      value={quickCat}
+                      onChange={(e) => setQuickCat(e.target.value)}
+                    >
+                      {customCategories.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="quick-row quick-grow">
+                    <label className="label" htmlFor="quick-detail-task">
+                      Task
+                    </label>
+                    <input
+                      id="quick-detail-task"
+                      className="input quick-detail-task-input"
+                      value={quickText}
+                      onChange={(e) => setQuickText(e.target.value)}
+                      placeholder="What to do…"
+                      aria-label="Task title"
+                    />
+                  </div>
+                  <div className="quick-row">
+                    <label className="label" htmlFor="quick-detail-repeat">
+                      Repeat
+                    </label>
+                    <select
+                      id="quick-detail-repeat"
+                      className="input"
+                      value={quickRepeat}
+                      onChange={(e) => setQuickRepeat(e.target.value)}
+                    >
+                      <option value={REPEAT_OPTIONS.NONE}>None</option>
+                      <option value={REPEAT_OPTIONS.DAILY}>Daily</option>
+                      <option value={REPEAT_OPTIONS.WEEKLY}>Weekly</option>
+                      <option value={REPEAT_OPTIONS.OPTIONAL}>Option to repeat</option>
+                    </select>
+                  </div>
+                  <div className="quick-row quick-detail-energy-row">
+                    <span className="label" id="quick-detail-energy-label">
+                      Energy
+                    </span>
+                    <div className="quick-detail-energy-pills" role="group" aria-labelledby="quick-detail-energy-label">
+                      {["LIGHT", "MEDIUM", "HEAVY"].map((lev) => (
+                        <button
+                          key={lev}
+                          type="button"
+                          className={`quick-detail-energy-pill ${quickDetailEnergy === lev ? "active" : ""}`}
+                          onClick={() => setQuickDetailEnergy(lev)}
+                        >
+                          {lev.charAt(0) + lev.slice(1).toLowerCase()}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="quick-detail-actions">
+                    <button
+                      className={["btn", "btn-primary", "quick-details-submit", quickAddJustAdded ? "quick-add-submit-added" : ""].filter(Boolean).join(" ")}
+                      type="submit"
+                      disabled={!normalizeText(quickText) || quickAddJustAdded}
+                      aria-label={quickAddJustAdded ? "Task added" : "Add task"}
+                    >
+                      {quickAddJustAdded ? "Added" : "Add task"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn quick-details-past-btn"
+                      onClick={() => setShowPastRepeats(!showPastRepeats)}
+                    >
+                      <RepeatIcon /> Past tasks
+                    </button>
+                  </div>
+                  {showPastRepeats && (
+                    <div className="past-repeats-list quick-add-past-repeats">
+                      <div className="past-repeats-list-title">Tasks you marked &quot;Option to repeat&quot;</div>
+                      <div className="quick-row" style={{ marginBottom: 12 }}>
+                        <label className="label" htmlFor="quick-past-repeat-hour">
+                          Add at time
+                        </label>
+                        <input
+                          id="quick-past-repeat-hour"
+                          type="time"
+                          className="input"
+                          value={pastRepeatAddHour}
+                          onChange={(e) => setPastRepeatAddHour(e.target.value)}
+                          aria-label="Time for added task"
+                        />
+                      </div>
+                      {getRepeatableTasks().length === 0 ? (
+                        <div className="past-repeats-empty">No repeatable tasks yet. Mark a task as &quot;Option to repeat&quot; to see it here.</div>
+                      ) : (
+                        <div className="past-repeats-items">
+                          {getRepeatableTasks().map((task, idx) => (
+                            <div
+                              key={idx}
+                              className="past-repeat-row"
+                              onClick={() => {
+                                addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
+                                setShowPastRepeats(false);
+                              }}
+                            >
+                              <div>
+                                <div className="past-repeat-row-title">{task.text}</div>
+                                <div className="past-repeat-row-meta">
+                                  {task.category} <BulletIcon style={{ width: 4, height: 4 }} /> {task.hour}
+                                </div>
+                              </div>
+                              <button
+                                className="btn"
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
+                                  setShowPastRepeats(false);
+                                }}
+                              >
+                                Add
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </form>
+              )}
+            </div>
 
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
-              <section className="panel habit-daily-card surface-glass" style={{ marginBottom: 14 }}>
+              <section className="panel habit-daily-card surface-glass scroll-reveal" style={{ marginBottom: 14 }}>
                 <div className="panel-title">
                   <span className="title">Habits · today</span>
                 </div>
@@ -3854,12 +4360,12 @@ export default function App() {
             )}
 
             {tab === "today" && routineSchedule.enabledMorning !== false && routineAppliesToday(routineSchedule.morning, new Date(tKey + "T12:00:00").getDay()) && effectiveMorningRoutine.length > 0 && (
-              <section className="panel" style={{ marginBottom: 14 }}>
+              <section className="panel scroll-reveal" style={{ marginBottom: 14 }}>
                 <MorningRoutine routine={effectiveMorningRoutine} onToggle={toggleMorningRoutine} />
               </section>
             )}
 
-            <section className="timeline-wrap">
+            <section className="timeline-wrap scroll-reveal">
               {sortedHourKeys.length === 0 ? (
                 <div className="empty-big">
                   <div className="empty-title">No hours yet.</div>
@@ -3871,10 +4377,8 @@ export default function App() {
                       {isOverwhelmedMode ? "Drained mode: showing current + next block only." : "Focus mode: showing current + next block only."}
                     </p>
                   )}
-                  <div className="timeline-track" aria-hidden="true" />
                   {visibleHourKeys.map((hourKey) => (
                     <div key={hourKey} className="timeline-row">
-                      <span className="timeline-dot" aria-hidden="true" />
                       <div className="timeline-blocks">
                         <HourCard
                           hourKey={hourKey}
@@ -3907,7 +4411,7 @@ export default function App() {
               const nextTasks = incompleteTasks.slice(0, 1);
               const next = nextTasks[0];
               return (
-                <div className="next-up-card surface-featured">
+                <div className="next-up-card surface-featured scroll-reveal">
                   <div className="next-up-card-inner">
                     <div className="next-up-icon-badge">
                       <CalendarIcon style={{ width: 18, height: 18 }} aria-hidden />
@@ -3931,7 +4435,7 @@ export default function App() {
               );
             })()}
 
-            <section className="panel panel-hero daily-progress-card surface-glass">
+            <section className="panel panel-hero daily-progress-card surface-glass scroll-reveal">
               <div className="panel-top">
                 <div className="panel-title">
                   <div className="panel-title-row">
@@ -3942,10 +4446,10 @@ export default function App() {
                   </div>
                   <div className="meta daily-progress-copy">
                     {prog.pct === 0 && prog.total === 0 ? (
-                      <span className="do-plan-subtle" role="tablist" aria-label="View mode">
-                        <button type="button" role="tab" aria-selected={mode === "do"} className="do-plan-subtle-btn" onClick={() => setMode("do")}>Do</button>
+                      <span className="do-plan-subtle" role="tablist" aria-label="Task cards: Type or Details">
+                        <button type="button" role="tab" aria-selected={mode === "type"} className="do-plan-subtle-btn" onClick={() => setMode("type")}>Type</button>
                         <span className="do-plan-subtle-sep">·</span>
-                        <button type="button" role="tab" aria-selected={mode === "plan"} className="do-plan-subtle-btn" onClick={() => setMode("plan")}>Plan</button>
+                        <button type="button" role="tab" aria-selected={mode === "details"} className="do-plan-subtle-btn" onClick={() => setMode("details")}>Details</button>
                       </span>
                     ) : (
                       getProgressCopy(prog.pct)
@@ -3964,76 +4468,20 @@ export default function App() {
                   <button
                     type="button"
                     className="btn btn-sm btn-primary daily-progress-chip"
-                    onClick={() => document.querySelector(".quick-add-input")?.focus()}
+                    onClick={() => {
+                      if (quickEntryMode === "type") document.querySelector(".quick-add-input")?.focus();
+                      else document.querySelector(".quick-detail-task-input")?.focus();
+                    }}
                   >
                     Add task
                   </button>
                 </div>
               )}
-              {mode === "plan" && (
-                <form className="quick" onSubmit={quickAdd}>
-                  <div className="quick-row">
-                    <label className="label">Hour</label>
-                    <input className="input" type="time" value={newHour} onChange={(e) => setNewHour(e.target.value)} />
-                  </div>
-                  <div className="quick-row">
-                    <label className="label">Category</label>
-                    <select className="input" value={quickCat} onChange={(e) => setQuickCat(e.target.value)}>
-                      {customCategories.map((c) => (
-                        <option key={c} value={c}>{c}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="quick-row quick-grow">
-                    <label className="label">Task</label>
-                    <input className="input" value={quickText} onChange={(e) => setQuickText(e.target.value)} placeholder="Add a task…" />
-                  </div>
-                  <div className="quick-row">
-                    <label className="label">Repeat</label>
-                    <select className="input" value={quickRepeat} onChange={(e) => setQuickRepeat(e.target.value)}>
-                      <option value={REPEAT_OPTIONS.NONE}>None</option>
-                      <option value={REPEAT_OPTIONS.DAILY}>Daily</option>
-                      <option value={REPEAT_OPTIONS.WEEKLY}>Weekly</option>
-                      <option value={REPEAT_OPTIONS.OPTIONAL}>Option to repeat</option>
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-                    <button className="btn btn-primary" type="submit" style={{ flex: 1 }}>Add</button>
-                    <button type="button" className="btn" onClick={() => setShowPastRepeats(!showPastRepeats)} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <RepeatIcon /> Past tasks
-                    </button>
-                  </div>
-                  {showPastRepeats && (
-                    <div className="past-repeats-list" style={{ marginTop: '16px', padding: '16px', background: 'var(--surface-card)', borderRadius: '16px' }}>
-                      <div style={{ fontSize: '14px', fontWeight: '500', marginBottom: '12px', color: 'var(--soft-charcoal)' }}>Tasks you marked "Option to repeat"</div>
-                      <div className="quick-row" style={{ marginBottom: 12 }}>
-                        <label className="label">Add at time</label>
-                        <input type="time" className="input" value={pastRepeatAddHour} onChange={(e) => setPastRepeatAddHour(e.target.value)} aria-label="Time for added task" />
-                      </div>
-                      {getRepeatableTasks().length === 0 ? (
-                        <div style={{ fontSize: '13px', color: '#999', fontStyle: 'italic' }}>No repeatable tasks yet. Mark a task as "Option to repeat" to see it here.</div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          {getRepeatableTasks().map((task, idx) => (
-                            <div key={idx} className="past-repeat-row" style={{ padding: '12px', background: 'white', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.2s' }} onClick={() => { addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id); setShowPastRepeats(false); }}>
-                              <div>
-                                <div style={{ fontSize: '14px', fontWeight: '500' }}>{task.text}</div>
-                                <div style={{ fontSize: '12px', color: 'var(--text-soft)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: 6 }}>{task.category} <BulletIcon style={{ width: 4, height: 4 }} /> {task.hour}</div>
-                              </div>
-                              <button className="btn" type="button" onClick={(e) => { e.stopPropagation(); addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id); setShowPastRepeats(false); }}>Add</button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </form>
-              )}
             </section>
 
             {/* Today's Capacity: Energy + Mood pills (reference) */}
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (
-              <section className="capacity-card">
+              <section className="capacity-card scroll-reveal">
                 <div className="panel-title">
                   <span className="title">Today&apos;s Capacity</span>
                 </div>
@@ -4086,7 +4534,7 @@ export default function App() {
             )}
 
             {starred && routineSchedule.enabledNight !== false && routineAppliesToday(routineSchedule.night, new Date(tKey + "T12:00:00").getDay()) && (
-              <section className="panel" style={{ marginTop: 14 }}>
+              <section className="panel scroll-reveal" style={{ marginTop: 14 }}>
                 <BedtimeRoutine 
                   routine={appState.bedtimeRoutine} 
                   onToggle={toggleBedtime}
@@ -4096,12 +4544,23 @@ export default function App() {
             )}
           </>
         ) : tab === "list" ? (
-          <section className="panel list-page">
+          <section className="panel list-page scroll-reveal">
             <div className="list-page-header">
               <h2 className="list-page-title">List</h2>
-              <span className="list-page-count">
+              <span
+                className={
+                  incompleteTasks.length === 0
+                    ? "list-page-count list-page-count-done-row"
+                    : "list-page-count"
+                }
+              >
                 {incompleteTasks.length === 0 ? (
-                  <>All done for today! <CelebrateIcon style={{ display: 'inline-block', marginLeft: '4px', verticalAlign: 'middle' }} /></>
+                  <>
+                    <span className="list-page-count-done-text">All done for today!</span>
+                    <span className="list-page-celebrate-wrap" aria-hidden>
+                      <CelebrateIcon className="list-page-celebrate-icon" />
+                    </span>
+                  </>
                 ) : (
                   `${incompleteTasks.length} task${incompleteTasks.length === 1 ? '' : 's'} remaining`
                 )}
@@ -4111,7 +4570,7 @@ export default function App() {
             {incompleteTasks.length === 0 ? (
               <div className="empty">All tasks complete!</div>
             ) : (
-              <ul className="list list-page-list">
+              <ul className="list list-page-list list-page-tasks">
                 {incompleteTasks.map((t) => {
                   const dropdownKey = `${t.hour}-${t.category}-${t.id}`;
                   return (
@@ -4127,10 +4586,10 @@ export default function App() {
                         setDropdownAnchorRect(opening && btn ? btn.getBoundingClientRect() : null);
                       }}
                     >
-                      <div className="list-row-top">
-                        <span className="list-row-time">{to12Hour(t.hour)}</span>
-                      </div>
-                      <div className="list-row-body">
+                      <div className="list-row-body list-row-body-task">
+                        <span className="list-row-time" title="Scheduled time">
+                          {to12Hour(t.hour)}
+                        </span>
                         <label className="list-row-main check" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={!!t.done} onChange={() => toggleTask(t.hour, t.category, t.id)} />
                           <span className="checkmark" />
@@ -4178,16 +4637,16 @@ export default function App() {
             )}
           </section>
         ) : tab === "monthly" ? (
-          <section className="panel monthly-objectives-section">
+          <section className="panel monthly-objectives-section scroll-reveal">
             <div className="panel-top">
               <div className="panel-title">
                 <div className="meta">Big picture goals that don't clutter Today.</div>
               </div>
             </div>
 
-            <form className="monthly-add" onSubmit={addMonthly}>
+            <form className="monthly-add monthly-add-bar" onSubmit={addMonthly}>
               <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" aria-label="New objective" />
-              <button className="btn btn-primary" type="submit">Add</button>
+              <button className="btn btn-primary monthly-add-submit" type="submit">Add</button>
             </form>
 
             {appState.monthly.length === 0 ? (
@@ -4229,10 +4688,13 @@ export default function App() {
                             data-list-menu-trigger
                             onClick={(e) => {
                               e.stopPropagation();
+                              const anchorEl = e.currentTarget;
+                              if (!anchorEl) return;
+                              const rect = anchorEl.getBoundingClientRect();
                               setTaskDropdown(null);
                               setDropdownAnchorRect(null);
                               setSecondaryListMenu((prev) =>
-                                prev?.kind === "monthly" && prev.id === m.id ? null : { kind: "monthly", id: m.id, rect: e.currentTarget.getBoundingClientRect() }
+                                prev?.kind === "monthly" && prev.id === m.id ? null : { kind: "monthly", id: m.id, rect }
                               );
                             }}
                           >
@@ -4247,7 +4709,7 @@ export default function App() {
             )}
           </section>
         ) : tab === "coach" ? (
-          <section className="panel pattern-insights-section">
+          <section className="panel pattern-insights-section scroll-reveal">
             <div className="panel-top">
               <div className="panel-title">
                 <div className="meta">Your data, not generic advice · ADHD-aware</div>
@@ -4355,7 +4817,6 @@ export default function App() {
                   placeholder="Ask me anything about your schedule..."
                   disabled={coachLoading}
                   style={{ flex: 1, fontSize: '15px', padding: '12px 16px' }}
-                  autoFocus
                 />
                 <button
                   className="btn btn-primary"
@@ -4601,7 +5062,7 @@ export default function App() {
             ) : null}
           </section>
         ) : tab === "finance" ? (
-          <section className="panel finance-panel surface-glass section-finance">
+          <section className="panel finance-panel surface-glass section-finance scroll-reveal">
             <div className="panel-top">
               <div className="panel-title">
                 <div className="meta">Income, spending, savings & debt. Coach can help with habits.</div>
@@ -4996,32 +5457,68 @@ export default function App() {
             </div>
           </section>
         ) : tab === "notes" ? (
-          <section className="panel notes-section">
+          <section className="panel notes-section scroll-reveal">
             <div className="panel-top">
               <div className="panel-title">
                 <div className="meta">Jot down thoughts, ideas, and reminders</div>
               </div>
             </div>
 
-            <div className="notes-search">
-              <input
-                className="input"
-                type="text"
-                value={noteSearch}
-                onChange={(e) => setNoteSearch(e.target.value)}
-                placeholder="Search notes..."
-              />
+            <div className="notes-search-wrap">
+              <div className="notes-search">
+                <input
+                  className="input"
+                  type="text"
+                  value={noteSearch}
+                  onChange={(e) => setNoteSearch(e.target.value)}
+                  placeholder="Search notes..."
+                  autoComplete="off"
+                  aria-autocomplete="list"
+                  aria-expanded={noteSearch.trim() ? true : false}
+                  aria-controls="notes-search-dropdown"
+                />
+              </div>
+              {noteSearch.trim() !== "" && (
+                <div id="notes-search-dropdown" className="notes-search-dropdown" role="listbox" aria-label="Matching notes">
+                  {noteSearchDropdownItems.length === 0 ? (
+                    <div className="notes-search-dropdown-empty">No matching notes</div>
+                  ) : (
+                    noteSearchDropdownItems.map((note) => (
+                      <button
+                        key={note.id}
+                        type="button"
+                        role="option"
+                        className="notes-search-dropdown-item"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setNoteSearch("");
+                          window.setTimeout(() => {
+                            document.querySelector(`[data-note-id="${note.id}"]`)?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "nearest",
+                            });
+                          }, 0);
+                        }}
+                      >
+                        {note.text.length > 120 ? `${note.text.slice(0, 120)}…` : note.text}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
-            <form className="notes-add-form monthly-add" onSubmit={addNote}>
-              <input
-                className="input"
+            <form className="notes-add-form monthly-add notes-add-bar" onSubmit={addNote}>
+              <textarea
+                ref={newNoteTextareaRef}
+                className="input notes-add-textarea"
                 value={newNote}
                 onChange={(e) => setNewNote(e.target.value)}
                 placeholder="Add a note or idea…"
                 aria-label="New note"
+                rows={2}
               />
-              <button className="btn btn-primary" type="submit">Add</button>
+              <button className="btn btn-primary notes-add-submit" type="submit">Add</button>
             </form>
 
             {filteredNotes.length === 0 ? (
@@ -5031,7 +5528,7 @@ export default function App() {
             ) : (
               <ul className="list list-page-list notes-list-page">
                 {filteredNotes.map((note) => (
-                  <li key={note.id} className="list-row note-list-row">
+                  <li key={note.id} className="list-row note-list-row" data-note-id={note.id}>
                     {editingNoteId === note.id ? (
                       <div className="note-edit-row list-row-edit-row">
                         <input
@@ -5063,10 +5560,13 @@ export default function App() {
                             data-list-menu-trigger
                             onClick={(e) => {
                               e.stopPropagation();
+                              const anchorEl = e.currentTarget;
+                              if (!anchorEl) return;
+                              const rect = anchorEl.getBoundingClientRect();
                               setTaskDropdown(null);
                               setDropdownAnchorRect(null);
                               setSecondaryListMenu((prev) =>
-                                prev?.kind === "note" && prev.id === note.id ? null : { kind: "note", id: note.id, rect: e.currentTarget.getBoundingClientRect() }
+                                prev?.kind === "note" && prev.id === note.id ? null : { kind: "note", id: note.id, rect }
                               );
                             }}
                           >
@@ -5094,19 +5594,10 @@ export default function App() {
             const editKey = `${hourKey}-${category}-${id}`;
             const isEditing = editingTaskTime === editKey;
             const closeDropdown = () => { setTaskDropdown(null); setDropdownAnchorRect(null); };
-            const pad = 16;
-            const dropdownWidth = 200;
-            const dropdownMaxHeight = 280;
-            const vw = typeof window !== "undefined" ? window.innerWidth : 400;
-            const vh = typeof window !== "undefined" ? window.innerHeight : 600;
+            const dropdownMaxHeight = isEditing ? 340 : 300;
+            const panelWidth = isEditing ? 268 : 208;
             const rect = dropdownAnchorRect;
-            let left = rect.left;
-            left = Math.max(pad, Math.min(left, vw - pad - dropdownWidth));
-            let top = rect.bottom + 6;
-            if (top + dropdownMaxHeight > vh - pad) {
-              top = Math.max(pad, rect.top - dropdownMaxHeight - 6);
-            }
-            top = Math.max(pad, Math.min(top, vh - pad - 100));
+            const { left, top, width } = computeDropdownPosition(rect, { panelWidth, maxHeight: dropdownMaxHeight });
             return (
               <div
                 className="task-dropdown-portal"
@@ -5114,6 +5605,8 @@ export default function App() {
                   position: 'fixed',
                   left,
                   top,
+                  width,
+                  maxWidth: "calc(100vw - 32px)",
                   zIndex: 'var(--z-popover)',
                 }}
                 onClick={(e) => e.stopPropagation()}
@@ -5198,23 +5691,21 @@ export default function App() {
         {secondaryListMenu?.rect && ReactDOM.createPortal(
           (() => {
             const rect = secondaryListMenu.rect;
-            const pad = 16;
-            const dropdownWidth = 200;
-            const dropdownMaxHeight = 200;
-            const vw = typeof window !== "undefined" ? window.innerWidth : 400;
-            const vh = typeof window !== "undefined" ? window.innerHeight : 600;
-            let left = rect.left;
-            left = Math.max(pad, Math.min(left, vw - pad - dropdownWidth));
-            let top = rect.bottom + 6;
-            if (top + dropdownMaxHeight > vh - pad) {
-              top = Math.max(pad, rect.top - dropdownMaxHeight - 6);
-            }
-            top = Math.max(pad, Math.min(top, vh - pad - 80));
+            const dropdownMaxHeight = 220;
+            const panelWidth = 216;
+            const { left, top, width } = computeDropdownPosition(rect, { panelWidth, maxHeight: dropdownMaxHeight });
             const closeSecondary = () => setSecondaryListMenu(null);
             return (
               <div
                 className="task-dropdown-portal"
-                style={{ position: "fixed", left, top, zIndex: "var(--z-popover)" }}
+                style={{
+                  position: "fixed",
+                  left,
+                  top,
+                  width,
+                  maxWidth: "calc(100vw - 32px)",
+                  zIndex: "var(--z-popover)",
+                }}
                 onClick={(e) => e.stopPropagation()}
               >
                 <div className="task-dropdown">
@@ -5386,6 +5877,9 @@ export default function App() {
                               data-list-menu-trigger
                               onClick={(e) => {
                                 e.stopPropagation();
+                                const anchorEl = e.currentTarget;
+                                if (!anchorEl) return;
+                                const rect = anchorEl.getBoundingClientRect();
                                 setTaskDropdown(null);
                                 setDropdownAnchorRect(null);
                                 setSecondaryListMenu((prev) =>
@@ -5398,7 +5892,7 @@ export default function App() {
                                         category,
                                         taskId,
                                         itemId: it.id,
-                                        rect: e.currentTarget.getBoundingClientRect(),
+                                        rect,
                                       }
                                 );
                               }}
@@ -5693,39 +6187,133 @@ export default function App() {
               <div className="settings-section">
                 <label className="label">Habit check-ins</label>
                 <p className="settings-hint">
-                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them. Your coach uses this in context: no judgment, just awareness.
+                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them. Optional reminders: <strong>Hourly</strong> (6am–9pm, on the hour) for nudges like water, or <strong>Choose times</strong> for specific clock times. Allow notifications in your browser for in-app nudges; use Background reminders for push when the app is closed.
                 </p>
-                <ul className="routine-template-list">
-                  {(habitTracker.habits || []).map((h) => (
-                    <li key={h.id} className="routine-template-item">
-                      <span className="routine-template-input" style={{ flex: 1 }}>
-                        {h.label}{" "}
-                        <span className="settings-hint" style={{ marginLeft: 6 }}>
-                          ({h.direction === "break" ? "break" : "build"})
-                        </span>
-                      </span>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm routine-template-remove"
-                        onClick={() =>
-                          setHabitTracker((prev) => ({
-                            habits: (prev.habits || []).filter((x) => x.id !== h.id),
-                            log: Object.fromEntries(
-                              Object.entries(prev.log || {}).map(([dk, day]) => [
-                                dk,
-                                typeof day === "object" && day != null
-                                  ? Object.fromEntries(Object.entries(day).filter(([k]) => k !== h.id))
-                                  : day,
-                              ])
-                            ),
-                          }))
-                        }
-                        aria-label={`Remove habit ${h.label}`}
-                      >
-                        <TrashIcon style={{ width: 14, height: 14 }} />
-                      </button>
-                    </li>
-                  ))}
+                <ul className="habit-settings-list">
+                  {(habitTracker.habits || []).map((h) => {
+                    const row = normalizeHabitRow(h) || h;
+                    const sch = row.reminderSchedule || "none";
+                    const hours = row.reminderHours || [];
+                    return (
+                      <li key={row.id} className="habit-settings-card">
+                        <div className="habit-settings-card-head">
+                          <div className="habit-settings-card-title">
+                            {row.label}{" "}
+                            <span className="settings-hint" style={{ marginLeft: 6 }}>
+                              ({row.direction === "break" ? "break" : "build"})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm routine-template-remove"
+                            onClick={() =>
+                              setHabitTracker((prev) => ({
+                                habits: (prev.habits || []).filter((x) => x.id !== row.id),
+                                log: Object.fromEntries(
+                                  Object.entries(prev.log || {}).map(([dk, day]) => [
+                                    dk,
+                                    typeof day === "object" && day != null
+                                      ? Object.fromEntries(Object.entries(day).filter(([k]) => k !== row.id))
+                                      : day,
+                                  ])
+                                ),
+                              }))
+                            }
+                            aria-label={`Remove habit ${row.label}`}
+                          >
+                            <TrashIcon style={{ width: 14, height: 14 }} />
+                          </button>
+                        </div>
+                        <label className="habit-settings-remind-label" htmlFor={`habit-remind-${row.id}`}>
+                          Reminders
+                        </label>
+                        <select
+                          id={`habit-remind-${row.id}`}
+                          className="input habit-settings-remind-select"
+                          value={sch}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setHabitTracker((prev) => ({
+                              ...prev,
+                              habits: (prev.habits || []).map((x) =>
+                                x.id === row.id
+                                  ? normalizeHabitRow({
+                                      ...x,
+                                      reminderSchedule: v === "hourly" || v === "hours" ? v : "none",
+                                      reminderHours: v === "hours" ? (Array.isArray(x.reminderHours) ? x.reminderHours : []) : [],
+                                    })
+                                  : x
+                              ),
+                            }));
+                          }}
+                        >
+                          <option value="none">None</option>
+                          <option value="hourly">Hourly (6am–9pm)</option>
+                          <option value="hours">Choose times</option>
+                        </select>
+                        {sch === "hours" && (
+                          <div className="habit-reminder-hours">
+                            <div className="habit-reminder-hour-chips">
+                              {hours.map((hm) => (
+                                <span key={hm} className="habit-reminder-chip">
+                                  {to12Hour(hm)}
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove ${hm}`}
+                                    onClick={() =>
+                                      setHabitTracker((prev) => ({
+                                        ...prev,
+                                        habits: (prev.habits || []).map((x) =>
+                                          x.id === row.id
+                                            ? normalizeHabitRow({
+                                                ...x,
+                                                reminderHours: hours.filter((t) => t !== hm),
+                                              })
+                                            : x
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                            <div className="habit-reminder-add-row">
+                              <input
+                                className="input"
+                                type="time"
+                                value={habitReminderDraft[row.id] ?? "09:00"}
+                                onChange={(e) =>
+                                  setHabitReminderDraft((d) => ({ ...d, [row.id]: e.target.value }))
+                                }
+                                aria-label={`Add reminder time for ${row.label}`}
+                              />
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-primary"
+                                onClick={() => {
+                                  const draft = habitReminderDraft[row.id] ?? "09:00";
+                                  const slot = normalizeTimeKey(draft);
+                                  setHabitTracker((prev) => ({
+                                    ...prev,
+                                    habits: (prev.habits || []).map((x) => {
+                                      if (x.id !== row.id) return x;
+                                      const cur = normalizeHabitRow(x)?.reminderHours || [];
+                                      if (cur.includes(slot)) return x;
+                                      return normalizeHabitRow({ ...x, reminderHours: [...cur, slot].sort() });
+                                    }),
+                                  }));
+                                }}
+                              >
+                                Add time
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
                 <div className="settings-add-type" style={{ marginTop: 10 }}>
                   <input
@@ -5733,7 +6321,7 @@ export default function App() {
                     type="text"
                     value={newHabitLabel}
                     onChange={(e) => setNewHabitLabel(e.target.value)}
-                    placeholder="e.g. Stretch 10 min / scroll less"
+                    placeholder="e.g. Drink water / stretch"
                     aria-label="New habit label"
                   />
                   <select
@@ -5752,8 +6340,16 @@ export default function App() {
                     onClick={() => {
                       const label = (newHabitLabel || "").trim();
                       if (!label) return;
+                      const next = normalizeHabitRow({
+                        id: uid(),
+                        label,
+                        direction: newHabitDirection === "break" ? "break" : "build",
+                        reminderSchedule: "none",
+                        reminderHours: [],
+                      });
+                      if (!next) return;
                       setHabitTracker((prev) => ({
-                        habits: [...(prev.habits || []), { id: uid(), label, direction: newHabitDirection === "break" ? "break" : "build" }],
+                        habits: [...(prev.habits || []), next],
                         log: prev.log || {},
                       }));
                       setNewHabitLabel("");
@@ -5822,6 +6418,21 @@ export default function App() {
               </div>
 
               <div className="settings-section">
+                <label className="label">Guides &amp; tours</label>
+                <p className="settings-hint">
+                  Replay the short overview of tabs and features, or the longer full walkthrough. Closing a tour with &quot;Exit&quot; does not mark it complete; finishing the last slide does.
+                </p>
+                <div className="settings-push-actions" style={{ flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn-primary" onClick={() => startReplayFeatureTour("quick")}>
+                    Replay quick tour
+                  </button>
+                  <button type="button" className="btn btn-sm" onClick={() => startReplayFeatureTour("full")}>
+                    Replay full walkthrough
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-section">
                 <label className="label">Theme Color</label>
                 <div className="theme-picker">
                   {Object.entries(THEMES).map(([key, themeData]) => (
@@ -5861,6 +6472,109 @@ export default function App() {
                   {notificationService.permission === 'granted' ? <><CheckIcon style={{ width: 16, height: 16, marginRight: 6, verticalAlign: 'middle' }} />Enabled</> : 'Enable Notifications'}
                 </button>
               </div>
+
+              {isCapacitorNativeApp() && (
+                <div className="settings-section">
+                  <label className="label">Native push (iOS app)</label>
+                  <p className="settings-hint">
+                    Uses Apple push (APNs), not the browser service worker. Server must have APNs .p8 credentials; reminders sync like web when you enable below.
+                  </p>
+                  <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={async () => {
+                        const result = await notificationService.enablePush();
+                        if (result?.ok) {
+                          await notificationService.syncRemindersToServer(pushRemindersList);
+                          alert("Native push registered. Reminders can sync for this device.");
+                        } else {
+                          alert(result?.hint || "Could not enable native push.");
+                        }
+                      }}
+                    >
+                      Enable native push &amp; sync reminders
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={async () => {
+                        const r = await notificationService.sendNativeTestPush();
+                        if (r?.ok) {
+                          alert("Test push sent. Check Notification Center (and server APNs env if it failed).");
+                        } else {
+                          alert(r?.hint || r?.error || "Test send failed.");
+                        }
+                      }}
+                    >
+                      Send test push
+                    </button>
+                  </div>
+                  {nativePushDebug && (
+                    <div
+                      className="settings-hint"
+                      style={{
+                        marginTop: 12,
+                        lineHeight: 1.5,
+                        fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                        fontSize: 12,
+                        wordBreak: "break-all",
+                      }}
+                    >
+                      <div>Permission: {nativePushDebug.permission}</div>
+                      <div>Native platform: {nativePushDebug.nativePlatform ? "true" : "false"}</div>
+                      <div>Native token: {nativePushDebug.tokenRegistered ? "registered" : "missing"}</div>
+                      {nativePushDebug.apiOriginResolved != null ? (
+                        <>
+                          <div>VITE_APP_ORIGIN (build): {String(nativePushDebug.apiOriginFromEnv ?? "")}</div>
+                          <div>API origin (resolved): {String(nativePushDebug.apiOriginResolved ?? "")}</div>
+                          <div>API origin source: {String(nativePushDebug.apiOriginSource ?? "")}</div>
+                        </>
+                      ) : null}
+                      {nativePushDebug.lastTokenPrefix ? <div>Token (short): {nativePushDebug.lastTokenPrefix}</div> : null}
+                      {nativePushDebug.lastRegisterNativeUrl ? (
+                        <div>register-native URL: {nativePushDebug.lastRegisterNativeUrl}</div>
+                      ) : null}
+                      {nativePushDebug.lastRegisterNativeStatus != null ? (
+                        <div>register-native HTTP: {nativePushDebug.lastRegisterNativeStatus}</div>
+                      ) : null}
+                      {nativePushDebug.lastRegisterNativeResponseText ? (
+                        <div>register-native body: {nativePushDebug.lastRegisterNativeResponseText}</div>
+                      ) : null}
+                      {nativePushDebug.lastRemindersNativeUrl ? (
+                        <div>reminders-native URL: {nativePushDebug.lastRemindersNativeUrl}</div>
+                      ) : null}
+                      {nativePushDebug.lastRemindersNativeStatus != null ? (
+                        <div>reminders-native HTTP: {nativePushDebug.lastRemindersNativeStatus}</div>
+                      ) : null}
+                      {nativePushDebug.lastRemindersNativeResponseText ? (
+                        <div>reminders-native body: {nativePushDebug.lastRemindersNativeResponseText}</div>
+                      ) : null}
+                      {nativePushDebug.lastRegistrationError ? (
+                        <div style={{ color: "var(--color-danger, #c0392b)" }}>Last registration error: {nativePushDebug.lastRegistrationError}</div>
+                      ) : null}
+                      {nativePushDebug.lastTestSendUrl ? <div>send test URL: {nativePushDebug.lastTestSendUrl}</div> : null}
+                      {nativePushDebug.lastTestSendStatus != null ? (
+                        <div>send test HTTP: {nativePushDebug.lastTestSendStatus}</div>
+                      ) : null}
+                      {nativePushDebug.lastTestSendResponseText ? (
+                        <div>send test body: {nativePushDebug.lastTestSendResponseText}</div>
+                      ) : null}
+                      {nativePushDebug.lastTestSendAt != null ? (
+                        <div>
+                          Last test send: {new Date(nativePushDebug.lastTestSendAt).toLocaleString()} —{" "}
+                          {nativePushDebug.lastTestSendOk === true ? "ok" : nativePushDebug.lastTestSendOk === false ? "failed" : "…"}
+                          {nativePushDebug.lastTestSendDetail ? ` (${nativePushDebug.lastTestSendDetail})` : ""}
+                        </div>
+                      ) : null}
+                      {nativePushDebug.lastPushReceivedAt != null ? (
+                        <div>Last push received: {new Date(nativePushDebug.lastPushReceivedAt).toLocaleString()}</div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {!isCapacitorNativeApp() && (
               <div className="settings-section">
                 <label className="label">Background reminders (browser)</label>
@@ -5888,10 +6602,19 @@ export default function App() {
                     type="button"
                     className="btn btn-sm"
                     onClick={async () => {
+                      const subscription = await notificationService.getWebPushSubscription();
+                      if (!subscription) {
+                        alert("No push subscription on this device yet. Tap “Enable background reminders” first, then try again.");
+                        return;
+                      }
                       const res = await fetch(apiUrl("/api/push/send"), {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ title: "Test", body: "If you see this, background reminders are working." }),
+                        body: JSON.stringify({
+                          subscription,
+                          title: "Test",
+                          body: "If you see this, background reminders are working.",
+                        }),
                       });
                       const j = await res.json().catch(() => ({}));
                       if (res.ok && j.sent > 0) {
@@ -5992,7 +6715,7 @@ export default function App() {
         )}
 
         {/* In-app task banner: Start / Snooze / Skip or Wrap it up */}
-        {taskBanner && (
+        {taskBanner && tab === "today" && isSameDayKey(tKey, realTodayKey) && (
           <div className="inapp-banner">
             <div className="inapp-banner-content">
               {taskBanner.type === "start" ? (
@@ -6008,7 +6731,9 @@ export default function App() {
               ) : (
                 <div className="inapp-banner-inner">
                   <span className="inapp-banner-title">Wrap it up</span>
-                  <span className="inapp-banner-task"><ArrowRightIcon style={{ width: 14, height: 14, verticalAlign: 'middle', marginRight: 6 }} />{taskBanner.nextTask ? taskBanner.nextTask.text : "Next"}</span>
+                  <span className="inapp-banner-task">
+                    {taskBanner.nextTask ? `Next: ${taskBanner.nextTask.text}` : "Next"}
+                  </span>
                   <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => setTaskBanner(null)}>OK</button>
                 </div>
               )}
@@ -6079,7 +6804,8 @@ export default function App() {
             step={onboardingStep}
             setStep={setOnboardingStep}
             onExitComplete={finishOnboardingWizard}
-            onExitSkipAll={finishOnboardingWizard}
+            onExitSkipAll={() => finishOnboardingWizard(null)}
+            onFinishSetup={finishOnboardingWizard}
             firebaseOn={firebaseOn}
             profile={profile}
             setProfile={setProfile}
@@ -6099,6 +6825,14 @@ export default function App() {
             suggestedCategories={DEFAULT_CATEGORIES}
             fallbackMorningTemplate={MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }))}
             fallbackNightTemplate={BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }))}
+          />
+        )}
+
+        {featureWalkthroughMode && !authWaiting && !showLoginGate && (
+          <FeatureWalkthrough
+            mode={featureWalkthroughMode}
+            onComplete={completeFeatureWalkthrough}
+            onDismiss={dismissFeatureWalkthrough}
           />
         )}
 
@@ -6175,7 +6909,7 @@ export default function App() {
                 {deleteAccountPhase === "intro" ? (
                   <div className="delete-account-body">
                     <p className="delete-account-lead">
-                      This permanently deletes your PROYOU account and synced data from our servers—not a pause or hide.
+                      This permanently deletes your PROYOU account and synced data from our servers, not a pause or hide.
                     </p>
                     <ul className="delete-account-list">
                       <li>Your schedule, notes, finance entries, habits, and coach profile in sync storage</li>

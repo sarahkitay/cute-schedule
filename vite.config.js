@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Local `npm run dev` has no serverless API — forward `/api/*` to `vercel dev` (default :3000) so coach/push routes return JSON instead of index.html (which caused blank coach replies).
+    // Local `npm run dev` has no serverless API; forward `/api/*` to `vercel dev` (default :3000) so coach/push routes return JSON instead of index.html (which caused blank coach replies).
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:3000',

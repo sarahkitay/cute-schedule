@@ -18,8 +18,11 @@
   "plugins": {
     "FirebaseAuthentication": {
       "skipNativeAuth": false,
-      "providers": ["apple.com", "google.com"],
+      "providers": ["apple.com"],
       "authDomain": "cute-schedule.vercel.app"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
     }
   }
 }
