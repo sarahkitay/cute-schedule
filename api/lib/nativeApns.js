@@ -61,14 +61,23 @@ function apnsProductionFlag() {
 function buildApnsDebug(p) {
   const topic = (process.env.IOS_BUNDLE_ID || "").trim();
   const apnsProdRaw = process.env.APNS_PRODUCTION;
-  return {
+  const usesProdEndpoint = apnsProductionFlag();
+  const reason = p.apnsReason != null ? String(p.apnsReason) : "";
+  /** @type {Record<string, unknown>} */
+  const out = {
     normalizedTokenLength: p.hex.length,
     tokenLooksHex: apnsHexTokenLooksValid(p.hex),
     topic,
     APNS_PRODUCTION: apnsProdRaw === undefined || apnsProdRaw === "" ? null : String(apnsProdRaw),
-    production: apnsProductionFlag(),
-    apnsReason: p.apnsReason ?? null,
+    production: usesProdEndpoint,
+    apnsReason: reason || null,
   };
+  if (reason === "BadDeviceToken" || reason === "DeviceTokenNotForTopic") {
+    out.badDeviceTokenHint = usesProdEndpoint
+      ? "APNs production endpoint is active. Tokens from Xcode / local debug installs are almost always sandbox—set Vercel env APNS_PRODUCTION=false (or omit so NODE_ENV=development uses sandbox) and re-register push, then retry."
+      : "APNs sandbox endpoint is active. Production/App Store device tokens require APNS_PRODUCTION=true on the server.";
+  }
+  return out;
 }
 
 /** Log only length + first/last 6 hex chars (never full token). */
@@ -110,7 +119,7 @@ function getCachedProvider() {
  *       ok: false;
  *       reason: string;
  *       apnsStatus?: number;
- *       apnsDebug: { normalizedTokenLength: number; tokenLooksHex: boolean; topic: string; APNS_PRODUCTION: string | null; production: boolean; apnsReason: string | null };
+ *       apnsDebug: { normalizedTokenLength: number; tokenLooksHex: boolean; topic: string; APNS_PRODUCTION: string | null; production: boolean; apnsReason: string | null; badDeviceTokenHint?: string };
  *     }
  * >}
  */

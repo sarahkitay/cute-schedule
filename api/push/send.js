@@ -120,6 +120,7 @@ export default async function handler(req, res) {
               APNS_PRODUCTION: dbg.APNS_PRODUCTION,
               production: dbg.production,
               apnsReason: dbg.apnsReason,
+              ...(typeof dbg.badDeviceTokenHint === "string" ? { badDeviceTokenHint: dbg.badDeviceTokenHint } : {}),
             }
           : {}),
         detail: isProd ? undefined : rslt.reason,

@@ -8,6 +8,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     /// Connected in `Main.storyboard` for Capacitor. Xcode may surface scene-lifecycle notes here; that is normal for this template and does not affect Sign in with Apple.
     var window: UIWindow?
 
+    /// Configure Firebase before any plugin static initializers run (avoids I-COR000003 / FirebaseAuthentication runtime errors).
+    override init() {
+        super.init()
+        if FirebaseApp.app() == nil {
+            FirebaseApp.configure()
+        }
+    }
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         if FirebaseApp.app() == nil {
             FirebaseApp.configure()

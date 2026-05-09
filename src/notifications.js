@@ -1021,6 +1021,7 @@ class NotificationService {
           if (j.APNS_PRODUCTION != null) fromApns.APNS_PRODUCTION = j.APNS_PRODUCTION;
           if (j.production != null) fromApns.production = j.production;
           if (j.apnsReason != null) fromApns.apnsReason = j.apnsReason;
+          if (j.badDeviceTokenHint != null) fromApns.badDeviceTokenHint = j.badDeviceTokenHint;
         }
         nativePushDebug.lastTestSendDiag = {
           ...nativePushDebug.lastTestSendDiag,
