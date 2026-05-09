@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { kv } from "../lib/redisClient.js";
+import { getRedisEnvDebug, kv } from "../lib/redisClient.js";
 import { applyApiCors } from "../lib/cors.js";
 import { verifyFirebaseIdToken } from "../lib/firebaseAdminApp.js";
 
@@ -68,9 +68,14 @@ export default async function handler(req, res) {
   } catch (e) {
     console.error("register-native error", e);
     const msg = String(e?.message || e);
-    const hint = /KV|kv|Redis|REDIS|Upstash|ECONNREFUSED|ENOTFOUND|fetch failed/i.test(msg)
-      ? "Add Upstash Redis to this project. Native push token storage requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN."
+    const hint = /KV|kv|Redis|REDIS|Upstash|ECONNREFUSED|ENOTFOUND|fetch failed|not configured/i.test(msg)
+      ? "Add Redis to this project (UPSTASH_REDIS_REST_* or legacy KV_REST_API_* from Vercel Storage / vercel env pull)."
       : "Check this deployment's function logs in Vercel for the full error.";
-    return res.status(500).json({ error: "Failed to store native token", hint, detail: msg.slice(0, 240) });
+    return res.status(500).json({
+      error: "Failed to store native token",
+      hint,
+      detail: msg.slice(0, 240),
+      redisEnv: getRedisEnvDebug(),
+    });
   }
 }

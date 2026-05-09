@@ -16,7 +16,7 @@ export function getCoachRateLimitClientId(req) {
 }
 
 /**
- * Fixed-window counter in KV. If KV is unreachable, allows the request (dev / misconfig).
+ * Fixed-window counter in Redis. If Redis is unreachable, allows the request (dev / misconfig).
  * @returns {Promise<{ ok: true } | { ok: false; retryAfterSec: number }>}
  */
 export async function assertCoachRateLimit(req) {
@@ -43,7 +43,7 @@ export async function assertCoachRateLimit(req) {
     return { ok: true };
   } catch (e) {
     if (process.env.NODE_ENV !== "production") {
-      console.warn("coach rate limit: KV unavailable, allowing request:", e?.message || e);
+      console.warn("coach rate limit: Redis unavailable, allowing request:", e?.message || e);
     }
     return { ok: true };
   }
