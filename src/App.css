@@ -2649,6 +2649,25 @@ button {
   gap: 4px;
 }
 
+.inapp-banner-content-tappable {
+  cursor: pointer;
+  border-radius: inherit;
+  outline: none;
+}
+
+.inapp-banner-content-tappable:focus-visible {
+  box-shadow: 0 0 0 2px var(--accent, #6b9bd1);
+}
+
+.inapp-banner-tap-hint {
+  margin: 0 0 2px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+  text-align: center;
+  font-weight: 500;
+}
+
 .inapp-banner-title {
   font-size: var(--caption);
   font-weight: 600;

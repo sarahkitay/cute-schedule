@@ -4,6 +4,7 @@ import { getVapidPublicKey, getVapidPrivateKey, getVapidSubject } from "../lib/v
 import { applyApiCors } from "../lib/cors.js";
 import { clientSafeDetail, logServerError } from "../lib/safeJsonError.js";
 import { sendIosApnsNotification, isApnsConfigured } from "../lib/nativeApns.js";
+import { kv } from "../lib/redisClient.js";
 
 const vapidPub = getVapidPublicKey();
 const vapidPriv = getVapidPrivateKey();
@@ -41,9 +42,32 @@ export default async function handler(req, res) {
         message: "POST reached /api/push/send (testOnly; no notification sent)",
       });
     }
-    const token = typeof body.token === "string" ? body.token.trim() : "";
+    let token = typeof body.token === "string" ? body.token.trim() : "";
+    const deviceKey = typeof body.deviceKey === "string" ? body.deviceKey.trim() : "";
+
+    if (token.length < 16 && deviceKey.length >= 8) {
+      try {
+        const stored = await kv.get(deviceKey);
+        if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+          if (stored.type !== "ios") {
+            return res.status(400).json({
+              error: "Wrong device for native iOS send",
+              hint: "deviceKey must refer to an iOS registration (native:ios:…). For Android use a different flow.",
+            });
+          }
+          const t = stored.token;
+          if (typeof t === "string" && t.trim().length >= 16) token = t.trim();
+        }
+      } catch (e) {
+        logServerError("push/send nativeIos deviceKey lookup", e);
+      }
+    }
+
     if (token.length < 16) {
-      return res.status(400).json({ error: "Missing native device token", hint: "Pass token from PushNotifications registration." });
+      return res.status(400).json({
+        error: "Missing native device token",
+        hint: 'Send PushNotifications token in "token", or anon "deviceKey" from /api/push/register-native (native:ios:…). Web PushSubscription is not used for native iOS.',
+      });
     }
     if (!isApnsConfigured()) {
       return res.status(503).json({

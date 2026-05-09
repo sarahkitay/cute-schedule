@@ -1749,7 +1749,10 @@ export default function App() {
   const [focusMode, setFocusMode] = useState(false);
   const [quickAddValue, setQuickAddValue] = useState("");
   const [taskBanner, setTaskBanner] = useState(null); // { type: 'start'|'wrapup', task, nextTask?, hourKey }
-  
+  /** Shown briefly when the in-app task banner first appears (null → visible). */
+  const [taskBannerTapHint, setTaskBannerTapHint] = useState(false);
+  const taskBannerPrevRef = useRef(null);
+
   // Define todayHours before useEffects that use it (memoized so hook dependency lists stay stable)
   const todayHours = useMemo(() => appState.days?.[tKey]?.hours || {}, [appState.days, tKey]);
   const todayHoursWithSubs = useMemo(
@@ -2588,6 +2591,48 @@ export default function App() {
     const interval = setInterval(run, 20000);
     return () => clearInterval(interval);
   }, [tab, tKey, realTodayKey, todayHours, customCategories]);
+
+  useEffect(() => {
+    const prev = taskBannerPrevRef.current;
+    taskBannerPrevRef.current = taskBanner;
+    if (taskBanner && !prev) {
+      setTaskBannerTapHint(true);
+      const id = window.setTimeout(() => setTaskBannerTapHint(false), 9000);
+      return () => window.clearTimeout(id);
+    }
+    if (!taskBanner) setTaskBannerTapHint(false);
+  }, [taskBanner]);
+
+  /** Jump from the floating task banner to that task on Today, then dismiss the banner. */
+  function goToTaskFromBannerAndDismiss() {
+    if (!taskBanner) return;
+    const target =
+      taskBanner.type === "wrapup" && taskBanner.nextTask ? taskBanner.nextTask : taskBanner.task;
+    if (!target?.hour || !target?.category || !target?.id) {
+      setTaskBanner(null);
+      return;
+    }
+    try {
+      setShowSettings(false);
+    } catch {
+      /* ignore */
+    }
+    setFocusMode(false);
+    setTab("today");
+    setExpandedTaskKey(`${target.hour}-${target.category}-${target.id}`);
+    setTaskBanner(null);
+    setTaskBannerTapHint(false);
+    const hk = target.hour;
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const sel =
+          typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? `[data-timeline-hour="${CSS.escape(hk)}"]`
+            : `[data-timeline-hour="${String(hk).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
+        document.querySelector(sel)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+      });
+    });
+  }
 
   const prog = useMemo(() => dayProgress(todayHours, customCategories), [todayHours, customCategories]);
   const starred = useMemo(() => dayIsStarred(todayHours, customCategories), [todayHours, customCategories]);
@@ -4423,7 +4468,7 @@ export default function App() {
                     </p>
                   )}
                   {visibleHourKeys.map((hourKey) => (
-                    <div key={hourKey} className="timeline-row">
+                    <div key={hourKey} className="timeline-row" data-timeline-hour={hourKey}>
                       <div className="timeline-blocks">
                         <HourCard
                           hourKey={hourKey}
@@ -6548,7 +6593,13 @@ export default function App() {
                         if (r?.ok) {
                           alert("Test push sent. Check Notification Center (and server APNs env if it failed).");
                         } else {
-                          alert(r?.hint || r?.error || "Test send failed.");
+                          const parts = [
+                            r?.hint || r?.error || "Test send failed.",
+                            r?.status != null ? `HTTP ${r.status}` : null,
+                            r?.fetchError ? `Fetch: ${r.errorName || "Error"}${r.errorCause ? ` — ${r.errorCause}` : ""}` : null,
+                            "See “Native push” debug block below for redacted body, response, and stack.",
+                          ].filter(Boolean);
+                          alert(parts.join("\n\n"));
                         }
                       }}
                     >
@@ -6652,11 +6703,31 @@ export default function App() {
                         <div style={{ color: "var(--color-danger, #c0392b)" }}>Last registration error: {nativePushDebug.lastRegistrationError}</div>
                       ) : null}
                       {nativePushDebug.lastTestSendUrl ? <div>send test URL: {nativePushDebug.lastTestSendUrl}</div> : null}
+                      {nativePushDebug.lastTestSendRequestBodyRedacted ? (
+                        <div>send test request (redacted): {nativePushDebug.lastTestSendRequestBodyRedacted}</div>
+                      ) : null}
                       {nativePushDebug.lastTestSendStatus != null ? (
                         <div>send test HTTP: {nativePushDebug.lastTestSendStatus}</div>
                       ) : null}
                       {nativePushDebug.lastTestSendResponseText ? (
-                        <div>send test body: {nativePushDebug.lastTestSendResponseText}</div>
+                        <div>send test response: {nativePushDebug.lastTestSendResponseText}</div>
+                      ) : null}
+                      {nativePushDebug.lastTestSendErrorMessage ? (
+                        <div style={{ marginTop: 8, color: "var(--color-danger, #c0392b)" }}>
+                          <div style={{ fontWeight: 600 }}>send test fetch error</div>
+                          {nativePushDebug.lastTestSendErrorName ? (
+                            <div>name: {nativePushDebug.lastTestSendErrorName}</div>
+                          ) : null}
+                          <div>message: {nativePushDebug.lastTestSendErrorMessage}</div>
+                          {nativePushDebug.lastTestSendErrorCause ? (
+                            <div>cause: {nativePushDebug.lastTestSendErrorCause}</div>
+                          ) : null}
+                          {nativePushDebug.lastTestSendErrorStack ? (
+                            <div style={{ whiteSpace: "pre-wrap", opacity: 0.92, fontSize: 10 }}>
+                              stack: {nativePushDebug.lastTestSendErrorStack}
+                            </div>
+                          ) : null}
+                        </div>
                       ) : null}
                       {nativePushDebug.lastTestSendAt != null ? (
                         <div>
@@ -6814,16 +6885,55 @@ export default function App() {
 
         {/* In-app task banner: Start / Snooze / Skip or Wrap it up */}
         {taskBanner && tab === "today" && isSameDayKey(tKey, realTodayKey) && (
-          <div className="inapp-banner">
-            <div className="inapp-banner-content">
+          <div className="inapp-banner" aria-live="polite">
+            <div
+              className="inapp-banner-content inapp-banner-content-tappable"
+              role="button"
+              tabIndex={0}
+              aria-label="Open this task in your day"
+              onClick={(e) => {
+                if (e.target.closest("button")) return;
+                goToTaskFromBannerAndDismiss();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  goToTaskFromBannerAndDismiss();
+                }
+              }}
+            >
+              {taskBannerTapHint ? (
+                <p className="inapp-banner-tap-hint">Tap this card to jump to the task in your timeline.</p>
+              ) : null}
               {taskBanner.type === "start" ? (
                 <div className="inapp-banner-inner">
                   <span className="inapp-banner-title">Next up</span>
                   <span className="inapp-banner-task">{taskBanner.task.text}</span>
-                  <div className="inapp-banner-actions">
-                    <button type="button" className="btn btn-primary btn-sm" onClick={() => setTaskBanner(null)}>Start</button>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => { localStorage.setItem("taskBannerSnoozeUntil", String(Date.now() + 5 * 60 * 1000)); setTaskBanner(null); }}>Snooze</button>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setTaskBanner(null)}>Skip</button>
+                  <div className="inapp-banner-actions" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => goToTaskFromBannerAndDismiss()}>
+                      Start
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        localStorage.setItem("taskBannerSnoozeUntil", String(Date.now() + 5 * 60 * 1000));
+                        setTaskBanner(null);
+                        setTaskBannerTapHint(false);
+                      }}
+                    >
+                      Snooze
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      onClick={() => {
+                        setTaskBanner(null);
+                        setTaskBannerTapHint(false);
+                      }}
+                    >
+                      Skip
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -6832,7 +6942,11 @@ export default function App() {
                   <span className="inapp-banner-task">
                     {taskBanner.nextTask ? `Next: ${taskBanner.nextTask.text}` : "Next"}
                   </span>
-                  <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => setTaskBanner(null)}>OK</button>
+                  <div className="inapp-banner-actions" onClick={(e) => e.stopPropagation()}>
+                    <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => goToTaskFromBannerAndDismiss()}>
+                      OK
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

@@ -23,8 +23,14 @@ export const nativePushDebugDefault = () => ({
   lastRemindersNativeStatus: null,
   lastRemindersNativeResponseText: null,
   lastTestSendUrl: null,
+  /** Redacted JSON string of the last real send-test POST body (no raw token). */
+  lastTestSendRequestBodyRedacted: null,
   lastTestSendStatus: null,
   lastTestSendResponseText: null,
+  lastTestSendErrorName: null,
+  lastTestSendErrorMessage: null,
+  lastTestSendErrorStack: null,
+  lastTestSendErrorCause: null,
   lastPushReceivedAt: null,
   lastActionAt: null,
   lastTestSendAt: null,
@@ -98,8 +104,64 @@ async function getOptionalFirebaseIdToken() {
   }
 }
 
+const NATIVE_DEVICE_KEY_LS = "proyou_native_push_device_key";
+
 let lastNativeDeviceToken = null;
+/** Anon iOS registration id from register-native (`native:ios:…`); persisted for test send after cold start. */
+let lastNativeDeviceKey = null;
 let nativeListenersAttached = false;
+
+function hydrateNativeDeviceKeyFromStorage() {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const k = localStorage.getItem(NATIVE_DEVICE_KEY_LS);
+    if (k && /^native:ios:/.test(String(k).trim())) lastNativeDeviceKey = String(k).trim();
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Same API host as last successful register-native when possible (avoids WKWebView failures if api origin drifts from probe). */
+function resolveNativePushApiSendUrl() {
+  const reg = nativePushDebug.lastRegisterNativeUrl;
+  if (typeof reg === "string" && reg.includes("/api/push/register-native")) {
+    try {
+      const u = new URL(reg);
+      u.pathname = "/api/push/send";
+      return u.toString();
+    } catch {
+      /* ignore */
+    }
+  }
+  return apiUrl("/api/push/send");
+}
+
+function buildNativeTestSendRequestBody() {
+  const token =
+    lastNativeDeviceToken && String(lastNativeDeviceToken).trim().length >= 16
+      ? String(lastNativeDeviceToken).trim()
+      : "";
+  const dk = lastNativeDeviceKey ? String(lastNativeDeviceKey).trim() : "";
+  const deviceKey = /^native:ios:/.test(dk) ? dk : "";
+  const payload = {
+    nativeIos: true,
+    title: "PROYOU",
+    body: "If you see this, native push is working.",
+    url: "/",
+  };
+  if (token) payload.token = token;
+  else if (deviceKey) payload.deviceKey = deviceKey;
+
+  const redacted = { ...payload };
+  if (redacted.token) {
+    const len = payload.token.length;
+    redacted.token = `${shortenTokenForLog(payload.token)} (${len} chars)`;
+  }
+  if (redacted.deviceKey) {
+    redacted.deviceKey = `${String(redacted.deviceKey).slice(0, 28)}…`;
+  }
+  return { payload, redactedJson: JSON.stringify(redacted) };
+}
 
 function waitForNativeToken(maxMs = 6000) {
   return new Promise((resolve) => {
@@ -160,6 +222,19 @@ async function postRegisterNative(token, platform) {
   } else {
     nativePushDebug.lastRegistrationError = null;
     emitNativeDebug();
+    try {
+      const j = JSON.parse(text);
+      if (typeof j.deviceKey === "string" && /^native:ios:/.test(j.deviceKey.trim())) {
+        lastNativeDeviceKey = j.deviceKey.trim();
+        try {
+          localStorage.setItem(NATIVE_DEVICE_KEY_LS, lastNativeDeviceKey);
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* ignore */
+    }
     if (import.meta.env.DEV) console.log("[Native push] register-native OK", res.status, "url=", url);
   }
 
@@ -218,6 +293,7 @@ async function attachNativePushListenersOnce() {
  */
 export async function bootstrapNativePushOnStartup() {
   if (typeof window === "undefined" || !Capacitor.isNativePlatform()) return;
+  hydrateNativeDeviceKeyFromStorage();
   await attachNativePushListenersOnce();
   try {
     const perm = await PushNotifications.checkPermissions();
@@ -625,56 +701,113 @@ class NotificationService {
   }
 
   /**
-   * Native iOS/Android: POST APNs test via server. Updates {@link nativePushDebug}.
+   * Native iOS: POST /api/push/send with APNs token and/or anon `deviceKey` from register-native.
+   * Updates {@link nativePushDebug} (redacted body, HTTP status, response text, fetch error fields).
    */
   async sendNativeTestPush() {
     if (!Capacitor.isNativePlatform()) return { ok: false, hint: "Not native" };
-    const token = lastNativeDeviceToken;
-    if (!token) return { ok: false, hint: "No device token yet. Enable push first." };
+    hydrateNativeDeviceKeyFromStorage();
+    const tokenOk = lastNativeDeviceToken && String(lastNativeDeviceToken).trim().length >= 16;
+    const dk = lastNativeDeviceKey ? String(lastNativeDeviceKey).trim() : "";
+    const keyOk = /^native:ios:/.test(dk);
+    if (!tokenOk && !keyOk) {
+      return {
+        ok: false,
+        hint:
+          "No APNs token or stored iOS deviceKey yet. Enable native push once so Apple returns a token and register-native can save a deviceKey.",
+      };
+    }
+
     nativePushDebug.lastTestSendAt = Date.now();
     nativePushDebug.lastTestSendOk = null;
     nativePushDebug.lastTestSendDetail = null;
     nativePushDebug.lastTestSendUrl = null;
+    nativePushDebug.lastTestSendRequestBodyRedacted = null;
     nativePushDebug.lastTestSendStatus = null;
     nativePushDebug.lastTestSendResponseText = null;
+    nativePushDebug.lastTestSendErrorName = null;
+    nativePushDebug.lastTestSendErrorMessage = null;
+    nativePushDebug.lastTestSendErrorStack = null;
+    nativePushDebug.lastTestSendErrorCause = null;
     emitNativeDebug();
-    const url = apiUrl("/api/push/send");
+
+    const { payload, redactedJson } = buildNativeTestSendRequestBody();
+    const jsonBody = JSON.stringify(payload);
+    nativePushDebug.lastTestSendRequestBodyRedacted = redactedJson;
+    const url = resolveNativePushApiSendUrl();
     nativePushDebug.lastTestSendUrl = url;
     emitNativeDebug();
+
+    if (import.meta.env.DEV) {
+      console.log("[Native push] send test push POST", { url, bodyRedacted: redactedJson });
+    }
+
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nativeIos: true,
-          token,
-          title: "PROYOU",
-          body: "If you see this, native push is working.",
-        }),
+        body: jsonBody,
+        cache: "no-store",
       });
       const text = await res.text();
       nativePushDebug.lastTestSendStatus = res.status;
-      nativePushDebug.lastTestSendResponseText = text.slice(0, 400);
+      nativePushDebug.lastTestSendResponseText = text.slice(0, 800);
       let j = {};
       try {
         j = text ? JSON.parse(text) : {};
-      } catch {
+      } catch (parseErr) {
         j = {};
+        nativePushDebug.lastTestSendDetail = `Response was not JSON (${parseErr?.message || parseErr})`;
       }
-      const ok = res.ok && j.sent >= 1;
+      const sentN = Number(j.sent);
+      const ok = res.ok && (sentN >= 1 || j.channel === "apns");
       nativePushDebug.lastTestSendOk = ok;
-      nativePushDebug.lastTestSendDetail = ok ? "sent" : j.error || j.detail || j.hint || `HTTP ${res.status}`;
+      nativePushDebug.lastTestSendDetail = ok
+        ? "sent"
+        : j.error || j.detail || j.hint || nativePushDebug.lastTestSendDetail || `HTTP ${res.status}`;
       emitNativeDebug();
+      console.log("[Native push] send test result", {
+        url,
+        httpStatus: res.status,
+        requestBodyRedacted: redactedJson,
+        responseBodyPreview: text.slice(0, 500),
+        ok,
+      });
       if (!ok) console.warn("[Native push] send test", res.status, text.slice(0, 300), url);
       return { ok, status: res.status, ...j };
     } catch (e) {
+      const cause = e?.cause;
+      const causeStr =
+        cause != null
+          ? typeof cause === "object" && cause !== null && "message" in cause
+            ? String(cause.message)
+            : String(cause)
+          : "";
       nativePushDebug.lastTestSendOk = false;
       nativePushDebug.lastTestSendStatus = null;
-      nativePushDebug.lastTestSendResponseText = e?.message || String(e);
-      nativePushDebug.lastTestSendDetail = nativePushDebug.lastTestSendResponseText;
+      nativePushDebug.lastTestSendResponseText = null;
+      nativePushDebug.lastTestSendErrorName = e?.name != null ? String(e.name) : "";
+      nativePushDebug.lastTestSendErrorMessage = e?.message != null ? String(e.message) : String(e);
+      nativePushDebug.lastTestSendErrorStack = typeof e?.stack === "string" ? e.stack.slice(0, 2000) : "";
+      nativePushDebug.lastTestSendErrorCause = causeStr;
+      nativePushDebug.lastTestSendDetail = nativePushDebug.lastTestSendErrorMessage;
       emitNativeDebug();
-      console.error("[Native push] send test fetch threw:", e, "url=", url);
-      return { ok: false, hint: nativePushDebug.lastTestSendDetail };
+      console.error("[Native push] send test fetch threw:", {
+        url,
+        requestBodyRedacted: redactedJson,
+        errorName: nativePushDebug.lastTestSendErrorName,
+        errorMessage: nativePushDebug.lastTestSendErrorMessage,
+        errorStack: nativePushDebug.lastTestSendErrorStack,
+        errorCause: nativePushDebug.lastTestSendErrorCause,
+        err: e,
+      });
+      return {
+        ok: false,
+        hint: nativePushDebug.lastTestSendErrorMessage,
+        fetchError: true,
+        errorName: nativePushDebug.lastTestSendErrorName,
+        errorCause: nativePushDebug.lastTestSendErrorCause,
+      };
     }
   }
 }
