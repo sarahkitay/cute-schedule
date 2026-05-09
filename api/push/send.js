@@ -45,10 +45,11 @@ export default async function handler(req, res) {
         message: "POST reached /api/push/send (testOnly; no notification sent)",
       });
     }
-    let token = typeof body.token === "string" ? body.token.trim() : "";
+    let token = "";
+    const bodyToken = typeof body.token === "string" ? body.token.trim() : "";
     const deviceKey = typeof body.deviceKey === "string" ? body.deviceKey.trim() : "";
 
-    if (token.length < 16 && deviceKey.length >= 8) {
+    if (deviceKey.length >= 8 && /^native:ios:/.test(deviceKey)) {
       try {
         const stored = await kv.get(deviceKey);
         if (stored && typeof stored === "object" && !Array.isArray(stored)) {
@@ -63,13 +64,25 @@ export default async function handler(req, res) {
         }
       } catch (e) {
         logServerError("push/send nativeIos deviceKey lookup", e);
+        return res.status(503).json({
+          error: "deviceKey lookup failed",
+          hint: "Could not load device registration from Redis (UPSTASH_* or KV_REST_* env).",
+          detail: isProd ? undefined : String(e?.message || e),
+        });
       }
+    }
+
+    if (token.length < 16 && bodyToken.length >= 16) {
+      token = bodyToken;
     }
 
     if (token.length < 16) {
       return res.status(400).json({
         error: "Missing native device token",
-        hint: 'Send PushNotifications token in "token", or anon "deviceKey" from /api/push/register-native (native:ios:…). Web PushSubscription is not used for native iOS.',
+        hint: 'Prefer anon "deviceKey" (native:ios:…) from register-native, or send APNs token in "token". Web PushSubscription is not used for native iOS.',
+        debug: isProd
+          ? undefined
+          : { hadDeviceKey: deviceKey.length > 0, bodyTokenLen: bodyToken.length, resolvedTokenLen: token.length },
       });
     }
     if (!isApnsConfigured()) {
@@ -85,7 +98,13 @@ export default async function handler(req, res) {
       payload: { url },
     });
     if (!rslt.ok) {
-      return res.status(502).json({ error: "APNs send failed", detail: isProd ? undefined : rslt.reason });
+      logServerError("push/send APNs failed", new Error(rslt.reason || "unknown"));
+      return res.status(502).json({
+        error: "APNs send failed",
+        apnsReason: rslt.reason || "unknown",
+        apnsStatus: rslt.apnsStatus,
+        detail: isProd ? undefined : rslt.reason,
+      });
     }
     return res.status(200).json({ ok: true, sent: 1, channel: "apns" });
   }

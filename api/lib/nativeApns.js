@@ -47,7 +47,7 @@ function getCachedProvider() {
 /**
  * Send one alert push to an iOS device (APNs HTTP/2 token auth).
  * @param {{ deviceToken: string; title: string; body: string; payload?: Record<string, unknown> }} opts
- * @returns {Promise<{ ok: true } | { ok: false; reason: string }>}
+ * @returns {Promise<{ ok: true } | { ok: false; reason: string; apnsStatus?: number }>}
  */
 export async function sendIosApnsNotification(opts) {
   const { deviceToken, title, body, payload = {} } = opts;
@@ -72,7 +72,8 @@ export async function sendIosApnsNotification(opts) {
   if (failed.length > 0) {
     const f = failed[0];
     const reason = f.response?.reason || f.error?.message || String(f.status || "failed");
-    return { ok: false, reason };
+    const apnsStatus = typeof f.status === "number" ? f.status : undefined;
+    return { ok: false, reason, apnsStatus };
   }
   return { ok: true };
 }

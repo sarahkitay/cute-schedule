@@ -6690,6 +6690,9 @@ export default function App() {
                       {nativePushDebug.lastRegisterNativeResponseText ? (
                         <div>register-native body: {nativePushDebug.lastRegisterNativeResponseText}</div>
                       ) : null}
+                      {nativePushDebug.lastRegisterNativeDeviceKey ? (
+                        <div>register-native deviceKey (persisted): {nativePushDebug.lastRegisterNativeDeviceKey}</div>
+                      ) : null}
                       {nativePushDebug.lastRemindersNativeUrl ? (
                         <div>reminders-native URL: {nativePushDebug.lastRemindersNativeUrl}</div>
                       ) : null}

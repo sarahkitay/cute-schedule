@@ -17,8 +17,10 @@ export const nativePushDebugDefault = () => ({
   lastRegisterNativeUrl: null,
   /** HTTP status from last register-native fetch (null if threw before response) */
   lastRegisterNativeStatus: null,
-  /** First ~400 chars of response body from last register-native */
+  /** Truncated register-native response (longer on success so deviceKey JSON stays parseable). */
   lastRegisterNativeResponseText: null,
+  /** Anon iOS `deviceKey` from last successful register-native (`native:ios:…`); used for send-test + survives truncation of response text. */
+  lastRegisterNativeDeviceKey: null,
   lastRemindersNativeUrl: null,
   lastRemindersNativeStatus: null,
   lastRemindersNativeResponseText: null,
@@ -117,7 +119,10 @@ function hydrateNativeDeviceKeyFromStorage() {
   try {
     if (typeof localStorage === "undefined") return;
     const k = localStorage.getItem(NATIVE_DEVICE_KEY_LS);
-    if (k && /^native:ios:/.test(String(k).trim())) lastNativeDeviceKey = String(k).trim();
+    if (k && /^native:ios:/.test(String(k).trim())) {
+      lastNativeDeviceKey = String(k).trim();
+      nativePushDebug.lastRegisterNativeDeviceKey = lastNativeDeviceKey;
+    }
   } catch {
     /* ignore */
   }
@@ -132,11 +137,13 @@ function syncLastNativeDeviceKeyFromRegisterResponseCache() {
     const j = JSON.parse(raw);
     if (typeof j.deviceKey === "string" && /^native:ios:/.test(j.deviceKey.trim())) {
       lastNativeDeviceKey = j.deviceKey.trim();
+      nativePushDebug.lastRegisterNativeDeviceKey = lastNativeDeviceKey;
       try {
         localStorage.setItem(NATIVE_DEVICE_KEY_LS, lastNativeDeviceKey);
       } catch {
         /* ignore */
       }
+      emitNativeDebug();
     }
   } catch {
     /* ignore */
@@ -177,16 +184,19 @@ function buildNativeTestSendRequestBody() {
     lastNativeDeviceToken && String(lastNativeDeviceToken).trim().length >= 16
       ? String(lastNativeDeviceToken).trim()
       : "";
-  const dk = lastNativeDeviceKey ? String(lastNativeDeviceKey).trim() : "";
-  const deviceKey = /^native:ios:/.test(dk) ? dk : "";
+  const dkRaw =
+    (lastNativeDeviceKey && String(lastNativeDeviceKey).trim()) ||
+    (nativePushDebug.lastRegisterNativeDeviceKey && String(nativePushDebug.lastRegisterNativeDeviceKey).trim()) ||
+    "";
+  const deviceKey = /^native:ios:/.test(dkRaw) ? dkRaw : "";
   const payload = {
     nativeIos: true,
     title: "PROYOU",
     body: "If you see this, native push is working.",
     url: "/",
   };
+  if (deviceKey) payload.deviceKey = deviceKey;
   if (token) payload.token = token;
-  else if (deviceKey) payload.deviceKey = deviceKey;
 
   const redacted = { ...payload };
   if (redacted.token) {
@@ -241,10 +251,36 @@ async function postRegisterNative(token, platform) {
 
   const text = await res.text();
   nativePushDebug.lastRegisterNativeStatus = res.status;
-  nativePushDebug.lastRegisterNativeResponseText = text.slice(0, 400);
-  emitNativeDebug();
 
-  if (!res.ok) {
+  if (res.ok) {
+    nativePushDebug.lastRegistrationError = null;
+    try {
+      const j = JSON.parse(text);
+      if (typeof j.deviceKey === "string" && /^native:ios:/.test(j.deviceKey.trim())) {
+        const dk = j.deviceKey.trim();
+        lastNativeDeviceKey = dk;
+        nativePushDebug.lastRegisterNativeDeviceKey = dk;
+        try {
+          localStorage.setItem(NATIVE_DEVICE_KEY_LS, dk);
+        } catch {
+          /* ignore */
+        }
+      } else if (j.scope === "user") {
+        lastNativeDeviceKey = null;
+        nativePushDebug.lastRegisterNativeDeviceKey = null;
+        try {
+          localStorage.removeItem(NATIVE_DEVICE_KEY_LS);
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+    nativePushDebug.lastRegisterNativeResponseText = text.length > 1800 ? `${text.slice(0, 1800)}…` : text;
+    emitNativeDebug();
+    if (import.meta.env.DEV) console.log("[Native push] register-native OK", res.status, "url=", url);
+  } else {
     let errMsg = `HTTP ${res.status}`;
     try {
       const j = JSON.parse(text);
@@ -253,25 +289,9 @@ async function postRegisterNative(token, platform) {
       if (text) errMsg = text.slice(0, 200);
     }
     nativePushDebug.lastRegistrationError = errMsg;
+    nativePushDebug.lastRegisterNativeResponseText = text.slice(0, 800);
     emitNativeDebug();
     console.warn("[Native push] register-native failed:", res.status, text.slice(0, 300), "url=", url);
-  } else {
-    nativePushDebug.lastRegistrationError = null;
-    emitNativeDebug();
-    try {
-      const j = JSON.parse(text);
-      if (typeof j.deviceKey === "string" && /^native:ios:/.test(j.deviceKey.trim())) {
-        lastNativeDeviceKey = j.deviceKey.trim();
-        try {
-          localStorage.setItem(NATIVE_DEVICE_KEY_LS, lastNativeDeviceKey);
-        } catch {
-          /* ignore */
-        }
-      }
-    } catch {
-      /* ignore */
-    }
-    if (import.meta.env.DEV) console.log("[Native push] register-native OK", res.status, "url=", url);
   }
 
   return { ok: res.ok, status: res.status, text };
@@ -744,7 +764,10 @@ class NotificationService {
     if (!Capacitor.isNativePlatform()) return { ok: false, hint: "Not native" };
     syncLastNativeDeviceKeyFromRegisterResponseCache();
     const tokenOk = lastNativeDeviceToken && String(lastNativeDeviceToken).trim().length >= 16;
-    const dk = lastNativeDeviceKey ? String(lastNativeDeviceKey).trim() : "";
+    const dk =
+      (lastNativeDeviceKey && String(lastNativeDeviceKey).trim()) ||
+      (nativePushDebug.lastRegisterNativeDeviceKey && String(nativePushDebug.lastRegisterNativeDeviceKey).trim()) ||
+      "";
     const keyOk = /^native:ios:/.test(dk);
     if (!tokenOk && !keyOk) {
       nativePushDebug.lastTestSendDiag = { error: "no_token_or_devicekey_before_send" };
@@ -795,6 +818,8 @@ class NotificationService {
       hasToken: Boolean(payload.token),
       hasDeviceKey: Boolean(payload.deviceKey),
       tokenLength: typeof payload.token === "string" ? payload.token.length : 0,
+      deviceKeyLength: typeof payload.deviceKey === "string" ? payload.deviceKey.length : 0,
+      debugStoredDeviceKey: Boolean(nativePushDebug.lastRegisterNativeDeviceKey),
       jsonKeys: Object.keys(payload).sort().join(","),
     };
     const url = resolveNativePushApiSendUrl();
@@ -816,7 +841,7 @@ class NotificationService {
       });
       const text = await res.text();
       nativePushDebug.lastTestSendStatus = res.status;
-      nativePushDebug.lastTestSendResponseText = text.slice(0, 800);
+      nativePushDebug.lastTestSendResponseText = text.slice(0, 1600);
       let j = {};
       try {
         j = text ? JSON.parse(text) : {};
@@ -830,15 +855,27 @@ class NotificationService {
       nativePushDebug.lastTestSendDetail = ok
         ? "sent"
         : j.error || j.detail || j.hint || nativePushDebug.lastTestSendDetail || `HTTP ${res.status}`;
+      if (!ok && nativePushDebug.lastTestSendDiag && typeof nativePushDebug.lastTestSendDiag === "object") {
+        nativePushDebug.lastTestSendDiag = {
+          ...nativePushDebug.lastTestSendDiag,
+          responseHttpStatus: res.status,
+          serverError: j.error ?? null,
+          serverHint: j.hint ?? null,
+          serverDetail: j.detail ?? null,
+          serverApnsReason: j.apnsReason ?? null,
+          serverApnsStatus: j.apnsStatus ?? null,
+        };
+      }
       emitNativeDebug();
       console.log("[Native push] send test result", {
         url,
         httpStatus: res.status,
         requestBodyRedacted: redactedJson,
-        responseBodyPreview: text.slice(0, 500),
+        responseBody: text.slice(0, 800),
+        parsed: j,
         ok,
       });
-      if (!ok) console.warn("[Native push] send test", res.status, text.slice(0, 300), url);
+      if (!ok) console.warn("[Native push] send test failed", res.status, text.slice(0, 500), url, j);
       return { ok, status: res.status, ...j };
     } catch (e) {
       const cause = e?.cause;
