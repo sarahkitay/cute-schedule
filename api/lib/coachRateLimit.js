@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "./redisClient.js";
 
 const DEFAULT_MAX = 10;
 const DEFAULT_WINDOW_SEC = 60;

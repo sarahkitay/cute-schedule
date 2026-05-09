@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { kv } from "@vercel/kv";
+import { kv } from "../lib/redisClient.js";
 import { applyApiCors } from "../lib/cors.js";
 import { verifyFirebaseIdToken } from "../lib/firebaseAdminApp.js";
 import { normalizeReminderPayload } from "../lib/pushReminderNormalize.js";
@@ -61,8 +61,8 @@ export default async function handler(req, res) {
   } catch (e) {
     console.error("reminders-native error", e);
     const msg = String(e?.message || e);
-    const hint = /KV|kv|Redis|REDIS|ECONNREFUSED|ENOTFOUND|fetch failed/i.test(msg)
-      ? "Link Vercel KV to this project."
+    const hint = /KV|kv|Redis|REDIS|Upstash|ECONNREFUSED|ENOTFOUND|fetch failed/i.test(msg)
+      ? "Add Upstash Redis to this project and run `vercel env pull` for UPSTASH_REDIS_* vars."
       : msg.slice(0, 200);
     return res.status(500).json({ error: "Failed to store reminders", hint });
   }

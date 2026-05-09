@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { kv } from "../lib/redisClient.js";
 import { applyApiCors } from "../lib/cors.js";
 
 export default async function handler(req, res) {
@@ -24,8 +24,8 @@ export default async function handler(req, res) {
   } catch (e) {
     console.error("Subscribe error", e);
     const msg = String(e?.message || e);
-    const hint = /KV|kv|Redis|REDIS|ECONNREFUSED|ENOTFOUND|fetch failed/i.test(msg)
-      ? "Connect a Vercel KV database to this project (Vercel Dashboard → Storage → KV → Create, then link to the project). Push subscribe/reminders require KV."
+    const hint = /KV|kv|Redis|REDIS|Upstash|ECONNREFUSED|ENOTFOUND|fetch failed/i.test(msg)
+      ? "Add Upstash Redis to this project (Vercel Dashboard → Storage → Redis, link to project, then `vercel env pull`). Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN. Push subscribe/reminders need Redis."
       : "Check this deployment’s function logs in Vercel for the full error.";
     return res.status(500).json({ error: "Failed to store subscription", hint, detail: msg.slice(0, 240) });
   }

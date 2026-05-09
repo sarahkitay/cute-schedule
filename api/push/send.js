@@ -32,6 +32,15 @@ export default async function handler(req, res) {
 
   // --- Native iOS test (APNs); does not use VAPID ---
   if (body.nativeIos === true) {
+    /** Connectivity probe from Capacitor Settings (no token, no APNs send). */
+    if (body.testOnly === true) {
+      return res.status(200).json({
+        ok: true,
+        probe: true,
+        channel: "native-probe",
+        message: "POST reached /api/push/send (testOnly; no notification sent)",
+      });
+    }
     const token = typeof body.token === "string" ? body.token.trim() : "";
     if (token.length < 16) {
       return res.status(400).json({ error: "Missing native device token", hint: "Pass token from PushNotifications registration." });

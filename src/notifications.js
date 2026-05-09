@@ -378,7 +378,7 @@ class NotificationService {
             saveJson.detail ||
             saveJson.error ||
             (saveRes.status === 500
-              ? "Server could not save your subscription. Link Vercel KV to this project (required for push)."
+              ? "Server could not save your subscription. Add Upstash Redis to the Vercel project (UPSTASH_REDIS_* env vars)."
               : `Server returned ${saveRes.status}`),
         };
       }
@@ -497,7 +497,7 @@ class NotificationService {
     return null;
   }
 
-  notifyTaskComplete(task, category) {
+  notifyTaskComplete(task, _category) {
     this.showNotification("Done.", {
       body: `${task.text}`,
       tag: `complete-${task.id}`,
@@ -540,7 +540,7 @@ class NotificationService {
       if (nextTaskDelay > 0 && nextTaskDelay < 24 * 60 * 60 * 1000) {
         setTimeout(() => {
           this.showNotification("Next task starting", {
-            body: `${nextTask.text} (${category})`,
+            body: `${nextTask.text}${_category ? ` (${_category})` : ""}`,
             tag: `next-${nextTask.id}`,
             requireInteraction: false,
           });

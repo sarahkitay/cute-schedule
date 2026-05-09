@@ -21,7 +21,7 @@
     "@capacitor/core": "^7.4.3",
     "@capacitor/ios": "^7.4.3",
     "@capacitor/push-notifications": "^7.0.6",
-    "@vercel/kv": "^3.0.0",
+    "@upstash/redis": "^1.36.0",
     "apn": "^2.2.0",
     "firebase": "^12.12.1",
     "firebase-admin": "^13.9.0",

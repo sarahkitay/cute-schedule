@@ -12,7 +12,8 @@
       "https://*.googleapis.com",
       "https://appleid.apple.com",
       "https://*.apple.com",
-      "https://cute-schedule.vercel.app"
+      "https://cute-schedule.vercel.app",
+      "https://*.vercel.app"
     ]
   },
   "plugins": {

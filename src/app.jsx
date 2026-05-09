@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactDOM, { flushSync } from "react-dom";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
@@ -2208,6 +2208,51 @@ export default function App() {
     if (!isCapacitorNativeApp()) return;
     setNativePushDebug(getNativePushDebugSnapshot());
     return subscribeNativePushDebug(setNativePushDebug);
+  }, []);
+
+  /** Hard-coded URL + full error fields for WKWebView / allowNavigation debugging (see Xcode console). */
+  const [rawCapFetchProbe, setRawCapFetchProbe] = useState(null);
+  const runRawCapFetchProbe = useCallback(async () => {
+    const sendUrl = "https://cute-schedule.vercel.app/api/push/send";
+    const summarizeErr = (e) => {
+      if (e == null) return { name: "", message: "", string: "", stack: "", cause: "" };
+      const c = e.cause;
+      let causeStr = "";
+      if (c != null) {
+        causeStr = typeof c === "object" && c !== null && "message" in c ? String(c.message) : String(c);
+      }
+      return {
+        name: String(e.name ?? ""),
+        message: String(e.message ?? ""),
+        string: String(e),
+        stack: typeof e.stack === "string" ? e.stack.slice(0, 1200) : "",
+        cause: causeStr,
+      };
+    };
+    const next = { sendUrl, at: new Date().toISOString(), options: null, post: null };
+    try {
+      const r = await fetch(sendUrl, { method: "OPTIONS" });
+      const acao = r.headers.get("access-control-allow-origin");
+      next.options = { ok: true, status: r.status, statusText: r.statusText, acao: acao || "(no ACAO header)" };
+    } catch (e) {
+      const s = summarizeErr(e);
+      console.error("[PROYOU raw fetch] OPTIONS failed", sendUrl, s, e);
+      next.options = { ok: false, ...s };
+    }
+    try {
+      const r = await fetch(sendUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nativeIos: true, testOnly: true }),
+      });
+      const text = await r.text();
+      next.post = { ok: true, status: r.status, body: text.slice(0, 500) };
+    } catch (e) {
+      const s = summarizeErr(e);
+      console.error("[PROYOU raw fetch] POST failed", sendUrl, s, e);
+      next.post = { ok: false, ...s };
+    }
+    setRawCapFetchProbe(next);
   }, []);
 
   // PWA: capture install prompt (Chrome, Edge, Android Chrome, etc.). Skip in Capacitor; not applicable in the store app.
@@ -6509,7 +6554,60 @@ export default function App() {
                     >
                       Send test push
                     </button>
+                    <button type="button" className="btn btn-sm" onClick={() => void runRawCapFetchProbe()}>
+                      Raw fetch probe (OPTIONS + POST)
+                    </button>
                   </div>
+                  {rawCapFetchProbe && (
+                    <div
+                      className="settings-hint"
+                      style={{
+                        marginTop: 10,
+                        lineHeight: 1.45,
+                        fontFamily: "var(--font-mono, ui-monospace, monospace)",
+                        fontSize: 11,
+                        wordBreak: "break-all",
+                        borderTop: "1px solid rgba(0,0,0,0.08)",
+                        paddingTop: 8,
+                      }}
+                    >
+                      <div style={{ fontWeight: 600 }}>Raw probe (hard-coded URL)</div>
+                      <div>URL: {rawCapFetchProbe.sendUrl}</div>
+                      <div>At: {rawCapFetchProbe.at}</div>
+                      <div style={{ marginTop: 6 }}>OPTIONS — {rawCapFetchProbe.options?.ok ? "completed" : "error"}</div>
+                      {rawCapFetchProbe.options?.status != null ? (
+                        <div>status: {rawCapFetchProbe.options.status} {rawCapFetchProbe.options.statusText || ""}</div>
+                      ) : null}
+                      {rawCapFetchProbe.options?.acao ? <div>Access-Control-Allow-Origin: {rawCapFetchProbe.options.acao}</div> : null}
+                      {rawCapFetchProbe.options && !rawCapFetchProbe.options.ok ? (
+                        <>
+                          <div>error.name: {rawCapFetchProbe.options.name}</div>
+                          <div>error.message: {rawCapFetchProbe.options.message}</div>
+                          <div>String(e): {rawCapFetchProbe.options.string}</div>
+                          {rawCapFetchProbe.options.cause ? <div>cause: {rawCapFetchProbe.options.cause}</div> : null}
+                          {rawCapFetchProbe.options.stack ? (
+                            <div style={{ whiteSpace: "pre-wrap", opacity: 0.9 }}>stack: {rawCapFetchProbe.options.stack}</div>
+                          ) : null}
+                        </>
+                      ) : null}
+                      <div style={{ marginTop: 6 }}>POST — {rawCapFetchProbe.post?.ok ? "completed" : "error"}</div>
+                      {rawCapFetchProbe.post?.status != null ? (
+                        <div>status: {rawCapFetchProbe.post.status}</div>
+                      ) : null}
+                      {rawCapFetchProbe.post?.body ? <div>body: {rawCapFetchProbe.post.body}</div> : null}
+                      {rawCapFetchProbe.post && !rawCapFetchProbe.post.ok ? (
+                        <>
+                          <div>error.name: {rawCapFetchProbe.post.name}</div>
+                          <div>error.message: {rawCapFetchProbe.post.message}</div>
+                          <div>String(e): {rawCapFetchProbe.post.string}</div>
+                          {rawCapFetchProbe.post.cause ? <div>cause: {rawCapFetchProbe.post.cause}</div> : null}
+                          {rawCapFetchProbe.post.stack ? (
+                            <div style={{ whiteSpace: "pre-wrap", opacity: 0.9 }}>stack: {rawCapFetchProbe.post.stack}</div>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
+                  )}
                   {nativePushDebug && (
                     <div
                       className="settings-hint"

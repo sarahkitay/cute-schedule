@@ -1,6 +1,6 @@
 // Cron: schedule in vercel.json. Sends stored reminders when due. Web: VAPID + web-push; iOS native: APNs.
 import webpush from "web-push";
-import { kv } from "@vercel/kv";
+import { kv } from "../lib/redisClient.js";
 import { getWebSubscriptionFromStored, getNativeTokenFromStored } from "../lib/pushTarget.js";
 import { getVapidPublicKey, getVapidPrivateKey, getVapidSubject } from "../lib/vapidEnv.js";
 import { sendIosApnsNotification, isApnsConfigured } from "../lib/nativeApns.js";
