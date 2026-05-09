@@ -6673,6 +6673,45 @@ export default function App() {
                       <div>Permission: {nativePushDebug.permission}</div>
                       <div>Native platform: {nativePushDebug.nativePlatform ? "true" : "false"}</div>
                       <div>Native token: {nativePushDebug.tokenRegistered ? "registered" : "missing"}</div>
+                      {nativePushDebug.lastProyouApnsBridgeStatus != null || nativePushDebug.lastIosTokenSource != null ? (
+                        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.12)" }}>
+                          <div style={{ fontWeight: 600 }}>ProyouApns / iOS token source</div>
+                          <div>Capacitor token.value length: {String(nativePushDebug.lastCapacitorTokenValueLength ?? "—")}</div>
+                          <div>ProyouApns bridge status: {String(nativePushDebug.lastProyouApnsBridgeStatus ?? "—")}</div>
+                          <div>ProyouApns byteCount / hexLen / valid:</div>
+                          <div>
+                            {String(nativePushDebug.lastProyouApnsBridgeByteCount ?? "—")} /{" "}
+                            {String(nativePushDebug.lastProyouApnsBridgeHexLength ?? "—")} /{" "}
+                            {nativePushDebug.lastProyouApnsBridgeValid === true
+                              ? "true"
+                              : nativePushDebug.lastProyouApnsBridgeValid === false
+                                ? "false"
+                                : "—"}
+                          </div>
+                          {nativePushDebug.lastProyouApnsBridgeDetail ? (
+                            <div style={{ color: "var(--color-warn, #b8860b)", marginTop: 4 }}>
+                              {nativePushDebug.lastProyouApnsBridgeDetail}
+                            </div>
+                          ) : null}
+                          {nativePushDebug.lastProyouApnsBridgePluginError ? (
+                            <div style={{ color: "var(--color-danger, #c0392b)", marginTop: 4 }}>
+                              Plugin: {nativePushDebug.lastProyouApnsBridgePluginError}
+                              {nativePushDebug.lastProyouApnsBridgePluginCode
+                                ? ` (${nativePushDebug.lastProyouApnsBridgePluginCode})`
+                                : ""}
+                            </div>
+                          ) : null}
+                          <div>
+                            Token used for register-native:{" "}
+                            <strong>{String(nativePushDebug.lastIosTokenSource ?? "—")}</strong>
+                            {nativePushDebug.lastIosTokenSource === "capacitor_fallback" ? (
+                              <span style={{ color: "var(--color-danger, #c0392b)", marginLeft: 6 }}>
+                                (bridge missing/invalid — not ideal for APNs)
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : null}
                       {nativePushDebug.apiOriginResolved != null ? (
                         <>
                           <div>VITE_APP_ORIGIN (build): {String(nativePushDebug.apiOriginFromEnv ?? "")}</div>

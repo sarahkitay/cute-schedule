@@ -89,7 +89,7 @@ export default async function handler(req, res) {
             payload: { tag: r.tag || "reminder", url: "/" },
           });
           if (rslt.ok) sent++;
-          else console.warn("APNs send failed:", rslt.reason);
+          else console.warn("APNs send failed:", rslt.reason, rslt.apnsDebug || "");
         }
 
         if (due.length > 0) await kv.set(`reminders:native:user:${uid}`, remaining);
@@ -113,7 +113,7 @@ export default async function handler(req, res) {
             payload: { tag: r.tag || "reminder", url: "/" },
           });
           if (rslt.ok) sent++;
-          else console.warn("APNs send failed:", rslt.reason);
+          else console.warn("APNs send failed:", rslt.reason, rslt.apnsDebug || "");
         }
 
         if (due.length > 0) await kv.set(`reminders:${id}`, remaining);

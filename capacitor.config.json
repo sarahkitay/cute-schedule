@@ -2,6 +2,12 @@
   "appId": "app.proyou.proyou",
   "appName": "PROYOU",
   "webDir": "dist",
+  "packageClassList": [
+    "SignInWithApple",
+    "FirebaseAuthenticationPlugin",
+    "PushNotificationsPlugin",
+    "ProyouApnsPlugin"
+  ],
   "ios": {
     "contentInset": "automatic"
   },

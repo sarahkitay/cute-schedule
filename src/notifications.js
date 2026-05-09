@@ -3,6 +3,13 @@
 import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { apiUrl, publicUrl, getApiBaseDebug, NATIVE_FALLBACK_API_ORIGIN } from "./apiBase";
+import {
+  APNS_DEVICE_TOKEN_HEX_MAX,
+  APNS_DEVICE_TOKEN_HEX_MIN,
+  isValidNormalizedIosDeviceToken,
+  normalizeCapacitorIosDeviceToken,
+} from "../api/lib/nativeIosTokenNormalize.js";
+import { getIosApnsDeviceTokenHexFromNative } from "./proyouApns.js";
 
 /** @type {Set<(s: Record<string, unknown>) => void>} */
 const nativeDebugSubscribers = new Set();
@@ -44,6 +51,18 @@ export const nativePushDebugDefault = () => ({
   apiOriginFromEnv: null,
   apiOriginResolved: null,
   apiOriginSource: null,
+  /** Last ProyouApns.getDeviceTokenHex() snapshot (native AppDelegate store). */
+  lastProyouApnsBridgeByteCount: null,
+  lastProyouApnsBridgeHexLength: null,
+  lastProyouApnsBridgeValid: null,
+  /** `ok` | `plugin_error` | `store_empty` | `wrong_length` */
+  lastProyouApnsBridgeStatus: null,
+  lastProyouApnsBridgeDetail: null,
+  lastProyouApnsBridgePluginError: null,
+  lastProyouApnsBridgePluginCode: null,
+  /** `proyou_bridge` | `capacitor_fallback` — which source supplied the hex used for register-native. */
+  lastIosTokenSource: null,
+  lastCapacitorTokenValueLength: null,
 });
 
 /** @type {ReturnType<typeof nativePushDebugDefault>} */
@@ -115,6 +134,33 @@ let lastNativeDeviceToken = null;
 let lastNativeDeviceKey = null;
 let nativeListenersAttached = false;
 
+/** Clears in-memory + localStorage native push registration so a new `register()` cannot reuse stale deviceKey / long tokens. */
+function clearNativePushRegistrationForFreshRegister() {
+  lastNativeDeviceToken = null;
+  lastNativeDeviceKey = null;
+  try {
+    if (typeof localStorage !== "undefined") localStorage.removeItem(NATIVE_DEVICE_KEY_LS);
+  } catch {
+    /* ignore */
+  }
+  nativePushDebug.lastRegisterNativeDeviceKey = null;
+  nativePushDebug.lastRegisterNativeResponseText = null;
+  nativePushDebug.lastRegisterNativeStatus = null;
+  nativePushDebug.lastRegisterNativeUrl = null;
+  nativePushDebug.tokenRegistered = false;
+  nativePushDebug.lastTokenPrefix = null;
+  nativePushDebug.lastProyouApnsBridgeByteCount = null;
+  nativePushDebug.lastProyouApnsBridgeHexLength = null;
+  nativePushDebug.lastProyouApnsBridgeValid = null;
+  nativePushDebug.lastProyouApnsBridgeStatus = null;
+  nativePushDebug.lastProyouApnsBridgeDetail = null;
+  nativePushDebug.lastProyouApnsBridgePluginError = null;
+  nativePushDebug.lastProyouApnsBridgePluginCode = null;
+  nativePushDebug.lastIosTokenSource = null;
+  nativePushDebug.lastCapacitorTokenValueLength = null;
+  emitNativeDebug();
+}
+
 function hydrateNativeDeviceKeyFromStorage() {
   try {
     if (typeof localStorage === "undefined") return;
@@ -135,15 +181,18 @@ function syncLastNativeDeviceKeyFromRegisterResponseCache() {
   if (!raw || typeof raw !== "string") return;
   try {
     const j = JSON.parse(raw);
-    if (typeof j.deviceKey === "string" && /^native:ios:/.test(j.deviceKey.trim())) {
-      lastNativeDeviceKey = j.deviceKey.trim();
-      nativePushDebug.lastRegisterNativeDeviceKey = lastNativeDeviceKey;
-      try {
-        localStorage.setItem(NATIVE_DEVICE_KEY_LS, lastNativeDeviceKey);
-      } catch {
-        /* ignore */
+    if (typeof j.deviceKey === "string") {
+      const dk = j.deviceKey.trim();
+      if (/^native:ios:/.test(dk) || /^native:user:/.test(dk)) {
+        lastNativeDeviceKey = dk;
+        nativePushDebug.lastRegisterNativeDeviceKey = lastNativeDeviceKey;
+        try {
+          localStorage.setItem(NATIVE_DEVICE_KEY_LS, lastNativeDeviceKey);
+        } catch {
+          /* ignore */
+        }
+        emitNativeDebug();
       }
-      emitNativeDebug();
     }
   } catch {
     /* ignore */
@@ -180,15 +229,12 @@ function resolveNativePushApiSendUrl() {
 }
 
 function buildNativeTestSendRequestBody() {
-  const token =
-    lastNativeDeviceToken && String(lastNativeDeviceToken).trim().length >= 16
-      ? String(lastNativeDeviceToken).trim()
-      : "";
   const dkRaw =
     (lastNativeDeviceKey && String(lastNativeDeviceKey).trim()) ||
     (nativePushDebug.lastRegisterNativeDeviceKey && String(nativePushDebug.lastRegisterNativeDeviceKey).trim()) ||
     "";
-  const deviceKey = /^native:ios:/.test(dkRaw) ? dkRaw : "";
+  const deviceKey =
+    /^native:ios:/.test(dkRaw) || /^native:user:/.test(dkRaw) ? dkRaw : "";
   const payload = {
     nativeIos: true,
     title: "PROYOU",
@@ -196,15 +242,10 @@ function buildNativeTestSendRequestBody() {
     url: "/",
   };
   if (deviceKey) payload.deviceKey = deviceKey;
-  if (token) payload.token = token;
 
   const redacted = { ...payload };
-  if (redacted.token) {
-    const len = payload.token.length;
-    redacted.token = `${shortenTokenForLog(payload.token)} (${len} chars)`;
-  }
   if (redacted.deviceKey) {
-    redacted.deviceKey = `${String(redacted.deviceKey).slice(0, 28)}…`;
+    redacted.deviceKey = `${String(redacted.deviceKey).slice(0, 44)}…`;
   }
   return { payload, redactedJson: JSON.stringify(redacted) };
 }
@@ -213,7 +254,14 @@ function waitForNativeToken(maxMs = 6000) {
   return new Promise((resolve) => {
     const start = Date.now();
     const tick = () => {
-      if (lastNativeDeviceToken && lastNativeDeviceToken.length >= 16) return resolve(true);
+      const t = lastNativeDeviceToken;
+      if (!t) {
+        if (Date.now() - start >= maxMs) return resolve(false);
+        setTimeout(tick, 120);
+        return;
+      }
+      const ok = Capacitor.getPlatform() === "ios" ? isValidNormalizedIosDeviceToken(t) : t.length >= 16;
+      if (ok) return resolve(true);
       if (Date.now() - start >= maxMs) return resolve(false);
       setTimeout(tick, 120);
     };
@@ -256,22 +304,16 @@ async function postRegisterNative(token, platform) {
     nativePushDebug.lastRegistrationError = null;
     try {
       const j = JSON.parse(text);
-      if (typeof j.deviceKey === "string" && /^native:ios:/.test(j.deviceKey.trim())) {
+      if (typeof j.deviceKey === "string") {
         const dk = j.deviceKey.trim();
-        lastNativeDeviceKey = dk;
-        nativePushDebug.lastRegisterNativeDeviceKey = dk;
-        try {
-          localStorage.setItem(NATIVE_DEVICE_KEY_LS, dk);
-        } catch {
-          /* ignore */
-        }
-      } else if (j.scope === "user") {
-        lastNativeDeviceKey = null;
-        nativePushDebug.lastRegisterNativeDeviceKey = null;
-        try {
-          localStorage.removeItem(NATIVE_DEVICE_KEY_LS);
-        } catch {
-          /* ignore */
+        if (/^native:ios:/.test(dk) || /^native:user:/.test(dk)) {
+          lastNativeDeviceKey = dk;
+          nativePushDebug.lastRegisterNativeDeviceKey = dk;
+          try {
+            localStorage.setItem(NATIVE_DEVICE_KEY_LS, dk);
+          } catch {
+            /* ignore */
+          }
         }
       }
     } catch {
@@ -305,18 +347,132 @@ async function attachNativePushListenersOnce() {
   nativeListenersAttached = true;
 
   await PushNotifications.addListener("registration", async (token) => {
-    const value = token?.value ? String(token.value).trim() : "";
-    lastNativeDeviceToken = value || null;
-    nativePushDebug.tokenRegistered = value.length >= 16;
-    nativePushDebug.lastTokenPrefix = value ? shortenTokenForLog(value) : null;
+    lastNativeDeviceToken = null;
+    nativePushDebug.tokenRegistered = false;
+    nativePushDebug.lastTokenPrefix = null;
     nativePushDebug.lastRegistrationError = null;
-    if (import.meta.env.DEV && value) {
-      console.log("[Native push] registration ok, token:", shortenTokenForLog(value));
-    }
+    nativePushDebug.lastIosTokenSource = null;
     emitNativeDebug();
-    if (value.length >= 16) {
-      await postRegisterNative(value, Capacitor.getPlatform());
+
+    const platform = Capacitor.getPlatform();
+    const rawValue = typeof token?.value === "string" ? token.value : "";
+    nativePushDebug.lastCapacitorTokenValueLength = rawValue.length;
+
+    if (platform === "ios") {
+      /**
+       * Call ProyouApns **before** reading/using `token.value` (bridge uses AppDelegate `Data`, not env / .p8).
+       * @capacitor/push-notifications maps `Data` → hex (2 chars per byte); length varies by OS. Non-hex `token.value` may be non-APNs (e.g. string branch).
+       */
+      const fromBridge = await getIosApnsDeviceTokenHexFromNative();
+      const bridgeHexLen = typeof fromBridge.hex === "string" ? fromBridge.hex.length : 0;
+      nativePushDebug.lastProyouApnsBridgeByteCount = fromBridge.byteCount;
+      nativePushDebug.lastProyouApnsBridgeHexLength = bridgeHexLen;
+      nativePushDebug.lastProyouApnsBridgePluginError = fromBridge.pluginError || null;
+      nativePushDebug.lastProyouApnsBridgePluginCode = fromBridge.pluginCode || null;
+
+      const bridgeOk =
+        typeof fromBridge.hex === "string" &&
+        isValidNormalizedIosDeviceToken(fromBridge.hex) &&
+        fromBridge.byteCount > 0 &&
+        fromBridge.hex.length === fromBridge.byteCount * 2;
+      nativePushDebug.lastProyouApnsBridgeValid = bridgeOk;
+
+      let bridgeStatus = "ok";
+      let bridgeDetail = "";
+      if (fromBridge.pluginError) {
+        bridgeStatus = "plugin_error";
+        bridgeDetail = `ProyouApns plugin error: ${fromBridge.pluginError}${fromBridge.pluginCode ? ` (${fromBridge.pluginCode})` : ""}. Check packageClassList includes ProyouApnsPlugin and rebuild iOS.`;
+      } else if (fromBridge.byteCount === 0 && bridgeHexLen === 0) {
+        bridgeStatus = "store_empty";
+        bridgeDetail =
+          "ProyouApns native store is empty (AppDelegate didRegisterForRemoteNotificationsWithDeviceToken may not have run yet, or native files not in App target).";
+      } else if (!bridgeOk) {
+        bridgeStatus = "wrong_length";
+        bridgeDetail = `ProyouApns store has byteCount=${fromBridge.byteCount}, hex length=${bridgeHexLen} (need even hex ${APNS_DEVICE_TOKEN_HEX_MIN}–${APNS_DEVICE_TOKEN_HEX_MAX} matching 2×bytes, bytes 32–100).`;
+      }
+      nativePushDebug.lastProyouApnsBridgeStatus = bridgeStatus;
+      nativePushDebug.lastProyouApnsBridgeDetail = bridgeDetail || null;
+      emitNativeDebug();
+
+      console.log("[Native push] ProyouApns bridge (first)", {
+        bridgeOk,
+        byteCount: fromBridge.byteCount,
+        hexLen: bridgeHexLen,
+        status: bridgeStatus,
+        pluginError: fromBridge.pluginError || null,
+      });
+      console.log("[Native push] Capacitor registration typeof token (event)", typeof token);
+      console.log(
+        "[Native push] Capacitor registration Object.keys(token)",
+        token && typeof token === "object" ? Object.keys(token) : []
+      );
+      try {
+        console.log("[Native push] Capacitor registration JSON.stringify(token)", JSON.stringify(token));
+      } catch (stringifyErr) {
+        console.log("[Native push] Capacitor registration JSON.stringify failed", stringifyErr?.message || stringifyErr);
+      }
+      console.log("[Native push] Capacitor token.value.length (after bridge)", rawValue.length);
+
+      let sourceForNormalize = rawValue;
+      if (bridgeOk) {
+        sourceForNormalize = fromBridge.hex;
+        nativePushDebug.lastIosTokenSource = "proyou_bridge";
+        console.log("[Native push] iOS APNs token source: ProyouApns bridge (opaque hex from AppDelegate Data)");
+      } else if (!rawValue.trim()) {
+        const msg =
+          "Missing APNs device token: ProyouApns bridge invalid/empty and PushNotifications token.value is empty (not APNS_PRIVATE_KEY).";
+        nativePushDebug.lastRegistrationError = msg;
+        emitNativeDebug();
+        console.warn("[Native push]", msg);
+        return;
+      } else {
+        nativePushDebug.lastIosTokenSource = "capacitor_fallback";
+        console.warn("[Native push] ProyouApns bridge not usable; falling back to token.value (see debug panel)", {
+          bridgeStatus,
+          bridgeDetail,
+          tokenValueLen: rawValue.length,
+        });
+      }
+
+      const normalized = normalizeCapacitorIosDeviceToken(sourceForNormalize);
+      console.log("[Native push] iOS normalized device token length", normalized.length);
+
+      if (!/^[0-9a-f]+$/.test(normalized)) {
+        const msg = "APNs device token was not hex-only after normalization (spaces, <>, non-hex removed)";
+        nativePushDebug.lastRegistrationError = msg;
+        emitNativeDebug();
+        console.warn("[Native push]", msg);
+        return;
+      }
+      if (!isValidNormalizedIosDeviceToken(normalized)) {
+        const msg = `APNs device token length ${normalized.length}; expected even-length hex ${APNS_DEVICE_TOKEN_HEX_MIN}–${APNS_DEVICE_TOKEN_HEX_MAX} (opaque token). Not the .p8 private key.`;
+        nativePushDebug.lastRegistrationError = msg;
+        emitNativeDebug();
+        console.warn("[Native push]", msg);
+        return;
+      }
+      lastNativeDeviceToken = normalized;
+    } else {
+      const raw =
+        typeof token?.value === "string" && token.value.trim()
+          ? token.value.trim()
+          : typeof token?.token === "string" && token.token.trim()
+            ? token.token.trim()
+            : "";
+      if (raw.length < 16) {
+        nativePushDebug.lastRegistrationError = "Registration value too short";
+        emitNativeDebug();
+        return;
+      }
+      lastNativeDeviceToken = raw;
     }
+
+    nativePushDebug.tokenRegistered = true;
+    nativePushDebug.lastTokenPrefix = lastNativeDeviceToken ? shortenTokenForLog(lastNativeDeviceToken) : null;
+    nativePushDebug.lastRegistrationError = null;
+    emitNativeDebug();
+
+    await postRegisterNative(lastNativeDeviceToken, platform);
   });
 
   await PushNotifications.addListener("registrationError", (err) => {
@@ -380,6 +536,7 @@ export async function registerNativePushFull() {
     if (perm.receive !== "granted") {
       return { ok: false, hint: "Push permission not granted", receive: perm.receive };
     }
+    clearNativePushRegistrationForFreshRegister();
     await PushNotifications.register();
     const got = await waitForNativeToken();
     if (!got) {
@@ -763,19 +920,18 @@ class NotificationService {
   async sendNativeTestPush() {
     if (!Capacitor.isNativePlatform()) return { ok: false, hint: "Not native" };
     syncLastNativeDeviceKeyFromRegisterResponseCache();
-    const tokenOk = lastNativeDeviceToken && String(lastNativeDeviceToken).trim().length >= 16;
     const dk =
       (lastNativeDeviceKey && String(lastNativeDeviceKey).trim()) ||
       (nativePushDebug.lastRegisterNativeDeviceKey && String(nativePushDebug.lastRegisterNativeDeviceKey).trim()) ||
       "";
-    const keyOk = /^native:ios:/.test(dk);
-    if (!tokenOk && !keyOk) {
-      nativePushDebug.lastTestSendDiag = { error: "no_token_or_devicekey_before_send" };
+    const keyOk = /^native:ios:/.test(dk) || /^native:user:/.test(dk);
+    if (!keyOk) {
+      nativePushDebug.lastTestSendDiag = { error: "no_devicekey_before_send" };
       emitNativeDebug();
       return {
         ok: false,
         hint:
-          "No APNs token or stored iOS deviceKey yet. Enable native push once so Apple returns a token and register-native can save a deviceKey.",
+          "No deviceKey yet. Enable native push so register-native returns native:ios:… or native:user:…, then try Send test push (raw APNs token is not sent to /api/push/send).",
       };
     }
 
@@ -794,19 +950,18 @@ class NotificationService {
     emitNativeDebug();
 
     const { payload, redactedJson } = buildNativeTestSendRequestBody();
-    if (!payload.token && !payload.deviceKey) {
+    if (!payload.deviceKey) {
       nativePushDebug.lastTestSendDiag = {
-        error: "missing_token_and_deviceKey_in_payload",
+        error: "missing_deviceKey_in_payload",
         keys: Object.keys(payload),
-        inMemoryTokenLen: lastNativeDeviceToken ? String(lastNativeDeviceToken).trim().length : 0,
-        deviceKeyCached: Boolean(lastNativeDeviceKey && /^native:ios:/.test(String(lastNativeDeviceKey))),
+        deviceKeyCached: Boolean(lastNativeDeviceKey || nativePushDebug.lastRegisterNativeDeviceKey),
       };
       nativePushDebug.lastTestSendOk = false;
-      nativePushDebug.lastTestSendDetail = "Send body had no token or deviceKey (would not call server).";
+      nativePushDebug.lastTestSendDetail = "Send body had no deviceKey (would not call server).";
       emitNativeDebug();
       return {
         ok: false,
-        hint: "Could not build send body: missing APNs token and deviceKey. Enable native push again, or open Settings after a successful register-native.",
+        hint: "Could not build send body: missing deviceKey. Register native push again after this update.",
         ...nativePushDebug.lastTestSendDiag,
       };
     }
@@ -815,9 +970,8 @@ class NotificationService {
     nativePushDebug.lastTestSendRequestBodyRedacted = redactedJson;
     nativePushDebug.lastTestSendDiag = {
       nativeIos: Boolean(payload.nativeIos),
-      hasToken: Boolean(payload.token),
+      hasToken: false,
       hasDeviceKey: Boolean(payload.deviceKey),
-      tokenLength: typeof payload.token === "string" ? payload.token.length : 0,
       deviceKeyLength: typeof payload.deviceKey === "string" ? payload.deviceKey.length : 0,
       debugStoredDeviceKey: Boolean(nativePushDebug.lastRegisterNativeDeviceKey),
       jsonKeys: Object.keys(payload).sort().join(","),
@@ -856,13 +1010,25 @@ class NotificationService {
         ? "sent"
         : j.error || j.detail || j.hint || nativePushDebug.lastTestSendDetail || `HTTP ${res.status}`;
       if (!ok && nativePushDebug.lastTestSendDiag && typeof nativePushDebug.lastTestSendDiag === "object") {
+        const fromApns = {};
+        if (j.apnsDebug && typeof j.apnsDebug === "object") {
+          Object.assign(fromApns, j.apnsDebug);
+        } else {
+          if (j.normalizedTokenLength != null) fromApns.normalizedTokenLength = j.normalizedTokenLength;
+          else if (j.tokenLength != null) fromApns.normalizedTokenLength = j.tokenLength;
+          if (j.tokenLooksHex != null) fromApns.tokenLooksHex = j.tokenLooksHex;
+          if (j.topic != null) fromApns.topic = j.topic;
+          if (j.APNS_PRODUCTION != null) fromApns.APNS_PRODUCTION = j.APNS_PRODUCTION;
+          if (j.production != null) fromApns.production = j.production;
+          if (j.apnsReason != null) fromApns.apnsReason = j.apnsReason;
+        }
         nativePushDebug.lastTestSendDiag = {
           ...nativePushDebug.lastTestSendDiag,
+          ...fromApns,
           responseHttpStatus: res.status,
           serverError: j.error ?? null,
           serverHint: j.hint ?? null,
           serverDetail: j.detail ?? null,
-          serverApnsReason: j.apnsReason ?? null,
           serverApnsStatus: j.apnsStatus ?? null,
         };
       }

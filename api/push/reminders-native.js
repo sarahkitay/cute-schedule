@@ -3,6 +3,7 @@ import { kv } from "../lib/redisClient.js";
 import { applyApiCors } from "../lib/cors.js";
 import { verifyFirebaseIdToken } from "../lib/firebaseAdminApp.js";
 import { normalizeReminderPayload } from "../lib/pushReminderNormalize.js";
+import { isValidNormalizedIosDeviceToken, normalizeCapacitorIosDeviceToken } from "../lib/nativeIosTokenNormalize.js";
 
 function extractIdToken(req, body) {
   const auth = req.headers.authorization;
@@ -32,11 +33,21 @@ export default async function handler(req, res) {
   res.setHeader("Content-Type", "application/json");
 
   const body = typeof req.body === "object" && req.body != null ? req.body : {};
-  const token = typeof body.token === "string" ? body.token.trim() : "";
+  let token = typeof body.token === "string" ? body.token.trim() : "";
   const platform = typeof body.platform === "string" ? body.platform.trim().slice(0, 24) : "unknown";
   const list = Array.isArray(body.reminders) ? body.reminders : [];
 
-  if (token.length < 16) {
+  const platNorm = platform === "android" ? "android" : "ios";
+  if (platNorm === "ios") {
+    const n = normalizeCapacitorIosDeviceToken(token);
+    if (!isValidNormalizedIosDeviceToken(n)) {
+      return res.status(400).json({
+        error: "Invalid iOS token for reminders",
+        hint: "Same as register-native: Capacitor token.value normalized to even-length hex (64–200 chars; not APNS_PRIVATE_KEY).",
+      });
+    }
+    token = n;
+  } else if (token.length < 16) {
     return res.status(400).json({ error: "Missing or invalid token" });
   }
 
@@ -53,7 +64,6 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, count: normalized.length, scope: "user" });
     }
 
-    const platNorm = platform === "android" ? "android" : "ios";
     const hash = createHash("sha256").update(token).digest("hex");
     const deviceId = `native:${platNorm}:${hash}`;
     await kv.set(`reminders:${deviceId}`, normalized);

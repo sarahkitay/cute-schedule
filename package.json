@@ -12,7 +12,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "trigger-deploy": "sh -c 'if [ -z \"$VERCEL_DEPLOY_HOOK_URL\" ]; then echo \"Set VERCEL_DEPLOY_HOOK_URL to your Vercel deploy hook (Dashboard → Project → Settings → Git → Deploy Hooks).\" >&2; exit 1; fi; curl -s -X POST \"$VERCEL_DEPLOY_HOOK_URL\"'",
-    "cap:sync": "npm run build && npx cap sync",
+    "cap:sync": "npm run build && npx cap sync && node scripts/merge-ios-cap-plugin-classes.mjs",
+    "cap:sync:ios": "npm run build && npx cap sync ios && node scripts/merge-ios-cap-plugin-classes.mjs",
     "cap:ios": "npx cap open ios"
   },
   "dependencies": {

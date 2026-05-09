@@ -4,6 +4,7 @@ import { getVapidPublicKey, getVapidPrivateKey, getVapidSubject } from "../lib/v
 import { applyApiCors } from "../lib/cors.js";
 import { clientSafeDetail, logServerError } from "../lib/safeJsonError.js";
 import { sendIosApnsNotification, isApnsConfigured } from "../lib/nativeApns.js";
+import { isValidNormalizedIosDeviceToken, normalizeCapacitorIosDeviceToken } from "../lib/nativeIosTokenNormalize.js";
 import { kv } from "../lib/redisClient.js";
 
 const vapidPub = getVapidPublicKey();
@@ -45,44 +46,50 @@ export default async function handler(req, res) {
         message: "POST reached /api/push/send (testOnly; no notification sent)",
       });
     }
-    let token = "";
-    const bodyToken = typeof body.token === "string" ? body.token.trim() : "";
     const deviceKey = typeof body.deviceKey === "string" ? body.deviceKey.trim() : "";
+    const validDeviceKey =
+      deviceKey.length >= 8 && (/^native:ios:/.test(deviceKey) || /^native:user:/.test(deviceKey));
 
-    if (deviceKey.length >= 8 && /^native:ios:/.test(deviceKey)) {
-      try {
-        const stored = await kv.get(deviceKey);
-        if (stored && typeof stored === "object" && !Array.isArray(stored)) {
-          if (stored.type !== "ios") {
-            return res.status(400).json({
-              error: "Wrong device for native iOS send",
-              hint: "deviceKey must refer to an iOS registration (native:ios:…). For Android use a different flow.",
-            });
-          }
-          const t = stored.token;
-          if (typeof t === "string" && t.trim().length >= 16) token = t.trim();
-        }
-      } catch (e) {
-        logServerError("push/send nativeIos deviceKey lookup", e);
-        return res.status(503).json({
-          error: "deviceKey lookup failed",
-          hint: "Could not load device registration from Redis (UPSTASH_* or KV_REST_* env).",
-          detail: isProd ? undefined : String(e?.message || e),
-        });
-      }
-    }
-
-    if (token.length < 16 && bodyToken.length >= 16) {
-      token = bodyToken;
-    }
-
-    if (token.length < 16) {
+    if (!validDeviceKey) {
       return res.status(400).json({
-        error: "Missing native device token",
-        hint: 'Prefer anon "deviceKey" (native:ios:…) from register-native, or send APNs token in "token". Web PushSubscription is not used for native iOS.',
-        debug: isProd
-          ? undefined
-          : { hadDeviceKey: deviceKey.length > 0, bodyTokenLen: bodyToken.length, resolvedTokenLen: token.length },
+        error: "Missing or invalid deviceKey",
+        hint: "Send deviceKey from POST /api/push/register-native (native:ios:… or native:user:…). Raw APNs token is not accepted here — the server loads the token from Redis.",
+      });
+    }
+
+    let token = "";
+    /** Length of `normalizeCapacitorIosDeviceToken(stored.token)` for non-prod debug when invalid. */
+    let normalizedFromRedisLen = 0;
+    try {
+      const stored = await kv.get(deviceKey);
+      if (stored && typeof stored === "object" && !Array.isArray(stored)) {
+        if (stored.type !== "ios") {
+          return res.status(400).json({
+            error: "Wrong device for native iOS send",
+            hint: "deviceKey must refer to an iOS registration stored in Redis.",
+          });
+        }
+        const t = stored.token;
+        if (typeof t === "string" && t.trim()) {
+          const n = normalizeCapacitorIosDeviceToken(t);
+          normalizedFromRedisLen = n.length;
+          if (isValidNormalizedIosDeviceToken(n)) token = n;
+        }
+      }
+    } catch (e) {
+      logServerError("push/send nativeIos deviceKey lookup", e);
+      return res.status(503).json({
+        error: "deviceKey lookup failed",
+        hint: "Could not load device registration from Redis (UPSTASH_* or KV_REST_* env).",
+        detail: isProd ? undefined : String(e?.message || e),
+      });
+    }
+
+    if (!isValidNormalizedIosDeviceToken(token)) {
+      return res.status(400).json({
+        error: "No valid APNs device token in Redis for this deviceKey",
+        hint: "Re-register from the app. Stored token must be even-length hex (64–200 chars) after normalization.",
+        debug: isProd ? undefined : { deviceKeyLen: deviceKey.length, normalizedLen: normalizedFromRedisLen || token.length },
       });
     }
     if (!isApnsConfigured()) {
@@ -99,10 +106,22 @@ export default async function handler(req, res) {
     });
     if (!rslt.ok) {
       logServerError("push/send APNs failed", new Error(rslt.reason || "unknown"));
+      const dbg = rslt.apnsDebug || null;
       return res.status(502).json({
         error: "APNs send failed",
-        apnsReason: rslt.reason || "unknown",
         apnsStatus: rslt.apnsStatus,
+        apnsDebug: dbg,
+        /** Flatten for clients that read top-level fields */
+        ...(dbg && typeof dbg === "object"
+          ? {
+              normalizedTokenLength: dbg.normalizedTokenLength,
+              tokenLooksHex: dbg.tokenLooksHex,
+              topic: dbg.topic,
+              APNS_PRODUCTION: dbg.APNS_PRODUCTION,
+              production: dbg.production,
+              apnsReason: dbg.apnsReason,
+            }
+          : {}),
         detail: isProd ? undefined : rslt.reason,
       });
     }
@@ -118,7 +137,7 @@ export default async function handler(req, res) {
   if (!sub) {
     return res.status(400).json({
       error: "Missing subscription",
-      hint: "For browser/PWA, include PushSubscription JSON under \"subscription\". For native iOS test, set nativeIos: true and token.",
+      hint: 'For browser/PWA, include PushSubscription JSON under "subscription". For native iOS test, set nativeIos: true and deviceKey from register-native (no raw APNs token on this route).',
     });
   }
 
