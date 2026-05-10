@@ -1,24 +1,41 @@
 import admin from "firebase-admin";
 
 /**
- * Firebase Admin for server-side ID token verification (native push registration / reminders).
- * Set FIREBASE_SERVICE_ACCOUNT_JSON on Vercel to a stringified service account JSON object.
+ * Firebase Admin (same pattern as Firebase docs):
+ *
+ *   const admin = require("firebase-admin");
+ *   const serviceAccount = require("./path/to/serviceAccountKey.json");
+ *   admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+ *
+ * Here `serviceAccount` comes from `FIREBASE_SERVICE_ACCOUNT_JSON` (stringified JSON on Vercel),
+ * not from `require("path/to/...")`, so credentials are never committed to the repo.
  */
 export function getFirebaseAdmin() {
   if (globalThis.__proyouFirebaseAdmin) return globalThis.__proyouFirebaseAdmin;
+
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
   if (!raw || typeof raw !== "string") {
     return null;
   }
+
+  let serviceAccount;
   try {
-    const cred = JSON.parse(raw);
+    serviceAccount = JSON.parse(raw);
+  } catch (e) {
+    console.error("Firebase Admin: could not parse FIREBASE_SERVICE_ACCOUNT_JSON:", e?.message || e);
+    return null;
+  }
+
+  try {
     if (!admin.apps.length) {
-      admin.initializeApp({ credential: admin.credential.cert(cred) });
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+      });
     }
     globalThis.__proyouFirebaseAdmin = admin;
     return admin;
   } catch (e) {
-    console.error("Firebase Admin init failed:", e?.message || e);
+    console.error("Firebase Admin initializeApp failed:", e?.message || e);
     return null;
   }
 }
