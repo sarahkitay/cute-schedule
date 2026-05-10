@@ -18,25 +18,26 @@ export function getWebSubscriptionFromStored(raw) {
 }
 
 /**
- * @typedef {{ kind: 'ios' | 'android'; token: string }} NativeTokenInfo
+ * @typedef {{ kind: 'ios' | 'android'; token: string; pushProvider?: string }} NativeTokenInfo
  */
 
 /**
- * Native APNs / FCM token from stored row, or null.
- * Supports `{ type: 'ios'|'android', token }` and legacy `{ token, platform }`.
+ * Native FCM (iOS/Android) token from stored row, or null.
+ * Supports `{ type: 'ios'|'android', token, pushProvider? }` and legacy `{ token, platform }`.
  * @param {unknown} raw
  * @returns {NativeTokenInfo | null}
  */
 export function getNativeTokenFromStored(raw) {
   if (!raw || typeof raw !== "object") return null;
   const o = /** @type {Record<string, unknown>} */ (raw);
-  if (o.type === "ios" && typeof o.token === "string") return { kind: "ios", token: o.token };
-  if (o.type === "android" && typeof o.token === "string") return { kind: "android", token: o.token };
+  const pushProvider = typeof o.pushProvider === "string" ? o.pushProvider : undefined;
+  if (o.type === "ios" && typeof o.token === "string") return { kind: "ios", token: o.token, pushProvider };
+  if (o.type === "android" && typeof o.token === "string") return { kind: "android", token: o.token, pushProvider };
   if (typeof o.token === "string" && o.token.length >= 16) {
     const p = typeof o.platform === "string" ? o.platform.toLowerCase() : "";
-    if (p === "android") return { kind: "android", token: o.token };
-    if (p === "ios" || p === "unknown" || !p) return { kind: "ios", token: o.token };
-    return { kind: "ios", token: o.token };
+    if (p === "android") return { kind: "android", token: o.token, pushProvider };
+    if (p === "ios" || p === "unknown" || !p) return { kind: "ios", token: o.token, pushProvider };
+    return { kind: "ios", token: o.token, pushProvider };
   }
   return null;
 }

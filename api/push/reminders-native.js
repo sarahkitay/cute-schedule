@@ -3,7 +3,7 @@ import { kv } from "../lib/redisClient.js";
 import { applyApiCors } from "../lib/cors.js";
 import { verifyFirebaseIdToken } from "../lib/firebaseAdminApp.js";
 import { normalizeReminderPayload } from "../lib/pushReminderNormalize.js";
-import { isValidNormalizedIosDeviceToken, normalizeCapacitorIosDeviceToken } from "../lib/nativeIosTokenNormalize.js";
+import { isValidFcmRegistrationToken, normalizeFcmRegistrationToken } from "../lib/fcmRegistrationToken.js";
 
 function extractIdToken(req, body) {
   const auth = req.headers.authorization;
@@ -16,7 +16,7 @@ function extractIdToken(req, body) {
 }
 
 /**
- * POST { token, platform?, reminders, idToken? } — same reminder shape as /api/push/reminders; keys by Firebase uid when token verifies.
+ * POST { token, platform?, pushProvider?, reminders, idToken? } — same reminder shape as /api/push/reminders; keys by Firebase uid when token verifies.
  */
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
@@ -35,15 +35,22 @@ export default async function handler(req, res) {
   const body = typeof req.body === "object" && req.body != null ? req.body : {};
   let token = typeof body.token === "string" ? body.token.trim() : "";
   const platform = typeof body.platform === "string" ? body.platform.trim().slice(0, 24) : "unknown";
+  const pushProviderRaw = typeof body.pushProvider === "string" ? body.pushProvider.trim().toLowerCase() : "";
   const list = Array.isArray(body.reminders) ? body.reminders : [];
 
   const platNorm = platform === "android" ? "android" : "ios";
   if (platNorm === "ios") {
-    const n = normalizeCapacitorIosDeviceToken(token);
-    if (!isValidNormalizedIosDeviceToken(n)) {
+    if (pushProviderRaw !== "fcm") {
       return res.status(400).json({
-        error: "Invalid iOS token for reminders",
-        hint: "Same as register-native: Capacitor token.value normalized to even-length hex (64–200 chars; not APNS_PRIVATE_KEY).",
+        error: "iOS reminders require pushProvider=fcm",
+        hint: "Same token as register-native: FCM registration token from FirebaseMessaging.getToken().",
+      });
+    }
+    const n = normalizeFcmRegistrationToken(token);
+    if (!isValidFcmRegistrationToken(n)) {
+      return res.status(400).json({
+        error: "Invalid FCM token for reminders",
+        hint: "Must match register-native: valid FCM registration token (not legacy APNs hex).",
       });
     }
     token = n;

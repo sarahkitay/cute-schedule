@@ -8,10 +8,10 @@ export type WebPushSubscription = {
 /**
  * One row in KV for push delivery.
  * - `web`: Web Push subscription
- * - `ios`: APNs device token (Capacitor iOS)
+ * - `ios`: FCM registration token (Capacitor iOS + @capacitor-firebase/messaging); `pushProvider: "fcm"`
  * - `android`: FCM registration token (Capacitor Android)
  */
 export type PushTarget =
   | { type: "web"; subscription: WebPushSubscription; updatedAt?: number }
-  | { type: "ios"; token: string; updatedAt?: number; firebaseUid?: string }
+  | { type: "ios"; token: string; pushProvider?: "fcm"; updatedAt?: number; firebaseUid?: string }
   | { type: "android"; token: string; updatedAt?: number; firebaseUid?: string };

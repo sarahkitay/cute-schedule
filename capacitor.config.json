@@ -2,12 +2,7 @@
   "appId": "app.proyou.proyou",
   "appName": "PROYOU",
   "webDir": "dist",
-  "packageClassList": [
-    "SignInWithApple",
-    "FirebaseAuthenticationPlugin",
-    "PushNotificationsPlugin",
-    "ProyouApnsPlugin"
-  ],
+  "packageClassList": ["SignInWithApple", "FirebaseAuthenticationPlugin", "FirebaseMessagingPlugin"],
   "ios": {
     "contentInset": "automatic"
   },
@@ -28,7 +23,7 @@
       "providers": ["apple.com"],
       "authDomain": "cute-schedule.vercel.app"
     },
-    "PushNotifications": {
+    "FirebaseMessaging": {
       "presentationOptions": ["badge", "sound", "alert"]
     }
   }

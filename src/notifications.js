@@ -1,15 +1,9 @@
-// Notification Service: Capacitor native push (iOS APNs / Android FCM token) + PWA Web Push (VAPID + service worker).
+// Notification Service: Capacitor native push (FCM via @capacitor-firebase/messaging) + PWA Web Push (VAPID + service worker).
 
 import { Capacitor } from "@capacitor/core";
-import { PushNotifications } from "@capacitor/push-notifications";
+import { FirebaseMessaging } from "@capacitor-firebase/messaging";
 import { apiUrl, publicUrl, getApiBaseDebug, NATIVE_FALLBACK_API_ORIGIN } from "./apiBase";
-import {
-  APNS_DEVICE_TOKEN_HEX_MAX,
-  APNS_DEVICE_TOKEN_HEX_MIN,
-  isValidNormalizedIosDeviceToken,
-  normalizeCapacitorIosDeviceToken,
-} from "../api/lib/nativeIosTokenNormalize.js";
-import { getIosApnsDeviceTokenHexFromNative } from "./proyouApns.js";
+import { isValidFcmRegistrationToken, normalizeFcmRegistrationToken } from "../api/lib/fcmRegistrationToken.js";
 
 /** @type {Set<(s: Record<string, unknown>) => void>} */
 const nativeDebugSubscribers = new Set();
@@ -17,7 +11,10 @@ const nativeDebugSubscribers = new Set();
 export const nativePushDebugDefault = () => ({
   permission: "unknown",
   nativePlatform: Capacitor.isNativePlatform(),
+  /** Native push stack: FCM (Capacitor Firebase Messaging). */
+  nativeProvider: null,
   tokenRegistered: false,
+  fcmTokenRegistered: false,
   lastTokenPrefix: null,
   lastRegistrationError: null,
   /** Exact URL last used for POST /api/push/register-native */
@@ -38,6 +35,7 @@ export const nativePushDebugDefault = () => ({
   lastTestSendDiag: null,
   lastTestSendStatus: null,
   lastTestSendResponseText: null,
+  lastTestSendMessageId: null,
   lastTestSendErrorName: null,
   lastTestSendErrorMessage: null,
   lastTestSendErrorStack: null,
@@ -47,22 +45,11 @@ export const nativePushDebugDefault = () => ({
   lastTestSendAt: null,
   lastTestSendOk: null,
   lastTestSendDetail: null,
+  lastFcmMessageId: null,
   /** From apiBase: baked VITE_APP_ORIGIN at build time + resolved origin used for /api/* */
   apiOriginFromEnv: null,
   apiOriginResolved: null,
   apiOriginSource: null,
-  /** Last ProyouApns.getDeviceTokenHex() snapshot (native AppDelegate store). */
-  lastProyouApnsBridgeByteCount: null,
-  lastProyouApnsBridgeHexLength: null,
-  lastProyouApnsBridgeValid: null,
-  /** `ok` | `plugin_error` | `store_empty` | `wrong_length` */
-  lastProyouApnsBridgeStatus: null,
-  lastProyouApnsBridgeDetail: null,
-  lastProyouApnsBridgePluginError: null,
-  lastProyouApnsBridgePluginCode: null,
-  /** `proyou_bridge` | `capacitor_fallback` — which source supplied the hex used for register-native. */
-  lastIosTokenSource: null,
-  lastCapacitorTokenValueLength: null,
 });
 
 /** @type {ReturnType<typeof nativePushDebugDefault>} */
@@ -148,16 +135,11 @@ function clearNativePushRegistrationForFreshRegister() {
   nativePushDebug.lastRegisterNativeStatus = null;
   nativePushDebug.lastRegisterNativeUrl = null;
   nativePushDebug.tokenRegistered = false;
+  nativePushDebug.fcmTokenRegistered = false;
+  nativePushDebug.nativeProvider = null;
   nativePushDebug.lastTokenPrefix = null;
-  nativePushDebug.lastProyouApnsBridgeByteCount = null;
-  nativePushDebug.lastProyouApnsBridgeHexLength = null;
-  nativePushDebug.lastProyouApnsBridgeValid = null;
-  nativePushDebug.lastProyouApnsBridgeStatus = null;
-  nativePushDebug.lastProyouApnsBridgeDetail = null;
-  nativePushDebug.lastProyouApnsBridgePluginError = null;
-  nativePushDebug.lastProyouApnsBridgePluginCode = null;
-  nativePushDebug.lastIosTokenSource = null;
-  nativePushDebug.lastCapacitorTokenValueLength = null;
+  nativePushDebug.lastFcmMessageId = null;
+  nativePushDebug.lastTestSendMessageId = null;
   emitNativeDebug();
 }
 
@@ -165,8 +147,9 @@ function hydrateNativeDeviceKeyFromStorage() {
   try {
     if (typeof localStorage === "undefined") return;
     const k = localStorage.getItem(NATIVE_DEVICE_KEY_LS);
-    if (k && /^native:ios:/.test(String(k).trim())) {
-      lastNativeDeviceKey = String(k).trim();
+    const ks = String(k).trim();
+    if (ks && (/^native:ios:/.test(ks) || /^native:user:/.test(ks))) {
+      lastNativeDeviceKey = ks;
       nativePushDebug.lastRegisterNativeDeviceKey = lastNativeDeviceKey;
     }
   } catch {
@@ -260,7 +243,7 @@ function waitForNativeToken(maxMs = 6000) {
         setTimeout(tick, 120);
         return;
       }
-      const ok = Capacitor.getPlatform() === "ios" ? isValidNormalizedIosDeviceToken(t) : t.length >= 16;
+      const ok = Capacitor.getPlatform() === "ios" ? isValidFcmRegistrationToken(t) : t.length >= 16;
       if (ok) return resolve(true);
       if (Date.now() - start >= maxMs) return resolve(false);
       setTimeout(tick, 120);
@@ -285,7 +268,12 @@ async function postRegisterNative(token, platform) {
         "Content-Type": "application/json",
         ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
       },
-      body: JSON.stringify({ token, platform, ...(idToken ? { idToken } : {}) }),
+      body: JSON.stringify({
+        token,
+        platform,
+        ...(platform === "ios" ? { pushProvider: "fcm" } : {}),
+        ...(idToken ? { idToken } : {}),
+      }),
     });
   } catch (e) {
     const msg = e?.message || String(e);
@@ -340,179 +328,93 @@ async function postRegisterNative(token, platform) {
 }
 
 /**
- * Attach PushNotifications listeners once (safe to call multiple times).
+ * Persist FCM registration token from {@link FirebaseMessaging} and POST register-native.
+ * @param {unknown} rawToken
+ */
+async function persistNativeFcmTokenFromRaw(rawToken) {
+  const platform = Capacitor.getPlatform();
+  const raw = typeof rawToken === "string" ? rawToken.trim() : "";
+
+  lastNativeDeviceToken = null;
+  nativePushDebug.tokenRegistered = false;
+  nativePushDebug.fcmTokenRegistered = false;
+  nativePushDebug.lastTokenPrefix = null;
+  nativePushDebug.lastRegistrationError = null;
+  emitNativeDebug();
+
+  if (platform === "ios") {
+    if (!isValidFcmRegistrationToken(raw)) {
+      const msg = raw
+        ? "Invalid FCM registration token from FirebaseMessaging (legacy APNs hex is not accepted). Rebuild iOS with Firebase Messaging + APNs key in Firebase Console."
+        : "Missing FCM registration token (FirebaseMessaging.getToken returned empty).";
+      nativePushDebug.lastRegistrationError = msg;
+      emitNativeDebug();
+      console.warn("[Native push]", msg);
+      return;
+    }
+    lastNativeDeviceToken = normalizeFcmRegistrationToken(raw);
+  } else {
+    if (raw.length < 16) {
+      nativePushDebug.lastRegistrationError = "FCM registration value too short";
+      emitNativeDebug();
+      return;
+    }
+    lastNativeDeviceToken = raw;
+  }
+
+  nativePushDebug.nativeProvider = "fcm";
+  nativePushDebug.tokenRegistered = true;
+  nativePushDebug.fcmTokenRegistered = true;
+  nativePushDebug.lastTokenPrefix = lastNativeDeviceToken ? shortenTokenForLog(lastNativeDeviceToken) : null;
+  nativePushDebug.lastRegistrationError = null;
+  emitNativeDebug();
+
+  await postRegisterNative(lastNativeDeviceToken, platform);
+}
+
+/**
+ * Attach FirebaseMessaging listeners once (safe to call multiple times).
  */
 async function attachNativePushListenersOnce() {
   if (!Capacitor.isNativePlatform() || nativeListenersAttached) return;
   nativeListenersAttached = true;
 
-  await PushNotifications.addListener("registration", async (token) => {
-    lastNativeDeviceToken = null;
-    nativePushDebug.tokenRegistered = false;
-    nativePushDebug.lastTokenPrefix = null;
-    nativePushDebug.lastRegistrationError = null;
-    nativePushDebug.lastIosTokenSource = null;
-    emitNativeDebug();
-
-    const platform = Capacitor.getPlatform();
-    const rawValue = typeof token?.value === "string" ? token.value : "";
-    nativePushDebug.lastCapacitorTokenValueLength = rawValue.length;
-
-    if (platform === "ios") {
-      /**
-       * Call ProyouApns **before** reading/using `token.value` (bridge uses AppDelegate `Data`, not env / .p8).
-       * @capacitor/push-notifications maps `Data` → hex (2 chars per byte); length varies by OS. Non-hex `token.value` may be non-APNs (e.g. string branch).
-       */
-      const fromBridge = await getIosApnsDeviceTokenHexFromNative();
-      const bridgeHexLen = typeof fromBridge.hex === "string" ? fromBridge.hex.length : 0;
-      nativePushDebug.lastProyouApnsBridgeByteCount = fromBridge.byteCount;
-      nativePushDebug.lastProyouApnsBridgeHexLength = bridgeHexLen;
-      nativePushDebug.lastProyouApnsBridgePluginError = fromBridge.pluginError || null;
-      nativePushDebug.lastProyouApnsBridgePluginCode = fromBridge.pluginCode || null;
-
-      const bridgeOk =
-        typeof fromBridge.hex === "string" &&
-        isValidNormalizedIosDeviceToken(fromBridge.hex) &&
-        fromBridge.byteCount > 0 &&
-        fromBridge.hex.length === fromBridge.byteCount * 2;
-      nativePushDebug.lastProyouApnsBridgeValid = bridgeOk;
-
-      let bridgeStatus = "ok";
-      let bridgeDetail = "";
-      if (fromBridge.pluginError) {
-        bridgeStatus = "plugin_error";
-        bridgeDetail = `ProyouApns plugin error: ${fromBridge.pluginError}${fromBridge.pluginCode ? ` (${fromBridge.pluginCode})` : ""}. Check packageClassList includes ProyouApnsPlugin and rebuild iOS.`;
-      } else if (fromBridge.byteCount === 0 && bridgeHexLen === 0) {
-        bridgeStatus = "store_empty";
-        bridgeDetail =
-          "ProyouApns native store is empty (AppDelegate didRegisterForRemoteNotificationsWithDeviceToken may not have run yet, or native files not in App target).";
-      } else if (!bridgeOk) {
-        bridgeStatus = "wrong_length";
-        bridgeDetail = `ProyouApns store has byteCount=${fromBridge.byteCount}, hex length=${bridgeHexLen} (need even hex ${APNS_DEVICE_TOKEN_HEX_MIN}–${APNS_DEVICE_TOKEN_HEX_MAX} matching 2×bytes, bytes 32–100).`;
-      }
-      nativePushDebug.lastProyouApnsBridgeStatus = bridgeStatus;
-      nativePushDebug.lastProyouApnsBridgeDetail = bridgeDetail || null;
-      emitNativeDebug();
-
-      console.log("[Native push] ProyouApns bridge (first)", {
-        bridgeOk,
-        byteCount: fromBridge.byteCount,
-        hexLen: bridgeHexLen,
-        status: bridgeStatus,
-        pluginError: fromBridge.pluginError || null,
-      });
-      console.log("[Native push] Capacitor registration typeof token (event)", typeof token);
-      console.log(
-        "[Native push] Capacitor registration Object.keys(token)",
-        token && typeof token === "object" ? Object.keys(token) : []
-      );
-      try {
-        console.log("[Native push] Capacitor registration JSON.stringify(token)", JSON.stringify(token));
-      } catch (stringifyErr) {
-        console.log("[Native push] Capacitor registration JSON.stringify failed", stringifyErr?.message || stringifyErr);
-      }
-      console.log("[Native push] Capacitor token.value.length (after bridge)", rawValue.length);
-
-      let sourceForNormalize = rawValue;
-      if (bridgeOk) {
-        sourceForNormalize = fromBridge.hex;
-        nativePushDebug.lastIosTokenSource = "proyou_bridge";
-        console.log("[Native push] iOS APNs token source: ProyouApns bridge (opaque hex from AppDelegate Data)");
-      } else if (!rawValue.trim()) {
-        const msg =
-          "Missing APNs device token: ProyouApns bridge invalid/empty and PushNotifications token.value is empty (not APNS_PRIVATE_KEY).";
-        nativePushDebug.lastRegistrationError = msg;
-        emitNativeDebug();
-        console.warn("[Native push]", msg);
-        return;
-      } else {
-        nativePushDebug.lastIosTokenSource = "capacitor_fallback";
-        console.warn("[Native push] ProyouApns bridge not usable; falling back to token.value (see debug panel)", {
-          bridgeStatus,
-          bridgeDetail,
-          tokenValueLen: rawValue.length,
-        });
-      }
-
-      const normalized = normalizeCapacitorIosDeviceToken(sourceForNormalize);
-      console.log("[Native push] iOS normalized device token length", normalized.length);
-
-      if (!/^[0-9a-f]+$/.test(normalized)) {
-        const msg = "APNs device token was not hex-only after normalization (spaces, <>, non-hex removed)";
-        nativePushDebug.lastRegistrationError = msg;
-        emitNativeDebug();
-        console.warn("[Native push]", msg);
-        return;
-      }
-      if (!isValidNormalizedIosDeviceToken(normalized)) {
-        const msg = `APNs device token length ${normalized.length}; expected even-length hex ${APNS_DEVICE_TOKEN_HEX_MIN}–${APNS_DEVICE_TOKEN_HEX_MAX} (opaque token). Not the .p8 private key.`;
-        nativePushDebug.lastRegistrationError = msg;
-        emitNativeDebug();
-        console.warn("[Native push]", msg);
-        return;
-      }
-      lastNativeDeviceToken = normalized;
-    } else {
-      const raw =
-        typeof token?.value === "string" && token.value.trim()
-          ? token.value.trim()
-          : typeof token?.token === "string" && token.token.trim()
-            ? token.token.trim()
-            : "";
-      if (raw.length < 16) {
-        nativePushDebug.lastRegistrationError = "Registration value too short";
-        emitNativeDebug();
-        return;
-      }
-      lastNativeDeviceToken = raw;
-    }
-
-    nativePushDebug.tokenRegistered = true;
-    nativePushDebug.lastTokenPrefix = lastNativeDeviceToken ? shortenTokenForLog(lastNativeDeviceToken) : null;
-    nativePushDebug.lastRegistrationError = null;
-    emitNativeDebug();
-
-    await postRegisterNative(lastNativeDeviceToken, platform);
+  await FirebaseMessaging.addListener("tokenReceived", async (event) => {
+    const t = typeof event?.token === "string" ? event.token : "";
+    await persistNativeFcmTokenFromRaw(t);
   });
 
-  await PushNotifications.addListener("registrationError", (err) => {
-    const msg = err?.error || err?.message || String(err);
-    nativePushDebug.lastRegistrationError = msg;
-    nativePushDebug.tokenRegistered = false;
-    console.error("[Native push] registrationError:", msg);
-    emitNativeDebug();
-  });
-
-  await PushNotifications.addListener("pushNotificationReceived", (notif) => {
+  await FirebaseMessaging.addListener("notificationReceived", (event) => {
     nativePushDebug.lastPushReceivedAt = Date.now();
     if (import.meta.env.DEV) {
-      console.log("[Native push] received:", notif?.title || "", notif?.body || "");
+      console.log("[Native push] FCM received:", event?.notification?.title || "", event?.notification?.body || "");
     }
     emitNativeDebug();
   });
 
-  await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+  await FirebaseMessaging.addListener("notificationActionPerformed", (action) => {
     nativePushDebug.lastActionAt = Date.now();
     if (import.meta.env.DEV) {
-      console.log("[Native push] action:", action?.actionId, action?.notification?.title);
+      console.log("[Native push] FCM action:", action?.actionId, action?.notification?.title);
     }
     emitNativeDebug();
   });
 }
 
 /**
- * On native startup: attach listeners and register with APNs if permission already granted (no extra prompt).
+ * On native startup: attach listeners and refresh FCM token if permission already granted (no extra prompt).
  */
 export async function bootstrapNativePushOnStartup() {
   if (typeof window === "undefined" || !Capacitor.isNativePlatform()) return;
   hydrateNativeDeviceKeyFromStorage();
   await attachNativePushListenersOnce();
   try {
-    const perm = await PushNotifications.checkPermissions();
+    const perm = await FirebaseMessaging.checkPermissions();
     nativePushDebug.permission = mapCapacitorReceive(perm.receive);
     emitNativeDebug();
     if (perm.receive === "granted") {
-      await PushNotifications.register();
+      const { token } = await FirebaseMessaging.getToken();
+      await persistNativeFcmTokenFromRaw(token);
       await waitForNativeToken(4000);
     }
   } catch (e) {
@@ -522,7 +424,7 @@ export async function bootstrapNativePushOnStartup() {
 }
 
 /**
- * Request permission + register; POST device token to backend.
+ * Request permission + FCM token; POST registration to backend.
  */
 export async function registerNativePushFull() {
   if (typeof window === "undefined" || !Capacitor.isNativePlatform()) {
@@ -530,19 +432,20 @@ export async function registerNativePushFull() {
   }
   try {
     await attachNativePushListenersOnce();
-    const perm = await PushNotifications.requestPermissions();
+    const perm = await FirebaseMessaging.requestPermissions();
     nativePushDebug.permission = mapCapacitorReceive(perm.receive);
     emitNativeDebug();
     if (perm.receive !== "granted") {
       return { ok: false, hint: "Push permission not granted", receive: perm.receive };
     }
     clearNativePushRegistrationForFreshRegister();
-    await PushNotifications.register();
+    const { token } = await FirebaseMessaging.getToken();
+    await persistNativeFcmTokenFromRaw(token);
     const got = await waitForNativeToken();
     if (!got) {
       return {
         ok: false,
-        hint: "APNs did not return a device token yet. Reopen Settings and try again, or confirm Push capability + provisioning profile on Xcode.",
+        hint: "FCM did not return a registration token yet. Reopen the app, confirm GoogleService-Info.plist + Push capability, and upload your APNs key in Firebase Console → Cloud Messaging.",
       };
     }
     return { ok: true, native: true };
@@ -683,7 +586,7 @@ class NotificationService {
   async checkPermission() {
     if (Capacitor.isNativePlatform()) {
       try {
-        const perm = await PushNotifications.checkPermissions();
+        const perm = await FirebaseMessaging.checkPermissions();
         nativePushDebug.permission = mapCapacitorReceive(perm.receive);
         this.permission = mapReceiveToNotificationPermission(perm.receive);
         emitNativeDebug();
@@ -705,12 +608,13 @@ class NotificationService {
   async requestPermission() {
     if (Capacitor.isNativePlatform()) {
       await attachNativePushListenersOnce();
-      const perm = await PushNotifications.requestPermissions();
+      const perm = await FirebaseMessaging.requestPermissions();
       nativePushDebug.permission = mapCapacitorReceive(perm.receive);
       this.permission = mapReceiveToNotificationPermission(perm.receive);
       emitNativeDebug();
       if (perm.receive === "granted") {
-        await PushNotifications.register();
+        const { token } = await FirebaseMessaging.getToken();
+        await persistNativeFcmTokenFromRaw(token);
         await waitForNativeToken(4000);
       }
       return perm.receive === "granted";
@@ -878,6 +782,7 @@ class NotificationService {
           body: JSON.stringify({
             token,
             platform: Capacitor.getPlatform(),
+            ...(Capacitor.getPlatform() === "ios" ? { pushProvider: "fcm" } : {}),
             reminders,
             ...(idToken ? { idToken } : {}),
           }),
@@ -914,7 +819,7 @@ class NotificationService {
   }
 
   /**
-   * Native iOS: POST /api/push/send with APNs token and/or anon `deviceKey` from register-native.
+   * Native iOS: POST /api/push/send with `deviceKey` from register-native (server loads FCM token from Redis).
    * Updates {@link nativePushDebug} (redacted body, HTTP status, response text, fetch error fields).
    */
   async sendNativeTestPush() {
@@ -931,7 +836,7 @@ class NotificationService {
       return {
         ok: false,
         hint:
-          "No deviceKey yet. Enable native push so register-native returns native:ios:… or native:user:…, then try Send test push (raw APNs token is not sent to /api/push/send).",
+          "No deviceKey yet. Enable native push so register-native returns native:ios:… or native:user:…, then try Send test push (raw FCM token is not sent to /api/push/send).",
       };
     }
 
@@ -943,6 +848,7 @@ class NotificationService {
     nativePushDebug.lastTestSendDiag = null;
     nativePushDebug.lastTestSendStatus = null;
     nativePushDebug.lastTestSendResponseText = null;
+    nativePushDebug.lastTestSendMessageId = null;
     nativePushDebug.lastTestSendErrorName = null;
     nativePushDebug.lastTestSendErrorMessage = null;
     nativePushDebug.lastTestSendErrorStack = null;
@@ -1004,33 +910,30 @@ class NotificationService {
         nativePushDebug.lastTestSendDetail = `Response was not JSON (${parseErr?.message || parseErr})`;
       }
       const sentN = Number(j.sent);
-      const ok = res.ok && (sentN >= 1 || j.channel === "apns");
+      const ok = res.ok && (sentN >= 1 || j.channel === "fcm" || j.channel === "apns");
       nativePushDebug.lastTestSendOk = ok;
       nativePushDebug.lastTestSendDetail = ok
         ? "sent"
         : j.error || j.detail || j.hint || nativePushDebug.lastTestSendDetail || `HTTP ${res.status}`;
+      if (typeof j.messageId === "string" && j.messageId) {
+        nativePushDebug.lastTestSendMessageId = j.messageId;
+        nativePushDebug.lastFcmMessageId = j.messageId;
+      }
+      if (j.debug && typeof j.debug === "object") {
+        if (j.debug.nativeProvider != null) nativePushDebug.nativeProvider = String(j.debug.nativeProvider);
+        if (j.debug.fcmTokenRegistered === true) nativePushDebug.fcmTokenRegistered = true;
+      }
       if (!ok && nativePushDebug.lastTestSendDiag && typeof nativePushDebug.lastTestSendDiag === "object") {
-        const fromApns = {};
-        if (j.apnsDebug && typeof j.apnsDebug === "object") {
-          Object.assign(fromApns, j.apnsDebug);
-        } else {
-          if (j.normalizedTokenLength != null) fromApns.normalizedTokenLength = j.normalizedTokenLength;
-          else if (j.tokenLength != null) fromApns.normalizedTokenLength = j.tokenLength;
-          if (j.tokenLooksHex != null) fromApns.tokenLooksHex = j.tokenLooksHex;
-          if (j.topic != null) fromApns.topic = j.topic;
-          if (j.APNS_PRODUCTION != null) fromApns.APNS_PRODUCTION = j.APNS_PRODUCTION;
-          if (j.production != null) fromApns.production = j.production;
-          if (j.apnsReason != null) fromApns.apnsReason = j.apnsReason;
-          if (j.badDeviceTokenHint != null) fromApns.badDeviceTokenHint = j.badDeviceTokenHint;
-        }
+        const fromServer = {};
+        if (j.code != null) fromServer.fcmCode = j.code;
+        if (j.debug && typeof j.debug === "object") Object.assign(fromServer, j.debug);
         nativePushDebug.lastTestSendDiag = {
           ...nativePushDebug.lastTestSendDiag,
-          ...fromApns,
+          ...fromServer,
           responseHttpStatus: res.status,
           serverError: j.error ?? null,
           serverHint: j.hint ?? null,
           serverDetail: j.detail ?? null,
-          serverApnsStatus: j.apnsStatus ?? null,
         };
       }
       emitNativeDebug();

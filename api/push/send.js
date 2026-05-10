@@ -3,8 +3,8 @@ import { getWebSubscriptionFromStored } from "../lib/pushTarget.js";
 import { getVapidPublicKey, getVapidPrivateKey, getVapidSubject } from "../lib/vapidEnv.js";
 import { applyApiCors } from "../lib/cors.js";
 import { clientSafeDetail, logServerError } from "../lib/safeJsonError.js";
-import { sendIosApnsNotification, isApnsConfigured } from "../lib/nativeApns.js";
-import { isValidNormalizedIosDeviceToken, normalizeCapacitorIosDeviceToken } from "../lib/nativeIosTokenNormalize.js";
+import { isValidFcmRegistrationToken, normalizeFcmRegistrationToken } from "../lib/fcmRegistrationToken.js";
+import { sendNativeFcmNotification, isFcmNativeSendConfigured } from "../lib/fcmNativeSend.js";
 import { kv } from "../lib/redisClient.js";
 
 const vapidPub = getVapidPublicKey();
@@ -32,11 +32,11 @@ export default async function handler(req, res) {
   const body = typeof req.body === "object" && req.body != null ? req.body : {};
   const { title = "PROYOU", body: textBody = "Test notification", url = "/" } = body;
 
-  // --- Native iOS test (APNs); does not use VAPID / Web PushSubscription ---
+  // --- Native iOS test (FCM via Firebase Admin); does not use VAPID / Web PushSubscription ---
   const wantsNativeIos =
     body.nativeIos === true || body.nativeIos === "true" || body.nativeIos === 1 || body.nativeIos === "1";
   if (wantsNativeIos) {
-    /** Connectivity probe from Capacitor Settings (no token, no APNs send). */
+    /** Connectivity probe from Capacitor Settings (no token, no FCM send). */
     const testOnly = body.testOnly === true || body.testOnly === "true" || body.testOnly === 1 || body.testOnly === "1";
     if (testOnly) {
       return res.status(200).json({
@@ -53,13 +53,12 @@ export default async function handler(req, res) {
     if (!validDeviceKey) {
       return res.status(400).json({
         error: "Missing or invalid deviceKey",
-        hint: "Send deviceKey from POST /api/push/register-native (native:ios:… or native:user:…). Raw APNs token is not accepted here — the server loads the token from Redis.",
+        hint: "Send deviceKey from POST /api/push/register-native (native:ios:… or native:user:…). Raw FCM token is not accepted here — the server loads the token from Redis.",
       });
     }
 
     let token = "";
-    /** Length of `normalizeCapacitorIosDeviceToken(stored.token)` for non-prod debug when invalid. */
-    let normalizedFromRedisLen = 0;
+    let storedPushProvider = "";
     try {
       const stored = await kv.get(deviceKey);
       if (stored && typeof stored === "object" && !Array.isArray(stored)) {
@@ -70,10 +69,10 @@ export default async function handler(req, res) {
           });
         }
         const t = stored.token;
+        storedPushProvider = typeof stored.pushProvider === "string" ? stored.pushProvider : "";
         if (typeof t === "string" && t.trim()) {
-          const n = normalizeCapacitorIosDeviceToken(t);
-          normalizedFromRedisLen = n.length;
-          if (isValidNormalizedIosDeviceToken(n)) token = n;
+          const n = normalizeFcmRegistrationToken(t);
+          if (isValidFcmRegistrationToken(n)) token = n;
         }
       }
     } catch (e) {
@@ -85,48 +84,46 @@ export default async function handler(req, res) {
       });
     }
 
-    if (!isValidNormalizedIosDeviceToken(token)) {
+    if (!isValidFcmRegistrationToken(token)) {
       return res.status(400).json({
-        error: "No valid APNs device token in Redis for this deviceKey",
-        hint: "Re-register from the app. Stored token must be even-length hex (64–200 chars) after normalization.",
-        debug: isProd ? undefined : { deviceKeyLen: deviceKey.length, normalizedLen: normalizedFromRedisLen || token.length },
+        error: "No valid FCM registration token in Redis for this deviceKey",
+        hint: "Re-register from the app with pushProvider=fcm. Legacy APNs-only registrations are no longer sent from this API.",
+        debug: isProd
+          ? undefined
+          : {
+              deviceKeyLen: deviceKey.length,
+              storedPushProvider: storedPushProvider || null,
+              tokenLen: token.length,
+            },
       });
     }
-    if (!isApnsConfigured()) {
+    if (!isFcmNativeSendConfigured()) {
       return res.status(503).json({
-        error: "APNs not configured",
-        hint: "Set APNS_PRIVATE_KEY, APNS_KEY_ID, APNS_TEAM_ID, IOS_BUNDLE_ID on the server (and APNS_PRODUCTION false for dev builds).",
+        error: "FCM server send not configured",
+        hint: "Set FIREBASE_SERVICE_ACCOUNT_JSON (same service account as ID token verification). Upload your APNs key to Firebase Console → Cloud Messaging for iOS delivery.",
       });
     }
-    const rslt = await sendIosApnsNotification({
+    const rslt = await sendNativeFcmNotification({
       deviceToken: token,
       title,
       body: textBody,
-      payload: { url },
+      data: { url: String(url) },
     });
     if (!rslt.ok) {
-      logServerError("push/send APNs failed", new Error(rslt.reason || "unknown"));
-      const dbg = rslt.apnsDebug || null;
+      logServerError("push/send FCM failed", new Error(rslt.reason || "unknown"));
       return res.status(502).json({
-        error: "APNs send failed",
-        apnsStatus: rslt.apnsStatus,
-        apnsDebug: dbg,
-        /** Flatten for clients that read top-level fields */
-        ...(dbg && typeof dbg === "object"
-          ? {
-              normalizedTokenLength: dbg.normalizedTokenLength,
-              tokenLooksHex: dbg.tokenLooksHex,
-              topic: dbg.topic,
-              APNS_PRODUCTION: dbg.APNS_PRODUCTION,
-              production: dbg.production,
-              apnsReason: dbg.apnsReason,
-              ...(typeof dbg.badDeviceTokenHint === "string" ? { badDeviceTokenHint: dbg.badDeviceTokenHint } : {}),
-            }
-          : {}),
+        error: "FCM send failed",
+        code: rslt.code,
         detail: isProd ? undefined : rslt.reason,
       });
     }
-    return res.status(200).json({ ok: true, sent: 1, channel: "apns" });
+    return res.status(200).json({
+      ok: true,
+      sent: 1,
+      channel: "fcm",
+      messageId: rslt.messageId,
+      debug: { nativeProvider: "fcm", fcmTokenRegistered: true },
+    });
   }
 
   // --- Web Push (VAPID) ---
@@ -138,7 +135,7 @@ export default async function handler(req, res) {
   if (!sub) {
     return res.status(400).json({
       error: "Missing subscription",
-      hint: 'For browser/PWA, include PushSubscription JSON under "subscription". For native iOS test, set nativeIos: true and deviceKey from register-native (no raw APNs token on this route).',
+      hint: 'For browser/PWA, include PushSubscription JSON under "subscription". For native iOS test, set nativeIos: true and deviceKey from register-native (no raw FCM token on this route).',
     });
   }
 
