@@ -345,7 +345,7 @@ async function persistNativeFcmTokenFromRaw(rawToken) {
   if (platform === "ios") {
     if (!isValidFcmRegistrationToken(raw)) {
       const msg = raw
-        ? "Invalid FCM registration token from FirebaseMessaging (legacy APNs hex is not accepted). Rebuild iOS with Firebase Messaging + APNs key in Firebase Console."
+        ? `Invalid FCM registration token from FirebaseMessaging (expected 32–4096 chars after trim; got ${raw.length}).`
         : "Missing FCM registration token (FirebaseMessaging.getToken returned empty).";
       nativePushDebug.lastRegistrationError = msg;
       emitNativeDebug();

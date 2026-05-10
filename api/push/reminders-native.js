@@ -3,7 +3,8 @@ import { kv } from "../lib/redisClient.js";
 import { applyApiCors } from "../lib/cors.js";
 import { verifyFirebaseIdToken } from "../lib/firebaseAdminApp.js";
 import { normalizeReminderPayload } from "../lib/pushReminderNormalize.js";
-import { isValidFcmRegistrationToken, normalizeFcmRegistrationToken } from "../lib/fcmRegistrationToken.js";
+import { normalizeFcmRegistrationToken } from "../lib/fcmRegistrationToken.js";
+import { isValidNormalizedIosDeviceToken, normalizeCapacitorIosDeviceToken } from "../lib/nativeIosTokenNormalize.js";
 
 function extractIdToken(req, body) {
   const auth = req.headers.authorization;
@@ -40,20 +41,33 @@ export default async function handler(req, res) {
 
   const platNorm = platform === "android" ? "android" : "ios";
   if (platNorm === "ios") {
-    if (pushProviderRaw !== "fcm") {
+    if (pushProviderRaw === "fcm") {
+      token = normalizeFcmRegistrationToken(token);
+      if (!token) {
+        return res.status(400).json({ error: "Missing iOS FCM token" });
+      }
+      if (token.length < 32 || token.length > 4096) {
+        return res.status(400).json({
+          error: "Invalid FCM token for reminders",
+          hint: "After trim, token must be 32–4096 characters (same rules as register-native with pushProvider=fcm).",
+          detail: `length=${token.length}`,
+        });
+      }
+    } else if (pushProviderRaw === "apns") {
+      const n = normalizeCapacitorIosDeviceToken(token);
+      if (!isValidNormalizedIosDeviceToken(n)) {
+        return res.status(400).json({
+          error: "Invalid iOS APNs token for reminders",
+          hint: "Legacy pushProvider=apns: same hex rules as register-native.",
+        });
+      }
+      token = n;
+    } else {
       return res.status(400).json({
-        error: "iOS reminders require pushProvider=fcm",
-        hint: "Same token as register-native: FCM registration token from FirebaseMessaging.getToken().",
+        error: "iOS reminders require pushProvider",
+        hint: 'Send pushProvider: "fcm" or pushProvider: "apns" (legacy), matching register-native.',
       });
     }
-    const n = normalizeFcmRegistrationToken(token);
-    if (!isValidFcmRegistrationToken(n)) {
-      return res.status(400).json({
-        error: "Invalid FCM token for reminders",
-        hint: "Must match register-native: valid FCM registration token (not legacy APNs hex).",
-      });
-    }
-    token = n;
   } else if (token.length < 16) {
     return res.status(400).json({ error: "Missing or invalid token" });
   }

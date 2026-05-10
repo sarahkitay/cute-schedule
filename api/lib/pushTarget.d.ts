@@ -13,5 +13,5 @@ export type WebPushSubscription = {
  */
 export type PushTarget =
   | { type: "web"; subscription: WebPushSubscription; updatedAt?: number }
-  | { type: "ios"; token: string; pushProvider?: "fcm"; updatedAt?: number; firebaseUid?: string }
+  | { type: "ios"; token: string; pushProvider?: "fcm" | "apns"; updatedAt?: number; firebaseUid?: string }
   | { type: "android"; token: string; updatedAt?: number; firebaseUid?: string };

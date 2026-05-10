@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { getRedisEnvDebug, kv } from "../lib/redisClient.js";
 import { applyApiCors } from "../lib/cors.js";
 import { verifyFirebaseIdToken } from "../lib/firebaseAdminApp.js";
-import { isValidFcmRegistrationToken, normalizeFcmRegistrationToken } from "../lib/fcmRegistrationToken.js";
+import { normalizeFcmRegistrationToken } from "../lib/fcmRegistrationToken.js";
+import { isValidNormalizedIosDeviceToken, normalizeCapacitorIosDeviceToken } from "../lib/nativeIosTokenNormalize.js";
 
 function extractIdToken(req, body) {
   const auth = req.headers.authorization;
@@ -16,7 +17,7 @@ function extractIdToken(req, body) {
 
 /**
  * POST { token, platform?, pushProvider?, idToken? } — optional Firebase ID token (body or Authorization) to scope KV by uid.
- * iOS requires pushProvider=fcm and an FCM registration token from @capacitor-firebase/messaging.
+ * iOS: `pushProvider=fcm` uses FCM rules only (trim + length). `pushProvider=apns` uses legacy APNs hex normalization.
  * Web Push remains push:subs + subscribe.js.
  */
 export default async function handler(req, res) {
@@ -42,22 +43,43 @@ export default async function handler(req, res) {
   const firebaseUid = idToken ? await verifyFirebaseIdToken(idToken) : null;
 
   const platNorm = platform === "android" ? "android" : "ios";
+  /** @type {"fcm" | "apns" | undefined} */
+  let iosPushProvider;
+
   if (platNorm === "ios") {
-    if (pushProviderRaw !== "fcm") {
+    if (pushProviderRaw === "fcm") {
+      token = normalizeFcmRegistrationToken(token);
+      if (!token) {
+        return res.status(400).json({ error: "Missing iOS FCM token" });
+      }
+      if (token.length < 32 || token.length > 4096) {
+        return res.status(400).json({
+          error: "Invalid FCM registration token",
+          hint: "After trim, token must be 32–4096 characters (from FirebaseMessaging.getToken()).",
+          detail: `length=${token.length}`,
+        });
+      }
+      iosPushProvider = "fcm";
+    } else if (pushProviderRaw === "apns") {
+      const n = normalizeCapacitorIosDeviceToken(token);
+      if (!n) {
+        return res.status(400).json({ error: "Missing iOS device token" });
+      }
+      if (!isValidNormalizedIosDeviceToken(n)) {
+        return res.status(400).json({
+          error: "Invalid iOS APNs device token",
+          hint: "Legacy pushProvider=apns: even-length lowercase hex device token (64–200 chars after removing spaces and <>). Not APNS_PRIVATE_KEY.",
+          detail: `normalizedLength=${n.length}; even=${n.length % 2 === 0}; hex=${/^[0-9a-f]+$/.test(n)}`,
+        });
+      }
+      token = n;
+      iosPushProvider = "apns";
+    } else {
       return res.status(400).json({
-        error: "iOS native push requires pushProvider=fcm",
-        hint: "Use @capacitor-firebase/messaging getToken() and POST the FCM registration token (not the APNs device token hex).",
+        error: "iOS native push requires pushProvider",
+        hint: 'Send pushProvider: "fcm" (FirebaseMessaging token) or pushProvider: "apns" (legacy APNs hex only).',
       });
     }
-    const n = normalizeFcmRegistrationToken(token);
-    if (!isValidFcmRegistrationToken(n)) {
-      return res.status(400).json({
-        error: "Invalid FCM registration token",
-        hint: "Expected a long FCM token from FirebaseMessaging.getToken(). Legacy APNs-only hex tokens are not accepted — reinstall/update the app and register again.",
-        detail: `normalizedLength=${n.length}`,
-      });
-    }
-    token = n;
   } else if (token.length < 16) {
     return res.status(400).json({ error: "Missing or invalid token" });
   }
@@ -67,7 +89,13 @@ export default async function handler(req, res) {
     const target =
       platNorm === "android"
         ? { type: "android", token, updatedAt: Date.now(), ...(firebaseUid ? { firebaseUid } : {}) }
-        : { type: "ios", pushProvider: "fcm", token, updatedAt: Date.now(), ...(firebaseUid ? { firebaseUid } : {}) };
+        : {
+            type: "ios",
+            pushProvider: iosPushProvider,
+            token,
+            updatedAt: Date.now(),
+            ...(firebaseUid ? { firebaseUid } : {}),
+          };
 
     if (firebaseUid) {
       await kv.set(`native:user:${firebaseUid}`, target);

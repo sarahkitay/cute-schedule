@@ -85,9 +85,12 @@ export default async function handler(req, res) {
     }
 
     if (!isValidFcmRegistrationToken(token)) {
+      const legacyApns = storedPushProvider === "apns";
       return res.status(400).json({
         error: "No valid FCM registration token in Redis for this deviceKey",
-        hint: "Re-register from the app with pushProvider=fcm. Legacy APNs-only registrations are no longer sent from this API.",
+        hint: legacyApns
+          ? "This deviceKey was registered with pushProvider=apns; re-register with pushProvider=fcm (FirebaseMessaging.getToken) to use /api/push/send."
+          : "Re-register from the app with pushProvider=fcm. Token must be 32–4096 characters after trim.",
         debug: isProd
           ? undefined
           : {
