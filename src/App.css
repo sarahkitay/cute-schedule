@@ -856,6 +856,75 @@ body::-webkit-scrollbar,
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+
+.settings-notifications-subview {
+  padding-bottom: var(--space-2);
+}
+
+.settings-accordion {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card, 12px);
+  margin-bottom: 12px;
+  background: rgba(255, 252, 250, 0.55);
+  overflow: hidden;
+}
+
+.settings-accordion > summary.settings-accordion-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.settings-accordion > summary.settings-accordion-summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-accordion > summary.settings-accordion-summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+  margin-top: -4px;
+}
+
+.settings-accordion[open] > summary.settings-accordion-summary::after {
+  transform: rotate(-135deg);
+  margin-top: 4px;
+}
+
+.settings-accordion-panel {
+  padding: 0 12px 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-accordion-panel .settings-section:first-child {
+  margin-top: 12px;
+}
+
+.settings-accordion-panel .settings-section {
+  margin-bottom: 18px;
+}
+
+.settings-nav-deep-link-card {
+  border: 1px dashed color-mix(in srgb, var(--theme-accent, #e8b8b0) 55%, var(--border-subtle));
+  border-radius: var(--radius-card, 12px);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--theme-primary, #f5d5d0) 10%, rgba(255, 250, 249, 0.85));
+}
 .settings-modal-footer {
   flex-shrink: 0;
   margin-top: 0;

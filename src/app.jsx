@@ -2203,6 +2203,8 @@ export default function App() {
   const [newBillAmount, setNewBillAmount] = useState("");
   const [newBillDueDate, setNewBillDueDate] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  /** Settings modal: main list vs full-screen notifications & reminders. */
+  const [settingsSubView, setSettingsSubView] = useState(/** @type {"main" | "notifications"} */ ("main"));
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [firebaseAuthResolved, setFirebaseAuthResolved] = useState(false);
@@ -3249,6 +3251,7 @@ export default function App() {
       return;
     }
     try {
+      setSettingsSubView("main");
       setShowSettings(false);
     } catch {
       /* ignore */
@@ -3827,6 +3830,7 @@ export default function App() {
       if (mode === "quick") localStorage.removeItem(QUICK_WALKTHROUGH_DONE_KEY);
       if (mode === "full") localStorage.removeItem(FULL_WALKTHROUGH_DONE_KEY);
     } catch {}
+    setSettingsSubView("main");
     setShowSettings(false);
     setShowPrivacyPolicy(false);
     setFeatureWalkthroughMode(mode);
@@ -4593,6 +4597,7 @@ export default function App() {
 
   function openDeleteAccountFlow() {
     setShowPrivacyPolicy(false);
+    setSettingsSubView("main");
     setShowSettings(false);
     setDeleteAccountError("");
     setDeleteAccountPhrase("");
@@ -4864,7 +4869,10 @@ export default function App() {
                 type="button"
                 id="settings-open"
                 className="btn-icon"
-                onClick={() => setShowSettings(true)}
+                onClick={() => {
+                  setSettingsSubView("main");
+                  setShowSettings(true);
+                }}
                 title="Settings"
                 aria-label="Settings"
               >
@@ -6910,624 +6918,44 @@ export default function App() {
             className="modal-overlay"
             onClick={() => {
               setShowPrivacyPolicy(false);
+              setSettingsSubView("main");
               setShowSettings(false);
             }}
           >
             <div className="modal settings-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-labelledby="settings-modal-title">
               <div className="settings-modal-header">
-                <button
-                  type="button"
-                  className="btn-icon settings-modal-close settings-modal-close-left"
-                  onClick={() => {
-                    setShowPrivacyPolicy(false);
-                    setShowSettings(false);
-                  }}
-                  aria-label="Close settings"
-                >
-                  <CloseIcon style={{ width: 22, height: 22 }} />
-                </button>
+                {settingsSubView === "notifications" ? (
+                  <button
+                    type="button"
+                    className="btn-icon settings-modal-close settings-modal-close-left"
+                    onClick={() => setSettingsSubView("main")}
+                    aria-label="Back to settings"
+                  >
+                    <ChevronLeftIcon style={{ width: 22, height: 22 }} />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-icon settings-modal-close settings-modal-close-left"
+                    onClick={() => {
+                      setShowPrivacyPolicy(false);
+                      setSettingsSubView("main");
+                      setShowSettings(false);
+                    }}
+                    aria-label="Close settings"
+                  >
+                    <CloseIcon style={{ width: 22, height: 22 }} />
+                  </button>
+                )}
                 <h3 id="settings-modal-title" className="settings-modal-title">
-                  Settings
+                  {settingsSubView === "notifications" ? "Notifications" : "Settings"}
                 </h3>
                 <span className="settings-modal-header-spacer" aria-hidden="true" />
               </div>
 
               <div className="settings-modal-body">
-              <div className="settings-section">
-                <label className="label">Account</label>
-                {!isFirebaseEnabled() ? (
-                  <p className="settings-hint">Add your Firebase web config (env vars) to sync your schedule, notes, finance, and settings across devices.</p>
-                ) : (
-                  <>
-                    <p className="settings-hint settings-account-status" style={{ marginBottom: 12 }}>
-                      {firebaseUser?.isAnonymous ? (
-                        <>Logged in as <strong>guest</strong> (this browser)</>
-                      ) : firebaseUser?.email ? (
-                        <>
-                          Logged in as <strong>{firebaseUser.email}</strong>
-                        </>
-                      ) : firebaseUser?.displayName ? (
-                        <>
-                          Logged in as <strong>{firebaseUser.displayName}</strong>
-                        </>
-                      ) : firebaseUser ? (
-                        "Logged in"
-                      ) : (
-                        "Not signed in."
-                      )}
-                    </p>
-                    {firebaseUser ? (
-                      <>
-                        <div className="settings-account-actions">
-                          <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
-                            Log out
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          id="delete-account-entry"
-                          className="btn btn-sm settings-delete-account-btn"
-                          disabled={authBusy}
-                          onClick={() => openDeleteAccountFlow()}
-                        >
-                          {firebaseUser.isAnonymous ? "Delete guest data" : "Delete account"}
-                        </button>
-                        <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-                          Opens a short flow. Your account is removed permanently (not deactivated), then this device reloads.
-                        </p>
-                      </>
-                    ) : null}
-                  </>
-                )}
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Your name</label>
-                <input
-                  className="input modal-input"
-                  type="text"
-                  value={profile.userName}
-                  onChange={(e) => setProfile((p) => ({ ...p, userName: e.target.value.trim() }))}
-                  placeholder="e.g. Sarah"
-                  aria-label="Your name"
-                />
-              </div>
-              <div className="settings-section">
-                <label className="label">Birthday (for greetings)</label>
-                <input
-                  className="input modal-input"
-                  type="text"
-                  value={profile.userBirthday}
-                  onChange={(e) => setProfile((p) => ({ ...p, userBirthday: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
-                  placeholder="MMDD e.g. 0315"
-                  aria-label="Birthday month and day"
-                  maxLength={4}
-                />
-                <p className="settings-hint">Enter as MMDD (e.g. 0315 for March 15). We&apos;ll wish you happy birthday on the day.</p>
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Bottom navigation</label>
-                <p className="settings-hint">
-                  Choose which destinations appear in the dock. <strong>Today</strong> always stays. You can also toggle{" "}
-                  <strong>Finance</strong> and <strong>Health</strong> from those screens.
-                </p>
-                {[
-                  { id: "list", label: "List" },
-                  { id: "monthly", label: "Monthly objectives" },
-                  { id: "coach", label: "Coach (pattern insights)" },
-                  { id: "notes", label: "Notes" },
-                  { id: "finance", label: "Finance" },
-                  { id: "health", label: "Health" },
-                ].map((row) => (
-                  <label key={row.id} className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={normalizeNavVisibility(profile.navVisibility)[row.id] === true}
-                      onChange={(e) =>
-                        setProfile((p) => ({
-                          ...p,
-                          navVisibility: { ...normalizeNavVisibility(p.navVisibility), [row.id]: e.target.checked },
-                        }))
-                      }
-                    />
-                    <span>{row.label}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Default reminders for new tasks</label>
-                <p className="settings-hint">
-                  Applied when you add a task. Change any task anytime under Details → Remind me. On iPhone, allow scheduled reminders in Notifications and keep the app updated so local alerts can fire at the right time.
-                </p>
-                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                  <input
-                    type="checkbox"
-                    checked={profile.defaultTaskRemindersOn !== false}
-                    onChange={(e) =>
-                      setProfile((p) => ({
-                        ...p,
-                        defaultTaskRemindersOn: e.target.checked,
-                      }))
-                    }
-                  />
-                  <span>Turn on reminders for new tasks</span>
-                </label>
-                <label className="settings-hint" style={{ display: "block", marginBottom: 6, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}>
-                  Remind me before task starts
-                </label>
-                <select
-                  className="input modal-input"
-                  style={{ marginBottom: 10 }}
-                  disabled={profile.defaultTaskRemindersOn === false}
-                  value={
-                    profile.defaultRemindBeforeMinutes == null || profile.defaultRemindBeforeMinutes === 0
-                      ? ""
-                      : String(profile.defaultRemindBeforeMinutes)
-                  }
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setProfile((p) => ({
-                      ...p,
-                      defaultRemindBeforeMinutes: v === "" ? null : Number(v),
-                    }));
-                  }}
-                  aria-label="Default minutes before task"
-                >
-                  {TASK_REMINDER_BEFORE_OPTIONS.map((o) => (
-                    <option key={o.label} value={o.value == null ? "" : String(o.value)}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}>
-                  <input
-                    type="checkbox"
-                    disabled={profile.defaultTaskRemindersOn === false}
-                    checked={profile.defaultRemindAtStart !== false}
-                    onChange={(e) => setProfile((p) => ({ ...p, defaultRemindAtStart: e.target.checked }))}
-                  />
-                  <span>Also notify when the task starts</span>
-                </label>
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Task completion messages</label>
-                <p className="settings-hint">
-                  Pop-up line when you check off a task. Tap outside the card to dismiss it anytime. Turning this off still saves the task; you just won&apos;t see the affirmation.
-                </p>
-                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <input
-                    type="checkbox"
-                    checked={profile.completionAffirmationsOn !== false}
-                    onChange={(e) => setProfile((p) => ({ ...p, completionAffirmationsOn: e.target.checked }))}
-                  />
-                  <span>Show completion affirmations</span>
-                </label>
-                <label className="settings-hint" style={{ display: "block", marginBottom: 6, opacity: profile.completionAffirmationsOn !== false ? 1 : 0.45 }}>
-                  Tone
-                </label>
-                <select
-                  className="input modal-input"
-                  style={{ marginBottom: 0 }}
-                  disabled={profile.completionAffirmationsOn === false}
-                  value={
-                    profile.completionAffirmationTone === "matter-of-fact" ||
-                    profile.completionAffirmationTone === "funny" ||
-                    profile.completionAffirmationTone === "harsh"
-                      ? profile.completionAffirmationTone
-                      : "supportive"
-                  }
-                  onChange={(e) =>
-                    setProfile((p) => ({
-                      ...p,
-                      completionAffirmationTone: /** @type {any} */ (e.target.value),
-                    }))
-                  }
-                  aria-label="Completion message tone"
-                >
-                  <option value="supportive">Supportive — warm and encouraging</option>
-                  <option value="matter-of-fact">Matter of fact — short and neutral</option>
-                  <option value="funny">Funny — playful</option>
-                  <option value="harsh">Harsh — blunt tough-love (still PG)</option>
-                </select>
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Morning routine (optional add-on)</label>
-                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <input type="checkbox" checked={routineSchedule.enabledMorning !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))} />
-                  <span>Show morning routine on Today</span>
-                </label>
-                <p className="settings-hint">Steps that appear at the start of your day. Choose which days to show it.</p>
-                <ul className="routine-template-list">
-                  {morningRoutineTemplate.map((r, idx) => (
-                    <li key={r.id} className="routine-template-item">
-                      <input
-                        className="input routine-template-input"
-                        type="text"
-                        value={r.text}
-                        onChange={(e) => setMorningRoutineTemplate((prev) => prev.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
-                        aria-label={`Morning step ${idx + 1}`}
-                      />
-                      <button type="button" className="btn btn-ghost btn-sm routine-template-remove" onClick={() => setMorningRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))} aria-label="Remove step">
-                        <TrashIcon style={{ width: 14, height: 14 }} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <button type="button" className="btn btn-sm" onClick={() => setMorningRoutineTemplate((prev) => [...prev, { id: `morning-${Date.now()}`, text: "New step" }])}>
-                  Add step
-                </button>
-                <p className="settings-hint" style={{ marginTop: 8 }}>Show on:</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
-                  <button type="button" className={`btn btn-sm ${routineSchedule.morning === "every" ? "btn-primary" : ""}`} onClick={() => setRoutineSchedule((s) => ({ ...s, morning: "every" }))}>
-                    Every day
-                  </button>
-                  {[0, 1, 2, 3, 4, 5, 6].map((d) => {
-                    const arr = Array.isArray(routineSchedule.morning) ? routineSchedule.morning : [];
-                    const on = routineSchedule.morning === "every" || arr.includes(d);
-                    return (
-                      <button
-                        key={d}
-                        type="button"
-                        className={`btn btn-sm ${on ? "btn-primary" : ""}`}
-                        onClick={() => setRoutineSchedule((s) => {
-                          const next = Array.isArray(s.morning) ? s.morning : (s.morning === "every" ? [0, 1, 2, 3, 4, 5, 6] : []);
-                          const has = next.includes(d);
-                          const nextArr = has ? next.filter((x) => x !== d) : [...next, d].sort((a, b) => a - b);
-                          return { ...s, morning: nextArr.length === 7 ? "every" : nextArr.length === 0 ? "every" : nextArr };
-                        })}
-                      >
-                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Wind-down routine (optional add-on)</label>
-                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <input type="checkbox" checked={routineSchedule.enabledNight !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledNight: e.target.checked }))} />
-                  <span>Show wind-down routine on Today</span>
-                </label>
-                <p className="settings-hint">Edit the steps that appear in your nightly routine.</p>
-                <ul className="routine-template-list">
-                  {routineTemplate.map((r, idx) => (
-                    <li key={r.id} className="routine-template-item">
-                      <input
-                        className="input routine-template-input"
-                        type="text"
-                        value={r.text}
-                        onChange={(e) => setRoutineTemplate((prev) => prev.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
-                        aria-label={`Step ${idx + 1}`}
-                      />
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm routine-template-remove"
-                        onClick={() => setRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))}
-                        aria-label="Remove step"
-                      >
-                        <TrashIcon style={{ width: 14, height: 14 }} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  onClick={() => setRoutineTemplate((prev) => [...prev, { id: `step-${Date.now()}`, text: "New step" }])}
-                >
-                  Add step
-                </button>
-                <p className="settings-hint" style={{ marginTop: 8 }}>Show on:</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
-                  <button type="button" className={`btn btn-sm ${routineSchedule.night === "every" ? "btn-primary" : ""}`} onClick={() => setRoutineSchedule((s) => ({ ...s, night: "every" }))}>
-                    Every day
-                  </button>
-                  {[0, 1, 2, 3, 4, 5, 6].map((d) => {
-                    const arr = Array.isArray(routineSchedule.night) ? routineSchedule.night : [];
-                    const on = routineSchedule.night === "every" || arr.includes(d);
-                    return (
-                      <button
-                        key={d}
-                        type="button"
-                        className={`btn btn-sm ${on ? "btn-primary" : ""}`}
-                        onClick={() => setRoutineSchedule((s) => {
-                          const next = Array.isArray(s.night) ? s.night : (s.night === "every" ? [0, 1, 2, 3, 4, 5, 6] : []);
-                          const has = next.includes(d);
-                          const nextArr = has ? next.filter((x) => x !== d) : [...next, d].sort((a, b) => a - b);
-                          return { ...s, night: nextArr.length === 7 ? "every" : nextArr.length === 0 ? "every" : nextArr };
-                        })}
-                      >
-                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Habit check-ins</label>
-                <p className="settings-hint">
-                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them.{" "}
-                  <strong>Reminder nudges</strong> (hourly, every 30 minutes, daily, quiet hours, on/off per habit) are configured in the{" "}
-                  <strong>Notifications dashboard</strong> below. When the dashboard is set to <strong>Custom</strong>, you can pick hourly vs exact times here for each habit.
-                </p>
-                <ul className="habit-settings-list">
-                  {(habitTracker.habits || []).map((h) => {
-                    const row = normalizeHabitRow(h) || h;
-                    const sch = row.reminderSchedule || "none";
-                    const hours = row.reminderHours || [];
-                    const dashNp = normalizeNotificationPrefs(profile.notificationPrefs);
-                    return (
-                      <li key={row.id} className="habit-settings-card">
-                        <div className="habit-settings-card-head">
-                          <div className="habit-settings-card-title">
-                            {row.label}{" "}
-                            <span className="settings-hint" style={{ marginLeft: 6 }}>
-                              ({row.direction === "break" ? "break" : "build"})
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm routine-template-remove"
-                            onClick={() =>
-                              setHabitTracker((prev) => ({
-                                habits: (prev.habits || []).filter((x) => x.id !== row.id),
-                                log: Object.fromEntries(
-                                  Object.entries(prev.log || {}).map(([dk, day]) => [
-                                    dk,
-                                    typeof day === "object" && day != null
-                                      ? Object.fromEntries(Object.entries(day).filter(([k]) => k !== row.id))
-                                      : day,
-                                  ])
-                                ),
-                              }))
-                            }
-                            aria-label={`Remove habit ${row.label}`}
-                          >
-                            <TrashIcon style={{ width: 14, height: 14 }} />
-                          </button>
-                        </div>
-                        {dashNp.habitReminderMode === "custom" ? (
-                          <>
-                            <label className="habit-settings-remind-label" htmlFor={`habit-remind-${row.id}`}>
-                              Reminders (custom)
-                            </label>
-                            <select
-                              id={`habit-remind-${row.id}`}
-                              className="input habit-settings-remind-select"
-                              value={sch}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setHabitTracker((prev) => ({
-                                  ...prev,
-                                  habits: (prev.habits || []).map((x) =>
-                                    x.id === row.id
-                                      ? normalizeHabitRow({
-                                          ...x,
-                                          reminderSchedule: v === "hourly" || v === "hours" ? v : "none",
-                                          reminderHours: v === "hours" ? (Array.isArray(x.reminderHours) ? x.reminderHours : []) : [],
-                                        })
-                                      : x
-                                  ),
-                                }));
-                              }}
-                            >
-                              <option value="none">None</option>
-                              <option value="hourly">Hourly (uses quiet hours from dashboard)</option>
-                              <option value="hours">Choose times</option>
-                            </select>
-                            {sch === "hours" && (
-                              <div className="habit-reminder-hours">
-                                <div className="habit-reminder-hour-chips">
-                                  {hours.map((hm) => (
-                                    <span key={hm} className="habit-reminder-chip">
-                                      {to12Hour(hm)}
-                                      <button
-                                        type="button"
-                                        aria-label={`Remove ${hm}`}
-                                        onClick={() =>
-                                          setHabitTracker((prev) => ({
-                                            ...prev,
-                                            habits: (prev.habits || []).map((x) =>
-                                              x.id === row.id
-                                                ? normalizeHabitRow({
-                                                    ...x,
-                                                    reminderHours: hours.filter((t) => t !== hm),
-                                                  })
-                                                : x
-                                            ),
-                                          }))
-                                        }
-                                      >
-                                        ×
-                                      </button>
-                                    </span>
-                                  ))}
-                                </div>
-                                <div className="habit-reminder-add-row">
-                                  <input
-                                    className="input"
-                                    type="time"
-                                    value={habitReminderDraft[row.id] ?? "09:00"}
-                                    onChange={(e) =>
-                                      setHabitReminderDraft((d) => ({ ...d, [row.id]: e.target.value }))
-                                    }
-                                    aria-label={`Add reminder time for ${row.label}`}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-primary"
-                                    onClick={() => {
-                                      const draft = habitReminderDraft[row.id] ?? "09:00";
-                                      const slot = normalizeTimeKey(draft);
-                                      setHabitTracker((prev) => ({
-                                        ...prev,
-                                        habits: (prev.habits || []).map((x) => {
-                                          if (x.id !== row.id) return x;
-                                          const cur = normalizeHabitRow(x)?.reminderHours || [];
-                                          if (cur.includes(slot)) return x;
-                                          return normalizeHabitRow({ ...x, reminderHours: [...cur, slot].sort() });
-                                        }),
-                                      }));
-                                    }}
-                                  >
-                                    Add time
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-                            Nudges use the <strong>global schedule</strong> in Notifications dashboard (not per-habit clocks).
-                          </p>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-                <div className="settings-add-type" style={{ marginTop: 10 }}>
-                  <input
-                    className="input modal-input"
-                    type="text"
-                    value={newHabitLabel}
-                    onChange={(e) => setNewHabitLabel(e.target.value)}
-                    placeholder="e.g. Drink water / stretch"
-                    aria-label="New habit label"
-                  />
-                  <select
-                    className="input"
-                    value={newHabitDirection}
-                    onChange={(e) => setNewHabitDirection(e.target.value)}
-                    aria-label="Build or break habit"
-                    style={{ minWidth: 100 }}
-                  >
-                    <option value="build">Build</option>
-                    <option value="break">Break</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      const label = (newHabitLabel || "").trim();
-                      if (!label) return;
-                      const next = normalizeHabitRow({
-                        id: uid(),
-                        label,
-                        direction: newHabitDirection === "break" ? "break" : "build",
-                        reminderSchedule: "none",
-                        reminderHours: [],
-                      });
-                      if (!next) return;
-                      setHabitTracker((prev) => ({
-                        habits: [...(prev.habits || []), next],
-                        log: prev.log || {},
-                      }));
-                      setNewHabitLabel("");
-                    }}
-                  >
-                    Add habit
-                  </button>
-                </div>
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Task types</label>
-                <p className="settings-hint">Types for organizing tasks (e.g. Work, Personal). Quick add and tasks use these.</p>
-                <ul className="routine-template-list">
-                  {customCategories.map((cat) => (
-                    <li key={cat} className="routine-template-item">
-                      <span className="routine-template-input" style={{ flex: 1 }}>{cat}</span>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm routine-template-remove"
-                        onClick={() => {
-                          if (customCategories.length <= 1) return;
-                          setCustomCategories((prev) => prev.filter((c) => c !== cat));
-                        }}
-                        disabled={customCategories.length <= 1}
-                        aria-label={`Remove type ${cat}`}
-                      >
-                        <TrashIcon style={{ width: 14, height: 14 }} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <div className="settings-add-type">
-                  <input
-                    className="input modal-input"
-                    type="text"
-                    value={newTypeName}
-                    onChange={(e) => setNewTypeName(e.target.value)}
-                    placeholder="New type name"
-                    aria-label="New task type"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        const name = (newTypeName || "").trim();
-                        if (name && !customCategories.includes(name)) {
-                          setCustomCategories((prev) => [...prev, name]);
-                          setNewTypeName("");
-                        }
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-sm"
-                    onClick={() => {
-                      const name = (newTypeName || "").trim();
-                      if (name && !customCategories.includes(name)) {
-                        setCustomCategories((prev) => [...prev, name]);
-                        setNewTypeName("");
-                      }
-                    }}
-                  >
-                    Add type
-                  </button>
-                </div>
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Guides &amp; tours</label>
-                <p className="settings-hint">
-                  Replay the short overview of tabs and features, or the longer full walkthrough. Closing a tour with &quot;Exit&quot; does not mark it complete; finishing the last slide does.
-                </p>
-                <div className="settings-push-actions" style={{ flexWrap: "wrap" }}>
-                  <button type="button" className="btn btn-primary" onClick={() => startReplayFeatureTour("quick")}>
-                    Replay quick tour
-                  </button>
-                  <button type="button" className="btn btn-sm" onClick={() => startReplayFeatureTour("full")}>
-                    Replay full walkthrough
-                  </button>
-                </div>
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Theme Color</label>
-                <div className="theme-picker">
-                  {Object.entries(THEMES).map(([key, themeData]) => (
-                    <button
-                      key={key}
-                      className={`theme-option ${theme.name === themeData.name ? 'selected' : ''}`}
-                      onClick={() => setTheme(themeData)}
-                      style={{
-                        background: themeData.gradient,
-                        border: theme.name === themeData.name ? '3px solid #333' : '2px solid transparent'
-                      }}
-                      title={themeData.name}
-                    >
-                      {theme.name === themeData.name && <CheckIcon style={{ color: '#333', width: 18, height: 18 }} />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
+              {settingsSubView === "notifications" ? (
+              <div className="settings-notifications-subview">
               {isCapacitorNativeApp() ? (
                 <div className="settings-section">
                   <label className="label">Notifications</label>
@@ -8036,7 +7464,7 @@ export default function App() {
                     Habit reminder cadence
                   </label>
                   <p className="settings-hint" style={{ marginTop: 4 }}>
-                    Quiet hours apply to <strong>all</strong> modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list in Habit check-ins above.
+                    Quiet hours apply to <strong>all</strong> modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list from <strong>Settings → Habit tracker</strong>.
                   </p>
                   <select
                     className="input modal-input"
@@ -8125,7 +7553,7 @@ export default function App() {
                   </label>
                   <p className="settings-hint" style={{ marginTop: 4 }}>Turn off nudges for habits you don&apos;t want pinged.</p>
                   {(habitTracker.habits || []).length === 0 ? (
-                    <p className="settings-hint">No habits yet. Add some under Habit check-ins.</p>
+                    <p className="settings-hint">No habits yet. Add some under <strong>Settings → Habit tracker</strong>.</p>
                   ) : (
                     <ul className="notif-habit-toggle-list">
                       {(habitTracker.habits || []).map((h) => {
@@ -8215,7 +7643,412 @@ export default function App() {
                 </div>
               </div>
               )}
+              </div>
+              ) : (
+              <>
+              <details className="settings-accordion" open>
+                <summary className="settings-accordion-summary">Personal &amp; account</summary>
+                <div className="settings-accordion-panel">
+              <div className="settings-section">
+                <label className="label">Account</label>
+                {!isFirebaseEnabled() ? (
+                  <p className="settings-hint">Add your Firebase web config (env vars) to sync your schedule, notes, finance, and settings across devices.</p>
+                ) : (
+                  <>
+                    <p className="settings-hint settings-account-status" style={{ marginBottom: 12 }}>
+                      {firebaseUser?.isAnonymous ? (
+                        <>Logged in as <strong>guest</strong> (this browser)</>
+                      ) : firebaseUser?.email ? (
+                        <>
+                          Logged in as <strong>{firebaseUser.email}</strong>
+                        </>
+                      ) : firebaseUser?.displayName ? (
+                        <>
+                          Logged in as <strong>{firebaseUser.displayName}</strong>
+                        </>
+                      ) : firebaseUser ? (
+                        "Logged in"
+                      ) : (
+                        "Not signed in."
+                      )}
+                    </p>
+                    {firebaseUser ? (
+                      <>
+                        <div className="settings-account-actions">
+                          <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
+                            Log out
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          id="delete-account-entry"
+                          className="btn btn-sm settings-delete-account-btn"
+                          disabled={authBusy}
+                          onClick={() => openDeleteAccountFlow()}
+                        >
+                          {firebaseUser.isAnonymous ? "Delete guest data" : "Delete account"}
+                        </button>
+                        <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                          Opens a short flow. Your account is removed permanently (not deactivated), then this device reloads.
+                        </p>
+                      </>
+                    ) : null}
+                  </>
+                )}
+              </div>
 
+              <div className="settings-section">
+                <label className="label">Your name</label>
+                <input
+                  className="input modal-input"
+                  type="text"
+                  value={profile.userName}
+                  onChange={(e) => setProfile((p) => ({ ...p, userName: e.target.value.trim() }))}
+                  placeholder="e.g. Sarah"
+                  aria-label="Your name"
+                />
+              </div>
+              <div className="settings-section">
+                <label className="label">Birthday (for greetings)</label>
+                <input
+                  className="input modal-input"
+                  type="text"
+                  value={profile.userBirthday}
+                  onChange={(e) => setProfile((p) => ({ ...p, userBirthday: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+                  placeholder="MMDD e.g. 0315"
+                  aria-label="Birthday month and day"
+                  maxLength={4}
+                />
+                <p className="settings-hint">Enter as MMDD (e.g. 0315 for March 15). We&apos;ll wish you happy birthday on the day.</p>
+              </div>
+                </div>
+              </details>
+
+              <details className="settings-accordion">
+                <summary className="settings-accordion-summary">Customization</summary>
+                <div className="settings-accordion-panel">
+              <div className="settings-section">
+                <label className="label">Bottom navigation</label>
+                <p className="settings-hint">
+                  Choose which destinations appear in the dock. <strong>Today</strong> always stays. You can also toggle{" "}
+                  <strong>Finance</strong> and <strong>Health</strong> from those screens.
+                </p>
+                {[
+                  { id: "list", label: "List" },
+                  { id: "monthly", label: "Monthly objectives" },
+                  { id: "coach", label: "Coach (pattern insights)" },
+                  { id: "notes", label: "Notes" },
+                  { id: "finance", label: "Finance" },
+                  { id: "health", label: "Health" },
+                ].map((row) => (
+                  <label key={row.id} className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={normalizeNavVisibility(profile.navVisibility)[row.id] === true}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          navVisibility: { ...normalizeNavVisibility(p.navVisibility), [row.id]: e.target.checked },
+                        }))
+                      }
+                    />
+                    <span>{row.label}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Default reminders for new tasks</label>
+                <p className="settings-hint">
+                  Applied when you add a task. Change any task anytime under Details → Remind me. On iPhone, allow scheduled reminders in Notifications and keep the app updated so local alerts can fire at the right time.
+                </p>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={profile.defaultTaskRemindersOn !== false}
+                    onChange={(e) =>
+                      setProfile((p) => ({
+                        ...p,
+                        defaultTaskRemindersOn: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Turn on reminders for new tasks</span>
+                </label>
+                <label className="settings-hint" style={{ display: "block", marginBottom: 6, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}>
+                  Remind me before task starts
+                </label>
+                <select
+                  className="input modal-input"
+                  style={{ marginBottom: 10 }}
+                  disabled={profile.defaultTaskRemindersOn === false}
+                  value={
+                    profile.defaultRemindBeforeMinutes == null || profile.defaultRemindBeforeMinutes === 0
+                      ? ""
+                      : String(profile.defaultRemindBeforeMinutes)
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setProfile((p) => ({
+                      ...p,
+                      defaultRemindBeforeMinutes: v === "" ? null : Number(v),
+                    }));
+                  }}
+                  aria-label="Default minutes before task"
+                >
+                  {TASK_REMINDER_BEFORE_OPTIONS.map((o) => (
+                    <option key={o.label} value={o.value == null ? "" : String(o.value)}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}>
+                  <input
+                    type="checkbox"
+                    disabled={profile.defaultTaskRemindersOn === false}
+                    checked={profile.defaultRemindAtStart !== false}
+                    onChange={(e) => setProfile((p) => ({ ...p, defaultRemindAtStart: e.target.checked }))}
+                  />
+                  <span>Also notify when the task starts</span>
+                </label>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Task completion messages</label>
+                <p className="settings-hint">
+                  Pop-up line when you check off a task. Tap outside the card to dismiss it anytime. Turning this off still saves the task; you just won&apos;t see the affirmation.
+                </p>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={profile.completionAffirmationsOn !== false}
+                    onChange={(e) => setProfile((p) => ({ ...p, completionAffirmationsOn: e.target.checked }))}
+                  />
+                  <span>Show completion affirmations</span>
+                </label>
+                <label className="settings-hint" style={{ display: "block", marginBottom: 6, opacity: profile.completionAffirmationsOn !== false ? 1 : 0.45 }}>
+                  Tone
+                </label>
+                <select
+                  className="input modal-input"
+                  style={{ marginBottom: 0 }}
+                  disabled={profile.completionAffirmationsOn === false}
+                  value={
+                    profile.completionAffirmationTone === "matter-of-fact" ||
+                    profile.completionAffirmationTone === "funny" ||
+                    profile.completionAffirmationTone === "harsh"
+                      ? profile.completionAffirmationTone
+                      : "supportive"
+                  }
+                  onChange={(e) =>
+                    setProfile((p) => ({
+                      ...p,
+                      completionAffirmationTone: /** @type {any} */ (e.target.value),
+                    }))
+                  }
+                  aria-label="Completion message tone"
+                >
+                  <option value="supportive">Supportive — warm and encouraging</option>
+                  <option value="matter-of-fact">Matter of fact — short and neutral</option>
+                  <option value="funny">Funny — playful</option>
+                  <option value="harsh">Harsh — blunt tough-love (still PG)</option>
+                </select>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Morning routine (optional add-on)</label>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <input type="checkbox" checked={routineSchedule.enabledMorning !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))} />
+                  <span>Show morning routine on Today</span>
+                </label>
+                <p className="settings-hint">Steps that appear at the start of your day. Choose which days to show it.</p>
+                <ul className="routine-template-list">
+                  {morningRoutineTemplate.map((r, idx) => (
+                    <li key={r.id} className="routine-template-item">
+                      <input
+                        className="input routine-template-input"
+                        type="text"
+                        value={r.text}
+                        onChange={(e) => setMorningRoutineTemplate((prev) => prev.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
+                        aria-label={`Morning step ${idx + 1}`}
+                      />
+                      <button type="button" className="btn btn-ghost btn-sm routine-template-remove" onClick={() => setMorningRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))} aria-label="Remove step">
+                        <TrashIcon style={{ width: 14, height: 14 }} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button type="button" className="btn btn-sm" onClick={() => setMorningRoutineTemplate((prev) => [...prev, { id: `morning-${Date.now()}`, text: "New step" }])}>
+                  Add step
+                </button>
+                <p className="settings-hint" style={{ marginTop: 8 }}>Show on:</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                  <button type="button" className={`btn btn-sm ${routineSchedule.morning === "every" ? "btn-primary" : ""}`} onClick={() => setRoutineSchedule((s) => ({ ...s, morning: "every" }))}>
+                    Every day
+                  </button>
+                  {[0, 1, 2, 3, 4, 5, 6].map((d) => {
+                    const arr = Array.isArray(routineSchedule.morning) ? routineSchedule.morning : [];
+                    const on = routineSchedule.morning === "every" || arr.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`btn btn-sm ${on ? "btn-primary" : ""}`}
+                        onClick={() => setRoutineSchedule((s) => {
+                          const next = Array.isArray(s.morning) ? s.morning : (s.morning === "every" ? [0, 1, 2, 3, 4, 5, 6] : []);
+                          const has = next.includes(d);
+                          const nextArr = has ? next.filter((x) => x !== d) : [...next, d].sort((a, b) => a - b);
+                          return { ...s, morning: nextArr.length === 7 ? "every" : nextArr.length === 0 ? "every" : nextArr };
+                        })}
+                      >
+                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Wind-down routine (optional add-on)</label>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <input type="checkbox" checked={routineSchedule.enabledNight !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledNight: e.target.checked }))} />
+                  <span>Show wind-down routine on Today</span>
+                </label>
+                <p className="settings-hint">Edit the steps that appear in your nightly routine.</p>
+                <ul className="routine-template-list">
+                  {routineTemplate.map((r, idx) => (
+                    <li key={r.id} className="routine-template-item">
+                      <input
+                        className="input routine-template-input"
+                        type="text"
+                        value={r.text}
+                        onChange={(e) => setRoutineTemplate((prev) => prev.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
+                        aria-label={`Step ${idx + 1}`}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm routine-template-remove"
+                        onClick={() => setRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))}
+                        aria-label="Remove step"
+                      >
+                        <TrashIcon style={{ width: 14, height: 14 }} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => setRoutineTemplate((prev) => [...prev, { id: `step-${Date.now()}`, text: "New step" }])}
+                >
+                  Add step
+                </button>
+                <p className="settings-hint" style={{ marginTop: 8 }}>Show on:</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                  <button type="button" className={`btn btn-sm ${routineSchedule.night === "every" ? "btn-primary" : ""}`} onClick={() => setRoutineSchedule((s) => ({ ...s, night: "every" }))}>
+                    Every day
+                  </button>
+                  {[0, 1, 2, 3, 4, 5, 6].map((d) => {
+                    const arr = Array.isArray(routineSchedule.night) ? routineSchedule.night : [];
+                    const on = routineSchedule.night === "every" || arr.includes(d);
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`btn btn-sm ${on ? "btn-primary" : ""}`}
+                        onClick={() => setRoutineSchedule((s) => {
+                          const next = Array.isArray(s.night) ? s.night : (s.night === "every" ? [0, 1, 2, 3, 4, 5, 6] : []);
+                          const has = next.includes(d);
+                          const nextArr = has ? next.filter((x) => x !== d) : [...next, d].sort((a, b) => a - b);
+                          return { ...s, night: nextArr.length === 7 ? "every" : nextArr.length === 0 ? "every" : nextArr };
+                        })}
+                      >
+                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Task types</label>
+                <p className="settings-hint">Types for organizing tasks (e.g. Work, Personal). Quick add and tasks use these.</p>
+                <ul className="routine-template-list">
+                  {customCategories.map((cat) => (
+                    <li key={cat} className="routine-template-item">
+                      <span className="routine-template-input" style={{ flex: 1 }}>{cat}</span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm routine-template-remove"
+                        onClick={() => {
+                          if (customCategories.length <= 1) return;
+                          setCustomCategories((prev) => prev.filter((c) => c !== cat));
+                        }}
+                        disabled={customCategories.length <= 1}
+                        aria-label={`Remove type ${cat}`}
+                      >
+                        <TrashIcon style={{ width: 14, height: 14 }} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <div className="settings-add-type">
+                  <input
+                    className="input modal-input"
+                    type="text"
+                    value={newTypeName}
+                    onChange={(e) => setNewTypeName(e.target.value)}
+                    placeholder="New type name"
+                    aria-label="New task type"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const name = (newTypeName || "").trim();
+                        if (name && !customCategories.includes(name)) {
+                          setCustomCategories((prev) => [...prev, name]);
+                          setNewTypeName("");
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => {
+                      const name = (newTypeName || "").trim();
+                      if (name && !customCategories.includes(name)) {
+                        setCustomCategories((prev) => [...prev, name]);
+                        setNewTypeName("");
+                      }
+                    }}
+                  >
+                    Add type
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Theme Color</label>
+                <div className="theme-picker">
+                  {Object.entries(THEMES).map(([key, themeData]) => {
+                    const swatchInk = themeData.name === "Midnight" || themeData.name === "Mocha" ? "#fafafa" : "#333";
+                    return (
+                    <button
+                      key={key}
+                      className={`theme-option ${theme.name === themeData.name ? 'selected' : ''}`}
+                      onClick={() => setTheme(themeData)}
+                      style={{
+                        background: themeData.gradient,
+                        border: theme.name === themeData.name ? `3px solid ${swatchInk}` : '2px solid transparent'
+                      }}
+                      title={themeData.name}
+                    >
+                      {theme.name === themeData.name && <CheckIcon style={{ color: swatchInk, width: 18, height: 18 }} />}
+                    </button>
+                    );
+                  })}
+                </div>
+              </div>
               {!isRunningAsInstalledPwa() && !isCapacitorNativeApp() && (
                 <div className="settings-section">
                   <label className="label">Install on home screen</label>
@@ -8227,6 +8060,7 @@ export default function App() {
                     className="btn btn-sm btn-primary"
                     onClick={() => {
                       setShowPrivacyPolicy(false);
+                      setSettingsSubView("main");
                       setShowSettings(false);
                       setShowPwaInstallModal(true);
                     }}
@@ -8234,6 +8068,231 @@ export default function App() {
                     Add PROYOU to home screen
                   </button>
                 </div>
+              )}
+                </div>
+              </details>
+
+              <div className="settings-section settings-nav-deep-link-card">
+                <label className="label">Notifications &amp; reminders</label>
+                <p className="settings-hint">Device alerts, background sync, task and habit timing, quiet hours, and per-habit nudges.</p>
+                <button type="button" className="btn btn-primary" onClick={() => setSettingsSubView("notifications")}>
+                  Open notifications &amp; reminders
+                </button>
+              </div>
+
+              <details className="settings-accordion">
+                <summary className="settings-accordion-summary">Habit tracker</summary>
+                <div className="settings-accordion-panel">
+              <div className="settings-section">
+                <label className="label">Habit check-ins</label>
+                <p className="settings-hint">
+                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them.{" "}
+                  <strong>Reminder nudges</strong> (hourly, every 30 minutes, daily, quiet hours, on/off per habit) are set in{" "}
+                  <strong>Notifications &amp; reminders</strong> (button above). When that page is set to <strong>Custom</strong>, you can pick hourly vs exact times here for each habit.
+                </p>
+                <ul className="habit-settings-list">
+                  {(habitTracker.habits || []).map((h) => {
+                    const row = normalizeHabitRow(h) || h;
+                    const sch = row.reminderSchedule || "none";
+                    const hours = row.reminderHours || [];
+                    const dashNp = normalizeNotificationPrefs(profile.notificationPrefs);
+                    return (
+                      <li key={row.id} className="habit-settings-card">
+                        <div className="habit-settings-card-head">
+                          <div className="habit-settings-card-title">
+                            {row.label}{" "}
+                            <span className="settings-hint" style={{ marginLeft: 6 }}>
+                              ({row.direction === "break" ? "break" : "build"})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm routine-template-remove"
+                            onClick={() =>
+                              setHabitTracker((prev) => ({
+                                habits: (prev.habits || []).filter((x) => x.id !== row.id),
+                                log: Object.fromEntries(
+                                  Object.entries(prev.log || {}).map(([dk, day]) => [
+                                    dk,
+                                    typeof day === "object" && day != null
+                                      ? Object.fromEntries(Object.entries(day).filter(([k]) => k !== row.id))
+                                      : day,
+                                  ])
+                                ),
+                              }))
+                            }
+                            aria-label={`Remove habit ${row.label}`}
+                          >
+                            <TrashIcon style={{ width: 14, height: 14 }} />
+                          </button>
+                        </div>
+                        {dashNp.habitReminderMode === "custom" ? (
+                          <>
+                            <label className="habit-settings-remind-label" htmlFor={`habit-remind-${row.id}`}>
+                              Reminders (custom)
+                            </label>
+                            <select
+                              id={`habit-remind-${row.id}`}
+                              className="input habit-settings-remind-select"
+                              value={sch}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setHabitTracker((prev) => ({
+                                  ...prev,
+                                  habits: (prev.habits || []).map((x) =>
+                                    x.id === row.id
+                                      ? normalizeHabitRow({
+                                          ...x,
+                                          reminderSchedule: v === "hourly" || v === "hours" ? v : "none",
+                                          reminderHours: v === "hours" ? (Array.isArray(x.reminderHours) ? x.reminderHours : []) : [],
+                                        })
+                                      : x
+                                  ),
+                                }));
+                              }}
+                            >
+                              <option value="none">None</option>
+                              <option value="hourly">Hourly (uses quiet hours from the notifications page)</option>
+                              <option value="hours">Choose times</option>
+                            </select>
+                            {sch === "hours" && (
+                              <div className="habit-reminder-hours">
+                                <div className="habit-reminder-hour-chips">
+                                  {hours.map((hm) => (
+                                    <span key={hm} className="habit-reminder-chip">
+                                      {to12Hour(hm)}
+                                      <button
+                                        type="button"
+                                        aria-label={`Remove ${hm}`}
+                                        onClick={() =>
+                                          setHabitTracker((prev) => ({
+                                            ...prev,
+                                            habits: (prev.habits || []).map((x) =>
+                                              x.id === row.id
+                                                ? normalizeHabitRow({
+                                                    ...x,
+                                                    reminderHours: hours.filter((t) => t !== hm),
+                                                  })
+                                                : x
+                                            ),
+                                          }))
+                                        }
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="habit-reminder-add-row">
+                                  <input
+                                    className="input"
+                                    type="time"
+                                    value={habitReminderDraft[row.id] ?? "09:00"}
+                                    onChange={(e) =>
+                                      setHabitReminderDraft((d) => ({ ...d, [row.id]: e.target.value }))
+                                    }
+                                    aria-label={`Add reminder time for ${row.label}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-primary"
+                                    onClick={() => {
+                                      const draft = habitReminderDraft[row.id] ?? "09:00";
+                                      const slot = normalizeTimeKey(draft);
+                                      setHabitTracker((prev) => ({
+                                        ...prev,
+                                        habits: (prev.habits || []).map((x) => {
+                                          if (x.id !== row.id) return x;
+                                          const cur = normalizeHabitRow(x)?.reminderHours || [];
+                                          if (cur.includes(slot)) return x;
+                                          return normalizeHabitRow({ ...x, reminderHours: [...cur, slot].sort() });
+                                        }),
+                                      }));
+                                    }}
+                                  >
+                                    Add time
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                            Nudges use the <strong>global schedule</strong> from Notifications &amp; reminders (not per-habit clocks).
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="settings-add-type" style={{ marginTop: 10 }}>
+                  <input
+                    className="input modal-input"
+                    type="text"
+                    value={newHabitLabel}
+                    onChange={(e) => setNewHabitLabel(e.target.value)}
+                    placeholder="e.g. Drink water / stretch"
+                    aria-label="New habit label"
+                  />
+                  <select
+                    className="input"
+                    value={newHabitDirection}
+                    onChange={(e) => setNewHabitDirection(e.target.value)}
+                    aria-label="Build or break habit"
+                    style={{ minWidth: 100 }}
+                  >
+                    <option value="build">Build</option>
+                    <option value="break">Break</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      const label = (newHabitLabel || "").trim();
+                      if (!label) return;
+                      const next = normalizeHabitRow({
+                        id: uid(),
+                        label,
+                        direction: newHabitDirection === "break" ? "break" : "build",
+                        reminderSchedule: "none",
+                        reminderHours: [],
+                      });
+                      if (!next) return;
+                      setHabitTracker((prev) => ({
+                        habits: [...(prev.habits || []), next],
+                        log: prev.log || {},
+                      }));
+                      setNewHabitLabel("");
+                    }}
+                  >
+                    Add habit
+                  </button>
+                </div>
+              </div>
+                </div>
+              </details>
+
+              <details className="settings-accordion">
+                <summary className="settings-accordion-summary">Guides &amp; tours</summary>
+                <div className="settings-accordion-panel">
+              <div className="settings-section">
+                <label className="label">Guides &amp; tours</label>
+                <p className="settings-hint">
+                  Replay the short overview of tabs and features, or the longer full walkthrough. Closing a tour with &quot;Exit&quot; does not mark it complete; finishing the last slide does.
+                </p>
+                <div className="settings-push-actions" style={{ flexWrap: "wrap" }}>
+                  <button type="button" className="btn btn-primary" onClick={() => startReplayFeatureTour("quick")}>
+                    Replay quick tour
+                  </button>
+                  <button type="button" className="btn btn-sm" onClick={() => startReplayFeatureTour("full")}>
+                    Replay full walkthrough
+                  </button>
+                </div>
+              </div>
+                </div>
+              </details>
+
+              </>
               )}
               </div>
 
@@ -8254,6 +8313,7 @@ export default function App() {
                     className="btn btn-primary"
                     onClick={() => {
                       setShowPrivacyPolicy(false);
+                      setSettingsSubView("main");
                       setShowSettings(false);
                     }}
                   >
@@ -8640,7 +8700,6 @@ export default function App() {
             document.body
           )}
 
-        {/* Gentle Rescheduling Modal */}
       </div>
         </>
       )}
