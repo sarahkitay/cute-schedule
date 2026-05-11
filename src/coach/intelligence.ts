@@ -41,6 +41,7 @@ export function buildCoachIntelligenceSnapshot(input: {
   patterns: PatternShape;
   notes: { text?: string }[];
   learning: CoachLearningStateV1;
+  healthSummary?: string | null;
 }): CoachIntelligenceSnapshot {
   const open = input.tasks.filter((t) => !t.done);
   const heavyOpen = open.filter((t) => t.energyLevel === "HEAVY").length;
@@ -51,6 +52,7 @@ export function buildCoachIntelligenceSnapshot(input: {
   const eveningHeavy = open.filter((t) => t.energyLevel === "HEAVY" && hourBand(t.hour) !== "morning" && hourBand(t.hour) !== "afternoon").length;
   const morningHeavy = open.filter((t) => t.energyLevel === "HEAVY" && hourBand(t.hour) === "morning").length;
 
+  const hs = input.healthSummary != null ? String(input.healthSummary).trim() : "";
   return {
     emotionalState: input.emotionalState,
     timeOfDay: input.timeOfDay,
@@ -66,6 +68,7 @@ export function buildCoachIntelligenceSnapshot(input: {
     morningHeavyCount: morningHeavy,
     noteSnippet: extractNoteSnippet(input.notes),
     learningSummary: summarizeLearningForPrompt(input.learning),
+    healthSummary: hs ? hs.slice(0, 1200) : null,
   };
 }
 
@@ -79,6 +82,7 @@ export function formatIntelligenceForApi(s: CoachIntelligenceSnapshot): string {
     `late_band_heavy_open=${s.eveningHeavyCount} morning_heavy_open=${s.morningHeavyCount}`,
     s.noteSnippet ? `recent_notes: ${s.noteSnippet}` : "",
     s.learningSummary,
+    s.healthSummary ? `health_training: ${s.healthSummary}` : "",
   ]
     .filter(Boolean)
     .join("\n");

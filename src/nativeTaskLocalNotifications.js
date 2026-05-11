@@ -4,6 +4,7 @@ import {
   buildTaskPushReminderEntriesForTask,
   localNotificationIdFor,
   normalizeTaskReminderFields,
+  taskForPushReminders,
 } from "./taskReminderModel.js";
 
 /** @type {null | ((p: Record<string, unknown>) => void)} */
@@ -41,8 +42,9 @@ function allTasksInDaySlot(hours, hourKey, categories) {
  * @param {string} startDayKey
  * @param {string[]} categories
  * @param {number} daySpan
+ * @param {unknown} [profile] optional; merges notificationPrefs for scheduled alerts
  */
-export function collectIosLocalTaskNotifications(daysMap, startDayKey, categories, daySpan = 8) {
+export function collectIosLocalTaskNotifications(daysMap, startDayKey, categories, daySpan = 8, profile = null) {
   /** @type {import('@capacitor/local-notifications').LocalNotificationSchema[]} */
   const notifications = [];
   const days = daysMap && typeof daysMap === "object" ? daysMap : {};
@@ -56,11 +58,12 @@ export function collectIosLocalTaskNotifications(daysMap, startDayKey, categorie
     for (const hourKey of Object.keys(hours)) {
       const tasks = allTasksInDaySlot(hours, hourKey, categories).filter((t) => !t.done);
       for (const task of tasks) {
-        const { remindersEnabled } = normalizeTaskReminderFields(task);
+        const taskEff = taskForPushReminders(task, profile);
+        const { remindersEnabled } = normalizeTaskReminderFields(taskEff);
         if (!remindersEnabled) continue;
 
         const pushRows = buildTaskPushReminderEntriesForTask({
-          task,
+          task: taskEff,
           dayKey,
           hourKey,
           nowMs,
@@ -98,7 +101,7 @@ export function collectIosLocalTaskNotifications(daysMap, startDayKey, categorie
  * Full resync: cancel PROYOU task locals, then schedule from app state.
  * iOS native only.
  */
-export async function resyncIosTaskLocalNotifications(daysMap, startDayKey, categories) {
+export async function resyncIosTaskLocalNotifications(daysMap, startDayKey, categories, profile = null) {
   if (typeof window === "undefined" || !Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") {
     return;
   }
@@ -128,7 +131,7 @@ export async function resyncIosTaskLocalNotifications(daysMap, startDayKey, cate
       await LocalNotifications.cancel({ notifications: cancelIds.map((id) => ({ id })) });
     }
 
-    const toSchedule = collectIosLocalTaskNotifications(daysMap, startDayKey, categories, 8);
+    const toSchedule = collectIosLocalTaskNotifications(daysMap, startDayKey, categories, 8, profile);
     report({ scheduledLocalReminderCount: toSchedule.length, lastLocalScheduleError: null });
 
     const chunk = 32;

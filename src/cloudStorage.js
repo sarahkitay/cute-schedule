@@ -86,13 +86,14 @@ class CloudStorage {
 
   /** Save full app state to Firestore (and keep localStorage as fallback). */
   async saveFullState(payload) {
-    const { appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patterns, habitTracker } = payload;
+    const { appState, notes, finance, profile, health, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patterns, habitTracker } = payload;
     const appStateEncoded = appState != null ? encodeAppStateHourKeys(appState) : null;
     const dataToSave = {
       appState: appStateEncoded,
       notes: cloneForFirestore(notes) ?? [],
       finance: cloneForFirestore(finance) ?? null,
       profile: cloneForFirestore(profile) ?? null,
+      health: cloneForFirestore(health) ?? null,
       theme: cloneForFirestore(theme) ?? null,
       routineTemplate: cloneForFirestore(routineTemplate) ?? null,
       morningRoutineTemplate: cloneForFirestore(morningRoutineTemplate) ?? null,
@@ -149,6 +150,7 @@ class CloudStorage {
         notes: data.notes ?? [],
         finance: data.finance ?? null,
         profile: data.profile ?? null,
+        health: data.health ?? null,
         theme: data.theme ?? null,
         routineTemplate: data.routineTemplate ?? null,
         morningRoutineTemplate: data.morningRoutineTemplate ?? null,

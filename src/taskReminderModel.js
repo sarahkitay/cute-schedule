@@ -86,6 +86,36 @@ export function buildTaskPushReminderEntriesForTask({ task, dayKey, hourKey, now
  * @param {string} taskId
  * @param {"before" | "start"} kind
  */
+const NP_DEFAULTS = {
+  taskPushEnabled: true,
+  taskRemindBeforeEnabled: true,
+  taskRemindAtStartEnabled: true,
+  taskRemindBeforeMinutes: 5,
+};
+
+/**
+ * Merge per-task reminder flags with profile.notificationPrefs for push / iOS local scheduling.
+ * @param {unknown} task
+ * @param {unknown} profile
+ */
+export function taskForPushReminders(task, profile) {
+  const p = profile && typeof profile === "object" ? profile : {};
+  const np = { ...NP_DEFAULTS, ...(p.notificationPrefs && typeof p.notificationPrefs === "object" ? p.notificationPrefs : {}) };
+  const base = normalizeTaskReminderFields(task);
+  if (!base.remindersEnabled || np.taskPushEnabled === false) {
+    return { ...(task && typeof task === "object" ? task : {}), remindersEnabled: false };
+  }
+  const mins = Math.min(120, Math.max(1, Math.round(Number(np.taskRemindBeforeMinutes) || 5)));
+  const beforeOn = typeof np.taskRemindBeforeEnabled === "boolean" ? np.taskRemindBeforeEnabled : NP_DEFAULTS.taskRemindBeforeEnabled;
+  const atStartOn = typeof np.taskRemindAtStartEnabled === "boolean" ? np.taskRemindAtStartEnabled : NP_DEFAULTS.taskRemindAtStartEnabled;
+  return {
+    ...(task && typeof task === "object" ? task : {}),
+    remindersEnabled: true,
+    remindAtStart: atStartOn,
+    remindBeforeMinutes: beforeOn ? mins : null,
+  };
+}
+
 export function localNotificationIdFor(taskId, kind) {
   const s = `${kind}:${taskId}`;
   let h = 0;

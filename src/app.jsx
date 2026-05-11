@@ -17,7 +17,12 @@ import {
   resyncIosTaskLocalNotifications,
   refreshNativeNotificationDiagnostics,
 } from "./notifications";
-import { buildTaskPushReminderEntriesForTask, normalizeTaskReminderFields, TASK_REMINDER_BEFORE_OPTIONS } from "./taskReminderModel.js";
+import {
+  buildTaskPushReminderEntriesForTask,
+  normalizeTaskReminderFields,
+  TASK_REMINDER_BEFORE_OPTIONS,
+  taskForPushReminders,
+} from "./taskReminderModel.js";
 import { generateCompletionMessage, checkEnergyBalance } from "./completionRitual";
 import { 
   getTimeOfDay, 
@@ -30,6 +35,13 @@ import cloudStorage from "./cloudStorage";
 import { THEMES } from "./themes";
 import { OnboardingFlow } from "./OnboardingFlow";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
+import { HealthPage } from "./HealthPage";
+import {
+  formatHealthForCoach,
+  healthProfileComplete,
+  normalizeHealth,
+  normalizeNavVisibility,
+} from "./health/healthModel";
 import {
   COACH_SUGGESTION_SOURCE,
   buildCoachIntelligenceSnapshot,
@@ -221,6 +233,157 @@ function buildCoachWeekAtAGlance(days, categories, centerKey) {
 }
 const FINANCE_STORAGE_KEY = "cute_schedule_finance_v1";
 const PROFILE_STORAGE_KEY = "cute_schedule_profile_v1";
+const HEALTH_STORAGE_KEY = "cute_schedule_health_v1";
+
+/** Defaults for Notifications dashboard (task/habit push + in-app habit cadence). */
+const NOTIFICATION_PREFS_DEFAULTS = Object.freeze({
+  taskPushEnabled: true,
+  habitPushEnabled: true,
+  taskRemindBeforeEnabled: true,
+  taskRemindAtStartEnabled: true,
+  taskRemindBeforeMinutes: 5,
+  /** daily | hourly | every30 | custom — custom uses each habit’s Hourly / Choose times from saved data */
+  habitReminderMode: "custom",
+  habitQuietStart: "09:00",
+  habitQuietEnd: "22:00",
+  habitDailyTime: "09:00",
+});
+
+function normalizeNotificationPrefs(raw) {
+  const o = raw && typeof raw === "object" ? raw : {};
+  const mode =
+    o.habitReminderMode === "daily" ||
+    o.habitReminderMode === "hourly" ||
+    o.habitReminderMode === "every30" ||
+    o.habitReminderMode === "custom"
+      ? o.habitReminderMode
+      : "custom";
+  const clampMin = (v, d) => {
+    const n = Math.round(Number(v));
+    if (!Number.isFinite(n)) return d;
+    return Math.min(120, Math.max(1, n));
+  };
+  const tq = (k, def) => {
+    const v = o[k];
+    return typeof v === "string" && /^\d{2}:\d{2}$/.test(v) ? v : def;
+  };
+  return {
+    taskPushEnabled: typeof o.taskPushEnabled === "boolean" ? o.taskPushEnabled : NOTIFICATION_PREFS_DEFAULTS.taskPushEnabled,
+    habitPushEnabled: typeof o.habitPushEnabled === "boolean" ? o.habitPushEnabled : NOTIFICATION_PREFS_DEFAULTS.habitPushEnabled,
+    taskRemindBeforeEnabled:
+      typeof o.taskRemindBeforeEnabled === "boolean" ? o.taskRemindBeforeEnabled : NOTIFICATION_PREFS_DEFAULTS.taskRemindBeforeEnabled,
+    taskRemindAtStartEnabled:
+      typeof o.taskRemindAtStartEnabled === "boolean" ? o.taskRemindAtStartEnabled : NOTIFICATION_PREFS_DEFAULTS.taskRemindAtStartEnabled,
+    taskRemindBeforeMinutes: clampMin(o.taskRemindBeforeMinutes ?? NOTIFICATION_PREFS_DEFAULTS.taskRemindBeforeMinutes, 5),
+    habitReminderMode: mode,
+    habitQuietStart: tq("habitQuietStart", NOTIFICATION_PREFS_DEFAULTS.habitQuietStart),
+    habitQuietEnd: tq("habitQuietEnd", NOTIFICATION_PREFS_DEFAULTS.habitQuietEnd),
+    habitDailyTime: tq("habitDailyTime", NOTIFICATION_PREFS_DEFAULTS.habitDailyTime),
+  };
+}
+
+/** Defaults for new-task reminders (per-task overrides in task details). */
+const PROFILE_REMINDER_DEFAULTS = {
+  defaultTaskRemindersOn: true,
+  defaultRemindBeforeMinutes: 10,
+  defaultRemindAtStart: true,
+};
+
+const PROFILE_COMPLETION_DEFAULTS = {
+  completionAffirmationsOn: true,
+  /** @type {'supportive' | 'matter-of-fact' | 'funny' | 'harsh'} */
+  completionAffirmationTone: "supportive",
+};
+
+const COMPLETION_TONE_IDS = ["supportive", "matter-of-fact", "funny", "harsh"];
+
+function loadProfileFromDisk() {
+  const base = {
+    userName: "",
+    userBirthday: "",
+    ...PROFILE_REMINDER_DEFAULTS,
+    ...PROFILE_COMPLETION_DEFAULTS,
+    navVisibility: normalizeNavVisibility(null),
+    notificationPrefs: normalizeNotificationPrefs(null),
+  };
+  try {
+    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (!raw) return base;
+    const p = JSON.parse(raw);
+    if (!p || typeof p !== "object") return base;
+    const toneRaw = typeof p.completionAffirmationTone === "string" ? p.completionAffirmationTone.trim() : "";
+    const completionAffirmationTone = COMPLETION_TONE_IDS.includes(toneRaw)
+      ? /** @type {'supportive' | 'matter-of-fact' | 'funny' | 'harsh'} */ (toneRaw)
+      : PROFILE_COMPLETION_DEFAULTS.completionAffirmationTone;
+    return {
+      userName: typeof p.userName === "string" ? p.userName : "",
+      userBirthday: typeof p.userBirthday === "string" ? p.userBirthday : "",
+      defaultTaskRemindersOn: p.defaultTaskRemindersOn !== false,
+      defaultRemindBeforeMinutes:
+        typeof p.defaultRemindBeforeMinutes === "number" &&
+        Number.isFinite(p.defaultRemindBeforeMinutes) &&
+        p.defaultRemindBeforeMinutes > 0
+          ? Math.round(p.defaultRemindBeforeMinutes)
+          : PROFILE_REMINDER_DEFAULTS.defaultRemindBeforeMinutes,
+      defaultRemindAtStart: p.defaultRemindAtStart !== false,
+      completionAffirmationsOn: typeof p.completionAffirmationsOn === "boolean" ? p.completionAffirmationsOn : true,
+      completionAffirmationTone,
+      navVisibility: normalizeNavVisibility(p.navVisibility),
+      notificationPrefs: normalizeNotificationPrefs(p.notificationPrefs),
+    };
+  } catch {
+    return base;
+  }
+}
+
+function mergeCloudProfile(prev, incoming) {
+  const inc = incoming && typeof incoming === "object" ? incoming : {};
+  const base = { ...PROFILE_REMINDER_DEFAULTS, ...PROFILE_COMPLETION_DEFAULTS, ...prev };
+  const toneRaw = typeof inc.completionAffirmationTone === "string" ? inc.completionAffirmationTone.trim() : "";
+  const completionAffirmationTone = COMPLETION_TONE_IDS.includes(toneRaw)
+    ? /** @type {'supportive' | 'matter-of-fact' | 'funny' | 'harsh'} */ (toneRaw)
+    : COMPLETION_TONE_IDS.includes(String(base.completionAffirmationTone))
+      ? /** @type {'supportive' | 'matter-of-fact' | 'funny' | 'harsh'} */ (base.completionAffirmationTone)
+      : PROFILE_COMPLETION_DEFAULTS.completionAffirmationTone;
+  return {
+    userName: typeof inc.userName === "string" ? inc.userName : base.userName,
+    userBirthday: typeof inc.userBirthday === "string" ? inc.userBirthday : base.userBirthday,
+    defaultTaskRemindersOn:
+      typeof inc.defaultTaskRemindersOn === "boolean" ? inc.defaultTaskRemindersOn : base.defaultTaskRemindersOn,
+    defaultRemindBeforeMinutes:
+      typeof inc.defaultRemindBeforeMinutes === "number" && inc.defaultRemindBeforeMinutes > 0
+        ? Math.round(inc.defaultRemindBeforeMinutes)
+        : base.defaultRemindBeforeMinutes,
+    defaultRemindAtStart:
+      typeof inc.defaultRemindAtStart === "boolean" ? inc.defaultRemindAtStart : base.defaultRemindAtStart,
+    completionAffirmationsOn:
+      typeof inc.completionAffirmationsOn === "boolean"
+        ? inc.completionAffirmationsOn
+        : typeof base.completionAffirmationsOn === "boolean"
+          ? base.completionAffirmationsOn
+          : true,
+    completionAffirmationTone,
+    navVisibility: normalizeNavVisibility({
+      ...normalizeNavVisibility(base.navVisibility),
+      ...(typeof inc.navVisibility === "object" && inc.navVisibility ? inc.navVisibility : {}),
+    }),
+    notificationPrefs: normalizeNotificationPrefs({
+      ...normalizeNotificationPrefs(base.notificationPrefs),
+      ...(typeof inc.notificationPrefs === "object" && inc.notificationPrefs ? inc.notificationPrefs : {}),
+    }),
+  };
+}
+
+function loadHealthFromDisk() {
+  try {
+    const raw = localStorage.getItem(HEALTH_STORAGE_KEY);
+    if (!raw) return normalizeHealth(null);
+    return normalizeHealth(JSON.parse(raw));
+  } catch {
+    return normalizeHealth(null);
+  }
+}
+
 const ROUTINE_TEMPLATE_KEY = "cute_schedule_routine_template_v1";
 const ROUTINE_MORNING_TEMPLATE_KEY = "cute_schedule_routine_morning_v1";
 const ROUTINE_SCHEDULE_KEY = "cute_schedule_routine_schedule_v1"; // { morning: 'every' | [0..6], night: 'every' | [0..6] }
@@ -583,54 +746,111 @@ function normalizeHabitRow(h) {
     direction: h.direction === "break" ? "break" : "build",
     reminderSchedule,
     reminderHours,
+    reminderPushEnabled: h.reminderPushEnabled === false ? false : true,
   };
 }
 
-/** Push reminder rows for habits (hourly during 6–21, or explicit HH:mm slots). */
-function habitReminderPushEntries(habits, dayKeyToday, nowMs, maxAtMs) {
+function clockMinutesFromDate(d) {
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+/** Inclusive window [start, end] by clock (same calendar day). */
+function clockWithinQuietWindow(d, startHHmm, endHHmm) {
+  const t = clockMinutesFromDate(d);
+  const [sh, sm] = normalizeTimeKey(startHHmm).split(":").map(Number);
+  const [eh, em] = normalizeTimeKey(endHHmm).split(":").map(Number);
+  const a = sh * 60 + sm;
+  const b = eh * 60 + em;
+  if (a <= b) return t >= a && t <= b;
+  return t >= a || t <= b;
+}
+
+/** Push reminder rows for habits (global cadence + quiet hours, or custom per-habit). */
+function habitReminderPushEntries(habits, dayKeyToday, nowMs, maxAtMs, notificationPrefsRaw) {
+  const prefs = normalizeNotificationPrefs(notificationPrefsRaw);
   const out = [];
-  if (!Array.isArray(habits)) return out;
+  if (!Array.isArray(habits) || !prefs.habitPushEnabled) return out;
+
+  const pushHourlySlots = (row) => {
+    let cursor = new Date(Math.ceil(nowMs / (60 * 60 * 1000)) * (60 * 60 * 1000));
+    if (cursor.getTime() <= nowMs) cursor = new Date(cursor.getTime() + 60 * 60 * 1000);
+    let hops = 0;
+    while (cursor.getTime() <= maxAtMs && hops < 48) {
+      if (clockWithinQuietWindow(cursor, prefs.habitQuietStart, prefs.habitQuietEnd)) {
+        const hr = cursor.getHours();
+        const mm = cursor.getMinutes();
+        out.push({
+          at: cursor.toISOString(),
+          title: "Habit reminder",
+          body: row.label,
+          tag: `habit-h-${row.id}-${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}-${hr}-${mm}`,
+        });
+      }
+      cursor = new Date(cursor.getTime() + 60 * 60 * 1000);
+      hops += 1;
+    }
+  };
+
   for (const h of habits) {
     const row = normalizeHabitRow(h);
-    if (!row) continue;
-    const sch = row.reminderSchedule;
-    if (sch === "hourly") {
-      let cursor = new Date(nowMs);
-      cursor.setSeconds(0, 0);
-      cursor.setMilliseconds(0);
-      if (cursor.getMinutes() !== 0) {
-        cursor.setMinutes(0, 0, 0);
-        cursor.setHours(cursor.getHours() + 1);
-      } else if (cursor.getTime() <= nowMs) {
-        cursor.setHours(cursor.getHours() + 1);
+    if (!row || row.reminderPushEnabled === false) continue;
+    const mode = prefs.habitReminderMode;
+
+    if (mode === "daily") {
+      const hm = normalizeTimeKey(prefs.habitDailyTime);
+      for (let dayOffset = 0; dayOffset <= 1; dayOffset += 1) {
+        const dayKey = dayOffset === 0 ? dayKeyToday : addDaysKey(dayKeyToday, 1);
+        const atDate = new Date(`${dayKey}T${hm}:00`);
+        if (!clockWithinQuietWindow(atDate, prefs.habitQuietStart, prefs.habitQuietEnd)) continue;
+        const t = atDate.getTime();
+        if (t >= nowMs && t <= maxAtMs) {
+          out.push({
+            at: atDate.toISOString(),
+            title: "Habit reminder",
+            body: row.label,
+            tag: `habit-d-${row.id}-${dayKey}-${hm}`,
+          });
+        }
       }
+    } else if (mode === "hourly") {
+      pushHourlySlots(row);
+    } else if (mode === "every30") {
+      let cursor = new Date(Math.ceil(nowMs / (30 * 60 * 1000)) * (30 * 60 * 1000));
+      if (cursor.getTime() <= nowMs) cursor = new Date(cursor.getTime() + 30 * 60 * 1000);
       let hops = 0;
-      while (cursor.getTime() <= maxAtMs && hops < 32) {
-        const hr = cursor.getHours();
-        if (hr >= 6 && hr <= 21) {
+      while (cursor.getTime() <= maxAtMs && hops < 96) {
+        if (clockWithinQuietWindow(cursor, prefs.habitQuietStart, prefs.habitQuietEnd)) {
+          const hr = cursor.getHours();
+          const mm = cursor.getMinutes();
           out.push({
             at: cursor.toISOString(),
             title: "Habit reminder",
             body: row.label,
-            tag: `habit-h-${row.id}-${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}-${hr}`,
+            tag: `habit-30-${row.id}-${cursor.getFullYear()}-${cursor.getMonth() + 1}-${cursor.getDate()}-${hr}-${mm}`,
           });
         }
-        cursor.setHours(cursor.getHours() + 1);
+        cursor = new Date(cursor.getTime() + 30 * 60 * 1000);
         hops += 1;
       }
-    } else if (sch === "hours" && row.reminderHours.length > 0) {
-      for (let dayOffset = 0; dayOffset <= 1; dayOffset += 1) {
-        const dayKey = dayOffset === 0 ? dayKeyToday : addDaysKey(dayKeyToday, 1);
-        for (const hm of row.reminderHours) {
-          const atDate = new Date(`${dayKey}T${hm}:00`);
-          const t = atDate.getTime();
-          if (t >= nowMs && t <= maxAtMs) {
-            out.push({
-              at: atDate.toISOString(),
-              title: "Habit reminder",
-              body: row.label,
-              tag: `habit-t-${row.id}-${dayKey}-${hm}`,
-            });
+    } else {
+      const sch = row.reminderSchedule;
+      if (sch === "hourly") {
+        pushHourlySlots(row);
+      } else if (sch === "hours" && row.reminderHours.length > 0) {
+        for (let dayOffset = 0; dayOffset <= 1; dayOffset += 1) {
+          const dayKey = dayOffset === 0 ? dayKeyToday : addDaysKey(dayKeyToday, 1);
+          for (const hm of row.reminderHours) {
+            const atDate = new Date(`${dayKey}T${normalizeTimeKey(hm)}:00`);
+            if (!clockWithinQuietWindow(atDate, prefs.habitQuietStart, prefs.habitQuietEnd)) continue;
+            const t = atDate.getTime();
+            if (t >= nowMs && t <= maxAtMs) {
+              out.push({
+                at: atDate.toISOString(),
+                title: "Habit reminder",
+                body: row.label,
+                tag: `habit-t-${row.id}-${dayKey}-${normalizeTimeKey(hm)}`,
+              });
+            }
           }
         }
       }
@@ -671,30 +891,178 @@ function isSameDayKey(a, b) {
   return String(a) === String(b);
 }
 
-/** Simple NL parse for quick add: "Call Martin 11am", "Work 3pm email", "Standup 14:30", etc. */
-function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES) {
+function formatNlTaskDayHint(dayKey) {
+  try {
+    return new Date(`${dayKey}T12:00:00`).toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return String(dayKey);
+  }
+}
+
+function dayKeyToDow(dayKey) {
+  const d = new Date(`${dayKey}T12:00:00`);
+  return Number.isNaN(d.getTime()) ? null : d.getDay();
+}
+
+/** First `dayKey` on or after `startKey` (inclusive) whose weekday is `dow` (0=Sun … 6=Sat), within `maxDays`. */
+function firstDayKeyWithDowOnOrAfter(startKey, dow, maxDays = 14) {
+  if (dow == null || dow < 0 || dow > 6) return null;
+  for (let i = 0; i < maxDays; i++) {
+    const k = addDaysKey(startKey, i);
+    if (dayKeyToDow(k) === dow) return k;
+  }
+  return null;
+}
+
+function dowFromDayWord(word) {
+  const w = String(word || "").toLowerCase();
+  if (w.startsWith("sun")) return 0;
+  if (w.startsWith("mon")) return 1;
+  if (w.startsWith("tue")) return 2;
+  if (w.startsWith("wed")) return 3;
+  if (w.startsWith("thu")) return 4;
+  if (w.startsWith("fri")) return 5;
+  if (w.startsWith("sat")) return 6;
+  return null;
+}
+
+function expandTwoDigitCalendarYear(yNum, yStr) {
+  if (String(yStr || "").length >= 3) return yNum;
+  if (yNum < 100) return yNum <= 69 ? 2000 + yNum : 1900 + yNum;
+  return yNum;
+}
+
+/**
+ * Pulls a calendar day from natural language (e.g. tomorrow, 3/26/26, next Monday).
+ * @returns {{ targetDayKey: string | null, working: string }}
+ */
+function extractNlTargetDayKey(workingStr, referenceDayKey) {
+  const refKey =
+    referenceDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(referenceDayKey).trim())
+      ? String(referenceDayKey).trim()
+      : todayKey();
+  let working = String(workingStr || "").trim();
+  let targetKey = null;
+
+  const slashRe = /\b(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\b/;
+  const sm = working.match(slashRe);
+  if (sm) {
+    const mo = parseInt(sm[1], 10);
+    const da = parseInt(sm[2], 10);
+    let yr = parseInt(sm[3], 10);
+    yr = expandTwoDigitCalendarYear(yr, sm[3]);
+    const dt = new Date(yr, mo - 1, da);
+    if (
+      mo >= 1 &&
+      mo <= 12 &&
+      da >= 1 &&
+      da <= 31 &&
+      dt.getFullYear() === yr &&
+      dt.getMonth() === mo - 1 &&
+      dt.getDate() === da
+    ) {
+      targetKey = todayKey(dt);
+      working = working.replace(sm[0], " ").replace(/\s+/g, " ").trim();
+    }
+  }
+
+  if (!targetKey) {
+    const iso = working.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/);
+    if (iso) {
+      const yr = parseInt(iso[1], 10);
+      const mo = parseInt(iso[2], 10);
+      const da = parseInt(iso[3], 10);
+      const dt = new Date(yr, mo - 1, da);
+      if (dt.getFullYear() === yr && dt.getMonth() === mo - 1 && dt.getDate() === da) {
+        targetKey = todayKey(dt);
+        working = working.replace(iso[0], " ").replace(/\s+/g, " ").trim();
+      }
+    }
+  }
+
+  if (!targetKey) {
+    const low = working.toLowerCase();
+    if (/\btomorrow\b/.test(low)) {
+      targetKey = addDaysKey(refKey, 1);
+      working = working.replace(/\btomorrow\b/gi, " ").replace(/\s+/g, " ").trim();
+    } else if (/\byesterday\b/.test(low)) {
+      targetKey = addDaysKey(refKey, -1);
+      working = working.replace(/\byesterday\b/gi, " ").replace(/\s+/g, " ").trim();
+    } else if (/\b(?:today|tonight)\b/.test(low)) {
+      targetKey = refKey;
+      working = working.replace(/\b(?:today|tonight)\b/gi, " ").replace(/\s+/g, " ").trim();
+    }
+  }
+
+  const dayWord =
+    "monday|mon|tuesday|tues|tue|wednesday|wed|thursday|thurs|thur|thu|friday|fri|saturday|sat|sunday|sun";
+  const nextRe = new RegExp(`\\bnext\\s+(${dayWord})\\b`, "i");
+  const thisRe = new RegExp(`\\bthis\\s+(${dayWord})\\b`, "i");
+  const bareRe = new RegExp(`\\b(${dayWord})\\b`, "i");
+
+  if (!targetKey) {
+    const nm = working.match(nextRe);
+    if (nm) {
+      const dow = dowFromDayWord(nm[1]);
+      if (dow != null) {
+        targetKey = firstDayKeyWithDowOnOrAfter(addDaysKey(refKey, 1), dow);
+        working = working.replace(nm[0], " ").replace(/\s+/g, " ").trim();
+      }
+    }
+  }
+  if (!targetKey) {
+    const tm = working.match(thisRe);
+    if (tm) {
+      const dow = dowFromDayWord(tm[1]);
+      if (dow != null) {
+        targetKey = firstDayKeyWithDowOnOrAfter(refKey, dow);
+        working = working.replace(tm[0], " ").replace(/\s+/g, " ").trim();
+      }
+    }
+  }
+  if (!targetKey) {
+    const bm = working.match(bareRe);
+    if (bm) {
+      const dow = dowFromDayWord(bm[1]);
+      if (dow != null) {
+        targetKey = firstDayKeyWithDowOnOrAfter(refKey, dow);
+        working = working.replace(bm[0], " ").replace(/\s+/g, " ").trim();
+      }
+    }
+  }
+
+  return { targetDayKey: targetKey, working };
+}
+
+/** Simple NL parse for quick add: "Call Martin 11am", "Work 3pm email", "dentist 2pm tomorrow", "doc 3/26/26 4pm", etc. */
+function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES, referenceDayKey = null) {
   const s = String(str || "").trim();
   if (!s) return null;
+  const { targetDayKey, working: afterDate } = extractNlTargetDayKey(s, referenceDayKey);
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   let hour = "09:00";
   let category = cats[0] || "Work";
-  let text = s;
+  let text = afterDate;
 
-  const time12In = s.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+  const time12In = afterDate.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
   if (time12In) {
     let h = parseInt(time12In[1], 10);
     const mins = time12In[2] ? parseInt(time12In[2], 10) : 0;
     if (time12In[3].toLowerCase() === "pm" && h < 12) h += 12;
     if (time12In[3].toLowerCase() === "am" && h === 12) h = 0;
     hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-    text = s.replace(time12In[0], "").replace(/\s+/g, " ").trim();
+    text = afterDate.replace(time12In[0], "").replace(/\s+/g, " ").trim();
   } else {
-    const time24In = s.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+    const time24In = afterDate.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
     if (time24In) {
       const h = parseInt(time24In[1], 10);
       const mins = parseInt(time24In[2], 10);
       hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-      text = s.replace(time24In[0], "").replace(/\s+/g, " ").trim();
+      text = afterDate.replace(time24In[0], "").replace(/\s+/g, " ").trim();
     }
   }
 
@@ -716,8 +1084,10 @@ function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES) {
     category = cats[0] || "Work";
   }
 
-  if (!text) text = s.replace(/\s+/g, " ").trim();
-  return { hour: normalizeTimeKey(hour), category, text: text.trim() };
+  if (!text) text = afterDate.replace(/\s+/g, " ").trim();
+  const out = { hour: normalizeTimeKey(hour), category, text: text.trim() };
+  if (targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(targetDayKey)) out.targetDayKey = targetDayKey;
+  return out;
 }
 
 function allTasksInDay(hours, categories = DEFAULT_CATEGORIES) {
@@ -1578,17 +1948,10 @@ export default function App() {
     } catch {}
   }, [customCategories]);
 
-  // Profile (name, birthday), persisted
-  const [profile, setProfile] = useState(() => {
-    try {
-      const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
-      if (raw) {
-        const p = JSON.parse(raw);
-        return { userName: p.userName || "", userBirthday: p.userBirthday || "" };
-      }
-    } catch {}
-    return { userName: "", userBirthday: "" };
-  });
+  // Profile (name, birthday, default task reminders), persisted
+  const [profile, setProfile] = useState(() => loadProfileFromDisk());
+
+  const [health, setHealth] = useState(() => loadHealthFromDisk());
 
   // Editable bedtime routine template (persisted)
   const [routineTemplate, setRoutineTemplate] = useState(() => {
@@ -1737,6 +2100,12 @@ export default function App() {
 
   useEffect(() => {
     try {
+      localStorage.setItem(HEALTH_STORAGE_KEY, JSON.stringify(health));
+    } catch {}
+  }, [health]);
+
+  useEffect(() => {
+    try {
       localStorage.setItem(ROUTINE_TEMPLATE_KEY, JSON.stringify(routineTemplate));
     } catch {}
   }, [routineTemplate]);
@@ -1825,6 +2194,15 @@ export default function App() {
   }, [habitTracker]);
 
   const [toastNotification, setToastNotification] = useState(null);
+  const toastDismissTimerRef = useRef(null);
+  useEffect(() => {
+    return () => {
+      if (toastDismissTimerRef.current) {
+        clearTimeout(toastDismissTimerRef.current);
+        toastDismissTimerRef.current = null;
+      }
+    };
+  }, []);
   const [morningGreeting, setMorningGreeting] = useState(false);
   const [taskDropdown, setTaskDropdown] = useState(null); // "hourKey-category-id"
   const [dropdownAnchorRect, setDropdownAnchorRect] = useState(null); // { top, left, bottom, right } for portal
@@ -1896,63 +2274,77 @@ export default function App() {
     const now = Date.now();
     const maxAt = now + 48 * 60 * 60 * 1000;
     const seenTags = new Set(list.map((x) => x.tag).filter(Boolean));
+    const np = normalizeNotificationPrefs(profile.notificationPrefs);
     for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
       const dayKey = dayOffset === 0 ? today : addDaysKey(today, 1);
       const hours = appState.days?.[dayKey]?.hours || {};
       const tasks = allTasksInDay(hours, customCategories).filter((t) => !t.done);
       for (const t of tasks) {
-        const rows = buildTaskPushReminderEntriesForTask({
-          task: t,
-          dayKey,
-          hourKey: t.hour,
-          nowMs: now,
-          maxAtMs: maxAt,
-        });
-        for (const row of rows) {
-          if (row.tag && !seenTags.has(row.tag)) {
-            seenTags.add(row.tag);
-            list.push(row);
+        if (np.taskPushEnabled) {
+          const taskEff = taskForPushReminders(t, profile);
+          const rows = buildTaskPushReminderEntriesForTask({
+            task: taskEff,
+            dayKey,
+            hourKey: t.hour,
+            nowMs: now,
+            maxAtMs: maxAt,
+          });
+          for (const row of rows) {
+            if (row.tag && !seenTags.has(row.tag)) {
+              seenTags.add(row.tag);
+              list.push(row);
+            }
           }
-        }
-        const { remindersEnabled } = normalizeTaskReminderFields(t);
-        if (!remindersEnabled) {
-          const atDate = new Date(dayKey + "T" + t.hour + ":00");
-          const atTime = atDate.getTime();
-          if (atTime >= now && atTime <= maxAt) {
-            const tag = "reminder-legacy-" + t.id;
-            if (!seenTags.has(tag)) {
-              seenTags.add(tag);
-              list.push({
-                at: atDate.toISOString(),
-                title: "When you're ready, here's what you planned.",
-                body: t.text + (t.category ? ` (${t.category})` : ""),
-                tag,
-              });
+          const { remindersEnabled } = normalizeTaskReminderFields(taskEff);
+          if (!remindersEnabled) {
+            const atDate = new Date(dayKey + "T" + t.hour + ":00");
+            const atTime = atDate.getTime();
+            if (atTime >= now && atTime <= maxAt) {
+              const tag = "reminder-legacy-" + t.id;
+              if (!seenTags.has(tag)) {
+                seenTags.add(tag);
+                list.push({
+                  at: atDate.toISOString(),
+                  title: "When you're ready, here's what you planned.",
+                  body: t.text + (t.category ? ` (${t.category})` : ""),
+                  tag,
+                });
+              }
             }
           }
         }
       }
     }
-    list.push(...habitReminderPushEntries(habitTracker.habits, today, now, maxAt));
+    list.push(...habitReminderPushEntries(habitTracker.habits, today, now, maxAt, profile.notificationPrefs));
     return list;
-  }, [realTodayKey, finance.bills, finance.subscriptions, appState.days, customCategories, habitTracker.habits]);
+  }, [
+    realTodayKey,
+    finance.bills,
+    finance.subscriptions,
+    appState.days,
+    customCategories,
+    habitTracker.habits,
+    profile,
+  ]);
 
   const iosResyncDaysRef = useRef(appState.days);
   const iosResyncTodayRef = useRef(realTodayKey);
   const iosResyncCatsRef = useRef(customCategories);
+  const iosResyncProfileRef = useRef(profile);
   useEffect(() => {
     iosResyncDaysRef.current = appState.days;
     iosResyncTodayRef.current = realTodayKey;
     iosResyncCatsRef.current = customCategories;
-  }, [appState.days, realTodayKey, customCategories]);
+    iosResyncProfileRef.current = profile;
+  }, [appState.days, realTodayKey, customCategories, profile]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return;
     const tid = setTimeout(() => {
-      resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories);
+      resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories, iosResyncProfileRef.current);
     }, 700);
     return () => clearTimeout(tid);
-  }, [appState.days, realTodayKey, customCategories]);
+  }, [appState.days, realTodayKey, customCategories, profile]);
 
   const habitsNeedCheckIn = useMemo(() => {
     const habits = habitTracker.habits || [];
@@ -2106,6 +2498,7 @@ export default function App() {
       notes,
       finance,
       profile,
+      health,
       theme,
       routineTemplate,
       morningRoutineTemplate,
@@ -2122,6 +2515,7 @@ export default function App() {
     notes,
     finance,
     profile,
+    health,
     theme,
     routineTemplate,
     morningRoutineTemplate,
@@ -2182,7 +2576,7 @@ export default function App() {
         }
         if (data.notes != null) setNotes(data.notes);
         if (data.finance != null) setFinance(normalizeFinanceLoaded(data.finance));
-        if (data.profile != null) setProfile(data.profile);
+        if (data.profile != null) setProfile((prev) => mergeCloudProfile(prev, data.profile));
         if (data.theme != null) setTheme(data.theme);
         if (data.routineTemplate != null) setRoutineTemplate(data.routineTemplate);
         if (data.morningRoutineTemplate != null) setMorningRoutineTemplate(data.morningRoutineTemplate);
@@ -2209,6 +2603,9 @@ export default function App() {
             log: data.habitTracker.log && typeof data.habitTracker.log === "object" ? data.habitTracker.log : {},
           });
         }
+        if (data.health != null && typeof data.health === "object") {
+          setHealth(normalizeHealth(data.health));
+        }
       }
       setFirestoreReady(true);
     })();
@@ -2224,6 +2621,7 @@ export default function App() {
       notes,
       finance,
       profile,
+      health,
       theme,
       routineTemplate,
       morningRoutineTemplate,
@@ -2243,7 +2641,7 @@ export default function App() {
     return () => {
       if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
     };
-  }, [firestoreReady, appState, notes, finance, profile, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, customCategories, patternsRev, habitTracker]);
+  }, [firestoreReady, appState, notes, finance, profile, health, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, customCategories, patternsRev, habitTracker]);
 
   useEffect(() => {
     if (!firestoreReady) return;
@@ -2289,6 +2687,7 @@ export default function App() {
         notes: p.notes,
         finance: p.finance,
         profile: p.profile,
+        health: p.health,
         theme: p.theme,
         routineTemplate: p.routineTemplate,
         morningRoutineTemplate: p.morningRoutineTemplate,
@@ -2362,7 +2761,8 @@ export default function App() {
             void resyncIosTaskLocalNotifications(
               iosResyncDaysRef.current,
               iosResyncTodayRef.current,
-              iosResyncCatsRef.current
+              iosResyncCatsRef.current,
+              iosResyncProfileRef.current
             );
           }
         });
@@ -2475,50 +2875,64 @@ export default function App() {
     return () => clearTimeout(t);
   }, [pushRemindersList]);
 
-  // In-app habit reminders (hourly at 6am–9pm on the hour, or custom times) when notifications are allowed
+  // In-app habit reminders: respects Notifications dashboard (cadence, quiet hours, per-habit on).
   useEffect(() => {
     const maybeNotify = async () => {
       await notificationService.checkPermission();
       if (notificationService.permission !== "granted") return;
+      const prefs = normalizeNotificationPrefs(profile.notificationPrefs);
+      if (!prefs.habitPushEnabled) return;
       const now = new Date();
+      if (!clockWithinQuietWindow(now, prefs.habitQuietStart, prefs.habitQuietEnd)) return;
       const dayKey = realTodayKey;
       const hh = String(now.getHours()).padStart(2, "0");
       const mm = String(now.getMinutes()).padStart(2, "0");
       const slot = `${hh}:${mm}`;
       const habits = habitTracker.habits || [];
+      const mode = prefs.habitReminderMode;
+      const dailySlot = normalizeTimeKey(prefs.habitDailyTime);
+
       for (const h of habits) {
         const row = normalizeHabitRow(h);
-        if (!row) continue;
-        if (row.reminderSchedule === "hourly") {
-          const hr = now.getHours();
-          if (hr >= 6 && hr <= 21) {
-            const tag = `habit-live-h-${row.id}-${dayKey}-${hr}`;
-            if (!habitReminderFiredRef.current.has(tag)) {
-              const isStartOfHour = now.getMinutes() === 0;
-              if (isStartOfHour) {
-                habitReminderFiredRef.current.add(tag);
-                notificationService.showNotification(`Habit: ${row.label}`, {
-                  body: "Quick check-in when you’re ready.",
-                  tag,
-                  requireInteraction: false,
-                  preferWebNotificationOnNative: true,
-                });
-              }
-            }
+        if (!row || row.reminderPushEnabled === false) continue;
+
+        let fire = false;
+        let tag = "";
+        let body = "Quick check-in when you’re ready.";
+
+        if (mode === "daily") {
+          if (slot === dailySlot) {
+            fire = true;
+            tag = `habit-live-d-${row.id}-${dayKey}-${slot}`;
+            body = "Log this habit on Today when you can.";
           }
-        } else if (row.reminderSchedule === "hours" && row.reminderHours.length > 0) {
-          if (row.reminderHours.includes(slot)) {
-            const tag = `habit-live-t-${row.id}-${dayKey}-${slot}`;
-            if (!habitReminderFiredRef.current.has(tag)) {
-              habitReminderFiredRef.current.add(tag);
-              notificationService.showNotification(`Habit: ${row.label}`, {
-                body: "Reminder: log it on Today when you can.",
-                tag,
-                requireInteraction: false,
-                preferWebNotificationOnNative: true,
-              });
-            }
+        } else if (mode === "hourly") {
+          if (now.getMinutes() === 0) {
+            fire = true;
+            tag = `habit-live-h-${row.id}-${dayKey}-${hh}`;
           }
+        } else if (mode === "every30") {
+          if (now.getMinutes() === 0 || now.getMinutes() === 30) {
+            fire = true;
+            tag = `habit-live-30-${row.id}-${dayKey}-${slot}`;
+          }
+        } else if (row.reminderSchedule === "hourly" && now.getMinutes() === 0) {
+          fire = true;
+          tag = `habit-live-h-${row.id}-${dayKey}-${hh}`;
+        } else if (row.reminderSchedule === "hours" && row.reminderHours.length > 0 && row.reminderHours.includes(slot)) {
+          fire = true;
+          tag = `habit-live-t-${row.id}-${dayKey}-${slot}`;
+          body = "Reminder: log it on Today when you can.";
+        }
+
+        if (fire && tag && !habitReminderFiredRef.current.has(tag)) {
+          habitReminderFiredRef.current.add(tag);
+          notificationService.showNotification(`Habit: ${row.label}`, {
+            body,
+            tag,
+            requireInteraction: false,
+            preferWebNotificationOnNative: true,
+          });
         }
       }
       if (habitReminderFiredRef.current.size > 400) {
@@ -2528,7 +2942,7 @@ export default function App() {
     const id = setInterval(maybeNotify, 20_000);
     maybeNotify();
     return () => clearInterval(id);
-  }, [habitTracker.habits, realTodayKey]);
+  }, [habitTracker.habits, realTodayKey, profile.notificationPrefs]);
 
   // Close dropdowns when clicking outside (portal or trigger)
   useEffect(() => {
@@ -2956,9 +3370,21 @@ export default function App() {
         repeatUntil: repeatType !== REPEAT_OPTIONS.NONE ? null : null,
         originalTaskId: sourceTaskId,
         createdAt: new Date().toISOString(),
-        remindersEnabled: false,
-        remindAtStart: false,
-        remindBeforeMinutes: null,
+        ...(ex.taskType === "workout" ? { taskType: "workout" } : {}),
+        ...(() => {
+          const remOn = profile.defaultTaskRemindersOn !== false;
+          const before =
+            remOn && typeof profile.defaultRemindBeforeMinutes === "number" && profile.defaultRemindBeforeMinutes > 0
+              ? profile.defaultRemindBeforeMinutes
+              : null;
+          const atSt = remOn && profile.defaultRemindAtStart !== false;
+          const effectiveRemOn = remOn && (before != null || atSt);
+          return {
+            remindersEnabled: effectiveRemOn,
+            remindAtStart: effectiveRemOn && atSt,
+            remindBeforeMinutes: effectiveRemOn ? before : null,
+          };
+        })(),
       };
       if (ex.coachSuggestionId) {
         nextTask.coachSuggestionId = String(ex.coachSuggestionId);
@@ -3051,19 +3477,28 @@ export default function App() {
             const emotionalState = inferEmotionalState(allTasksList, getTimeOfDay());
             
             // Generate contextual completion message using Gentle Anchor
-            const message = generateCompletionMessage(t, category, completedToday, energyLevel, emotionalState);
-            
-            // Show toast notification that auto-dismisses
-            setToastNotification({
-              message,
-              taskText: t.text,
-              type: 'completion'
-            });
-            
-            // Auto-dismiss after 3 seconds
-            setTimeout(() => {
-              setToastNotification(null);
-            }, 3000);
+            if (profile.completionAffirmationsOn !== false) {
+              const tone =
+                profile.completionAffirmationTone === "matter-of-fact" ||
+                profile.completionAffirmationTone === "funny" ||
+                profile.completionAffirmationTone === "harsh"
+                  ? profile.completionAffirmationTone
+                  : "supportive";
+              const message = generateCompletionMessage(t, category, completedToday, energyLevel, emotionalState, tone);
+              if (toastDismissTimerRef.current) {
+                clearTimeout(toastDismissTimerRef.current);
+                toastDismissTimerRef.current = null;
+              }
+              setToastNotification({
+                message,
+                taskText: t.text,
+                type: "completion",
+              });
+              toastDismissTimerRef.current = window.setTimeout(() => {
+                setToastNotification(null);
+                toastDismissTimerRef.current = null;
+              }, 3000);
+            }
             
             // Update task with completion time
             return { 
@@ -3317,11 +3752,14 @@ export default function App() {
   /** "type" = natural-language bar; "details" = time, category, repeat, energy */
   const [quickEntryMode, setQuickEntryMode] = useState("type");
   const [quickDetailEnergy, setQuickDetailEnergy] = useState("MEDIUM");
+  /** When set to workout, quick-add (Details) tags the task for the Health rhythm tracker. */
+  const [quickDetailTaskKind, setQuickDetailTaskKind] = useState("default");
   const [quickAddJustAdded, setQuickAddJustAdded] = useState(false);
   const quickAddFlashTimerRef = useRef(null);
 
   useEffect(() => {
     setQuickAddJustAdded(false);
+    setQuickDetailTaskKind("default");
     if (quickAddFlashTimerRef.current) {
       clearTimeout(quickAddFlashTimerRef.current);
       quickAddFlashTimerRef.current = null;
@@ -3363,18 +3801,21 @@ export default function App() {
       quickDetailEnergy === "LIGHT" || quickDetailEnergy === "MEDIUM" || quickDetailEnergy === "HEAVY"
         ? quickDetailEnergy
         : "MEDIUM";
+    const extras = { energyLevel: el };
+    if (quickDetailTaskKind === "workout") extras.taskType = "workout";
     flushSync(() => {
-      addTask(hourKey, quickCat, clean, quickRepeat, null, { energyLevel: el });
+      addTask(hourKey, quickCat, clean, quickRepeat, null, extras);
     });
     void cloudStorage.saveFullState({
       appState: appStateRef.current,
-      notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
+      notes, finance, profile, health, theme, routineTemplate, morningRoutineTemplate,
       routineSchedule, coachMeta, coachUserProfile, moodboard: EMPTY_MOODBOARD, customCategories,
       patterns: loadPatterns(),
       habitTracker,
     });
     setQuickText("");
     setQuickRepeat(REPEAT_OPTIONS.NONE);
+    setQuickDetailTaskKind("default");
     setToastNotification({
       message: "Task added",
       taskText: clean,
@@ -3386,31 +3827,40 @@ export default function App() {
 
   function quickAddFromNL(e) {
     e.preventDefault();
-    const parsed = parseQuickAddNL(quickAddValue, customCategories);
+    const parsed = parseQuickAddNL(quickAddValue, customCategories, realTodayKey);
     if (!parsed) return;
     const taskText = normalizeText(parsed.text);
     if (!taskText) return;
     const hourKey = normalizeTimeKey(parsed.hour);
     const cats = customCategories.length ? customCategories : DEFAULT_CATEGORIES;
     const category = cats.includes(parsed.category) ? parsed.category : cats[0] || "Work";
+    const nlExtras =
+      parsed.targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.targetDayKey).trim())
+        ? { targetDayKey: String(parsed.targetDayKey).trim() }
+        : {};
     flushSync(() => {
-      addTask(hourKey, category, taskText);
+      addTask(hourKey, category, taskText, REPEAT_OPTIONS.NONE, null, nlExtras);
     });
     // Save directly after flushSync; appStateRef.current is updated synchronously by the commit
     void cloudStorage.saveFullState({
       appState: appStateRef.current,
-      notes, finance, profile, theme, routineTemplate, morningRoutineTemplate,
+      notes, finance, profile, health, theme, routineTemplate, morningRoutineTemplate,
       routineSchedule, coachMeta, coachUserProfile, moodboard: EMPTY_MOODBOARD, customCategories,
       patterns: loadPatterns(),
       habitTracker,
     });
     setQuickAddValue("");
-    
+
+    const dayHint =
+      parsed.targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.targetDayKey).trim())
+        ? ` (${formatNlTaskDayHint(String(parsed.targetDayKey).trim())})`
+        : "";
+
     // Show success toast
     setToastNotification({
-      message: "Task added",
+      message: `Task added${dayHint}`,
       taskText,
-      type: 'added'
+      type: "added",
     });
     
     setTimeout(() => {
@@ -3543,6 +3993,7 @@ export default function App() {
         patterns,
         notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text })),
         learning: coachLearning,
+        healthSummary: formatHealthForCoach(health),
       });
       const coachIntelligenceText = formatIntelligenceForApi(coachIntelSnapshot);
       const coachFeedbackJson = JSON.stringify((coachLearning.recentFeedback || []).slice(-8));
@@ -3610,6 +4061,7 @@ export default function App() {
         coachIntelligenceText,
         coachFeedbackJson,
         weekAtAGlance: buildCoachWeekAtAGlance(appState.days, customCategories, tKey),
+        healthSummary: formatHealthForCoach(health),
       };
 
       const res = await fetch(apiUrl("/api/coach"), {
@@ -3723,6 +4175,7 @@ export default function App() {
         patterns: patternsCatch,
         notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text })),
         learning: coachLearning,
+        healthSummary: formatHealthForCoach(health),
       });
       const localResponse = generateCoachV2Fallback({
         emotionalState: emotionalStateCatch,
@@ -3949,6 +4402,7 @@ export default function App() {
           subscriptions: finance.subscriptions || [],
           wishList: finance.wishList || [],
         },
+        healthSummary: formatHealthForCoach(health),
       };
       const res = await fetch(apiUrl("/api/coach"), {
         method: "POST",
@@ -4145,6 +4599,7 @@ export default function App() {
     notes,
     finance,
     profile,
+    health,
     theme,
     routineTemplate,
     morningRoutineTemplate,
@@ -4157,9 +4612,30 @@ export default function App() {
     habitTracker,
   };
 
+  const mainDockItems = useMemo(() => {
+    const nv = normalizeNavVisibility(profile.navVisibility);
+    return [
+      { id: "today", label: "Today", headerLabel: "Today", icon: CalendarIcon },
+      { id: "list", label: "List", headerLabel: "List", icon: MenuIcon },
+      { id: "monthly", label: "Monthly Objectives", headerLabel: "Monthly", icon: CalendarIcon },
+      { id: "coach", label: "Coach", headerLabel: "Pattern insights", icon: SparkleIcon },
+      { id: "notes", label: "Notes", headerLabel: "Notes", icon: MoonIcon },
+      { id: "finance", label: "Finance", headerLabel: "Finance", icon: FinanceIcon },
+      { id: "health", label: "Health", headerLabel: "Health", icon: FireIcon },
+    ].filter((item) => nv[item.id] === true);
+  }, [profile.navVisibility]);
+
   const firebaseOn = isFirebaseEnabled();
   const authWaiting = firebaseOn && !firebaseAuthResolved;
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
+
+  useEffect(() => {
+    const nv = normalizeNavVisibility(profile.navVisibility);
+    if (nv[tab] === true) return;
+    const order = ["today", "list", "monthly", "coach", "notes", "finance", "health"];
+    const next = order.find((id) => nv[id] === true) || "today";
+    if (next !== tab) setTab(next);
+  }, [tab, profile.navVisibility]);
 
   useEffect(() => {
     if (authWaiting || showLoginGate || onboardingActive) return;
@@ -4299,22 +4775,29 @@ export default function App() {
                   ? "Notes"
                   : tab === "finance"
                   ? "Finance"
+                  : tab === "health"
+                  ? "Health"
                   : "Pattern insights"}
               </h1>
               {(tab !== "today" && tab !== "list") && (
                 <span className="sub header-date header-date-visible">
-                  {tab === "monthly" ? "Objectives" : tab === "finance" ? "Income, spending & savings" : "Insights"}
+                  {tab === "monthly"
+                    ? "Objectives"
+                    : tab === "finance"
+                    ? "Income, spending & savings"
+                    : tab === "health"
+                    ? "Training, macros & weight"
+                    : "Insights"}
                 </span>
               )}
             </div>
 
             <div className="tabs" aria-hidden="true">
-              <TabButton active={tab === "today"} onClick={() => setTab("today")}>Today</TabButton>
-              <TabButton active={tab === "list"} onClick={() => setTab("list")}>List</TabButton>
-              <TabButton active={tab === "monthly"} onClick={() => setTab("monthly")}>Monthly</TabButton>
-              <TabButton active={tab === "coach"} onClick={() => setTab("coach")}>Pattern insights</TabButton>
-              <TabButton active={tab === "notes"} onClick={() => setTab("notes")}>Notes</TabButton>
-              <TabButton active={tab === "finance"} onClick={() => setTab("finance")}>Finance</TabButton>
+              {mainDockItems.map((item) => (
+                <TabButton key={item.id} active={tab === item.id} onClick={() => setTab(item.id)}>
+                  {item.headerLabel}
+                </TabButton>
+              ))}
             </div>
 
             <div className="top-actions">
@@ -4348,30 +4831,24 @@ export default function App() {
 
         {/* Bottom navigation: frosted dock, active-tab pill */}
         <nav className="bottom-nav surface-dock" aria-label="Main">
-          <button type="button" className={`bottom-nav-item ${tab === "today" ? "active" : ""}`} onClick={() => { setTab("today"); setShowMonthCalendar(false); }} aria-current={tab === "today" ? "page" : undefined}>
-            <CalendarIcon style={{ width: 22, height: 22 }} />
-            Today
-          </button>
-          <button type="button" className={`bottom-nav-item ${tab === "list" ? "active" : ""}`} onClick={() => setTab("list")} aria-current={tab === "list" ? "page" : undefined}>
-            <MenuIcon style={{ width: 22, height: 22 }} />
-            List
-          </button>
-          <button type="button" className={`bottom-nav-item ${tab === "monthly" ? "active" : ""}`} onClick={() => setTab("monthly")} aria-current={tab === "monthly" ? "page" : undefined}>
-            <CalendarIcon style={{ width: 22, height: 22 }} />
-            Monthly Objectives
-          </button>
-          <button type="button" className={`bottom-nav-item ${tab === "coach" ? "active" : ""}`} onClick={() => setTab("coach")} aria-current={tab === "coach" ? "page" : undefined}>
-            <SparkleIcon style={{ width: 22, height: 22 }} />
-            Coach
-          </button>
-          <button type="button" className={`bottom-nav-item ${tab === "notes" ? "active" : ""}`} onClick={() => setTab("notes")} aria-current={tab === "notes" ? "page" : undefined}>
-            <MoonIcon style={{ width: 22, height: 22 }} />
-            Notes
-          </button>
-          <button type="button" className={`bottom-nav-item ${tab === "finance" ? "active" : ""}`} onClick={() => setTab("finance")} aria-current={tab === "finance" ? "page" : undefined}>
-            <FinanceIcon style={{ width: 22, height: 22 }} />
-            Finance
-          </button>
+          {mainDockItems.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                className={`bottom-nav-item ${tab === item.id ? "active" : ""}`}
+                onClick={() => {
+                  setTab(item.id);
+                  if (item.id === "today") setShowMonthCalendar(false);
+                }}
+                aria-current={tab === item.id ? "page" : undefined}
+              >
+                <Icon style={{ width: 22, height: 22 }} />
+                {item.label}
+              </button>
+            );
+          })}
         </nav>
 
         {/* Sprint countdown bar */}
@@ -4420,7 +4897,13 @@ export default function App() {
                 <p className="quick-add-details-hint settings-hint">
                   In <strong>Details</strong>, use the fields below: <strong>time</strong> (clock picker), <strong>category</strong>, <strong>task</strong> text, <strong>repeat</strong> (none, daily, weekly, or option to repeat), <strong>energy</strong> level, and <strong>Past tasks</strong> for tasks you saved as repeatable.
                 </p>
-              ) : null}
+              ) : (
+                <p className="quick-add-details-hint settings-hint">
+                  In <strong>Type</strong>, include a time (e.g. <strong>4pm</strong> or <strong>16:30</strong>). Add a day so it lands on that calendar:{" "}
+                  <strong>tomorrow</strong>, <strong>today</strong>, <strong>next Monday</strong>, <strong>Friday</strong>,{" "}
+                  <strong>3/26/26</strong> or <strong>2026-03-26</strong>. Dates are from <strong>today&apos;s</strong> calendar, not only the day you have open.
+                </p>
+              )}
               {quickEntryMode === "type" ? (
                 <form className="input-group quick-add-bar" onSubmit={quickAddFromNL} autoComplete="off">
                   <input
@@ -4429,7 +4912,7 @@ export default function App() {
                     name="quickAddTask"
                     value={quickAddValue}
                     onChange={(e) => setQuickAddValue(e.target.value)}
-                    placeholder="Add a task… e.g. Call Martin 11am, Work 3pm"
+                    placeholder="Add a task… e.g. Meeting 4pm tomorrow, Doctor 2pm 3/26/26"
                     aria-label="Quick add task"
                     autoComplete="off"
                   />
@@ -4520,6 +5003,22 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                  {healthProfileComplete(health) ? (
+                    <div className="quick-row">
+                      <label className="label" htmlFor="quick-detail-task-kind">
+                        Task type
+                      </label>
+                      <select
+                        id="quick-detail-task-kind"
+                        className="input"
+                        value={quickDetailTaskKind}
+                        onChange={(e) => setQuickDetailTaskKind(e.target.value)}
+                      >
+                        <option value="default">Normal</option>
+                        <option value="workout">Workout (counts toward Health rhythm)</option>
+                      </select>
+                    </div>
+                  ) : null}
                   <div className="quick-detail-actions">
                     <button
                       className={["btn", "btn-primary", "quick-details-submit", quickAddJustAdded ? "quick-add-submit-added" : ""].filter(Boolean).join(" ")}
@@ -4592,6 +5091,34 @@ export default function App() {
                 </form>
               )}
             </div>
+
+            {tab === "today" && (
+              <div className="panel health-hero-cta surface-glass scroll-reveal" style={{ marginBottom: 14 }}>
+                <div className="health-hero-cta-inner">
+                  <div>
+                    <div className="title" style={{ fontSize: "1.05rem", marginBottom: 4 }}>
+                      Health &amp; training
+                    </div>
+                    <p className="settings-hint" style={{ margin: 0 }}>
+                      Plan this week&apos;s lifts, track macros and weight, and keep workout tasks in sync with your schedule.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    onClick={() => {
+                      setProfile((p) => ({
+                        ...p,
+                        navVisibility: { ...normalizeNavVisibility(p.navVisibility), health: true },
+                      }));
+                      setTab("health");
+                    }}
+                  >
+                    Open Health
+                  </button>
+                </div>
+              </div>
+            )}
 
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
               <section className="panel habit-daily-card surface-glass scroll-reveal" style={{ marginBottom: 14 }}>
@@ -5356,12 +5883,37 @@ export default function App() {
               </div>
             ) : null}
           </section>
+        ) : tab === "health" ? (
+          <HealthPage
+            health={health}
+            setHealth={setHealth}
+            profile={profile}
+            setProfile={setProfile}
+            realTodayKey={realTodayKey}
+            appState={appState}
+          />
         ) : tab === "finance" ? (
           <section className="panel finance-panel surface-glass section-finance scroll-reveal">
             <div className="panel-top">
               <div className="panel-title">
                 <div className="meta">Income, spending, savings & debt. Coach can help with habits.</div>
               </div>
+            </div>
+
+            <div className="health-nav-toggle surface-glass finance-nav-toggle">
+              <label className="health-toggle-row">
+                <input
+                  type="checkbox"
+                  checked={normalizeNavVisibility(profile.navVisibility).finance === true}
+                  onChange={(e) =>
+                    setProfile((p) => ({
+                      ...p,
+                      navVisibility: { ...normalizeNavVisibility(p.navVisibility), finance: e.target.checked },
+                    }))
+                  }
+                />
+                <span>Show <strong>Finance</strong> in bottom navigation</span>
+              </label>
             </div>
 
             <form className="input-group finance-quick-add" onSubmit={(e) => {
@@ -6372,6 +6924,134 @@ export default function App() {
               </div>
 
               <div className="settings-section">
+                <label className="label">Bottom navigation</label>
+                <p className="settings-hint">
+                  Choose which destinations appear in the dock. <strong>Today</strong> always stays. You can also toggle{" "}
+                  <strong>Finance</strong> and <strong>Health</strong> from those screens.
+                </p>
+                {[
+                  { id: "list", label: "List" },
+                  { id: "monthly", label: "Monthly objectives" },
+                  { id: "coach", label: "Coach (pattern insights)" },
+                  { id: "notes", label: "Notes" },
+                  { id: "finance", label: "Finance" },
+                  { id: "health", label: "Health" },
+                ].map((row) => (
+                  <label key={row.id} className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={normalizeNavVisibility(profile.navVisibility)[row.id] === true}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          navVisibility: { ...normalizeNavVisibility(p.navVisibility), [row.id]: e.target.checked },
+                        }))
+                      }
+                    />
+                    <span>{row.label}</span>
+                  </label>
+                ))}
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Default reminders for new tasks</label>
+                <p className="settings-hint">
+                  Applied when you add a task. Change any task anytime under Details → Remind me. On iPhone, allow scheduled reminders in Notifications and keep the app updated so local alerts can fire at the right time.
+                </p>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={profile.defaultTaskRemindersOn !== false}
+                    onChange={(e) =>
+                      setProfile((p) => ({
+                        ...p,
+                        defaultTaskRemindersOn: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Turn on reminders for new tasks</span>
+                </label>
+                <label className="settings-hint" style={{ display: "block", marginBottom: 6, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}>
+                  Remind me before task starts
+                </label>
+                <select
+                  className="input modal-input"
+                  style={{ marginBottom: 10 }}
+                  disabled={profile.defaultTaskRemindersOn === false}
+                  value={
+                    profile.defaultRemindBeforeMinutes == null || profile.defaultRemindBeforeMinutes === 0
+                      ? ""
+                      : String(profile.defaultRemindBeforeMinutes)
+                  }
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setProfile((p) => ({
+                      ...p,
+                      defaultRemindBeforeMinutes: v === "" ? null : Number(v),
+                    }));
+                  }}
+                  aria-label="Default minutes before task"
+                >
+                  {TASK_REMINDER_BEFORE_OPTIONS.map((o) => (
+                    <option key={o.label} value={o.value == null ? "" : String(o.value)}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}>
+                  <input
+                    type="checkbox"
+                    disabled={profile.defaultTaskRemindersOn === false}
+                    checked={profile.defaultRemindAtStart !== false}
+                    onChange={(e) => setProfile((p) => ({ ...p, defaultRemindAtStart: e.target.checked }))}
+                  />
+                  <span>Also notify when the task starts</span>
+                </label>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Task completion messages</label>
+                <p className="settings-hint">
+                  Pop-up line when you check off a task. Tap outside the card to dismiss it anytime. Turning this off still saves the task; you just won&apos;t see the affirmation.
+                </p>
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={profile.completionAffirmationsOn !== false}
+                    onChange={(e) => setProfile((p) => ({ ...p, completionAffirmationsOn: e.target.checked }))}
+                  />
+                  <span>Show completion affirmations</span>
+                </label>
+                <label className="settings-hint" style={{ display: "block", marginBottom: 6, opacity: profile.completionAffirmationsOn !== false ? 1 : 0.45 }}>
+                  Tone
+                </label>
+                <select
+                  className="input modal-input"
+                  style={{ marginBottom: 0 }}
+                  disabled={profile.completionAffirmationsOn === false}
+                  value={
+                    profile.completionAffirmationTone === "matter-of-fact" ||
+                    profile.completionAffirmationTone === "funny" ||
+                    profile.completionAffirmationTone === "harsh"
+                      ? profile.completionAffirmationTone
+                      : "supportive"
+                  }
+                  onChange={(e) =>
+                    setProfile((p) => ({
+                      ...p,
+                      completionAffirmationTone: /** @type {any} */ (e.target.value),
+                    }))
+                  }
+                  aria-label="Completion message tone"
+                >
+                  <option value="supportive">Supportive — warm and encouraging</option>
+                  <option value="matter-of-fact">Matter of fact — short and neutral</option>
+                  <option value="funny">Funny — playful</option>
+                  <option value="harsh">Harsh — blunt tough-love (still PG)</option>
+                </select>
+              </div>
+
+              <div className="settings-section">
                 <label className="label">Morning routine (optional add-on)</label>
                 <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                   <input type="checkbox" checked={routineSchedule.enabledMorning !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))} />
@@ -6489,13 +7169,16 @@ export default function App() {
               <div className="settings-section">
                 <label className="label">Habit check-ins</label>
                 <p className="settings-hint">
-                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them. Optional reminders: <strong>Hourly</strong> (6am–9pm, on the hour) for nudges like water, or <strong>Choose times</strong> for specific clock times. Allow notifications in your browser for in-app nudges; use Background reminders for push when the app is closed.
+                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them.{" "}
+                  <strong>Reminder nudges</strong> (hourly, every 30 minutes, daily, quiet hours, on/off per habit) are configured in the{" "}
+                  <strong>Notifications dashboard</strong> below. When the dashboard is set to <strong>Custom</strong>, you can pick hourly vs exact times here for each habit.
                 </p>
                 <ul className="habit-settings-list">
                   {(habitTracker.habits || []).map((h) => {
                     const row = normalizeHabitRow(h) || h;
                     const sch = row.reminderSchedule || "none";
                     const hours = row.reminderHours || [];
+                    const dashNp = normalizeNotificationPrefs(profile.notificationPrefs);
                     return (
                       <li key={row.id} className="habit-settings-card">
                         <div className="habit-settings-card-head">
@@ -6526,92 +7209,100 @@ export default function App() {
                             <TrashIcon style={{ width: 14, height: 14 }} />
                           </button>
                         </div>
-                        <label className="habit-settings-remind-label" htmlFor={`habit-remind-${row.id}`}>
-                          Reminders
-                        </label>
-                        <select
-                          id={`habit-remind-${row.id}`}
-                          className="input habit-settings-remind-select"
-                          value={sch}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setHabitTracker((prev) => ({
-                              ...prev,
-                              habits: (prev.habits || []).map((x) =>
-                                x.id === row.id
-                                  ? normalizeHabitRow({
-                                      ...x,
-                                      reminderSchedule: v === "hourly" || v === "hours" ? v : "none",
-                                      reminderHours: v === "hours" ? (Array.isArray(x.reminderHours) ? x.reminderHours : []) : [],
-                                    })
-                                  : x
-                              ),
-                            }));
-                          }}
-                        >
-                          <option value="none">None</option>
-                          <option value="hourly">Hourly (6am–9pm)</option>
-                          <option value="hours">Choose times</option>
-                        </select>
-                        {sch === "hours" && (
-                          <div className="habit-reminder-hours">
-                            <div className="habit-reminder-hour-chips">
-                              {hours.map((hm) => (
-                                <span key={hm} className="habit-reminder-chip">
-                                  {to12Hour(hm)}
+                        {dashNp.habitReminderMode === "custom" ? (
+                          <>
+                            <label className="habit-settings-remind-label" htmlFor={`habit-remind-${row.id}`}>
+                              Reminders (custom)
+                            </label>
+                            <select
+                              id={`habit-remind-${row.id}`}
+                              className="input habit-settings-remind-select"
+                              value={sch}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setHabitTracker((prev) => ({
+                                  ...prev,
+                                  habits: (prev.habits || []).map((x) =>
+                                    x.id === row.id
+                                      ? normalizeHabitRow({
+                                          ...x,
+                                          reminderSchedule: v === "hourly" || v === "hours" ? v : "none",
+                                          reminderHours: v === "hours" ? (Array.isArray(x.reminderHours) ? x.reminderHours : []) : [],
+                                        })
+                                      : x
+                                  ),
+                                }));
+                              }}
+                            >
+                              <option value="none">None</option>
+                              <option value="hourly">Hourly (uses quiet hours from dashboard)</option>
+                              <option value="hours">Choose times</option>
+                            </select>
+                            {sch === "hours" && (
+                              <div className="habit-reminder-hours">
+                                <div className="habit-reminder-hour-chips">
+                                  {hours.map((hm) => (
+                                    <span key={hm} className="habit-reminder-chip">
+                                      {to12Hour(hm)}
+                                      <button
+                                        type="button"
+                                        aria-label={`Remove ${hm}`}
+                                        onClick={() =>
+                                          setHabitTracker((prev) => ({
+                                            ...prev,
+                                            habits: (prev.habits || []).map((x) =>
+                                              x.id === row.id
+                                                ? normalizeHabitRow({
+                                                    ...x,
+                                                    reminderHours: hours.filter((t) => t !== hm),
+                                                  })
+                                                : x
+                                            ),
+                                          }))
+                                        }
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="habit-reminder-add-row">
+                                  <input
+                                    className="input"
+                                    type="time"
+                                    value={habitReminderDraft[row.id] ?? "09:00"}
+                                    onChange={(e) =>
+                                      setHabitReminderDraft((d) => ({ ...d, [row.id]: e.target.value }))
+                                    }
+                                    aria-label={`Add reminder time for ${row.label}`}
+                                  />
                                   <button
                                     type="button"
-                                    aria-label={`Remove ${hm}`}
-                                    onClick={() =>
+                                    className="btn btn-sm btn-primary"
+                                    onClick={() => {
+                                      const draft = habitReminderDraft[row.id] ?? "09:00";
+                                      const slot = normalizeTimeKey(draft);
                                       setHabitTracker((prev) => ({
                                         ...prev,
-                                        habits: (prev.habits || []).map((x) =>
-                                          x.id === row.id
-                                            ? normalizeHabitRow({
-                                                ...x,
-                                                reminderHours: hours.filter((t) => t !== hm),
-                                              })
-                                            : x
-                                        ),
-                                      }))
-                                    }
+                                        habits: (prev.habits || []).map((x) => {
+                                          if (x.id !== row.id) return x;
+                                          const cur = normalizeHabitRow(x)?.reminderHours || [];
+                                          if (cur.includes(slot)) return x;
+                                          return normalizeHabitRow({ ...x, reminderHours: [...cur, slot].sort() });
+                                        }),
+                                      }));
+                                    }}
                                   >
-                                    ×
+                                    Add time
                                   </button>
-                                </span>
-                              ))}
-                            </div>
-                            <div className="habit-reminder-add-row">
-                              <input
-                                className="input"
-                                type="time"
-                                value={habitReminderDraft[row.id] ?? "09:00"}
-                                onChange={(e) =>
-                                  setHabitReminderDraft((d) => ({ ...d, [row.id]: e.target.value }))
-                                }
-                                aria-label={`Add reminder time for ${row.label}`}
-                              />
-                              <button
-                                type="button"
-                                className="btn btn-sm btn-primary"
-                                onClick={() => {
-                                  const draft = habitReminderDraft[row.id] ?? "09:00";
-                                  const slot = normalizeTimeKey(draft);
-                                  setHabitTracker((prev) => ({
-                                    ...prev,
-                                    habits: (prev.habits || []).map((x) => {
-                                      if (x.id !== row.id) return x;
-                                      const cur = normalizeHabitRow(x)?.reminderHours || [];
-                                      if (cur.includes(slot)) return x;
-                                      return normalizeHabitRow({ ...x, reminderHours: [...cur, slot].sort() });
-                                    }),
-                                  }));
-                                }}
-                              >
-                                Add time
-                              </button>
-                            </div>
-                          </div>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                            Nudges use the <strong>global schedule</strong> in Notifications dashboard (not per-habit clocks).
+                          </p>
                         )}
                       </li>
                     );
@@ -6781,7 +7472,7 @@ export default function App() {
                           type="button"
                           className="btn btn-primary"
                           onClick={async () => {
-                            await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories);
+                            await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories, profile);
                             await refreshNativeNotificationDiagnostics();
                             const snap = getNativePushDebugSnapshot();
                             const p = snap.localNotificationPermission;
@@ -6802,7 +7493,7 @@ export default function App() {
                           type="button"
                           className="btn btn-sm"
                           onClick={async () => {
-                            await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories);
+                            await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories, profile);
                             await notificationService.syncRemindersToServer(pushRemindersList);
                             await refreshNativeNotificationDiagnostics();
                             alert("Schedule refreshed and backup reminder list sent to the server.");
@@ -7110,6 +7801,281 @@ export default function App() {
                 </div>
               )}
 
+              <div className="settings-section settings-notifications-dashboard">
+                <label className="label">Notifications dashboard</label>
+                <p className="settings-hint">
+                  Choose how <strong>task</strong> and <strong>habit</strong> reminders behave. Tasks still need <strong>Remind me</strong> on each card unless you apply defaults for <em>new</em> tasks below.
+                </p>
+                <p className="settings-notifications-callout" role="note">
+                  <strong>How delivery differs.</strong>{" "}
+                  {isCapacitorNativeApp() && Capacitor.getPlatform() === "ios" ? (
+                    <>
+                      On <strong>iPhone</strong>, task times you set here are scheduled as <strong>local</strong> alerts, so they stay on the clock even offline.
+                    </>
+                  ) : isCapacitorNativeApp() && Capacitor.getPlatform() === "android" ? (
+                    <>
+                      On <strong>Android</strong>, task reminders use <strong>push</strong> and your notification settings; battery saver can delay delivery.
+                    </>
+                  ) : isCapacitorNativeApp() ? (
+                    <>
+                      On this <strong>native app</strong>, reminders follow notification permission and push scheduling.
+                    </>
+                  ) : (
+                    <>
+                      In the <strong>browser</strong>, task reminders depend on permission and whether background sync is connected.
+                    </>
+                  )}{" "}
+                  <strong>Habits</strong> use the cadence and quiet hours here for <strong>in-app nudges</strong> while you are using the app, and the same schedule is also sent to the <strong>server</strong> for backup pushes when you are away. Very frequent habit modes can be <strong>batched or delayed</strong> by the OS when the app is closed; quiet hours still apply to what we schedule.
+                </p>
+
+                <div className="settings-subsection">
+                  <label className="label" style={{ fontSize: "0.95rem" }}>
+                    Master switches
+                  </label>
+                  <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={normalizeNotificationPrefs(profile.notificationPrefs).taskPushEnabled !== false}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          notificationPrefs: {
+                            ...normalizeNotificationPrefs(p.notificationPrefs),
+                            taskPushEnabled: e.target.checked,
+                          },
+                        }))
+                      }
+                    />
+                    <span>Task reminders (scheduled / background sync)</span>
+                  </label>
+                  <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={normalizeNotificationPrefs(profile.notificationPrefs).habitPushEnabled !== false}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          notificationPrefs: {
+                            ...normalizeNotificationPrefs(p.notificationPrefs),
+                            habitPushEnabled: e.target.checked,
+                          },
+                        }))
+                      }
+                    />
+                    <span>Habit reminder nudges</span>
+                  </label>
+                </div>
+
+                <div className="settings-subsection" style={{ marginTop: 16 }}>
+                  <label className="label" style={{ fontSize: "0.95rem" }}>
+                    Task reminder timing
+                  </label>
+                  <p className="settings-hint" style={{ marginTop: 4 }}>
+                    Used for <strong>push backup</strong> and <strong>iPhone local</strong> scheduling when a task has Remind me on. Per-task overrides stay in the task card.
+                  </p>
+                  <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={normalizeNotificationPrefs(profile.notificationPrefs).taskRemindBeforeEnabled !== false}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          notificationPrefs: {
+                            ...normalizeNotificationPrefs(p.notificationPrefs),
+                            taskRemindBeforeEnabled: e.target.checked,
+                          },
+                        }))
+                      }
+                    />
+                    <span>Remind me before the task starts</span>
+                  </label>
+                  <div className="settings-inline-row" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 8, opacity: normalizeNotificationPrefs(profile.notificationPrefs).taskRemindBeforeEnabled === false ? 0.45 : 1 }}>
+                    <label className="settings-hint" htmlFor="notif-task-before-mins">
+                      Minutes before (1–120)
+                    </label>
+                    <input
+                      id="notif-task-before-mins"
+                      className="input modal-input"
+                      type="number"
+                      min={1}
+                      max={120}
+                      disabled={normalizeNotificationPrefs(profile.notificationPrefs).taskRemindBeforeEnabled === false}
+                      value={normalizeNotificationPrefs(profile.notificationPrefs).taskRemindBeforeMinutes}
+                      onChange={(e) => {
+                        const v = Math.min(120, Math.max(1, Math.round(Number(e.target.value) || 5)));
+                        setProfile((p) => ({
+                          ...p,
+                          notificationPrefs: {
+                            ...normalizeNotificationPrefs(p.notificationPrefs),
+                            taskRemindBeforeMinutes: v,
+                          },
+                        }));
+                      }}
+                      style={{ width: 88 }}
+                    />
+                  </div>
+                  <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+                    <input
+                      type="checkbox"
+                      checked={normalizeNotificationPrefs(profile.notificationPrefs).taskRemindAtStartEnabled !== false}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          notificationPrefs: {
+                            ...normalizeNotificationPrefs(p.notificationPrefs),
+                            taskRemindAtStartEnabled: e.target.checked,
+                          },
+                        }))
+                      }
+                    />
+                    <span>Remind at the start time of the task</span>
+                  </label>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    style={{ marginTop: 12 }}
+                    onClick={() => {
+                      const np = normalizeNotificationPrefs(profile.notificationPrefs);
+                      setProfile((p) => ({
+                        ...p,
+                        defaultTaskRemindersOn: np.taskRemindBeforeEnabled || np.taskRemindAtStartEnabled,
+                        defaultRemindBeforeMinutes: np.taskRemindBeforeEnabled ? np.taskRemindBeforeMinutes : null,
+                        defaultRemindAtStart: np.taskRemindAtStartEnabled,
+                      }));
+                    }}
+                  >
+                    Apply as defaults for new tasks
+                  </button>
+                </div>
+
+                <div className="settings-subsection" style={{ marginTop: 18 }}>
+                  <label className="label" style={{ fontSize: "0.95rem" }}>
+                    Habit reminder cadence
+                  </label>
+                  <p className="settings-hint" style={{ marginTop: 4 }}>
+                    Quiet hours apply to <strong>all</strong> modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list in Habit check-ins above.
+                  </p>
+                  <select
+                    className="input modal-input"
+                    style={{ marginTop: 8 }}
+                    value={normalizeNotificationPrefs(profile.notificationPrefs).habitReminderMode}
+                    onChange={(e) =>
+                      setProfile((p) => ({
+                        ...p,
+                        notificationPrefs: {
+                          ...normalizeNotificationPrefs(p.notificationPrefs),
+                          habitReminderMode: e.target.value,
+                        },
+                      }))
+                    }
+                  >
+                    <option value="custom">Custom (per habit: hourly or choose times)</option>
+                    <option value="daily">Once per day</option>
+                    <option value="hourly">Every hour</option>
+                    <option value="every30">Every 30 minutes</option>
+                  </select>
+                  <div className="settings-inline-row" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, alignItems: "center" }}>
+                    <label className="settings-hint" htmlFor="notif-quiet-start">
+                      Quiet hours from
+                    </label>
+                    <input
+                      id="notif-quiet-start"
+                      className="input modal-input"
+                      type="time"
+                      value={normalizeNotificationPrefs(profile.notificationPrefs).habitQuietStart}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          notificationPrefs: {
+                            ...normalizeNotificationPrefs(p.notificationPrefs),
+                            habitQuietStart: normalizeTimeKey(e.target.value),
+                          },
+                        }))
+                      }
+                    />
+                    <label className="settings-hint" htmlFor="notif-quiet-end">
+                      to
+                    </label>
+                    <input
+                      id="notif-quiet-end"
+                      className="input modal-input"
+                      type="time"
+                      value={normalizeNotificationPrefs(profile.notificationPrefs).habitQuietEnd}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          notificationPrefs: {
+                            ...normalizeNotificationPrefs(p.notificationPrefs),
+                            habitQuietEnd: normalizeTimeKey(e.target.value),
+                          },
+                        }))
+                      }
+                    />
+                  </div>
+                  {normalizeNotificationPrefs(profile.notificationPrefs).habitReminderMode === "daily" ? (
+                    <div className="settings-inline-row" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, alignItems: "center" }}>
+                      <label className="settings-hint" htmlFor="notif-daily-time">
+                        Daily ping at
+                      </label>
+                      <input
+                        id="notif-daily-time"
+                        className="input modal-input"
+                        type="time"
+                        value={normalizeNotificationPrefs(profile.notificationPrefs).habitDailyTime}
+                        onChange={(e) =>
+                          setProfile((p) => ({
+                            ...p,
+                            notificationPrefs: {
+                              ...normalizeNotificationPrefs(p.notificationPrefs),
+                              habitDailyTime: normalizeTimeKey(e.target.value),
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="settings-subsection" style={{ marginTop: 18 }}>
+                  <label className="label" style={{ fontSize: "0.95rem" }}>
+                    Per-habit reminders
+                  </label>
+                  <p className="settings-hint" style={{ marginTop: 4 }}>Turn off nudges for habits you don&apos;t want pinged.</p>
+                  {(habitTracker.habits || []).length === 0 ? (
+                    <p className="settings-hint">No habits yet. Add some under Habit check-ins.</p>
+                  ) : (
+                    <ul className="notif-habit-toggle-list">
+                      {(habitTracker.habits || []).map((h) => {
+                        const row = normalizeHabitRow(h);
+                        if (!row) return null;
+                        return (
+                          <li key={row.id} className="notif-habit-toggle-row">
+                            <span>{row.label}</span>
+                            <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, margin: 0 }}>
+                              <input
+                                type="checkbox"
+                                checked={row.reminderPushEnabled !== false}
+                                onChange={(e) =>
+                                  setHabitTracker((prev) => ({
+                                    ...prev,
+                                    habits: (prev.habits || []).map((x) =>
+                                      x.id === row.id
+                                        ? normalizeHabitRow({ ...x, reminderPushEnabled: e.target.checked })
+                                        : x
+                                    ),
+                                  }))
+                                }
+                              />
+                              <span>Remind</span>
+                            </label>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              </div>
+
               {!isCapacitorNativeApp() && (
               <div className="settings-section">
                 <label className="label">Background reminders (browser)</label>
@@ -7312,7 +8278,7 @@ export default function App() {
                     {taskBanner.nextTask ? `Next: ${taskBanner.nextTask.text}` : "Next"}
                   </span>
                   <div className="inapp-banner-actions" onClick={(e) => e.stopPropagation()}>
-                    <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => goToTaskFromBannerAndDismiss()}>
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => goToTaskFromBannerAndDismiss()}>
                       OK
                     </button>
                   </div>
@@ -7322,19 +8288,31 @@ export default function App() {
           </div>
         )}
 
-        {/* Toast Notification */}
+        {/* Toast Notification — tap dimmed area outside card to dismiss */}
         {toastNotification && (
-          <div className="toast-notification">
-            <div className="toast-content">
-              <SparkleIcon style={{ width: '20px', height: '20px', flexShrink: 0 }} />
-              <div className="toast-text">
-                <div className="toast-message">{String(toastNotification.message || "")}</div>
-                {toastNotification.taskText ? (
-                  <div className="toast-task">{toastNotification.taskText}</div>
-                ) : null}
+          <>
+            <button
+              type="button"
+              className="toast-dismiss-overlay"
+              aria-label="Dismiss message"
+              onClick={() => {
+                if (toastDismissTimerRef.current) {
+                  clearTimeout(toastDismissTimerRef.current);
+                  toastDismissTimerRef.current = null;
+                }
+                setToastNotification(null);
+              }}
+            />
+            <div className="toast-notification" role="status">
+              <div className="toast-content">
+                <SparkleIcon style={{ width: "20px", height: "20px", flexShrink: 0 }} />
+                <div className="toast-text">
+                  <div className="toast-message">{String(toastNotification.message || "")}</div>
+                  {toastNotification.taskText ? <div className="toast-task">{toastNotification.taskText}</div> : null}
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )}
 
         {/* Morning Greeting */}

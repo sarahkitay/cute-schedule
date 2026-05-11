@@ -1,4 +1,6 @@
 :root {
+  /* Space above fixed bottom nav + home indicator so toasts / banners sit clear */
+  --bottom-nav-clearance: 88px;
   --radius: 6px;
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -996,6 +998,9 @@ body::-webkit-scrollbar,
 }
 
 @media (max-width: 640px) {
+  :root {
+    --bottom-nav-clearance: 92px;
+  }
   .modal-overlay {
     padding: 0;
     align-items: flex-end;
@@ -1666,14 +1671,25 @@ button {
 }
 
 /* Toast Notification */
+.toast-dismiss-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-toast, 120) - 1);
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: rgba(35, 30, 30, 0.16);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
 .toast-notification {
   position: fixed;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 24px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--bottom-nav-clearance, 88px) + 12px);
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2000;
+  z-index: var(--z-toast, 120);
   animation: toastSlideUp 0.4s ease-out, toastFadeOut 0.3s ease-in 2.7s forwards;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 @keyframes toastSlideUp {
@@ -1702,8 +1718,8 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
-  max-width: calc(100vw - 48px);
-  min-width: 280px;
+  max-width: calc(100vw - 32px);
+  min-width: min(280px, calc(100vw - 32px));
   border: 0.5px solid rgba(0, 0, 0, 0.08);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
@@ -2436,7 +2452,7 @@ button {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  margin-bottom: 6px;
+  margin-bottom: 14px;
 }
 .next-up-task {
   font-size: 20px;
@@ -2644,9 +2660,51 @@ button {
   margin: 0 0 var(--space-1);
 }
 
+.settings-notifications-dashboard {
+  margin-top: var(--space-2);
+}
+
+.settings-notifications-dashboard .settings-subsection + .settings-subsection {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+}
+
+.settings-notifications-callout {
+  font-size: var(--caption);
+  line-height: 1.45;
+  color: var(--text-soft);
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2);
+  background: var(--surface2, rgba(255, 252, 250, 0.65));
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border);
+}
+
+.notif-habit-toggle-list {
+  list-style: none;
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notif-habit-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 10px 12px;
+  border-radius: var(--radius-card);
+  background: rgba(255, 252, 250, 0.5);
+  border: 1px solid var(--border);
+  font-size: var(--body);
+}
+
 .inapp-banner {
   position: fixed;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 100px);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + var(--bottom-nav-clearance, 88px) + 16px);
   left: var(--space-2);
   right: var(--space-2);
   max-width: 400px;
@@ -2664,7 +2722,7 @@ button {
   padding: var(--space-2);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .inapp-banner-content-tappable {
@@ -2692,18 +2750,26 @@ button {
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+  display: block;
+}
+
+.inapp-banner-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .inapp-banner-task {
   font-size: var(--body);
   font-weight: 500;
   color: var(--text);
+  display: block;
 }
 
 .inapp-banner-actions {
   display: flex;
   gap: var(--space-1);
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
 }
 
 .btn-icon {
@@ -5336,4 +5402,168 @@ textarea.input {
   .feature-walkthrough-actions {
     flex-wrap: wrap;
   }
+}
+
+/* Health & training */
+.health-hero-cta-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.health-consistency {
+  border-radius: var(--radius-panel, 16px);
+  padding: 14px 16px;
+  margin-bottom: 4px;
+}
+.health-consistency-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.health-consistency-meta {
+  font-size: 13px;
+  color: var(--text-soft, rgba(0, 0, 0, 0.55));
+}
+.health-progress-track {
+  height: 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  overflow: hidden;
+}
+.health-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--theme-primary, #e79ab5), var(--theme-accent, #c89fd9));
+  transition: width 0.35s ease;
+}
+.health-progress-fill-soft {
+  opacity: 0.85;
+}
+.health-progress-fill-goal {
+  background: linear-gradient(90deg, var(--theme-secondary, #e6a7bc), var(--theme-primary, #e79ab5));
+}
+.health-nav-toggle,
+.finance-nav-toggle {
+  padding: 12px 14px;
+  border-radius: var(--radius-panel, 14px);
+  margin-bottom: 14px;
+}
+.health-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text);
+}
+.health-week-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+}
+.health-week-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft, rgba(0, 0, 0, 0.55));
+  margin: 0 6px;
+}
+.health-actions-row {
+  margin-bottom: 12px;
+}
+.health-sample-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.health-save-routine-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+.health-save-routine-row .input {
+  flex: 1 1 180px;
+  min-width: 140px;
+}
+.health-saved-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+}
+.health-saved-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+.health-day-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.health-day-card {
+  padding: 12px;
+  border-radius: var(--radius-panel, 14px);
+}
+.health-day-card-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft, rgba(0, 0, 0, 0.5));
+  margin-bottom: 8px;
+}
+.health-day-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 100px;
+  font-family: inherit;
+}
+.health-calc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px 14px;
+  margin-top: 10px;
+}
+.health-macro-block {
+  padding: 14px 16px;
+  border-radius: var(--radius-panel, 16px);
+  margin-top: 14px;
+}
+.health-weight-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+.health-weight-add .input {
+  flex: 1 1 140px;
+  min-width: 120px;
+}
+.health-weight-log {
+  font-size: 13px;
+  color: var(--text-soft, rgba(0, 0, 0, 0.55));
+  margin: 10px 0 0;
+  padding-left: 18px;
+}
+.health-macro-bars .health-mini-bar {
+  display: grid;
+  grid-template-columns: 72px 1fr 64px;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.section-health {
+  margin-bottom: 24px;
 }

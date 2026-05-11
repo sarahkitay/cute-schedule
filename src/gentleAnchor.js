@@ -24,48 +24,109 @@ export function inferEmotionalState(tasks, timeOfDay) {
   return "gentle";
 }
 
-export function generateCompletionMessage(task, category, completedToday, energyLevel, emotionalState) {
-  const messages = {
-    LIGHT: [
-      "Nice. That one didn't take much, but it still counts.",
-      "Done. Simple as that.",
-      "Quick win. Noted."
-    ],
-    MEDIUM: [
-      "You showed up and followed through.",
-      "That's done. You handled it.",
-      "You completed it. Good."
-    ],
-    HEAVY: [
-      "That was a heavy one. Take a breath. You earned it.",
-      "Heavy task completed. You're stronger than you think.",
-      "That took something from you. Rest is okay now."
-    ]
+/** @typedef {'supportive' | 'matter-of-fact' | 'funny' | 'harsh'} CompletionAffirmationTone */
+
+const TONE_IDS = ["supportive", "matter-of-fact", "funny", "harsh"];
+
+/**
+ * @param {unknown} _task
+ * @param {unknown} _category
+ * @param {number} completedToday
+ * @param {string} energyLevel
+ * @param {string} emotionalState
+ * @param {CompletionAffirmationTone} [tone]
+ */
+export function generateCompletionMessage(_task, _category, completedToday, energyLevel, emotionalState, tone = "supportive") {
+  const t = TONE_IDS.includes(tone) ? tone : "supportive";
+  const E = energyLevel === "LIGHT" || energyLevel === "HEAVY" ? energyLevel : "MEDIUM";
+
+  /** @type {Record<CompletionAffirmationTone, Record<string, string[]>>} */
+  const pools = {
+    supportive: {
+      LIGHT: [
+        "Nice. That one didn't take much, but it still counts.",
+        "Done. Simple as that.",
+        "Quick win. Noted.",
+      ],
+      MEDIUM: [
+        "You showed up and followed through.",
+        "That's done. You handled it.",
+        "You completed it. Good.",
+      ],
+      HEAVY: [
+        "That was a heavy one. Take a breath. You earned it.",
+        "Heavy task completed. You're stronger than you think.",
+        "That took something from you. Rest is okay now.",
+      ],
+    },
+    "matter-of-fact": {
+      LIGHT: ["Done.", "Complete.", "Checked off.", "Finished."],
+      MEDIUM: ["Task complete.", "That's done.", "Marked complete.", "One item cleared."],
+      HEAVY: ["Hard one done.", "Heavy task complete.", "Finished. Pause if you need to.", "Done. That cost energy."],
+    },
+    funny: {
+      LIGHT: ["Boom. Easiest boss fight of the day.", "Speedrun any%.", "So fast the list blinked.", "That task never stood a chance."],
+      MEDIUM: ["Another one bites the dust. (Respectfully.)", "The to-do list just took an L.", "Task defeated. XP gained.", "You vs. task: you won. Obviously."],
+      HEAVY: ["That was the final level energy. You still cleared it.", "Beast mode: engaged. Beast mode: tired now.", "Big task down. Treat yourself like a houseplant: water and light.", "You wrestled a bear. The bear was paperwork. You still won."],
+    },
+    harsh: {
+      LIGHT: ["Finally. That one was barely a warm-up.", "Done. Don't act surprised—you were supposed to.", "Checked off. Next.", "Easy mode. Still counts."],
+      MEDIUM: ["Done. The bar was on the floor and you cleared it anyway.", "One down. The rest are still watching.", "Finished. Don't coast—stack another.", "Complete. discipline > motivation."],
+      HEAVY: ["That one hurt. Good. Growth rarely feels cozy.", "Brutal task. You didn't negotiate with it—you finished it.", "Hard win. Now stop acting like you didn't earn a breather.", "Done. That was ugly work. Ugly work still builds."],
+    },
   };
 
-  const baseMessages = messages[energyLevel] || messages.MEDIUM;
+  const baseMessages = pools[t][E] || pools[t].MEDIUM;
   let message = baseMessages[Math.floor(Math.random() * baseMessages.length)];
 
-  if (emotionalState === "overloaded") {
-    message += " Clearing even one thing when you're overloaded matters.";
-  } else if (emotionalState === "drained") {
-    message += " Momentum can be quiet. This still moves you forward.";
-  } else if (emotionalState === "closing") {
-    message += " Late-day wins count the same as morning ones.";
-  } else if (emotionalState === "avoidant") {
-    message += " Starting can be the hardest part when something feels weighty.";
-  } else if (emotionalState === "focused" && completedToday >= 2) {
-    message += " You're stacking real progress.";
-  }
+  const suffix = {
+    supportive: {
+      overloaded: " Clearing even one thing when you're overloaded matters.",
+      drained: " Momentum can be quiet. This still moves you forward.",
+      closing: " Late-day wins count the same as morning ones.",
+      avoidant: " Starting can be the hardest part when something feels weighty.",
+      focusedStack: " You're stacking real progress.",
+      enoughToday: " You did enough for today.",
+    },
+    "matter-of-fact": {
+      overloaded: " One less item on a long list.",
+      drained: " Still forward.",
+      closing: " Timestamp doesn't change the outcome.",
+      avoidant: " Motion started.",
+      focusedStack: " Count it.",
+      enoughToday: " Consider pausing if the list is long.",
+    },
+    funny: {
+      overloaded: " Your brain had seventeen tabs open; you closed one.",
+      drained: " Low battery mode, still shipped.",
+      closing: " Night shift MVP.",
+      avoidant: " You touched the scary thing. It was paper.",
+      focusedStack: " You're on a streak—hydrate.",
+      enoughToday: " Hero arc needs a snack break.",
+    },
+    harsh: {
+      overloaded: " Stop marinating in guilt—use the win.",
+      drained: " Tired isn't an excuse; you still executed.",
+      closing: " Late doesn't mean lazy if it's done.",
+      avoidant: " You stopped negotiating with the task. Good.",
+      focusedStack: " Don't get cocky—stay consistent.",
+      enoughToday: " Quit while you're ahead before you overfill the day.",
+    },
+  };
 
-  if (completedToday >= 3 && emotionalState !== "focused") {
-    message += " You did enough for today.";
-  }
+  const S = suffix[t];
+  if (emotionalState === "overloaded") message += S.overloaded;
+  else if (emotionalState === "drained") message += S.drained;
+  else if (emotionalState === "closing") message += S.closing;
+  else if (emotionalState === "avoidant") message += S.avoidant;
+  else if (emotionalState === "focused" && completedToday >= 2) message += S.focusedStack;
+
+  if (completedToday >= 3 && emotionalState !== "focused") message += S.enoughToday;
 
   return message;
 }
 
-export function generateReminderMessage(timeOfDay, taskCount) {
+export function generateReminderMessage(timeOfDay, _taskCount) {
   const messages = {
     morning: "When you're ready, here's what you planned for today.",
     afternoon: "Quick check-in. Do you want to keep going or slow it down?",
@@ -76,7 +137,7 @@ export function generateReminderMessage(timeOfDay, taskCount) {
   return messages[timeOfDay] || messages.morning;
 }
 
-export function generateMissedTaskMessage(delayCount, task) {
+export function generateMissedTaskMessage(delayCount, _task) {
   if (delayCount === 1) {
     return "Today shifted. Want to move this or soften it?";
   } else if (delayCount >= 2) {

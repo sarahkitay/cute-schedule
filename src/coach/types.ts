@@ -99,4 +99,6 @@ export interface CoachIntelligenceSnapshot {
   morningHeavyCount: number;
   noteSnippet: string | null;
   learningSummary: string;
+  /** Short health / training summary for grounded suggestions */
+  healthSummary: string | null;
 }

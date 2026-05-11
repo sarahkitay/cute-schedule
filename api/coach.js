@@ -77,6 +77,7 @@ export default async function handler(req, res) {
       coachIntelligenceText,
       coachFeedbackJson,
       weekAtAGlance,
+      healthSummary,
     } = req.body || {};
     if (!dayKey) return res.status(400).json({ error: "Missing dayKey" });
 
@@ -104,9 +105,12 @@ Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences
 User is overwhelmed. Pick ONE task from: ${JSON.stringify(tasksList)}.${habitBlock} Break it into 3 micro-steps (5-15 min to start). Return JSON: { "summary": "1-2 sentences", "taskId": "...", "taskTitle": "...", "steps": [ { "text": "...", "minutes": 5 } ], "actions": [ { "type": "MICRO_STEPS", "taskId": "...", "steps": [ { "text": "...", "minutes": 5 } ] } ] }.`;
       } else if (mode === "review") {
         const financeNote = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || (finance.totalSavings || 0) > 0 || (finance.totalDebt || 0) > 0) ? ` Finance snapshot: income this month $${(finance.incomeThisMonth || 0).toFixed(2)}, spent $${(finance.spentThisMonth || 0).toFixed(2)}, savings $${(finance.totalSavings || 0).toFixed(2)}, debt $${(finance.totalDebt || 0).toFixed(2)}. If relevant, mention one gentle money habit (e.g. "You logged spending this month; that's a win.").` : "";
+        const healthNote = String(healthSummary || "").trim()
+          ? ` Health / training context: ${String(healthSummary).slice(0, 1200)} If relevant, one gentle note on movement or fueling (no medical claims).`
+          : "";
         userContent = `Tone for this mode: reflective pattern-noticer: precise, one real pattern, one clean adjustment for tomorrow.
 
-End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progress?.total || 0}. Schedule: ${JSON.stringify(scheduleData)}. Patterns: ${JSON.stringify(patterns || {})}.${financeNote}${habitBlock} Summarise wins, detect one pattern (e.g. tasks missed at 3pm), suggest one change for tomorrow. If habit data is present, you may note one observation (e.g. consistency on a build habit or compassion after a break-habit slip). Return JSON: { "summary": "2-4 sentences", "wins": ["..."], "pattern": "one sentence", "suggestion": "one sentence", "actions": [] }.`;
+End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progress?.total || 0}. Schedule: ${JSON.stringify(scheduleData)}. Patterns: ${JSON.stringify(patterns || {})}.${financeNote}${healthNote}${habitBlock} Summarise wins, detect one pattern (e.g. tasks missed at 3pm), suggest one change for tomorrow. If habit data is present, you may note one observation (e.g. consistency on a build habit or compassion after a break-habit slip). Return JSON: { "summary": "2-4 sentences", "wins": ["..."], "pattern": "one sentence", "suggestion": "one sentence", "actions": [] }.`;
       }
       const adhdMessages = [
         { role: "system", content: systemContent },
@@ -274,6 +278,10 @@ Use these to detect recurring struggles, goals, constraints, or self-observation
         ? `\n\nLast 7 days: per-day hour blocks {hour, total tasks, openHeavy count} (infer lighter windows; do not invent past events):\n${JSON.stringify(weekAtAGlance).slice(0, 12000)}`
         : "";
 
+    const healthBlock = String(healthSummary || "").trim()
+      ? `\n\nHealth / training (user-entered; no medical diagnosis; suggest gently within scheduling and habit framing):\n${String(healthSummary).slice(0, 2500)}`
+      : "";
+
     // Finance context for gentle financial analyst
     const financeContext = hasFinance
       ? `\n\nFinance (use for money questions; be gentle and ADHD-aware):
@@ -293,7 +301,7 @@ ${finance.bankStatementNotes ? `- Bank/statement notes (use to spot biggest issu
 Day: ${dayKey}${prettyDate ? ` (${prettyDate})` : ""}
 Completion: ${progress?.done || 0}/${progress?.total || 0} (${progress?.pct || 0}%)
 Today's schedule: ${JSON.stringify(today || {})}
-Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesContext}${financeContext}${habitContext}${profileBlock}${pacingBlock}${categoriesLine}${billsBlock}${subsBlock}${intelBlock}${feedbackBlock}${weekBlock}
+Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesContext}${financeContext}${habitContext}${profileBlock}${pacingBlock}${categoriesLine}${billsBlock}${subsBlock}${intelBlock}${feedbackBlock}${weekBlock}${healthBlock}
 `.trim();
 
     let replyDirective;

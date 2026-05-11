@@ -765,6 +765,7 @@ class NotificationService {
       body: `${task.text}`,
       tag: `complete-${task.id}`,
       requireInteraction: false,
+      preferWebNotificationOnNative: true,
     });
   }
 
