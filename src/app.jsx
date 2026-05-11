@@ -36,12 +36,17 @@ import { THEMES } from "./themes";
 import { OnboardingFlow } from "./OnboardingFlow";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
 import { HealthPage } from "./HealthPage";
+import { WorkoutProgramPickerModal } from "./WorkoutProgramPickerModal";
 import {
+  bumpWeekRoutineCursor,
   formatHealthForCoach,
   healthProfileComplete,
+  listSelectablePrograms,
   normalizeHealth,
   normalizeNavVisibility,
   normalizeDockOrder,
+  resolveProgramForTask,
+  textHintsWorkoutTask,
 } from "./health/healthModel";
 import {
   COACH_SUGGESTION_SOURCE,
@@ -1488,6 +1493,7 @@ function HourCard({
   dayKey,
   onPatchTaskReminder,
   groceryTextMatch,
+  onBeginWorkout,
 }) {
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   const complete = hourIsComplete(tasksByCat, cats);
@@ -1711,6 +1717,18 @@ function HourCard({
                       </div>
                     ) : null}
                     <div className="item-detail-actions">
+                      {t.taskType === "workout" && !t.done && onBeginWorkout ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          onClick={() => {
+                            onBeginWorkout(dayKey, hourKey, t.category, t);
+                            onExpandTask(null);
+                          }}
+                        >
+                          Begin workout
+                        </button>
+                      ) : null}
                       <button type="button" className="btn btn-sm" onClick={() => { onMoveToTomorrow(hourKey, t.category, t.id); onExpandTask(null); }}>
                         <CalendarIcon style={{ width: 14, height: 14, marginRight: 4 }} /> Move to tomorrow
                       </button>
@@ -2100,6 +2118,8 @@ export default function App() {
   const [profile, setProfile] = useState(() => loadProfileFromDisk());
 
   const [health, setHealth] = useState(() => loadHealthFromDisk());
+  const [workoutProgramPicker, setWorkoutProgramPicker] = useState(null);
+  const [guidedWorkoutSession, setGuidedWorkoutSession] = useState(null);
 
   // Editable bedtime routine template (persisted)
   const [routineTemplate, setRoutineTemplate] = useState(() => {
@@ -3555,7 +3575,11 @@ export default function App() {
         repeatUntil: repeatType !== REPEAT_OPTIONS.NONE ? null : null,
         originalTaskId: sourceTaskId,
         createdAt: new Date().toISOString(),
-        ...(ex.taskType === "workout" ? { taskType: "workout" } : {}),
+        ...((ex.taskType === "workout" || ex.workoutProgramMode || ex.workoutProgramId) ? { taskType: "workout" } : {}),
+        ...(ex.workoutProgramMode === "queue" || ex.workoutProgramMode === "auto" || ex.workoutProgramMode === "specific"
+          ? { workoutProgramMode: ex.workoutProgramMode }
+          : {}),
+        ...(ex.workoutProgramId ? { workoutProgramId: String(ex.workoutProgramId) } : {}),
         ...(() => {
           const remOn = profile.defaultTaskRemindersOn !== false;
           const before =
@@ -3710,6 +3734,104 @@ export default function App() {
       });
       hours[hourKey] = { ...byCat, [category]: list };
       return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
+    });
+  }
+
+  function confirmWorkoutProgramPick(pick) {
+    const p = workoutProgramPicker;
+    if (!p) return;
+    const el =
+      p.extras?.energyLevel === "LIGHT" || p.extras?.energyLevel === "MEDIUM" || p.extras?.energyLevel === "HEAVY"
+        ? p.extras.energyLevel
+        : "MEDIUM";
+    const ex = {
+      ...(p.extras && typeof p.extras === "object" ? p.extras : {}),
+      energyLevel: el,
+      taskType: "workout",
+      workoutProgramMode: pick.workoutProgramMode,
+      ...(pick.workoutProgramId ? { workoutProgramId: pick.workoutProgramId } : {}),
+    };
+    flushSync(() => addTask(p.hourKey, p.category, p.text, p.repeat, null, ex));
+    void cloudStorage.saveFullState({
+      appState: appStateRef.current,
+      notes,
+      finance,
+      profile,
+      health,
+      theme,
+      routineTemplate,
+      morningRoutineTemplate,
+      routineSchedule,
+      coachMeta,
+      coachUserProfile,
+      moodboard: EMPTY_MOODBOARD,
+      customCategories,
+      patterns: loadPatterns(),
+      habitTracker,
+    });
+    setWorkoutProgramPicker(null);
+    setQuickText("");
+    setQuickRepeat(REPEAT_OPTIONS.NONE);
+    setQuickDetailTaskKind("default");
+    setQuickAddValue("");
+    setToastNotification({
+      message: "Workout task added",
+      taskText: p.text,
+      type: "added",
+    });
+    setTimeout(() => setToastNotification(null), 2500);
+    flashQuickAddButton();
+  }
+
+  function beginWorkoutFromTask(dayKey, hourKey, category, task) {
+    const { program, advanceQueue } = resolveProgramForTask(health, task);
+    if (!program?.exercises?.length) {
+      setToastNotification({
+        message: "Add programs in Health (or set a weekly routine), then try Begin workout again.",
+        taskText: String(task?.text || ""),
+        type: "added",
+      });
+      setTimeout(() => setToastNotification(null), 3200);
+      return;
+    }
+    if (advanceQueue) {
+      setHealth((prev) => ({ ...normalizeHealth(prev), ...bumpWeekRoutineCursor(normalizeHealth(prev)) }));
+    }
+    setGuidedWorkoutSession({
+      taskId: task.id,
+      dayKey,
+      hourKey,
+      category,
+      programId: program.id,
+      programName: program.name,
+      exercises: program.exercises,
+    });
+    setTab("health");
+  }
+
+  function markGuidedTaskDone() {
+    const g = guidedWorkoutSession;
+    if (!g?.hourKey || !g.category || !g.taskId) return;
+    if (g.dayKey === tKey) {
+      const day = appState.days[g.dayKey];
+      const list = day?.hours?.[g.hourKey]?.[g.category];
+      const row = list?.find((x) => x.id === g.taskId);
+      if (row && !row.done) toggleTask(g.hourKey, g.category, g.taskId);
+    }
+    setGuidedWorkoutSession(null);
+  }
+
+  function practiceProgramFromHealth(program) {
+    if (!program?.exercises?.length) return;
+    const sid = `adhoc-${program.id}-${Date.now()}`;
+    setGuidedWorkoutSession({
+      taskId: sid,
+      dayKey: realTodayKey,
+      hourKey: "",
+      category: "",
+      programId: program.id,
+      programName: program.name,
+      exercises: program.exercises,
     });
   }
 
@@ -4045,7 +4167,16 @@ export default function App() {
         ? quickDetailEnergy
         : "MEDIUM";
     const extras = { energyLevel: el };
-    if (quickDetailTaskKind === "workout") extras.taskType = "workout";
+    if (quickDetailTaskKind === "workout" || textHintsWorkoutTask(clean)) {
+      setWorkoutProgramPicker({
+        hourKey,
+        category: quickCat,
+        text: clean,
+        repeat: quickRepeat,
+        extras,
+      });
+      return;
+    }
     flushSync(() => {
       addTask(hourKey, quickCat, clean, quickRepeat, null, extras);
     });
@@ -4081,6 +4212,16 @@ export default function App() {
       parsed.targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.targetDayKey).trim())
         ? { targetDayKey: String(parsed.targetDayKey).trim() }
         : {};
+    if (textHintsWorkoutTask(taskText)) {
+      setWorkoutProgramPicker({
+        hourKey,
+        category,
+        text: taskText,
+        repeat: REPEAT_OPTIONS.NONE,
+        extras: nlExtras,
+      });
+      return;
+    }
     flushSync(() => {
       addTask(hourKey, category, taskText, REPEAT_OPTIONS.NONE, null, nlExtras);
     });
@@ -4920,6 +5061,7 @@ export default function App() {
       if (body) {
         addTask(hour, cat, body, REPEAT_OPTIONS.NONE, null, {
           taskType: "workout",
+          workoutProgramMode: "auto",
           targetDayKey: realTodayKey,
           energyLevel: "MEDIUM",
         });
@@ -5561,6 +5703,7 @@ export default function App() {
                           mode={mode}
                           dayKey={tKey}
                           onPatchTaskReminder={patchTaskReminderFields}
+                          onBeginWorkout={beginWorkoutFromTask}
                         />
                       </div>
                     </div>
@@ -5964,6 +6107,19 @@ export default function App() {
                             List
                           </button>
                         )}
+                        {t.taskType === "workout" && !t.done ? (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm list-row-grocery"
+                            title="Open guided workout on Health"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              beginWorkoutFromTask(tKey, t.hour, t.category, t);
+                            }}
+                          >
+                            Begin workout
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="icon-btn list-row-action list-row-more"
@@ -6426,6 +6582,10 @@ export default function App() {
             appState={appState}
             onOpenHealthCalendar={openHealthCalendarFromHealth}
             onScheduleWorkoutTask={scheduleWorkoutFromHealth}
+            onPracticeProgram={practiceProgramFromHealth}
+            guidedSession={guidedWorkoutSession}
+            onClearGuidedSession={() => setGuidedWorkoutSession(null)}
+            onMarkGuidedTaskDone={markGuidedTaskDone}
           />
         ) : tab === "finance" ? (
           <section className="panel finance-panel surface-glass section-finance scroll-reveal">
@@ -7341,6 +7501,14 @@ export default function App() {
           })(),
           document.body
         )}
+
+        <WorkoutProgramPickerModal
+          open={!!workoutProgramPicker}
+          taskPreview={workoutProgramPicker?.text || ""}
+          programs={listSelectablePrograms(health)}
+          onCancel={() => setWorkoutProgramPicker(null)}
+          onConfirm={confirmWorkoutProgramPick}
+        />
 
         {groceryListPrompt && (
           <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grocery-prompt-title" onClick={() => setGroceryListPrompt(null)}>

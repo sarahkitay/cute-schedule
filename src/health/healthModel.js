@@ -47,6 +47,39 @@ export function emptyWeekPlan() {
   return { mon: "", tue: "", wed: "", thu: "", fri: "", sat: "", sun: "" };
 }
 
+/** @param {unknown} p @returns {{ id: string, name: string, exercises: string[] } | null} */
+export function normalizeProgramRecord(p) {
+  if (!p || typeof p !== "object" || !p.id) return null;
+  const exercises = Array.isArray(p.exercises)
+    ? p.exercises.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 120)
+    : [];
+  return {
+    id: String(p.id).slice(0, 80),
+    name: String(p.name || "Program").slice(0, 100),
+    exercises,
+  };
+}
+
+function migrateSavedRoutinesToPrograms(savedRoutines) {
+  if (!Array.isArray(savedRoutines) || !savedRoutines.length) return [];
+  const out = [];
+  for (const r of savedRoutines) {
+    if (!r || typeof r !== "object" || !r.id) continue;
+    const lines = [];
+    for (const k of DAY_KEYS) {
+      const txt = String(r.days?.[k] || "")
+        .split(/\n+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      lines.push(...txt);
+    }
+    if (!lines.length) continue;
+    const rec = normalizeProgramRecord({ id: `mig-${r.id}`, name: r.name || "Imported routine", exercises: lines });
+    if (rec) out.push(rec);
+  }
+  return out;
+}
+
 export function createDefaultHealth() {
   return {
     profile: {
@@ -64,6 +97,9 @@ export function createDefaultHealth() {
     weightLog: [],
     weekPlans: {},
     savedRoutines: [],
+    programs: [],
+    weekRoutineProgramIds: [],
+    weekRoutineCursor: 0,
     weekRepeatEnabled: false,
     weekRepeatTemplate: null,
     workoutProgress: {},
@@ -116,7 +152,15 @@ export function normalizeHealth(raw) {
             fatG: Math.max(0, Math.round(Number(raw.macroTargets.fatG) || 0)),
           }
         : null,
-    macroLog: raw.macroLog && typeof raw.macroLog === "object" ? { ...raw.macroLog } : {},
+    macroLog: (() => {
+      const ml = raw.macroLog && typeof raw.macroLog === "object" ? raw.macroLog : {};
+      const out = {};
+      for (const k of Object.keys(ml)) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
+        out[k] = normalizeMacroDayEntry(ml[k], k);
+      }
+      return out;
+    })(),
     weightLog: Array.isArray(raw.weightLog)
       ? raw.weightLog
           .map((e) =>
@@ -137,6 +181,19 @@ export function normalizeHealth(raw) {
           })
           .filter(Boolean)
       : [],
+    programs: (() => {
+      if (Array.isArray(raw.programs)) {
+        return raw.programs.map((p) => normalizeProgramRecord(p)).filter(Boolean);
+      }
+      return migrateSavedRoutinesToPrograms(raw.savedRoutines);
+    })(),
+    weekRoutineProgramIds: Array.isArray(raw.weekRoutineProgramIds)
+      ? raw.weekRoutineProgramIds.map((x) => String(x)).filter(Boolean).slice(0, 21)
+      : [],
+    weekRoutineCursor:
+      typeof raw.weekRoutineCursor === "number" && Number.isFinite(raw.weekRoutineCursor)
+        ? Math.max(0, Math.round(raw.weekRoutineCursor))
+        : 0,
     weekRepeatEnabled: raw.weekRepeatEnabled === true,
     weekRepeatTemplate:
       raw.weekRepeatTemplate && typeof raw.weekRepeatTemplate === "object"
@@ -157,6 +214,58 @@ export function healthProfileComplete(health) {
     p.weightKg > 0 &&
     (p.goal === "loss" || p.goal === "gain" || p.goal === "maintain")
   );
+}
+
+const LB_PER_KG = 2.2046226218487757;
+
+/** @returns {{ feet: number | "", inches: number | "" }} */
+export function cmToFeetInches(cm) {
+  if (cm == null || !Number.isFinite(Number(cm)) || Number(cm) <= 0) return { feet: "", inches: "" };
+  const totalIn = Number(cm) / 2.54;
+  let feet = Math.floor(totalIn / 12);
+  let inches = Math.round(totalIn - feet * 12);
+  if (inches === 12) {
+    feet += 1;
+    inches = 0;
+  }
+  if (inches < 0) inches = 0;
+  return { feet, inches };
+}
+
+/**
+ * @param {number | "" | null | undefined} feet
+ * @param {number | "" | null | undefined} inches 0–11 typical
+ * @returns {number | null} height in cm, or null if empty / invalid
+ */
+export function feetInchesToCm(feet, inches) {
+  const ftEmpty = feet === "" || feet == null;
+  const inEmpty = inches === "" || inches == null;
+  if (ftEmpty && inEmpty) return null;
+  const ft = ftEmpty ? 0 : Number(feet);
+  const inc = inEmpty ? 0 : Number(inches);
+  if (!Number.isFinite(ft) || !Number.isFinite(inc) || ft < 0 || inc < 0) return null;
+  const totalIn = ft * 12 + inc;
+  if (totalIn <= 0) return null;
+  return Math.round(totalIn * 2.54);
+}
+
+export function kgToLb(kg) {
+  if (kg == null || !Number.isFinite(Number(kg))) return null;
+  return Number(kg) * LB_PER_KG;
+}
+
+export function lbToKg(lb) {
+  if (lb == null || !Number.isFinite(Number(lb)) || Number(lb) <= 0) return null;
+  return Number(lb) / LB_PER_KG;
+}
+
+/** @param {number | null | undefined} kg @returns {string} */
+export function formatWeightLbFromKg(kg) {
+  if (kg == null || !Number.isFinite(Number(kg))) return "";
+  const lb = kgToLb(kg);
+  if (lb == null) return "";
+  const n = Math.round(lb * 10) / 10;
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }
 
 function bmrMifflinStJeor(weightKg, heightCm, age, sex) {
@@ -262,73 +371,199 @@ export function getWorkoutLineProgress(health, key) {
   };
 }
 
-export const WORKOUT_SAMPLES = [
+/** Built-in templates (same ids work on tasks as `workoutProgramId`). */
+export const PROGRAM_LIBRARY = [
   {
     id: "sample_full_body",
-    name: "Full body (5 patterns)",
-    blurb: "One session hitting squat, hinge, push, pull, carry / core.",
-    days: {
-      mon: `Full body - movement patterns
-• Squat pattern: Goblet squat 3×8–12
-• Hinge: Romanian deadlift 3×8–10
-• Horizontal push: Push-ups or DB bench 3×8–12
-• Horizontal pull: Ring row or cable row 3×10–15
-• Carry / core: Farmer carry 2×40 steps + dead bug 2×10`,
-      tue: "",
-      wed: "",
-      thu: "",
-      fri: "",
-      sat: "",
-      sun: "",
-    },
+    name: "Full body",
+    blurb: "Power, core, hinge, press, row, squat pattern — one balanced session.",
+    exercises: [
+      "Med ball slams — 3×10",
+      "Hanging leg raises — 3×12",
+      "Romanian deadlifts (RDL) — 3×8–10",
+      "Overhead press (barbell or DB) — 3×8–10",
+      "Seated cable rows — 3×10–12",
+      "Dumbbell goblet squats — 3×10–12",
+    ],
   },
   {
     id: "sample_leg",
     name: "Leg day",
-    blurb: "Quad, hinge, single-leg, calves.",
-    days: {
-      mon: "",
-      tue: `Leg day
-• Back squat or leg press 4×6–10
-• Romanian deadlift 3×8–10
-• Split squat or lunge 3×8 each leg
-• Leg curl 3×12–15
-• Standing calf raise 4×12–15`,
-      wed: "",
-      thu: "",
-      fri: "",
-      sat: "",
-      sun: "",
-    },
+    blurb: "Squat pattern, hinge, single-leg, isolation calves.",
+    exercises: [
+      "Back squat or leg press — 4×6–10",
+      "Romanian deadlift — 3×8–10",
+      "Walking lunges or Bulgarian split squat — 3×8 each leg",
+      "Leg curl — 3×12–15",
+      "Leg extension — 3×12–15",
+      "Standing calf raises — 4×12–15",
+    ],
   },
   {
     id: "sample_upper",
     name: "Upper body",
-    blurb: "Vertical + horizontal push & pull.",
-    days: {
-      mon: "",
-      tue: "",
-      wed: `Upper body
-• Pull-up or lat pulldown 4×6–10
-• Overhead press or DB shoulder press 3×8–12
-• DB row 3×8–12 each arm
-• Incline DB press 3×10–12
-• Face pull + triceps pushdown 2×15 each`,
-      thu: "",
-      fri: "",
-      sat: "",
-      sun: "",
-    },
+    blurb: "Vertical pull, vertical push, rows, incline press, arms.",
+    exercises: [
+      "Pull-ups or lat pulldown — 4×6–10",
+      "Overhead DB shoulder press — 3×8–12",
+      "One-arm dumbbell row — 3×8–12 each",
+      "Incline DB bench press — 3×10–12",
+      "Face pulls — 3×15",
+      "Triceps rope pushdown — 3×12–15",
+    ],
   },
 ];
+
+const GYM_WORD = /\b(gym|workouts?|exercises?|lifting|train(?:ing)?)\b/i;
+
+export function textHintsWorkoutTask(text) {
+  return GYM_WORD.test(String(text || "").trim());
+}
+
+export function getProgramById(health, id) {
+  if (!id) return null;
+  const h = normalizeHealth(health);
+  const u = (h.programs || []).find((p) => p.id === id);
+  if (u) return u;
+  return PROGRAM_LIBRARY.find((p) => p.id === id) || null;
+}
+
+/** User programs first, then built-ins (for pickers). */
+export function listSelectablePrograms(health) {
+  const h = normalizeHealth(health);
+  const user = (h.programs || []).filter((p) => p && p.id);
+  const seen = new Set(user.map((p) => p.id));
+  const rest = PROGRAM_LIBRARY.filter((p) => !seen.has(p.id));
+  return [...user, ...rest];
+}
+
+/**
+ * @param {unknown} task
+ * @returns {{ program: { id: string, name: string, exercises: string[] } | null, advanceQueue: boolean }}
+ */
+export function resolveProgramForTask(health, task) {
+  const h = normalizeHealth(health);
+  const mode = task?.workoutProgramMode || (task?.workoutProgramId ? "specific" : "auto");
+  if (task?.workoutProgramId) {
+    const p = getProgramById(h, task.workoutProgramId);
+    if (p && p.exercises?.length) {
+      return { program: p, advanceQueue: mode === "queue" || mode === "auto" };
+    }
+    if (mode === "specific") return { program: null, advanceQueue: false };
+  }
+  if (mode === "specific") return { program: null, advanceQueue: false };
+
+  const ids = (h.weekRoutineProgramIds || []).map(String).filter(Boolean);
+  const valid = ids.filter((id) => {
+    const p = getProgramById(h, id);
+    return p && p.exercises?.length;
+  });
+  if (valid.length > 0) {
+    const cur = Number(h.weekRoutineCursor) || 0;
+    const idx = ((cur % valid.length) + valid.length) % valid.length;
+    const p = getProgramById(h, valid[idx]);
+    return { program: p, advanceQueue: true };
+  }
+  const firstUser = (h.programs || []).find((p) => p.exercises?.length);
+  if (firstUser) return { program: firstUser, advanceQueue: false };
+  const cur = Number(h.weekRoutineCursor) || 0;
+  const lib = PROGRAM_LIBRARY;
+  const li = lib.length ? ((cur % lib.length) + lib.length) % lib.length : 0;
+  return { program: lib[li] || null, advanceQueue: !!lib.length };
+}
+
+/** Patch object for `setHealth(prev => ({ ...normalizeHealth(prev), ... }))` after starting a queue/auto workout. */
+export function bumpWeekRoutineCursor(health) {
+  const h = normalizeHealth(health);
+  const ids = (h.weekRoutineProgramIds || []).map(String).filter(Boolean);
+  const valid = ids.filter((id) => {
+    const p = getProgramById(h, id);
+    return p && p.exercises?.length;
+  });
+  const mod = valid.length > 0 ? valid.length : Math.max(1, PROGRAM_LIBRARY.length);
+  const next = ((Number(h.weekRoutineCursor) || 0) + 1) % mod;
+  return { weekRoutineCursor: next };
+}
+
+export function guidedSessionProgressKey(taskId, programId, lineIdx) {
+  return `guided:${String(taskId)}:${String(programId)}:${Number(lineIdx)}`;
+}
+
+function macroFieldNumber(v) {
+  if (v === "" || v == null) return 0;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+/** @param {unknown} m @returns {{ id: string, label: string, protein: number, carbs: number, fat: number, calories: number, savedAt: string } | null} */
+export function normalizeMacroMeal(m) {
+  if (!m || typeof m !== "object" || !m.id) return null;
+  return {
+    id: String(m.id).slice(0, 64),
+    label: String(m.label || "").slice(0, 80),
+    protein: Math.round(macroFieldNumber(m.protein)),
+    carbs: Math.round(macroFieldNumber(m.carbs)),
+    fat: Math.round(macroFieldNumber(m.fat)),
+    calories: Math.round(macroFieldNumber(m.calories)),
+    savedAt: typeof m.savedAt === "string" ? m.savedAt : new Date().toISOString(),
+  };
+}
+
+/**
+ * One day of macro logging: array of meals/snacks (each saved separately; totals sum for progress).
+ * @param {unknown} raw
+ * @param {string} dayKey YYYY-MM-DD for stable legacy ids
+ */
+export function normalizeMacroDayEntry(raw, dayKey = "") {
+  if (!raw || typeof raw !== "object") return { meals: [] };
+  if (Array.isArray(raw.meals)) {
+    const meals = raw.meals.map(normalizeMacroMeal).filter(Boolean).slice(0, 80);
+    return { meals };
+  }
+  const p = macroFieldNumber(raw.protein);
+  const c = macroFieldNumber(raw.carbs);
+  const f = macroFieldNumber(raw.fat);
+  const cal = macroFieldNumber(raw.calories);
+  if (p + c + f + cal <= 0) return { meals: [] };
+  return {
+    meals: [
+      {
+        id: `legacy-${dayKey || "day"}`,
+        label: "Earlier log",
+        protein: Math.round(p),
+        carbs: Math.round(c),
+        fat: Math.round(f),
+        calories: Math.round(cal),
+        savedAt: "1970-01-01T00:00:00.000Z",
+      },
+    ],
+  };
+}
+
+/** @returns {{ protein: number, carbs: number, fat: number, calories: number }} */
+export function sumMacroDayTotals(dayEntry) {
+  const d = dayEntry && typeof dayEntry === "object" && Array.isArray(dayEntry.meals) ? dayEntry : { meals: [] };
+  return (d.meals || []).reduce(
+    (acc, m) => ({
+      protein: acc.protein + (m.protein || 0),
+      carbs: acc.carbs + (m.carbs || 0),
+      fat: acc.fat + (m.fat || 0),
+      calories: acc.calories + (m.calories || 0),
+    }),
+    { protein: 0, carbs: 0, fat: 0, calories: 0 }
+  );
+}
 
 export function formatHealthForCoach(health) {
   const h = normalizeHealth(health);
   const lines = [];
   const p = h.profile;
   if (healthProfileComplete(h)) {
+    const { feet, inches } = cmToFeetInches(p.heightCm);
+    const hStr = feet === "" ? `${p.heightCm}cm` : `${feet}ft ${inches}in (~${p.heightCm}cm)`;
+    const wLb = formatWeightLbFromKg(p.weightKg);
     lines.push(
-      `Body stats: age ${p.age}, ${p.heightCm}cm, ${p.weightKg}kg, goal ${p.goal}, activity x${p.activity}.`
+      `Body stats: age ${p.age}, height ${hStr}, weight ${wLb ? `${wLb} lb` : ""} (~${p.weightKg}kg), goal ${p.goal}, activity x${p.activity}.`
     );
   }
   if (h.macroTargets?.calories) {
@@ -341,12 +576,31 @@ export function formatHealthForCoach(health) {
     lines.push(`Recent weights (kg): ${lastW.map((e) => `${e.kg}@${e.at.slice(0, 10)}`).join(", ")}`);
   }
   if (p.goalWeightKg && p.weightKg) {
-    lines.push(`Goal weight: ${p.goalWeightKg}kg (from current ${p.weightKg}kg).`);
+    const gLb = formatWeightLbFromKg(p.goalWeightKg);
+    const cLb = formatWeightLbFromKg(p.weightKg);
+    lines.push(`Goal weight: ${gLb} lb (~${p.goalWeightKg}kg) from current ${cLb} lb (~${p.weightKg}kg).`);
   }
+  const progs = (h.programs || []).filter((p) => p.exercises?.length);
+  if (progs.length) {
+    lines.push(
+      `Saved workout programs: ${progs
+        .map((p) => {
+          const ex = p.exercises.slice(0, 6).join("; ");
+          return `${p.name} (${p.exercises.length} moves): ${ex}${p.exercises.length > 6 ? "…" : ""}`;
+        })
+        .join(" | ")}`
+    );
+  }
+  const wr = (h.weekRoutineProgramIds || [])
+    .map((id) => getProgramById(h, id))
+    .filter(Boolean)
+    .map((p) => p.name);
+  if (wr.length) lines.push(`Weekly routine order (for rotating gym tasks): ${wr.join(" → ")}.`);
+
   const mon = mondayKeyForDayKey(new Date().toISOString().slice(0, 10));
   const plan = getEffectiveWeekPlan(h, mon);
   const bits = DAY_KEYS.map((k) => (plan[k] && String(plan[k]).trim() ? `${k}: ${String(plan[k]).trim().slice(0, 120)}` : "")).filter(Boolean);
-  if (bits.length) lines.push(`This week's plan notes: ${bits.join(" | ")}`);
+  if (bits.length) lines.push(`Legacy week notes (if any): ${bits.join(" | ")}`);
   return lines.length ? lines.join("\n") : "Health module not filled in yet.";
 }
 

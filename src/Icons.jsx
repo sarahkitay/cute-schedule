@@ -416,6 +416,34 @@ export function DumbbellIcon({ className = "", style = {} }) {
   );
 }
 
+/** Macro / TDEE calculator — grid keypad silhouette (currentColor). */
+export function MacroCalculatorIcon({ className = "", style = {} }) {
+  return (
+    <svg
+      className={className}
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      opacity="0.9"
+      style={style}
+    >
+      <rect x="4" y="3" width="16" height="18" rx="3" ry="3" />
+      <rect x="7" y="6" width="3" height="3" rx="0.5" fill="currentColor" stroke="none" opacity="0.35" />
+      <rect x="11" y="6" width="3" height="3" rx="0.5" fill="currentColor" stroke="none" opacity="0.35" />
+      <rect x="15" y="6" width="3" height="3" rx="0.5" fill="currentColor" stroke="none" opacity="0.35" />
+      <rect x="7" y="11" width="3" height="3" rx="0.5" fill="currentColor" stroke="none" opacity="0.35" />
+      <rect x="11" y="11" width="3" height="3" rx="0.5" fill="currentColor" stroke="none" opacity="0.35" />
+      <rect x="15" y="11" width="3" height="3" rx="0.5" fill="currentColor" stroke="none" opacity="0.35" />
+      <rect x="7" y="16" width="11" height="3" rx="0.5" fill="currentColor" stroke="none" opacity="0.45" />
+    </svg>
+  );
+}
+
 export function MenuIcon({ className = "" }) {
   return (
     <svg

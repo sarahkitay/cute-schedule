@@ -5928,6 +5928,26 @@ textarea.input {
   gap: 10px 14px;
   margin-top: 10px;
 }
+.health-imperial-height-block {
+  grid-column: 1 / -1;
+}
+.health-imperial-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: flex-end;
+  margin-top: 6px;
+}
+.health-imperial-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 100px;
+  min-width: 88px;
+}
+.health-imperial-field .input {
+  width: 100%;
+}
 .health-macro-block {
   padding: 14px 16px;
   border-radius: var(--radius-panel, 16px);
@@ -6227,6 +6247,325 @@ html[data-theme="dark"] .health-workout-sheet {
 html[data-theme="dark"] .health-exercise-row {
   background: rgba(255, 255, 255, 0.06);
   border-color: var(--ink-border-soft);
+}
+
+.health-program-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.health-template-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-panel, 14px);
+  border: 2px solid color-mix(in srgb, var(--theme-primary) 38%, rgba(60, 48, 44, 0.1));
+}
+.health-template-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+.health-template-select {
+  min-width: 200px;
+  max-width: 100%;
+}
+
+.health-routine-chips {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.health-routine-chip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-btn, 12px);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent);
+}
+.health-routine-chip-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.health-routine-add-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  align-items: center;
+}
+.health-routine-add-row .input {
+  flex: 1 1 220px;
+  min-width: 160px;
+}
+.health-save-bundle-row {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.health-one-exercise-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+.health-one-exercise-row .input {
+  flex: 1 1 240px;
+  min-width: 160px;
+}
+.health-draft-exercises {
+  margin: 12px 0 0;
+  padding-left: 22px;
+}
+.health-draft-exercise {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-btn, 10px);
+  list-style: decimal;
+}
+.health-draft-exercise-text {
+  flex: 1 1 200px;
+  font-size: 14px;
+}
+.health-draft-exercise-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.health-draft-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.health-program-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.health-program-card {
+  padding: 12px 14px;
+  border-radius: var(--radius-panel, 14px);
+  border: 2px solid color-mix(in srgb, var(--theme-accent) 42%, rgba(60, 48, 44, 0.12));
+}
+.health-program-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.health-program-card-preview {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.health-program-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.health-paste-area {
+  width: 100%;
+  margin-top: 8px;
+  font-family: inherit;
+}
+
+.health-guided-sheet {
+  max-width: min(480px, 94vw);
+  padding: 20px 18px 16px;
+}
+.health-guided-step-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-soft);
+  margin: 0 0 8px;
+}
+.health-guided-exercise-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 14px;
+}
+.health-guided-done-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.health-guided-fields {
+  margin-bottom: 14px;
+}
+.health-guided-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.health-guided-footer {
+  flex-direction: column;
+  align-items: stretch;
+}
+.workout-picker-modal {
+  max-width: min(440px, 94vw);
+}
+.workout-picker-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+.workout-picker-radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.workout-picker-radio input {
+  margin-top: 3px;
+}
+
+.health-meal-save-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+  align-items: center;
+}
+.health-meal-list {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.health-meal-list-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-btn, 12px);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+.health-macro-calc-card--open {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, rgba(60, 48, 44, 0.12));
+}
+.health-macro-calc-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.health-macro-calc-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: var(--radius-btn, 12px);
+  border: 2px solid color-mix(in srgb, var(--theme-primary) 40%, rgba(60, 48, 44, 0.1));
+  background: color-mix(in srgb, var(--theme-primary, #f5d5d0) 8%, rgba(255, 250, 249, 0.75));
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  cursor: pointer;
+}
+.health-macro-calc-toggle:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+}
+.health-macro-calc-toggle-text {
+  flex: 1;
+}
+.health-macro-calc-chev {
+  opacity: 0.55;
+  font-size: 12px;
+}
+.health-macro-calc-compact-meta {
+  margin: 0 0 4px 4px;
+  font-size: 12px;
+}
+.health-macro-calc-body--hidden {
+  display: none;
+}
+.health-macro-calc-body {
+  padding-top: 4px;
+}
+
+.health-page-bottom-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 14px 16px;
+  border-radius: var(--radius-panel, 16px);
+  border: 2px solid color-mix(in srgb, var(--theme-accent) 38%, rgba(60, 48, 44, 0.1));
+}
+.health-overview-btn {
+  flex-shrink: 0;
+}
+.health-overview-hint {
+  margin: 0;
+  flex: 1 1 200px;
+}
+.health-overview-modal {
+  max-width: min(520px, 94vw);
+  max-height: min(80vh, 640px);
+  overflow: auto;
+  padding: 18px;
+}
+.health-overview-table-wrap {
+  margin-top: 12px;
+  overflow-x: auto;
+}
+.health-overview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.health-overview-table th,
+.health-overview-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+.health-overview-table th {
+  font-weight: 700;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
 }
 
 /* -------------------------------------------------------------------------- */
