@@ -7,8 +7,16 @@ import {
   CheckIcon, FinanceIcon, BulletIcon
 } from "./Icons";
 import { Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import { apiUrl } from "./apiBase";
-import { notificationService, bootstrapNativePushOnStartup, subscribeNativePushDebug, getNativePushDebugSnapshot } from "./notifications";
+import {
+  notificationService,
+  bootstrapNativePushOnStartup,
+  subscribeNativePushDebug,
+  getNativePushDebugSnapshot,
+  resyncIosTaskLocalNotifications,
+} from "./notifications";
+import { buildTaskPushReminderEntriesForTask, normalizeTaskReminderFields, TASK_REMINDER_BEFORE_OPTIONS } from "./taskReminderModel.js";
 import { generateCompletionMessage, checkEnergyBalance } from "./completionRitual";
 import { 
   getTimeOfDay, 
@@ -980,7 +988,24 @@ function ProgressSegments({ total, done }) {
 }
 
 // Ultra-minimal hour card with Daily Progress Type/Details mode
-function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onToggleTask, onToggleEnergyLevel, onDeleteTask, onDeleteHour, onMoveToTomorrow, onOpenDropdown, taskDropdown, expandedTaskKey, onExpandTask, onOpenGroceryList, mode = "type" }) {
+function HourCard({
+  hourKey,
+  tasksByCat,
+  categories = DEFAULT_CATEGORIES,
+  onToggleTask,
+  onToggleEnergyLevel,
+  onDeleteTask,
+  onDeleteHour,
+  onMoveToTomorrow,
+  onOpenDropdown,
+  taskDropdown,
+  expandedTaskKey,
+  onExpandTask,
+  onOpenGroceryList,
+  mode = "type",
+  dayKey,
+  onPatchTaskReminder,
+}) {
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   const complete = hourIsComplete(tasksByCat, cats);
   const [open, setOpen] = useState(true);
@@ -1150,6 +1175,55 @@ function HourCard({ hourKey, tasksByCat, categories = DEFAULT_CATEGORIES, onTogg
                         </span>
                       )}
                     </div>
+                    {typeof dayKey === "string" && typeof onPatchTaskReminder === "function" ? (
+                      <div className="item-detail-reminders" style={{ marginTop: 10, fontSize: 13 }}>
+                        {(() => {
+                          const r = normalizeTaskReminderFields(t);
+                          return (
+                            <>
+                              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                                <input
+                                  type="checkbox"
+                                  checked={r.remindersEnabled}
+                                  onChange={(e) => onPatchTaskReminder(dayKey, hourKey, t.category, t.id, { remindersEnabled: e.target.checked })}
+                                />
+                                Remind me
+                              </label>
+                              <label style={{ display: "block", marginBottom: 6, opacity: r.remindersEnabled ? 1 : 0.45 }}>
+                                Before task starts
+                                <select
+                                  className="input"
+                                  style={{ marginLeft: 8, maxWidth: 140 }}
+                                  disabled={!r.remindersEnabled}
+                                  value={r.remindBeforeMinutes == null ? "" : String(r.remindBeforeMinutes)}
+                                  onChange={(e) => {
+                                    const v = e.target.value;
+                                    onPatchTaskReminder(dayKey, hourKey, t.category, t.id, {
+                                      remindBeforeMinutes: v === "" ? null : parseInt(v, 10),
+                                    });
+                                  }}
+                                >
+                                  {TASK_REMINDER_BEFORE_OPTIONS.map((o) => (
+                                    <option key={String(o.value) + o.label} value={o.value == null ? "" : String(o.value)}>
+                                      {o.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: 8, opacity: r.remindersEnabled ? 1 : 0.45 }}>
+                                <input
+                                  type="checkbox"
+                                  disabled={!r.remindersEnabled}
+                                  checked={r.remindAtStart}
+                                  onChange={(e) => onPatchTaskReminder(dayKey, hourKey, t.category, t.id, { remindAtStart: e.target.checked })}
+                                />
+                                Also notify me when task starts
+                              </label>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : null}
                     <div className="item-detail-actions">
                       <button type="button" className="btn btn-sm" onClick={() => { onMoveToTomorrow(hourKey, t.category, t.id); onExpandTask(null); }}>
                         <CalendarIcon style={{ width: 14, height: 14, marginRight: 4 }} /> Move to tomorrow
@@ -1608,7 +1682,11 @@ export default function App() {
       if (ok) {
         notificationService.showNotification(
           "Bill due today",
-          { body: billsDue.map((b) => b.name + (b.amount ? ` ($${Number(b.amount).toFixed(2)})` : "")).join(", "), tag: "bill-due-" + today }
+          {
+            body: billsDue.map((b) => b.name + (b.amount ? ` ($${Number(b.amount).toFixed(2)})` : "")).join(", "),
+            tag: "bill-due-" + today,
+            preferWebNotificationOnNative: true,
+          }
         );
         localStorage.setItem(BILL_REMINDER_KEY, today);
       }
@@ -1628,7 +1706,11 @@ export default function App() {
       if (ok) {
         notificationService.showNotification(
           "Payment due today",
-          { body: subsDue.map((s) => s.name + (s.amount ? ` ($${Number(s.amount).toFixed(2)})` : "")).join(", "), tag: "sub-due-" + today }
+          {
+            body: subsDue.map((s) => s.name + (s.amount ? ` ($${Number(s.amount).toFixed(2)})` : "")).join(", "),
+            tag: "sub-due-" + today,
+            preferWebNotificationOnNative: true,
+          }
         );
         localStorage.setItem(SUBSCRIPTION_REMINDER_KEY, today);
       }
@@ -1801,26 +1883,55 @@ export default function App() {
 
     const now = Date.now();
     const maxAt = now + 48 * 60 * 60 * 1000;
+    const seenTags = new Set(list.map((x) => x.tag).filter(Boolean));
     for (let dayOffset = 0; dayOffset <= 1; dayOffset++) {
       const dayKey = dayOffset === 0 ? today : addDaysKey(today, 1);
       const hours = appState.days?.[dayKey]?.hours || {};
       const tasks = allTasksInDay(hours, customCategories).filter((t) => !t.done);
       for (const t of tasks) {
-        const atDate = new Date(dayKey + "T" + t.hour + ":00");
-        const atTime = atDate.getTime();
-        if (atTime >= now && atTime <= maxAt) {
-          list.push({
-            at: atDate.toISOString(),
-            title: "When you're ready, here's what you planned.",
-            body: t.text + (t.category ? ` (${t.category})` : ""),
-            tag: "reminder-" + t.id,
-          });
+        const rows = buildTaskPushReminderEntriesForTask({
+          task: t,
+          dayKey,
+          hourKey: t.hour,
+          nowMs: now,
+          maxAtMs: maxAt,
+        });
+        for (const row of rows) {
+          if (row.tag && !seenTags.has(row.tag)) {
+            seenTags.add(row.tag);
+            list.push(row);
+          }
+        }
+        const { remindersEnabled } = normalizeTaskReminderFields(t);
+        if (!remindersEnabled) {
+          const atDate = new Date(dayKey + "T" + t.hour + ":00");
+          const atTime = atDate.getTime();
+          if (atTime >= now && atTime <= maxAt) {
+            const tag = "reminder-legacy-" + t.id;
+            if (!seenTags.has(tag)) {
+              seenTags.add(tag);
+              list.push({
+                at: atDate.toISOString(),
+                title: "When you're ready, here's what you planned.",
+                body: t.text + (t.category ? ` (${t.category})` : ""),
+                tag,
+              });
+            }
+          }
         }
       }
     }
     list.push(...habitReminderPushEntries(habitTracker.habits, today, now, maxAt));
     return list;
   }, [realTodayKey, finance.bills, finance.subscriptions, appState.days, customCategories, habitTracker.habits]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return;
+    const tid = setTimeout(() => {
+      resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories);
+    }, 700);
+    return () => clearTimeout(tid);
+  }, [appState.days, realTodayKey, customCategories]);
 
   const habitsNeedCheckIn = useMemo(() => {
     const habits = habitTracker.habits || [];
@@ -2133,6 +2244,7 @@ export default function App() {
       notificationService.showNotification(`Happy birthday${name ? `, ${name}` : ""}!`, {
         body: "Hope you have a gentle, good day.",
         tag: "birthday-" + today,
+        preferWebNotificationOnNative: true,
       });
       try {
         localStorage.setItem(BIRTHDAY_NOTIF_KEY, today);
@@ -2200,7 +2312,7 @@ export default function App() {
     notificationService.checkPermission();
   }, []);
 
-  // Capacitor: attach push listeners; register with APNs if permission already granted (no extra prompt).
+  // Capacitor: FCM listeners + token refresh; local notifications resync from app state (see useEffect on appState.days).
   useEffect(() => {
     if (!isCapacitorNativeApp()) return;
     bootstrapNativePushOnStartup();
@@ -2211,6 +2323,27 @@ export default function App() {
     if (!isCapacitorNativeApp()) return;
     setNativePushDebug(getNativePushDebugSnapshot());
     return subscribeNativePushDebug(setNativePushDebug);
+  }, []);
+
+  useEffect(() => {
+    if (!isCapacitorNativeApp() || Capacitor.getPlatform() !== "ios") return;
+    let handle;
+    (async () => {
+      handle = await LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
+        const extra = action?.notification?.extra;
+        if (!extra || extra.proyouSource !== "task_reminder") return;
+        const dk = typeof extra.dayKey === "string" ? extra.dayKey : "";
+        const hk = typeof extra.hourKey === "string" ? extra.hourKey : "";
+        const cat = typeof extra.category === "string" ? extra.category : "";
+        const tid = extra.taskId != null ? String(extra.taskId) : "";
+        if (dk) setSelectedDayKey(dk);
+        setTab("today");
+        if (hk && cat && tid) setExpandedTaskKey(`${hk}-${cat}-${tid}`);
+      });
+    })();
+    return () => {
+      if (handle && typeof handle.remove === "function") handle.remove();
+    };
   }, []);
 
   /** Hard-coded URL + full error fields for WKWebView / allowNavigation debugging (see Xcode console). */
@@ -2317,6 +2450,7 @@ export default function App() {
                   body: "Quick check-in when you’re ready.",
                   tag,
                   requireInteraction: false,
+                  preferWebNotificationOnNative: true,
                 });
               }
             }
@@ -2330,6 +2464,7 @@ export default function App() {
                 body: "Reminder: log it on Today when you can.",
                 tag,
                 requireInteraction: false,
+                preferWebNotificationOnNative: true,
               });
             }
           }
@@ -2685,6 +2820,26 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tKey, realTodayKey, prog.total, prog.done, tab]);
 
+  function patchTaskReminderFields(dayKey, hourKey, category, taskId, partial) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dayKey || "").trim())) return;
+    setAppState((prev) => {
+      const day = prev.days[dayKey];
+      if (!day?.hours) return prev;
+      const hours = { ...day.hours };
+      const byCat = { ...(hours[hourKey] || {}) };
+      const list = (byCat[category] || []).map((t) => {
+        if (t.id !== taskId) return t;
+        let next = { ...t, ...partial };
+        if (partial.remindersEnabled === false) {
+          next = { ...next, remindAtStart: false, remindBeforeMinutes: null };
+        }
+        return next;
+      });
+      hours[hourKey] = { ...byCat, [category]: list };
+      return { ...prev, days: { ...prev.days, [dayKey]: { ...day, hours } } };
+    });
+  }
+
   function ensureHour(hourKey, optionalDayKey) {
     const dk =
       optionalDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(optionalDayKey).trim())
@@ -2739,17 +2894,20 @@ export default function App() {
       const hours = { ...(day.hours || {}) };
       const byCat = hours[hourKey] || emptySlot(customCategories);
 
-      const nextTask = { 
-        id: newId, 
-        text, 
-        done: false, 
-        energyLevel, 
-        completedAt: null, 
+      const nextTask = {
+        id: newId,
+        text,
+        done: false,
+        energyLevel,
+        completedAt: null,
         feeling: null,
         repeat: repeatType,
         repeatUntil: repeatType !== REPEAT_OPTIONS.NONE ? null : null,
         originalTaskId: sourceTaskId,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        remindersEnabled: false,
+        remindAtStart: false,
+        remindBeforeMinutes: null,
       };
       if (ex.coachSuggestionId) {
         nextTask.coachSuggestionId = String(ex.coachSuggestionId);
@@ -2774,12 +2932,6 @@ export default function App() {
           localStorage.setItem("repeatedTasks", JSON.stringify(repeatedTasks));
         } catch {}
       }
-      
-      // Schedule notification for task reminder
-      if (isSameDayKey(dayKeyForAdd, realTodayKey)) {
-        notificationService.scheduleTaskReminder(nextTask, hourKey, category);
-      }
-      
       return {
         ...prev,
         days: {
@@ -4488,6 +4640,8 @@ export default function App() {
                             setGroceryListPrompt(null);
                           }}
                           mode={mode}
+                          dayKey={tKey}
+                          onPatchTaskReminder={patchTaskReminderFields}
                         />
                       </div>
                     </div>
@@ -6567,7 +6721,7 @@ export default function App() {
                 <div className="settings-section">
                   <label className="label">Native push (iOS app)</label>
                   <p className="settings-hint">
-                    Uses Apple push (APNs), not the browser service worker. Server must have APNs .p8 credentials; reminders sync like web when you enable below.
+                    Uses Firebase Cloud Messaging plus on-device local notifications for exact task times (not the browser service worker). Enable below to register and sync reminders to the server as a backup.
                   </p>
                   <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8 }}>
                     <button
@@ -6591,7 +6745,7 @@ export default function App() {
                       onClick={async () => {
                         const r = await notificationService.sendNativeTestPush();
                         if (r?.ok) {
-                          alert("Test push sent. Check Notification Center (and server APNs env if it failed).");
+                          alert("Test push sent. Check Notification Center (and Firebase / FCM env if it failed).");
                         } else {
                           const parts = [
                             r?.hint || r?.error || "Test send failed.",
@@ -6683,6 +6837,29 @@ export default function App() {
                         {nativePushDebug.lastTestSendMessageId ? (
                           <div>send test messageId: {nativePushDebug.lastTestSendMessageId}</div>
                         ) : null}
+                      </div>
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.12)" }}>
+                        <div style={{ fontWeight: 600 }}>Local task reminders (iOS)</div>
+                        <div>local notification permission: {String(nativePushDebug.localNotificationPermission ?? "—")}</div>
+                        <div>
+                          scheduled local reminder count:{" "}
+                          {nativePushDebug.scheduledLocalReminderCount == null
+                            ? "—"
+                            : String(nativePushDebug.scheduledLocalReminderCount)}
+                        </div>
+                        {nativePushDebug.lastLocalScheduleError ? (
+                          <div style={{ color: "var(--color-danger, #c0392b)" }}>
+                            last local schedule error: {nativePushDebug.lastLocalScheduleError}
+                          </div>
+                        ) : (
+                          <div>last local schedule error: —</div>
+                        )}
+                        <div>
+                          last server reminder sync HTTP:{" "}
+                          {nativePushDebug.lastRemindersNativeStatus == null
+                            ? "—"
+                            : String(nativePushDebug.lastRemindersNativeStatus)}
+                        </div>
                       </div>
                       {nativePushDebug.apiOriginResolved != null ? (
                         <>

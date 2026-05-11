@@ -4,6 +4,9 @@ import { Capacitor } from "@capacitor/core";
 import { FirebaseMessaging } from "@capacitor-firebase/messaging";
 import { apiUrl, publicUrl, getApiBaseDebug, NATIVE_FALLBACK_API_ORIGIN } from "./apiBase";
 import { isValidFcmRegistrationToken, normalizeFcmRegistrationToken } from "../api/lib/fcmRegistrationToken.js";
+import { registerIosLocalTaskNotifDebugReporter } from "./nativeTaskLocalNotifications.js";
+
+export { resyncIosTaskLocalNotifications } from "./nativeTaskLocalNotifications.js";
 
 /** @type {Set<(s: Record<string, unknown>) => void>} */
 const nativeDebugSubscribers = new Set();
@@ -50,6 +53,10 @@ export const nativePushDebugDefault = () => ({
   apiOriginFromEnv: null,
   apiOriginResolved: null,
   apiOriginSource: null,
+  /** @capacitor/local-notifications (iOS task reminders) */
+  localNotificationPermission: null,
+  scheduledLocalReminderCount: null,
+  lastLocalScheduleError: null,
 });
 
 /** @type {ReturnType<typeof nativePushDebugDefault>} */
@@ -140,6 +147,9 @@ function clearNativePushRegistrationForFreshRegister() {
   nativePushDebug.lastTokenPrefix = null;
   nativePushDebug.lastFcmMessageId = null;
   nativePushDebug.lastTestSendMessageId = null;
+  nativePushDebug.localNotificationPermission = null;
+  nativePushDebug.scheduledLocalReminderCount = null;
+  nativePushDebug.lastLocalScheduleError = null;
   emitNativeDebug();
 }
 
@@ -406,6 +416,10 @@ async function attachNativePushListenersOnce() {
  */
 export async function bootstrapNativePushOnStartup() {
   if (typeof window === "undefined" || !Capacitor.isNativePlatform()) return;
+  registerIosLocalTaskNotifDebugReporter((partial) => {
+    nativePushDebug = { ...nativePushDebug, ...partial };
+    emitNativeDebug();
+  });
   hydrateNativeDeviceKeyFromStorage();
   await attachNativePushListenersOnce();
   try {
@@ -628,6 +642,10 @@ class NotificationService {
   }
 
   showNotification(title, options = {}) {
+    /** iOS/Android native: WebView `Notification` is unreliable; use local/FCM for product nudges. */
+    if (Capacitor.isNativePlatform() && options.preferWebNotificationOnNative !== true) {
+      return null;
+    }
     if (!("Notification" in window) || this.permission !== "granted") {
       return null;
     }
@@ -649,6 +667,9 @@ class NotificationService {
   }
 
   scheduleTaskReminder(task, hour, category) {
+    if (Capacitor.isNativePlatform()) {
+      return null;
+    }
     try {
       const now = new Date();
       const [hours, minutes] = hour.split(":").map(Number);
