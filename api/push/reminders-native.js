@@ -17,7 +17,7 @@ function extractIdToken(req, body) {
 }
 
 /**
- * POST { token, platform?, pushProvider?, reminders, idToken? } — same reminder shape as /api/push/reminders; keys by Firebase uid when token verifies.
+ * POST { token, platform?, pushProvider?, reminders, idToken? } - same reminder shape as /api/push/reminders; keys by Firebase uid when token verifies.
  */
 export default async function handler(req, res) {
   if (req.method === "OPTIONS") {

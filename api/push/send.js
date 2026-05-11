@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     if (!validDeviceKey) {
       return res.status(400).json({
         error: "Missing or invalid deviceKey",
-        hint: "Send deviceKey from POST /api/push/register-native (native:ios:… or native:user:…). Raw FCM token is not accepted here — the server loads the token from Redis.",
+        hint: "Send deviceKey from POST /api/push/register-native (native:ios:… or native:user:…). Raw FCM token is not accepted here - the server loads the token from Redis.",
       });
     }
 

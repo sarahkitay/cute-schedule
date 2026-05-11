@@ -3,7 +3,7 @@ import ReactDOM, { flushSync } from "react-dom";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
   SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
-  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, FireIcon, MenuIcon,
+  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, MenuIcon,
   CheckIcon, FinanceIcon, BulletIcon
 } from "./Icons";
 import { Capacitor } from "@capacitor/core";
@@ -41,6 +41,7 @@ import {
   healthProfileComplete,
   normalizeHealth,
   normalizeNavVisibility,
+  normalizeDockOrder,
 } from "./health/healthModel";
 import {
   COACH_SUGGESTION_SOURCE,
@@ -61,6 +62,9 @@ import {
   appendTaskBehaviorEvent,
   averageOverArchivedMonths,
   buildFinanceHintsForCoach,
+  buildScheduleStreakCoachLine,
+  computeCalendarCompletionStreak,
+  rollingSevenDaySchedulePerfect,
   DEFAULT_GROCERY_KEYWORDS,
   financeDecalForCurrentMonth,
   financeMonthKeyFromDayKey,
@@ -253,7 +257,7 @@ const NOTIFICATION_PREFS_DEFAULTS = Object.freeze({
   taskRemindBeforeEnabled: true,
   taskRemindAtStartEnabled: true,
   taskRemindBeforeMinutes: 5,
-  /** daily | hourly | every30 | custom — custom uses each habit’s Hourly / Choose times from saved data */
+  /** daily | hourly | every30 | custom - custom uses each habit’s Hourly / Choose times from saved data */
   habitReminderMode: "custom",
   habitQuietStart: "09:00",
   habitQuietEnd: "22:00",
@@ -352,6 +356,7 @@ function loadProfileFromDisk() {
     ...PROFILE_REMINDER_DEFAULTS,
     ...PROFILE_COMPLETION_DEFAULTS,
     navVisibility: normalizeNavVisibility(null),
+    dockOrder: normalizeDockOrder(null),
     notificationPrefs: normalizeNotificationPrefs(null),
     groceryKeywords: null,
     grocerySavedLists: [],
@@ -381,6 +386,7 @@ function loadProfileFromDisk() {
       completionAffirmationsOn: typeof p.completionAffirmationsOn === "boolean" ? p.completionAffirmationsOn : true,
       completionAffirmationTone,
       navVisibility: normalizeNavVisibility(p.navVisibility),
+      dockOrder: normalizeDockOrder(p.dockOrder),
       notificationPrefs: normalizeNotificationPrefs(p.notificationPrefs),
       groceryKeywords: gkw,
       grocerySavedLists: normalizeSavedGroceryLists(p.grocerySavedLists),
@@ -422,6 +428,9 @@ function mergeCloudProfile(prev, incoming) {
       ...normalizeNavVisibility(base.navVisibility),
       ...(typeof inc.navVisibility === "object" && inc.navVisibility ? inc.navVisibility : {}),
     }),
+    dockOrder: normalizeDockOrder(
+      Array.isArray(inc.dockOrder) && inc.dockOrder.length ? inc.dockOrder : base.dockOrder
+    ),
     notificationPrefs: normalizeNotificationPrefs({
       ...normalizeNotificationPrefs(base.notificationPrefs),
       ...(typeof inc.notificationPrefs === "object" && inc.notificationPrefs ? inc.notificationPrefs : {}),
@@ -466,8 +475,19 @@ const BEDTIME_ROUTINE = [
   { id: "skincare", text: "Skincare routine" },
   { id: "teeth", text: "Brush your teeth" },
   { id: "tea", text: "Make tea" },
-  { id: "chill", text: "Read or draw in bed" },
+  { id: "chill", text: "Read in bed" },
 ];
+
+/** Legacy default copy removed "draw"; normalize persisted lists that still match. */
+function normalizeBedtimeRoutineTemplate(rows) {
+  if (!Array.isArray(rows)) return rows;
+  return rows.map((r) => {
+    if (!r || typeof r !== "object") return r;
+    const text = String(r.text || "").trim();
+    if (r.id === "chill" && text === "Read or draw in bed") return { ...r, text: "Read in bed" };
+    return r;
+  });
+}
 
 const MORNING_ROUTINE = [
   { id: "wake", text: "Wake up & stretch" },
@@ -946,7 +966,7 @@ function computeDropdownPosition(rect, opts = {}) {
   const vh = typeof window !== "undefined" ? window.innerHeight : 700;
   const maxH = opts.maxHeight ?? 280;
   const panelW = Math.min(opts.panelWidth ?? 200, vw - pad * 2);
-  /** Prefer right edge of anchor (kebab) so the panel extends left — avoids clipping on the right. */
+  /** Prefer right edge of anchor (kebab) so the panel extends left - avoids clipping on the right. */
   let left = rect.right - panelW;
   const minLeft = pad;
   const maxLeft = vw - pad - panelW;
@@ -1974,8 +1994,15 @@ function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError }) {
   );
 }
 
-/** Dock tabs (except Today) that can be hidden from nav — Today shows a CTA above Today's Capacity when hidden. */
-const DOCK_FALLBACK_ORDER = ["list", "monthly", "coach", "notes", "finance", "health"];
+/** Dock tabs (except Today) that can be hidden from nav - Today shows a CTA above Today's Capacity when hidden. */
+const DOCK_NAV_SETTINGS_ROWS = [
+  { id: "list", label: "List" },
+  { id: "monthly", label: "Monthly" },
+  { id: "coach", label: "Coach (pattern insights)" },
+  { id: "notes", label: "Notes" },
+  { id: "finance", label: "Finance" },
+  { id: "health", label: "Health" },
+];
 
 const DOCK_FALLBACK_COPY = {
   list: {
@@ -2035,7 +2062,8 @@ export default function App() {
         return raw ? JSON.parse(raw) : null;
       } catch { return null; }
     })();
-    const template = routineTemplate && routineTemplate.length ? routineTemplate : BEDTIME_ROUTINE;
+    const template =
+      routineTemplate && routineTemplate.length ? normalizeBedtimeRoutineTemplate(routineTemplate) : BEDTIME_ROUTINE;
     const todayK = todayKey();
     if (migrated) {
       const dayKey = migrated.bedtimeRoutineDayKey;
@@ -2079,7 +2107,7 @@ export default function App() {
       const raw = localStorage.getItem(ROUTINE_TEMPLATE_KEY);
       if (raw) {
         const arr = JSON.parse(raw);
-        return Array.isArray(arr) && arr.length ? arr : BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+        return Array.isArray(arr) && arr.length ? normalizeBedtimeRoutineTemplate(arr) : BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
       }
     } catch {}
     return BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
@@ -2166,6 +2194,8 @@ export default function App() {
   }, []);
 
   const [taskLogRev, setTaskLogRev] = useState(0);
+  const [taskAveragesOpen, setTaskAveragesOpen] = useState(false);
+  const [taskStatsExplainOpen, setTaskStatsExplainOpen] = useState(false);
   useEffect(() => {
     const off = subscribeTaskBehaviorDirty(() => setTaskLogRev((r) => r + 1));
     return off;
@@ -2728,7 +2758,7 @@ export default function App() {
         if (data.finance != null) setFinance(normalizeFinanceLoaded(data.finance));
         if (data.profile != null) setProfile((prev) => mergeCloudProfile(prev, data.profile));
         if (data.theme != null) setTheme(data.theme);
-        if (data.routineTemplate != null) setRoutineTemplate(data.routineTemplate);
+        if (data.routineTemplate != null) setRoutineTemplate(normalizeBedtimeRoutineTemplate(data.routineTemplate));
         if (data.morningRoutineTemplate != null) setMorningRoutineTemplate(data.morningRoutineTemplate);
         if (data.routineSchedule != null) setRoutineSchedule(data.routineSchedule);
         if (data.coachMeta != null) setCoachMeta(data.coachMeta);
@@ -2871,6 +2901,9 @@ export default function App() {
     document.documentElement.style.setProperty('--gradient-cta', theme.gradient);
     document.documentElement.style.setProperty('--theme-bg-gradient', theme.backgroundGradient || 'linear-gradient(160deg, #F8F5F4 0%, #F1E8E6 100%)');
     document.documentElement.style.setProperty('--theme-bg-glow', theme.backgroundGlow || 'rgba(232, 180, 192, 0.15)');
+    const darkUi = theme?.name === "Midnight" || theme?.name === "Mocha";
+    if (darkUi) document.documentElement.dataset.theme = "dark";
+    else delete document.documentElement.dataset.theme;
   }, [theme]);
 
   useEffect(() => {
@@ -4196,7 +4229,8 @@ export default function App() {
         done: t.done,
         energyLevel: t.energyLevel,
       }));
-      const taskBehaviorSummary = formatTaskBehaviorForCoach(realTodayKey);
+      const streakCoach = buildScheduleStreakCoachLine(appState.days, realTodayKey, finance.subscriptions, customCategories);
+      const taskBehaviorSummary = [formatTaskBehaviorForCoach(realTodayKey), streakCoach].filter(Boolean).join(" | ");
       const financeHints = buildFinanceHintsForCoach(finance);
       const coachIntelSnapshot = buildCoachIntelligenceSnapshot({
         emotionalState,
@@ -4768,6 +4802,14 @@ export default function App() {
     return summarizeTaskBehaviorForHome(realTodayKey);
   }, [realTodayKey, taskLogRev]);
 
+  const scheduleStreakStats = useMemo(
+    () => ({
+      streak: computeCalendarCompletionStreak(appState.days, realTodayKey, finance.subscriptions, customCategories),
+      weekPerfect: rollingSevenDaySchedulePerfect(appState.days, realTodayKey, finance.subscriptions, customCategories),
+    }),
+    [appState.days, realTodayKey, finance.subscriptions, customCategories]
+  );
+
   async function handleAuthSignOut() {
     setAuthBusy(true);
     try {
@@ -4844,23 +4886,72 @@ export default function App() {
     habitTracker,
   };
 
+  const moveDockNavItem = useCallback((direction, id) => {
+    setProfile((p) => {
+      const cur = normalizeDockOrder(p.dockOrder);
+      const i = cur.indexOf(id);
+      if (i < 0) return p;
+      const j = direction === "up" ? i - 1 : i + 1;
+      if (j < 0 || j >= cur.length) return p;
+      const next = cur.slice();
+      const t = next[i];
+      next[i] = next[j];
+      next[j] = t;
+      return { ...p, dockOrder: next };
+    });
+  }, []);
+
+  const openHealthCalendarFromHealth = useCallback((mondayKey) => {
+    const d = new Date(`${mondayKey}T12:00:00`);
+    if (!Number.isNaN(d.getTime())) {
+      setMonthCalendarMonth({ year: d.getFullYear(), month: d.getMonth() });
+    }
+    setShowMonthCalendar(true);
+  }, []);
+
+  const scheduleWorkoutFromHealth = useCallback(
+    (title, details) => {
+      setTab("today");
+      const cat =
+        (customCategories && customCategories.length && customCategories[0]) || "Personal";
+      const hour = "18:00";
+      ensureHour(hour, realTodayKey);
+      const body = [title, details].filter(Boolean).join("\n").trim();
+      if (body) {
+        addTask(hour, cat, body, REPEAT_OPTIONS.NONE, null, {
+          taskType: "workout",
+          targetDayKey: realTodayKey,
+          energyLevel: "MEDIUM",
+        });
+      }
+    },
+    [customCategories, realTodayKey],
+  );
+
   const mainDockItems = useMemo(() => {
     const nv = normalizeNavVisibility(profile.navVisibility);
-    return [
-      { id: "today", label: "Today", headerLabel: "Today", icon: CalendarIcon },
-      { id: "list", label: "List", headerLabel: "List", icon: MenuIcon },
-      { id: "monthly", label: "Monthly Objectives", headerLabel: "Monthly", icon: CalendarIcon },
-      { id: "coach", label: "Coach", headerLabel: "Pattern insights", icon: SparkleIcon },
-      { id: "notes", label: "Notes", headerLabel: "Notes", icon: MoonIcon },
-      { id: "finance", label: "Finance", headerLabel: "Finance", icon: FinanceIcon },
-      { id: "health", label: "Health", headerLabel: "Health", icon: FireIcon },
-    ].filter((item) => nv[item.id] === true);
-  }, [profile.navVisibility]);
+    const order = normalizeDockOrder(profile.dockOrder);
+    const dockMeta = {
+      today: { id: "today", label: "Today", headerLabel: "Today", icon: CalendarIcon },
+      list: { id: "list", label: "List", headerLabel: "List", icon: MenuIcon },
+      monthly: { id: "monthly", label: "Monthly", headerLabel: "Monthly", icon: CalendarIcon },
+      coach: { id: "coach", label: "Coach", headerLabel: "Pattern insights", icon: SparkleIcon },
+      notes: { id: "notes", label: "Notes", headerLabel: "Notes", icon: MoonIcon },
+      finance: { id: "finance", label: "Finance", headerLabel: "Finance", icon: FinanceIcon },
+      health: { id: "health", label: "Health", headerLabel: "Health", icon: DumbbellIcon },
+    };
+    const items = [dockMeta.today];
+    for (const oid of order) {
+      if (nv[oid] === true && dockMeta[oid]) items.push(dockMeta[oid]);
+    }
+    return items;
+  }, [profile.navVisibility, profile.dockOrder]);
 
   const todayHiddenDockTabs = useMemo(() => {
     const nv = normalizeNavVisibility(profile.navVisibility);
-    return DOCK_FALLBACK_ORDER.filter((id) => nv[id] !== true);
-  }, [profile.navVisibility]);
+    const ord = normalizeDockOrder(profile.dockOrder);
+    return ord.filter((dockId) => nv[dockId] !== true);
+  }, [profile.navVisibility, profile.dockOrder]);
 
   const firebaseOn = isFirebaseEnabled();
   const authWaiting = firebaseOn && !firebaseAuthResolved;
@@ -4869,10 +4960,10 @@ export default function App() {
   useEffect(() => {
     const nv = normalizeNavVisibility(profile.navVisibility);
     if (nv[tab] === true) return;
-    const order = ["today", "list", "monthly", "coach", "notes", "finance", "health"];
+    const order = ["today", ...normalizeDockOrder(profile.dockOrder)];
     const next = order.find((id) => nv[id] === true) || "today";
     if (next !== tab) setTab(next);
-  }, [tab, profile.navVisibility]);
+  }, [tab, profile.navVisibility, profile.dockOrder]);
 
   useEffect(() => {
     if (authWaiting || showLoginGate || onboardingActive) return;
@@ -5113,25 +5204,39 @@ export default function App() {
           <>
             {/* Add bar: Type (natural language) vs Details (time, category, repeat, energy); above the add field */}
             <div className="quick-add-stack scroll-reveal">
-              <div className="quick-add-entry-mode" role="tablist" aria-label="Add task entry">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={quickEntryMode === "type"}
-                  className="quick-add-entry-mode-btn"
-                  onClick={() => setQuickEntryMode("type")}
-                >
-                  Type
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={quickEntryMode === "details"}
-                  className="quick-add-entry-mode-btn"
-                  onClick={() => setQuickEntryMode("details")}
-                >
-                  Details
-                </button>
+              <div className="quick-add-top-bar">
+                <div className="quick-add-entry-mode" role="tablist" aria-label="Add task entry">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={quickEntryMode === "type"}
+                    className="quick-add-entry-mode-btn"
+                    onClick={() => setQuickEntryMode("type")}
+                  >
+                    Type
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={quickEntryMode === "details"}
+                    className="quick-add-entry-mode-btn"
+                    onClick={() => setQuickEntryMode("details")}
+                  >
+                    Details
+                  </button>
+                </div>
+                {quickEntryMode === "type" ? (
+                  <button
+                    type="button"
+                    className="quick-add-help-toggle quick-add-help-toggle--type-trailing"
+                    aria-expanded={quickAddTypeHelpOpen}
+                    aria-controls="quick-add-type-help"
+                    id="quick-add-type-help-toggle"
+                    onClick={() => setQuickAddTypeHelpOpen((o) => !o)}
+                  >
+                    {quickAddTypeHelpOpen ? "Hide type tips" : "Type tips"}
+                  </button>
+                ) : null}
               </div>
               {quickEntryMode === "type" ? (
                 <>
@@ -5155,25 +5260,18 @@ export default function App() {
                       {quickAddJustAdded ? "Added" : "Add"}
                     </button>
                   </form>
-                  <div className="quick-add-help-wrap">
-                    <button
-                      type="button"
-                      className="quick-add-help-toggle"
-                      aria-expanded={quickAddTypeHelpOpen}
-                      aria-controls="quick-add-type-help"
-                      id="quick-add-type-help-toggle"
-                      onClick={() => setQuickAddTypeHelpOpen((o) => !o)}
+                  {quickAddTypeHelpOpen ? (
+                    <p
+                      id="quick-add-type-help"
+                      className="quick-add-help-panel quick-add-help-panel--type-inline settings-hint"
+                      role="region"
+                      aria-labelledby="quick-add-type-help-toggle"
                     >
-                      {quickAddTypeHelpOpen ? "Hide type tips" : "Type tips"}
-                    </button>
-                    {quickAddTypeHelpOpen ? (
-                      <p id="quick-add-type-help" className="quick-add-help-panel settings-hint" role="region" aria-labelledby="quick-add-type-help-toggle">
-                        In <strong>Type</strong>, include a time (e.g. <strong>4pm</strong> or <strong>16:30</strong>). Add a day so it lands on that calendar:{" "}
-                        <strong>tomorrow</strong>, <strong>today</strong>, <strong>next Monday</strong>, <strong>Friday</strong>,{" "}
-                        <strong>3/26/26</strong> or <strong>2026-03-26</strong>. Dates are from <strong>today&apos;s</strong> calendar, not only the day you have open.
-                      </p>
-                    ) : null}
-                  </div>
+                      In <strong>Type</strong>, include a time (e.g. <strong>4pm</strong> or <strong>16:30</strong>). Add a day so it lands on that calendar:{" "}
+                      <strong>tomorrow</strong>, <strong>today</strong>, <strong>next Monday</strong>, <strong>Friday</strong>,{" "}
+                      <strong>3/26/26</strong> or <strong>2026-03-26</strong>. Dates are from <strong>today&apos;s</strong> calendar, not only the day you have open.
+                    </p>
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -5631,42 +5729,161 @@ export default function App() {
                 >
                   See full calendar
                 </button>
-                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid color-mix(in srgb, var(--text) 12%, transparent)" }}>
-                  <div className="panel-title" style={{ marginBottom: 6 }}>
-                    <span className="title" style={{ fontSize: "0.95rem" }}>
-                      Your averages (from how you use tasks)
-                    </span>
-                  </div>
-                  <p className="settings-hint" style={{ marginTop: 0, marginBottom: 8 }}>
-                    PROYOU logs when you complete, move to tomorrow, delete, uncheck, or leave tasks incomplete when a day ends. Coach reads this with your schedule.
-                  </p>
-                  {taskDispositionStats.n > 0 && taskDispositionStats.barFracs ? (
-                    <>
-                      <div
-                        className="progress-wrap"
-                        style={{ height: 10, borderRadius: 8, overflow: "hidden", display: "flex", background: "color-mix(in srgb, var(--text) 8%, transparent)" }}
-                        aria-label="Disposition mix"
-                      >
-                        <div style={{ width: `${Math.round(taskDispositionStats.barFracs.complete * 100)}%`, background: "var(--accent, #6b9cff)" }} />
-                        <div style={{ width: `${Math.round(taskDispositionStats.barFracs.tomorrow * 100)}%`, background: "#e8b44a" }} />
-                        <div style={{ width: `${Math.round(taskDispositionStats.barFracs.delete * 100)}%`, background: "#e07a7a" }} />
-                        <div style={{ width: `${Math.round(taskDispositionStats.barFracs.uncomplete * 100)}%`, background: "color-mix(in srgb, var(--text) 35%, transparent)" }} />
-                        <div style={{ width: `${Math.round((taskDispositionStats.barFracs.missed || 0) * 100)}%`, background: "#9b7acf" }} />
+                <div className="task-averages-capacity-footer">
+                  <button
+                    type="button"
+                    className={`btn task-averages-open-btn ${taskAveragesOpen ? "task-averages-open-btn--open" : ""}`}
+                    aria-expanded={taskAveragesOpen}
+                    onClick={() => {
+                      setTaskAveragesOpen((o) => {
+                        const next = !o;
+                        if (!next) setTaskStatsExplainOpen(false);
+                        return next;
+                      });
+                    }}
+                  >
+                    {taskAveragesOpen ? "Close averages" : "Open averages"}
+                  </button>
+                  {taskAveragesOpen ? (
+                    <div className="task-averages-panel surface-glass" role="region" aria-label="Task action averages">
+                      {scheduleStreakStats.weekPerfect ? (
+                        <div className="task-averages-congrats" role="status">
+                          <strong>PROYOU:</strong> You cleared every scheduled day in your last seven days - that&apos;s a full week of follow-through. Seriously impressive.
+                        </div>
+                      ) : null}
+                      {taskDispositionStats.n > 0 && taskDispositionStats.barFracs ? (
+                        <>
+                          <div className="task-averages-stacked-wrap">
+                            <div className="task-averages-stacked" aria-label="Share of logged actions">
+                              <span
+                                className="task-averages-stacked-seg task-averages-stacked-seg--complete"
+                                style={{ width: `${Math.round(taskDispositionStats.barFracs.complete * 100)}%` }}
+                              />
+                              <span
+                                className="task-averages-stacked-seg task-averages-stacked-seg--tomorrow"
+                                style={{ width: `${Math.round(taskDispositionStats.barFracs.tomorrow * 100)}%` }}
+                              />
+                              <span
+                                className="task-averages-stacked-seg task-averages-stacked-seg--delete"
+                                style={{ width: `${Math.round(taskDispositionStats.barFracs.delete * 100)}%` }}
+                              />
+                              <span
+                                className="task-averages-stacked-seg task-averages-stacked-seg--uncomplete"
+                                style={{ width: `${Math.round(taskDispositionStats.barFracs.uncomplete * 100)}%` }}
+                              />
+                              <span
+                                className="task-averages-stacked-seg task-averages-stacked-seg--missed"
+                                style={{ width: `${Math.round((taskDispositionStats.barFracs.missed || 0) * 100)}%` }}
+                              />
+                            </div>
+                            <ul className="task-averages-legend">
+                              <li>
+                                <span className="task-averages-dot task-averages-dot--complete" /> Completed{" "}
+                                {taskDispositionStats.pctCompleteShare != null ? `${taskDispositionStats.pctCompleteShare}%` : "-"}
+                              </li>
+                              <li>
+                                <span className="task-averages-dot task-averages-dot--tomorrow" /> Moved to tomorrow{" "}
+                                {taskDispositionStats.pctTomorrow != null ? `${taskDispositionStats.pctTomorrow}%` : "-"}
+                              </li>
+                              <li>
+                                <span className="task-averages-dot task-averages-dot--delete" /> Deleted{" "}
+                                {taskDispositionStats.pctDelete != null ? `${taskDispositionStats.pctDelete}%` : "-"}
+                              </li>
+                              <li>
+                                <span className="task-averages-dot task-averages-dot--uncomplete" /> Unchecked again{" "}
+                                {taskDispositionStats.pctUncomplete != null ? `${taskDispositionStats.pctUncomplete}%` : "-"}
+                              </li>
+                              <li>
+                                <span className="task-averages-dot task-averages-dot--missed" /> Missed (day ended){" "}
+                                {taskDispositionStats.pctMissedEod != null ? `${taskDispositionStats.pctMissedEod}%` : "-"}
+                              </li>
+                            </ul>
+                          </div>
+                          <p className="task-averages-subline settings-hint">
+                            Finishes vs deferrals (this week):{" "}
+                            {taskDispositionStats.weekCompletePct != null ? `${taskDispositionStats.weekCompletePct}%` : "-"} · All-time:{" "}
+                            {taskDispositionStats.allCompletePct != null ? `${taskDispositionStats.allCompletePct}%` : "-"}
+                          </p>
+                          <ul className="task-averages-metric-list">
+                            <li className="task-averages-metric-row">
+                              <span className="task-averages-metric-label">Completed</span>
+                              <div className="task-averages-metric-track">
+                                <span
+                                  className="task-averages-metric-fill task-averages-metric-fill--complete"
+                                  style={{ width: `${taskDispositionStats.pctCompleteShare ?? 0}%` }}
+                                />
+                              </div>
+                              <span className="task-averages-metric-pct">{taskDispositionStats.pctCompleteShare != null ? `${taskDispositionStats.pctCompleteShare}%` : "-"}</span>
+                            </li>
+                            <li className="task-averages-metric-row">
+                              <span className="task-averages-metric-label">Moved to tomorrow</span>
+                              <div className="task-averages-metric-track">
+                                <span
+                                  className="task-averages-metric-fill task-averages-metric-fill--tomorrow"
+                                  style={{ width: `${taskDispositionStats.pctTomorrow ?? 0}%` }}
+                                />
+                              </div>
+                              <span className="task-averages-metric-pct">{taskDispositionStats.pctTomorrow != null ? `${taskDispositionStats.pctTomorrow}%` : "-"}</span>
+                            </li>
+                            <li className="task-averages-metric-row">
+                              <span className="task-averages-metric-label">Deleted</span>
+                              <div className="task-averages-metric-track">
+                                <span
+                                  className="task-averages-metric-fill task-averages-metric-fill--delete"
+                                  style={{ width: `${taskDispositionStats.pctDelete ?? 0}%` }}
+                                />
+                              </div>
+                              <span className="task-averages-metric-pct">{taskDispositionStats.pctDelete != null ? `${taskDispositionStats.pctDelete}%` : "-"}</span>
+                            </li>
+                            <li className="task-averages-metric-row">
+                              <span className="task-averages-metric-label">Unchecked again</span>
+                              <div className="task-averages-metric-track">
+                                <span
+                                  className="task-averages-metric-fill task-averages-metric-fill--uncomplete"
+                                  style={{ width: `${taskDispositionStats.pctUncomplete ?? 0}%` }}
+                                />
+                              </div>
+                              <span className="task-averages-metric-pct">{taskDispositionStats.pctUncomplete != null ? `${taskDispositionStats.pctUncomplete}%` : "-"}</span>
+                            </li>
+                            <li className="task-averages-metric-row">
+                              <span className="task-averages-metric-label">Missed (day ended)</span>
+                              <div className="task-averages-metric-track">
+                                <span
+                                  className="task-averages-metric-fill task-averages-metric-fill--missed"
+                                  style={{ width: `${taskDispositionStats.pctMissedEod ?? 0}%` }}
+                                />
+                              </div>
+                              <span className="task-averages-metric-pct">{taskDispositionStats.pctMissedEod != null ? `${taskDispositionStats.pctMissedEod}%` : "-"}</span>
+                            </li>
+                          </ul>
+                        </>
+                      ) : (
+                        <p className="settings-hint task-averages-empty">Not enough logged actions yet - check off a few tasks and come back.</p>
+                      )}
+                      <div className="task-averages-streak-row">
+                        <span className="task-averages-streak-label">All-done streak</span>
+                        <span className="task-averages-streak-value">
+                          {scheduleStreakStats.streak > 0
+                            ? `${scheduleStreakStats.streak} day${scheduleStreakStats.streak === 1 ? "" : "s"} in a row with every task done`
+                            : "Start a streak by finishing every task you schedule on a day."}
+                        </span>
                       </div>
-                      <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0, fontSize: "0.85rem" }}>
-                        Complete ≈{taskDispositionStats.allCompletePct != null ? `${taskDispositionStats.allCompletePct}%` : "—"} of finishes (vs moved, deleted, or still open at day-end),{" "}
-                        this week ≈{taskDispositionStats.weekCompletePct != null ? `${taskDispositionStats.weekCompletePct}%` : "—"}. Moved to tomorrow{" "}
-                        {taskDispositionStats.pctTomorrow != null ? `${taskDispositionStats.pctTomorrow}%` : "—"}, deleted{" "}
-                        {taskDispositionStats.pctDelete != null ? `${taskDispositionStats.pctDelete}%` : "—"}, unchecked again{" "}
-                        {taskDispositionStats.pctUncomplete != null ? `${taskDispositionStats.pctUncomplete}%` : "—"}, missed after day ended{" "}
-                        {taskDispositionStats.pctMissedEod != null ? `${taskDispositionStats.pctMissedEod}%` : "—"} (of all logged actions).
-                      </p>
-                    </>
-                  ) : (
-                    <p className="settings-hint" style={{ marginBottom: 0 }}>
-                      As you use tasks, a color bar will grow here (blue = completed, gold = moved, red = deleted, gray = unchecked again, purple = left open when the day ended).
-                    </p>
-                  )}
+                      <button
+                        type="button"
+                        className="btn btn-sm task-averages-view-stats-btn"
+                        aria-expanded={taskStatsExplainOpen}
+                        onClick={() => setTaskStatsExplainOpen((o) => !o)}
+                      >
+                        {taskStatsExplainOpen ? "Hide stats" : "View stats"}
+                      </button>
+                      {taskStatsExplainOpen ? (
+                        <p className="settings-hint task-averages-stats-explainer">
+                          Percentages are from how you use tasks in PROYOU: completes, moving to tomorrow, deletes, unchecking, and (if enabled) automatic missed-at-day-end logs. Coach sees the same
+                          numbers plus your <strong>all-done streak</strong> and whether your last seven scheduled days were all finished.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </section>
             )}
@@ -6207,6 +6424,8 @@ export default function App() {
             setProfile={setProfile}
             realTodayKey={realTodayKey}
             appState={appState}
+            onOpenHealthCalendar={openHealthCalendarFromHealth}
+            onScheduleWorkoutTask={scheduleWorkoutFromHealth}
           />
         ) : tab === "finance" ? (
           <section className="panel finance-panel surface-glass section-finance scroll-reveal">
@@ -6517,7 +6736,7 @@ export default function App() {
 
             <div className="finance-section">
               <h3 className="finance-section-title">Credit score log</h3>
-              <p className="finance-hint">Optional — add when you check your score so Coach and trends stay grounded.</p>
+              <p className="finance-hint">Optional - add when you check your score so Coach and trends stay grounded.</p>
               <form
                 className="finance-inline-form"
                 onSubmit={(e) => {
@@ -6732,7 +6951,7 @@ export default function App() {
                     </div>
                   ) : (
                     <p className="settings-hint" style={{ marginTop: 8 }}>
-                      No closed months yet — keep logging; summaries appear after your first month rollover.
+                      No closed months yet - keep logging; summaries appear after your first month rollover.
                     </p>
                   )}
                   <button
@@ -6749,13 +6968,13 @@ export default function App() {
                       <div className="finance-total-row">
                         <span className="finance-total-label">Avg spent (archived months)</span>
                         <span className="finance-total-value expense">
-                          {avgSpend != null ? `$${avgSpend.toFixed(2)}` : "—"}
+                          {avgSpend != null ? `$${avgSpend.toFixed(2)}` : "-"}
                         </span>
                       </div>
                       <div className="finance-total-row">
                         <span className="finance-total-label">Avg income (archived months)</span>
                         <span className="finance-total-value income">
-                          {avgIncome != null ? `$${avgIncome.toFixed(2)}` : "—"}
+                          {avgIncome != null ? `$${avgIncome.toFixed(2)}` : "-"}
                         </span>
                       </div>
                       {topAvg.length > 0 && (
@@ -6922,7 +7141,7 @@ export default function App() {
             const closeDropdown = () => { setTaskDropdown(null); setDropdownAnchorRect(null); };
             const dropdownMaxHeight = isEditing ? 340 : 300;
             const vwForPanel = typeof window !== "undefined" ? window.innerWidth : 400;
-            /** Edit time: native `input[type=time]` is wide on iOS — use almost full viewport width. */
+            /** Edit time: native `input[type=time]` is wide on iOS - use almost full viewport width. */
             const panelWidth = isEditing ? Math.max(272, Math.min(400, vwForPanel - 20)) : 208;
             const rect = dropdownAnchorRect;
             const { left, top, width } = computeDropdownPosition(rect, { panelWidth, maxHeight: dropdownMaxHeight });
@@ -7146,7 +7365,7 @@ export default function App() {
                     onChange={(e) => setGroceryLoadListId(e.target.value)}
                     aria-label="Saved checklist"
                   >
-                    <option value="">— Pick a saved list —</option>
+                    <option value="">- Pick a saved list -</option>
                     {(profile.grocerySavedLists || []).map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.title}
@@ -7622,7 +7841,7 @@ export default function App() {
                           const parts = [
                             r?.hint || r?.error || "Test send failed.",
                             r?.status != null ? `HTTP ${r.status}` : null,
-                            r?.fetchError ? `Fetch: ${r.errorName || "Error"}${r.errorCause ? ` — ${r.errorCause}` : ""}` : null,
+                            r?.fetchError ? `Fetch: ${r.errorName || "Error"}${r.errorCause ? ` - ${r.errorCause}` : ""}` : null,
                             "See the Notifications status block below for redacted body, response, and stack.",
                           ].filter(Boolean);
                           alert(parts.join("\n\n"));
@@ -7651,7 +7870,7 @@ export default function App() {
                       <div style={{ fontWeight: 600 }}>Raw probe (hard-coded URL)</div>
                       <div>URL: {rawCapFetchProbe.sendUrl}</div>
                       <div>At: {rawCapFetchProbe.at}</div>
-                      <div style={{ marginTop: 6 }}>OPTIONS — {rawCapFetchProbe.options?.ok ? "completed" : "error"}</div>
+                      <div style={{ marginTop: 6 }}>OPTIONS - {rawCapFetchProbe.options?.ok ? "completed" : "error"}</div>
                       {rawCapFetchProbe.options?.status != null ? (
                         <div>status: {rawCapFetchProbe.options.status} {rawCapFetchProbe.options.statusText || ""}</div>
                       ) : null}
@@ -7667,7 +7886,7 @@ export default function App() {
                           ) : null}
                         </>
                       ) : null}
-                      <div style={{ marginTop: 6 }}>POST — {rawCapFetchProbe.post?.ok ? "completed" : "error"}</div>
+                      <div style={{ marginTop: 6 }}>POST - {rawCapFetchProbe.post?.ok ? "completed" : "error"}</div>
                       {rawCapFetchProbe.post?.status != null ? (
                         <div>status: {rawCapFetchProbe.post.status}</div>
                       ) : null}
@@ -7702,7 +7921,7 @@ export default function App() {
                       <div>Native token: {nativePushDebug.tokenRegistered ? "registered" : "missing"}</div>
                       <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.12)" }}>
                         <div style={{ fontWeight: 600 }}>Firebase Cloud Messaging</div>
-                        <div>native provider: {String(nativePushDebug.nativeProvider ?? "—")}</div>
+                        <div>native provider: {String(nativePushDebug.nativeProvider ?? "-")}</div>
                         <div>fcmToken registered: {nativePushDebug.fcmTokenRegistered ? "true" : "false"}</div>
                         {nativePushDebug.lastFcmMessageId ? (
                           <div>last FCM messageId: {nativePushDebug.lastFcmMessageId}</div>
@@ -7713,11 +7932,11 @@ export default function App() {
                       </div>
                       <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.12)" }}>
                         <div style={{ fontWeight: 600 }}>Local task reminders (iOS)</div>
-                        <div>local notification permission: {String(nativePushDebug.localNotificationPermission ?? "—")}</div>
+                        <div>local notification permission: {String(nativePushDebug.localNotificationPermission ?? "-")}</div>
                         <div>
                           scheduled local reminder count:{" "}
                           {nativePushDebug.scheduledLocalReminderCount == null
-                            ? "—"
+                            ? "-"
                             : String(nativePushDebug.scheduledLocalReminderCount)}
                         </div>
                         {nativePushDebug.lastLocalScheduleError ? (
@@ -7725,12 +7944,12 @@ export default function App() {
                             last local schedule error: {nativePushDebug.lastLocalScheduleError}
                           </div>
                         ) : (
-                          <div>last local schedule error: —</div>
+                          <div>last local schedule error: -</div>
                         )}
                         <div>
                           last server reminder sync HTTP:{" "}
                           {nativePushDebug.lastRemindersNativeStatus == null
-                            ? "—"
+                            ? "-"
                             : String(nativePushDebug.lastRemindersNativeStatus)}
                         </div>
                       </div>
@@ -7803,7 +8022,7 @@ export default function App() {
                       ) : null}
                       {nativePushDebug.lastTestSendAt != null ? (
                         <div>
-                          Last test send: {new Date(nativePushDebug.lastTestSendAt).toLocaleString()} —{" "}
+                          Last test send: {new Date(nativePushDebug.lastTestSendAt).toLocaleString()} -{" "}
                           {nativePushDebug.lastTestSendOk === true ? "ok" : nativePushDebug.lastTestSendOk === false ? "failed" : "…"}
                           {nativePushDebug.lastTestSendDetail ? ` (${nativePushDebug.lastTestSendDetail})` : ""}
                         </div>
@@ -7846,7 +8065,7 @@ export default function App() {
               <div className="settings-section settings-notifications-dashboard">
                 <label className="label">Notifications dashboard</label>
                 <p className="settings-hint">
-                  Choose how <strong>task</strong> and <strong>habit</strong> reminders behave. Tasks still need <strong>Remind me</strong> on each card unless you apply defaults for <em>new</em> tasks below.
+                  Choose how <strong>task</strong> and <strong>habit</strong> reminders behave. <strong>Default reminders for new tasks</strong> (below) set what new tasks start with; change any task anytime under Details → Remind me.
                 </p>
                 <p className="settings-notifications-callout" role="note">
                   <strong>How delivery differs.</strong>{" "}
@@ -7905,6 +8124,70 @@ export default function App() {
                       }
                     />
                     <span>Habit reminder nudges</span>
+                  </label>
+                </div>
+
+                <div className="settings-subsection" style={{ marginTop: 16 }}>
+                  <label className="label" style={{ fontSize: "0.95rem" }}>
+                    Default reminders for new tasks
+                  </label>
+                  <p className="settings-hint" style={{ marginTop: 4 }}>
+                    Applied when you add a task. On iPhone, allow scheduled reminders here and keep the app updated so local alerts can fire at the right time.
+                  </p>
+                  <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginBottom: 10 }}>
+                    <input
+                      type="checkbox"
+                      checked={profile.defaultTaskRemindersOn !== false}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          defaultTaskRemindersOn: e.target.checked,
+                        }))
+                      }
+                    />
+                    <span>Turn on reminders for new tasks</span>
+                  </label>
+                  <label
+                    className="settings-hint"
+                    style={{ display: "block", marginBottom: 6, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}
+                  >
+                    Remind me before task starts
+                  </label>
+                  <select
+                    className="input modal-input"
+                    style={{ marginBottom: 10 }}
+                    disabled={profile.defaultTaskRemindersOn === false}
+                    value={
+                      profile.defaultRemindBeforeMinutes == null || profile.defaultRemindBeforeMinutes === 0
+                        ? ""
+                        : String(profile.defaultRemindBeforeMinutes)
+                    }
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setProfile((p) => ({
+                        ...p,
+                        defaultRemindBeforeMinutes: v === "" ? null : Number(v),
+                      }));
+                    }}
+                    aria-label="Default minutes before task"
+                  >
+                    {TASK_REMINDER_BEFORE_OPTIONS.map((o) => (
+                      <option key={o.label} value={o.value == null ? "" : String(o.value)}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                  <label
+                    className="settings-toggle-row"
+                    style={{ display: "flex", alignItems: "center", gap: 8, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={profile.defaultTaskRemindersOn === false}
+                      checked={profile.defaultRemindAtStart !== false}
+                      onChange={(e) => setProfile((p) => ({ ...p, defaultRemindAtStart: e.target.checked }))}
+                    />
+                    <span>Also notify when the task starts</span>
                   </label>
                 </div>
 
@@ -8261,87 +8544,49 @@ export default function App() {
               <div className="settings-section">
                 <label className="label">Bottom navigation</label>
                 <p className="settings-hint">
-                  Choose which destinations appear in the dock. <strong>Today</strong> always stays. You can also toggle{" "}
-                  <strong>Finance</strong> and <strong>Health</strong> from those screens.
+                  Choose which destinations appear in the dock and in what order. <strong>Today</strong> always stays first.
                 </p>
-                {[
-                  { id: "list", label: "List" },
-                  { id: "monthly", label: "Monthly objectives" },
-                  { id: "coach", label: "Coach (pattern insights)" },
-                  { id: "notes", label: "Notes" },
-                  { id: "finance", label: "Finance" },
-                  { id: "health", label: "Health" },
-                ].map((row) => (
-                  <label key={row.id} className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={normalizeNavVisibility(profile.navVisibility)[row.id] === true}
-                      onChange={(e) =>
-                        setProfile((p) => ({
-                          ...p,
-                          navVisibility: { ...normalizeNavVisibility(p.navVisibility), [row.id]: e.target.checked },
-                        }))
-                      }
-                    />
-                    <span>{row.label}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Default reminders for new tasks</label>
-                <p className="settings-hint">
-                  Applied when you add a task. Change any task anytime under Details → Remind me. On iPhone, allow scheduled reminders in Notifications and keep the app updated so local alerts can fire at the right time.
-                </p>
-                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                  <input
-                    type="checkbox"
-                    checked={profile.defaultTaskRemindersOn !== false}
-                    onChange={(e) =>
-                      setProfile((p) => ({
-                        ...p,
-                        defaultTaskRemindersOn: e.target.checked,
-                      }))
-                    }
-                  />
-                  <span>Turn on reminders for new tasks</span>
-                </label>
-                <label className="settings-hint" style={{ display: "block", marginBottom: 6, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}>
-                  Remind me before task starts
-                </label>
-                <select
-                  className="input modal-input"
-                  style={{ marginBottom: 10 }}
-                  disabled={profile.defaultTaskRemindersOn === false}
-                  value={
-                    profile.defaultRemindBeforeMinutes == null || profile.defaultRemindBeforeMinutes === 0
-                      ? ""
-                      : String(profile.defaultRemindBeforeMinutes)
-                  }
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setProfile((p) => ({
-                      ...p,
-                      defaultRemindBeforeMinutes: v === "" ? null : Number(v),
-                    }));
-                  }}
-                  aria-label="Default minutes before task"
-                >
-                  {TASK_REMINDER_BEFORE_OPTIONS.map((o) => (
-                    <option key={o.label} value={o.value == null ? "" : String(o.value)}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}>
-                  <input
-                    type="checkbox"
-                    disabled={profile.defaultTaskRemindersOn === false}
-                    checked={profile.defaultRemindAtStart !== false}
-                    onChange={(e) => setProfile((p) => ({ ...p, defaultRemindAtStart: e.target.checked }))}
-                  />
-                  <span>Also notify when the task starts</span>
-                </label>
+                {normalizeDockOrder(profile.dockOrder).map((rowId, idx, arr) => {
+                  const row = DOCK_NAV_SETTINGS_ROWS.find((r) => r.id === rowId);
+                  if (!row) return null;
+                  return (
+                    <div key={row.id} className="settings-dock-order-row">
+                      <div className="settings-dock-order-move">
+                        <button
+                          type="button"
+                          className="btn btn-sm settings-dock-order-btn"
+                          disabled={idx === 0}
+                          aria-label={`Move ${row.label} up in dock`}
+                          onClick={() => moveDockNavItem("up", row.id)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm settings-dock-order-btn"
+                          disabled={idx === arr.length - 1}
+                          aria-label={`Move ${row.label} down in dock`}
+                          onClick={() => moveDockNavItem("down", row.id)}
+                        >
+                          ↓
+                        </button>
+                      </div>
+                      <label className="settings-toggle-row settings-dock-order-toggle">
+                        <input
+                          type="checkbox"
+                          checked={normalizeNavVisibility(profile.navVisibility)[row.id] === true}
+                          onChange={(e) =>
+                            setProfile((p) => ({
+                              ...p,
+                              navVisibility: { ...normalizeNavVisibility(p.navVisibility), [row.id]: e.target.checked },
+                            }))
+                          }
+                        />
+                        <span>{row.label}</span>
+                      </label>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="settings-section">
@@ -8379,10 +8624,10 @@ export default function App() {
                   }
                   aria-label="Completion message tone"
                 >
-                  <option value="supportive">Supportive — warm and encouraging</option>
-                  <option value="matter-of-fact">Matter of fact — short and neutral</option>
-                  <option value="funny">Funny — playful</option>
-                  <option value="harsh">Harsh — blunt tough-love (still PG)</option>
+                  <option value="supportive">Supportive - warm and encouraging</option>
+                  <option value="matter-of-fact">Matter of fact - short and neutral</option>
+                  <option value="funny">Funny - playful</option>
+                  <option value="harsh">Harsh - blunt tough-love (still PG)</option>
                 </select>
               </div>
 
@@ -8561,7 +8806,7 @@ export default function App() {
               <div className="settings-section">
                 <label className="label">Shopping &amp; errand lists</label>
                 <p className="settings-hint">
-                  When a task title contains one of these words (whole word), PROYOU can offer a checklist. Defaults are similar to grocery, store, and errand — change them anytime.
+                  When a task title contains one of these words (whole word), PROYOU can offer a checklist. Defaults are similar to grocery, store, and errand - change them anytime.
                 </p>
                 <input
                   className="input modal-input"
@@ -8596,7 +8841,7 @@ export default function App() {
                   After midnight, the app can record unchecked tasks from the previous day as missed (once each). Turn this off if you prefer not to track that.
                 </p>
                 <p className="settings-hint" style={{ marginTop: 10 }}>
-                  <strong>Saved lists</strong> — reuse lines from the checklist modal (&quot;Save as reusable list&quot;) or from the prompt when you add a matching task.
+                  <strong>Saved lists</strong> - reuse lines from the checklist modal (&quot;Save as reusable list&quot;) or from the prompt when you add a matching task.
                 </p>
                 <ul className="routine-template-list">
                   {(profile.grocerySavedLists || []).length === 0 && (
@@ -8637,7 +8882,7 @@ export default function App() {
                     onChange={(e) => setListAttachTaskKey(e.target.value)}
                     aria-label="Task on today"
                   >
-                    <option value="">— Task —</option>
+                    <option value="">- Task -</option>
                     {allTasksInDay(
                       mergeSubscriptionTasksIntoHours(
                         appState.days?.[realTodayKey]?.hours || {},
@@ -8663,7 +8908,7 @@ export default function App() {
                     onChange={(e) => setListAttachSavedId(e.target.value)}
                     aria-label="Saved list"
                   >
-                    <option value="">— List —</option>
+                    <option value="">- List -</option>
                     {(profile.grocerySavedLists || []).map((l) => (
                       <option key={l.id} value={l.id}>
                         {l.title}
@@ -9097,7 +9342,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Toast Notification — tap dimmed area outside card to dismiss */}
+        {/* Toast Notification - tap dimmed area outside card to dismiss */}
         {toastNotification && (
           <>
             <button

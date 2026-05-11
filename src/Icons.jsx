@@ -85,7 +85,7 @@ export function RepeatIcon({ className = "" }) {
       height="16"
       viewBox="0 0 24 24"
       fill="none"
-      stroke="var(--rose-quartz, #E79AB5)"
+      stroke="currentColor"
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -389,6 +389,29 @@ export function FireIcon({ className = "" }) {
     >
       <path d="M12 2a6 6 0 0 1 6 6c0 4-3 7-6 10a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6z" />
       <path d="M8 12a4 4 0 1 0 8 0 4 4 0 0 0-8 0z" />
+    </svg>
+  );
+}
+
+/** Health / training — dumbbell line-art, matches nav icons (currentColor, 1.5 stroke). */
+export function DumbbellIcon({ className = "", style = {} }) {
+  return (
+    <svg
+      className={className}
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      opacity="0.85"
+      style={style}
+    >
+      <rect x="3" y="8" width="5" height="8" rx="2" ry="2" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+      <rect x="16" y="8" width="5" height="8" rx="2" ry="2" />
     </svg>
   );
 }

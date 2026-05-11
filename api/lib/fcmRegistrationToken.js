@@ -1,6 +1,6 @@
 /**
  * FCM registration tokens from @capacitor-firebase/messaging (iOS/Android).
- * Validation is length-only after {@link normalizeFcmRegistrationToken} — no hex / APNs shape rules.
+ * Validation is length-only after {@link normalizeFcmRegistrationToken} - no hex / APNs shape rules.
  */
 
 /** @param {unknown} t */

@@ -1,4 +1,4 @@
-# Security audit — cute-schedule (PROYOU)
+# Security audit - cute-schedule (PROYOU)
 
 **Audit type:** Defensive code and configuration review (no exploitation, no production data access).  
 **Date:** 2026-05-02  
@@ -14,11 +14,11 @@ This repository is a **single-user personal schedule / coach app**. There are **
 
 ### Top 5 most urgent risks
 
-1. **`/api/coach` has no authentication** (Step 3) — Anyone who can reach the deployment can POST and consume **OPENAI_API_KEY** quota. **Rate limiting:** `/api/coach` now enforces **10 POSTs per minute per client IP** (fixed window) via **Vercel KV** (`api/lib/coachRateLimit.js`). Tune with `COACH_RATE_LIMIT_MAX` / `COACH_RATE_LIMIT_WINDOW_SEC`. If KV is unavailable, requests are allowed (same as push routes) so local dev without KV still works; production should keep KV linked for limiter + push.
-2. **`/api/push/subscribe`, `/api/push/reminders`, `/api/push/register-native`** — No auth; **global KV namespaces** (`push:subs`, `push:native-subs`, per-subscription keys). Risk: storage abuse, registering junk endpoints/tokens, associating reminders with keys derived only from subscription endpoint knowledge.
-3. **Cron endpoint `/api/cron/push`** — Without **`CRON_SECRET`** set in Vercel, the route is callable by **any client** (GET/POST) and triggers iteration over all web subscriptions (DoS / timing abuse). With **`CRON_SECRET`** set, Vercel sends `Authorization: Bearer <CRON_SECRET>` on cron invocations; the handler now enforces this when the env var is present.
-4. **`/api/push/send` previously broadcast to every subscriber** — Fixed: server now sends **only** to the **PushSubscription** provided in the request body (same device that enabled push). Eliminates unauthenticated “notify everyone” abuse.
-5. **Committed Vercel deploy hook URL in `package.json`** — Removed; treat the previously committed hook as **compromised**: revoke that deploy hook in Vercel and create a new one; use **`VERCEL_DEPLOY_HOOK_URL`** in the shell when running `npm run trigger-deploy`.
+1. **`/api/coach` has no authentication** (Step 3) - Anyone who can reach the deployment can POST and consume **OPENAI_API_KEY** quota. **Rate limiting:** `/api/coach` now enforces **10 POSTs per minute per client IP** (fixed window) via **Vercel KV** (`api/lib/coachRateLimit.js`). Tune with `COACH_RATE_LIMIT_MAX` / `COACH_RATE_LIMIT_WINDOW_SEC`. If KV is unavailable, requests are allowed (same as push routes) so local dev without KV still works; production should keep KV linked for limiter + push.
+2. **`/api/push/subscribe`, `/api/push/reminders`, `/api/push/register-native`** - No auth; **global KV namespaces** (`push:subs`, `push:native-subs`, per-subscription keys). Risk: storage abuse, registering junk endpoints/tokens, associating reminders with keys derived only from subscription endpoint knowledge.
+3. **Cron endpoint `/api/cron/push`** - Without **`CRON_SECRET`** set in Vercel, the route is callable by **any client** (GET/POST) and triggers iteration over all web subscriptions (DoS / timing abuse). With **`CRON_SECRET`** set, Vercel sends `Authorization: Bearer <CRON_SECRET>` on cron invocations; the handler now enforces this when the env var is present.
+4. **`/api/push/send` previously broadcast to every subscriber** - Fixed: server now sends **only** to the **PushSubscription** provided in the request body (same device that enabled push). Eliminates unauthenticated “notify everyone” abuse.
+5. **Committed Vercel deploy hook URL in `package.json`** - Removed; treat the previously committed hook as **compromised**: revoke that deploy hook in Vercel and create a new one; use **`VERCEL_DEPLOY_HOOK_URL`** in the shell when running `npm run trigger-deploy`.
 
 ### What is currently safe
 
@@ -50,8 +50,8 @@ This repository is a **single-user personal schedule / coach app**. There are **
 | `GET/POST /api/cron/push` | Yes if no `CRON_SECRET` | Cron | Sends due reminders to all web subs in KV | VAPID + KV; optional Bearer `CRON_SECRET` | Hit URL repeatedly | Load / annoy subscribers | **High** without secret |
 | `POST /api/coach` | Yes | None | Proxies user JSON to OpenAI; returns model JSON | `OPENAI_API_KEY` server-side; **10/min/IP** via KV; CORS configurable | Flood POST from many IPs / no KV | Key burn, cost | **High** (abuse); **Medium** with KV + RL |
 | SPA routes (`/`, etc.) | Yes | Firebase for sync | User’s own schedule in UI | Firestore rules | N/A for other users’ data | No multi-tenant staff routes | **Low** (rules) |
-| Stripe webhooks | N/A | — | — | — | — | **Not present** | — |
-| Supabase | N/A | — | — | — | — | **Not present** | — |
+| Stripe webhooks | N/A | - | - | - | - | **Not present** | - |
+| Supabase | N/A | - | - | - | - | **Not present** | - |
 
 **Exact fix (coach):** Verify `Authorization: Bearer <Firebase ID token>` with Firebase Admin SDK; reject missing/invalid token; optionally cap body size and fields.
 
@@ -77,7 +77,7 @@ This repository is a **single-user personal schedule / coach app**. There are **
 | GitHub `VERCEL_TOKEN` / org / project | `.github/workflows/deploy-vercel.yml` | CI secrets | OK as secrets; not in tree. |
 | **Removed** deploy hook in `package.json` | Was committed | **Leaked capability** | **Rotate** hook in Vercel. |
 
-**Client-side logging:** `src/notifications.js` previously logged full APNs token in dev path — changed to avoid logging raw token in production builds.
+**Client-side logging:** `src/notifications.js` previously logged full APNs token in dev path - changed to avoid logging raw token in production builds.
 
 ---
 
@@ -85,7 +85,7 @@ This repository is a **single-user personal schedule / coach app**. There are **
 
 | Area | Finding |
 |------|---------|
-| Staff / admin / trainer routes | **None** in app — single-user product. |
+| Staff / admin / trainer routes | **None** in app - single-user product. |
 | Firestore | **Server-side rules** enforce `schedules/{uid}` owner match. |
 | Serverless APIs | **No** Firebase token verification on `/api/coach` or push endpoints. |
 | React / SPA | UI hiding is **not** authorization; all enforcement must stay on server/Firestore. |
@@ -114,8 +114,8 @@ service cloud.firestore {
 
 | Check | Status |
 |-------|--------|
-| Owner uid | **Yes** — `docId` must equal `request.auth.uid`. |
-| Overly broad | **No** — catch-all denies. |
+| Owner uid | **Yes** - `docId` must equal `request.auth.uid`. |
+| Overly broad | **No** - catch-all denies. |
 | Client trusts IDs | App uses `getScheduleDocId()` from Auth uid (anonymous ok). |
 
 **Unsafe reads/writes:** None in Firestore for other users **if** rules are deployed as in repo. **Verify** Firebase Console rules match `firestore.rules`.
@@ -126,9 +126,9 @@ service cloud.firestore {
 
 | Integration | Present? | Signature / validation | Notes |
 |-------------|----------|-------------------------|-------|
-| Stripe | No | — | — |
-| Twilio | No | — | — |
-| Resend | No | — | — |
+| Stripe | No | - | - |
+| Twilio | No | - | - |
+| Resend | No | - | - |
 | Google OAuth | Client Firebase OAuth only | Firebase handles token exchange | No custom callback route in `api/`. |
 | Vercel Cron → `/api/cron/push` | Yes | **`CRON_SECRET`** Bearer when env set | Not a third-party webhook; secure with env. |
 
@@ -161,11 +161,11 @@ service cloud.firestore {
 
 ## Manual steps (Vercel / Firebase / Google)
 
-1. **Vercel:** Project → Settings → Environment Variables — add **`CRON_SECRET`** (random 32+ chars); redeploy. Confirm cron still succeeds (check function logs).  
+1. **Vercel:** Project → Settings → Environment Variables - add **`CRON_SECRET`** (random 32+ chars); redeploy. Confirm cron still succeeds (check function logs).  
 2. **Vercel:** Revoke old **Deploy Hook** from leaked `package.json`; create new hook; export **`VERCEL_DEPLOY_HOOK_URL`** locally when using `npm run trigger-deploy`.  
 3. **Vercel (optional):** **`API_ALLOWED_ORIGINS`**=`https://yourapp.vercel.app,https://localhost` (adjust for Capacitor / custom domain).  
 4. **Firebase Console:** Deploy **`firestore.rules`**; enable **Anonymous**, **Google**, **Email** as intended.  
-5. **Google Cloud Console:** API key used by Firebase — add **Application restrictions** (HTTP referrers for web; iOS bundle for app).  
+5. **Google Cloud Console:** API key used by Firebase - add **Application restrictions** (HTTP referrers for web; iOS bundle for app).  
 6. **Firebase App Check (optional):** Enable for Firestore if automated abuse appears.
 
 ---
@@ -181,12 +181,12 @@ service cloud.firestore {
 
 - Run **`npm audit`**, **`npm run lint`**, **`npx tsc --noEmit`** (see audit report in agent output).  
 - **No `npm test` script** in `package.json`.  
-- **`npm audit`** may exit non-zero while transitive advisories exist (e.g. Vite, picomatch); review `npm audit fix` in a branch after reading changelogs—dev-server CVEs often do not affect production static hosting.
+- **`npm audit`** may exit non-zero while transitive advisories exist (e.g. Vite, picomatch); review `npm audit fix` in a branch after reading changelogs-dev-server CVEs often do not affect production static hosting.
 
 ---
 
 ## CORS / indexing / deployment
 
 - **CORS:** Push + coach routes use **`applyApiCors`**; default remains `*` unless `API_ALLOWED_ORIGINS` is set.  
-- **robots / noindex:** Not configured; SPA is indexable like any public site — add if you need privacy.  
-- **Preview deployments:** Same API routes as production unless env differs — treat Preview secrets and hooks carefully.
+- **robots / noindex:** Not configured; SPA is indexable like any public site - add if you need privacy.  
+- **Preview deployments:** Same API routes as production unless env differs - treat Preview secrets and hooks carefully.

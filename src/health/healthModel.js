@@ -23,6 +23,26 @@ export function normalizeNavVisibility(raw) {
   return out;
 }
 
+/** Bottom dock order for every tab except Today (Today is always first). */
+export const DOCK_ORDERABLE_IDS = Object.freeze(["list", "monthly", "coach", "notes", "finance", "health"]);
+
+export function normalizeDockOrder(raw) {
+  const defaults = [...DOCK_ORDERABLE_IDS];
+  if (!Array.isArray(raw)) return defaults;
+  const seen = new Set();
+  const out = [];
+  for (const id of raw) {
+    if (typeof id === "string" && DOCK_ORDERABLE_IDS.includes(id) && !seen.has(id)) {
+      out.push(id);
+      seen.add(id);
+    }
+  }
+  for (const id of defaults) {
+    if (!seen.has(id)) out.push(id);
+  }
+  return out;
+}
+
 export function emptyWeekPlan() {
   return { mon: "", tue: "", wed: "", thu: "", fri: "", sat: "", sun: "" };
 }
@@ -44,6 +64,9 @@ export function createDefaultHealth() {
     weightLog: [],
     weekPlans: {},
     savedRoutines: [],
+    weekRepeatEnabled: false,
+    weekRepeatTemplate: null,
+    workoutProgress: {},
   };
 }
 
@@ -114,6 +137,12 @@ export function normalizeHealth(raw) {
           })
           .filter(Boolean)
       : [],
+    weekRepeatEnabled: raw.weekRepeatEnabled === true,
+    weekRepeatTemplate:
+      raw.weekRepeatTemplate && typeof raw.weekRepeatTemplate === "object"
+        ? { ...emptyWeekPlan(), ...raw.weekRepeatTemplate }
+        : null,
+    workoutProgress: raw.workoutProgress && typeof raw.workoutProgress === "object" ? { ...raw.workoutProgress } : {},
   };
 }
 
@@ -198,13 +227,48 @@ export function getWeekPlan(health, mondayKey) {
   return { ...emptyWeekPlan(), ...raw };
 }
 
+/** When week repeat is on, all weeks use the shared template; otherwise per-week plans. */
+export function getEffectiveWeekPlan(health, mondayKey) {
+  const h = normalizeHealth(health);
+  if (h.weekRepeatEnabled && h.weekRepeatTemplate && typeof h.weekRepeatTemplate === "object") {
+    return { ...emptyWeekPlan(), ...h.weekRepeatTemplate };
+  }
+  return getWeekPlan(h, mondayKey);
+}
+
+/** Split day plan text into exercise lines for the workout runner UI. */
+export function dayPlanToExerciseLines(text) {
+  const raw = String(text || "")
+    .split(/\n+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return raw.map((line, idx) => ({ id: `ex-${idx}`, idx, text: line }));
+}
+
+export function workoutProgressKey(weekMonday, dayKey, lineIdx) {
+  return `${weekMonday}|${dayKey}|${lineIdx}`;
+}
+
+export function getWorkoutLineProgress(health, key) {
+  const h = normalizeHealth(health);
+  const row = h.workoutProgress && typeof h.workoutProgress === "object" ? h.workoutProgress[key] : null;
+  if (!row || typeof row !== "object") return { done: false, weight: "", duration: "", breakMin: "", notes: "" };
+  return {
+    done: !!row.done,
+    weight: String(row.weight || ""),
+    duration: String(row.duration || ""),
+    breakMin: String(row.breakMin || ""),
+    notes: String(row.notes || ""),
+  };
+}
+
 export const WORKOUT_SAMPLES = [
   {
     id: "sample_full_body",
     name: "Full body (5 patterns)",
     blurb: "One session hitting squat, hinge, push, pull, carry / core.",
     days: {
-      mon: `Full body — movement patterns
+      mon: `Full body - movement patterns
 • Squat pattern: Goblet squat 3×8–12
 • Hinge: Romanian deadlift 3×8–10
 • Horizontal push: Push-ups or DB bench 3×8–12
@@ -280,7 +344,7 @@ export function formatHealthForCoach(health) {
     lines.push(`Goal weight: ${p.goalWeightKg}kg (from current ${p.weightKg}kg).`);
   }
   const mon = mondayKeyForDayKey(new Date().toISOString().slice(0, 10));
-  const plan = getWeekPlan(h, mon);
+  const plan = getEffectiveWeekPlan(h, mon);
   const bits = DAY_KEYS.map((k) => (plan[k] && String(plan[k]).trim() ? `${k}: ${String(plan[k]).trim().slice(0, 120)}` : "")).filter(Boolean);
   if (bits.length) lines.push(`This week's plan notes: ${bits.join(" | ")}`);
   return lines.length ? lines.join("\n") : "Health module not filled in yet.";

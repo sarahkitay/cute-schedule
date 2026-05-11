@@ -16,7 +16,7 @@ function extractIdToken(req, body) {
 }
 
 /**
- * POST { token, platform?, pushProvider?, idToken? } — optional Firebase ID token (body or Authorization) to scope KV by uid.
+ * POST { token, platform?, pushProvider?, idToken? } - optional Firebase ID token (body or Authorization) to scope KV by uid.
  * iOS: `pushProvider=fcm` uses FCM rules only (trim + length). `pushProvider=apns` uses legacy APNs hex normalization.
  * Web Push remains push:subs + subscribe.js.
  */

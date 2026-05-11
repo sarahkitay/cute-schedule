@@ -9,7 +9,7 @@ import path from "node:path";
 const ROOT = path.resolve(import.meta.dirname, "..");
 const CAP_FILE = path.join(ROOT, "ios", "App", "App", "capacitor.config.json");
 
-/** @type {string[]} — @objc(…) names of CAPBridgedPlugin classes compiled into the App target */
+/** @type {string[]} - @objc(…) names of CAPBridgedPlugin classes compiled into the App target */
 const EXTRA_IOS_PACKAGE_CLASSES = [];
 
 function main() {

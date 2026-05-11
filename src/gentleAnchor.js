@@ -70,9 +70,9 @@ export function generateCompletionMessage(_task, _category, completedToday, ener
       HEAVY: ["That was the final level energy. You still cleared it.", "Beast mode: engaged. Beast mode: tired now.", "Big task down. Treat yourself like a houseplant: water and light.", "You wrestled a bear. The bear was paperwork. You still won."],
     },
     harsh: {
-      LIGHT: ["Finally. That one was barely a warm-up.", "Done. Don't act surprised—you were supposed to.", "Checked off. Next.", "Easy mode. Still counts."],
-      MEDIUM: ["Done. The bar was on the floor and you cleared it anyway.", "One down. The rest are still watching.", "Finished. Don't coast—stack another.", "Complete. discipline > motivation."],
-      HEAVY: ["That one hurt. Good. Growth rarely feels cozy.", "Brutal task. You didn't negotiate with it—you finished it.", "Hard win. Now stop acting like you didn't earn a breather.", "Done. That was ugly work. Ugly work still builds."],
+      LIGHT: ["Finally. That one was barely a warm-up.", "Done. Don't act surprised, you were supposed to.", "Checked off. Next.", "Easy mode. Still counts."],
+      MEDIUM: ["Done. The bar was on the floor and you cleared it anyway.", "One down. The rest are still watching.", "Finished. Don't coast; stack another.", "Complete. discipline > motivation."],
+      HEAVY: ["That one hurt. Good. Growth rarely feels cozy.", "Brutal task. You didn't negotiate with it; you finished it.", "Hard win. Now stop acting like you didn't earn a breather.", "Done. That was ugly work. Ugly work still builds."],
     },
   };
 
@@ -101,15 +101,15 @@ export function generateCompletionMessage(_task, _category, completedToday, ener
       drained: " Low battery mode, still shipped.",
       closing: " Night shift MVP.",
       avoidant: " You touched the scary thing. It was paper.",
-      focusedStack: " You're on a streak—hydrate.",
+      focusedStack: " You're on a streak. Hydrate.",
       enoughToday: " Hero arc needs a snack break.",
     },
     harsh: {
-      overloaded: " Stop marinating in guilt—use the win.",
+      overloaded: " Stop marinating in guilt. Use the win.",
       drained: " Tired isn't an excuse; you still executed.",
       closing: " Late doesn't mean lazy if it's done.",
       avoidant: " You stopped negotiating with the task. Good.",
-      focusedStack: " Don't get cocky—stay consistent.",
+      focusedStack: " Don't get cocky; stay consistent.",
       enoughToday: " Quit while you're ahead before you overfill the day.",
     },
   };

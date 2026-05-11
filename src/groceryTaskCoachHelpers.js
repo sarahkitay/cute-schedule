@@ -203,6 +203,65 @@ export function processMissedEndOfDayBacklog(opts) {
   return { logged, daysProcessed };
 }
 
+/** Total / done for a calendar day (merged subscription rows included). */
+export function dayScheduleProgress(days, dayKey, subscriptions, categories) {
+  const dayObj = days?.[dayKey];
+  const raw = dayObj?.hours;
+  if (!raw || typeof raw !== "object" || Object.keys(raw).length === 0) return { total: 0, done: 0 };
+  const merged = mergeSubscriptionTasksIntoHoursLocal(raw, dayKey, subscriptions, categories);
+  const tasks = allTasksInDayLocal(merged, categories);
+  const total = tasks.length;
+  const done = tasks.filter((t) => t.done).length;
+  return { total, done };
+}
+
+/**
+ * Consecutive calendar days (walking back from endDayKey) where every day that had at least one task
+ * was fully checked off. Empty days before the first busy day are skipped; empty days after the streak
+ * started end the streak. If endDayKey still has open tasks, counting starts from the previous day.
+ */
+export function computeCalendarCompletionStreak(days, endDayKey, subscriptions, categories) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(endDayKey || ""))) return 0;
+  const today = dayScheduleProgress(days, endDayKey, subscriptions, categories);
+  let start = 0;
+  if (today.total > 0 && today.done < today.total) start = 1;
+
+  let streak = 0;
+  let seenTaskDay = false;
+  for (let i = start; i < 400; i++) {
+    const d = addDaysKeyStr(endDayKey, -i);
+    const { total, done } = dayScheduleProgress(days, d, subscriptions, categories);
+    if (total === 0) {
+      if (seenTaskDay) break;
+      continue;
+    }
+    seenTaskDay = true;
+    if (done === total) streak++;
+    else break;
+  }
+  return streak;
+}
+
+/** True when each of the last 7 calendar days that had any tasks was 100% complete (empty days ignored). */
+export function rollingSevenDaySchedulePerfect(days, endDayKey, subscriptions, categories) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(endDayKey || ""))) return false;
+  let any = false;
+  for (let i = 0; i < 7; i++) {
+    const d = addDaysKeyStr(endDayKey, -i);
+    const { total, done } = dayScheduleProgress(days, d, subscriptions, categories);
+    if (total === 0) continue;
+    any = true;
+    if (done !== total) return false;
+  }
+  return any;
+}
+
+export function buildScheduleStreakCoachLine(days, endDayKey, subscriptions, categories) {
+  const streak = computeCalendarCompletionStreak(days, endDayKey, subscriptions, categories);
+  const weekPerfect = rollingSevenDaySchedulePerfect(days, endDayKey, subscriptions, categories);
+  return `calendar_all_done_streak_days=${streak}; rolling_7d_all_scheduled_days_finished=${weekPerfect}`;
+}
+
 function startOfWeekISO(dayKey) {
   const d = new Date(`${dayKey}T12:00:00`);
   if (Number.isNaN(d.getTime())) return null;
@@ -263,6 +322,7 @@ export function summarizeTaskBehaviorForHome(dayKey) {
   return {
     allCompletePct: a.completePct,
     weekCompletePct: w.completePct,
+    pctCompleteShare: a.denomWide > 0 ? Math.round((a.c / a.denomWide) * 100) : null,
     pctTomorrow: a.pctTomorrow,
     pctDelete: a.pctDelete,
     pctUncomplete: a.pctUncomplete,
@@ -426,13 +486,13 @@ export function financeDecalForCurrentMonth({ spentThisMonth, incomeThisMonth, o
   const avgIncome = averageOverArchivedMonths(overviews, "incomeTotal");
   const lines = [];
   if (avgSpend != null && spentThisMonth != null && overviews.length) {
-    if (spentThisMonth > avgSpend * 1.1) lines.push("You spent more than your recent monthly average this month — totally normal when life stacks up.");
-    else if (spentThisMonth < avgSpend * 0.85) lines.push("You spent a bit less than usual this month — nice steadiness.");
+    if (spentThisMonth > avgSpend * 1.1) lines.push("You spent more than your recent monthly average this month - totally normal when life stacks up.");
+    else if (spentThisMonth < avgSpend * 0.85) lines.push("You spent a bit less than usual this month - nice steadiness.");
   }
   if (avgIncome != null && incomeThisMonth != null && overviews.length) {
-    if (incomeThisMonth > avgIncome * 1.08) lines.push("You logged more income than usual this month — good job noticing it.");
+    if (incomeThisMonth > avgIncome * 1.08) lines.push("You logged more income than usual this month - good job noticing it.");
     else if (incomeThisMonth < avgIncome * 0.85 && incomeThisMonth > 0)
-      lines.push("Income came in lower than your recent average — worth a gentle look when you have a calm minute.");
+      lines.push("Income came in lower than your recent average - worth a gentle look when you have a calm minute.");
   }
   return lines;
 }

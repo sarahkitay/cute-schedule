@@ -33,12 +33,12 @@ function resolveRedisRestCredentials() {
     const missing = [];
     if (!url) {
       missing.push(
-        "REST URL missing (checked UPSTASH_REDIS_REST_URL, then KV_REST_API_URL — values are not logged)"
+        "REST URL missing (checked UPSTASH_REDIS_REST_URL, then KV_REST_API_URL - values are not logged)"
       );
     }
     if (!token) {
       missing.push(
-        "REST token missing (checked UPSTASH_REDIS_REST_TOKEN, then KV_REST_API_TOKEN — values are not logged)"
+        "REST token missing (checked UPSTASH_REDIS_REST_TOKEN, then KV_REST_API_TOKEN - values are not logged)"
       );
     }
     throw new Error(`Redis not configured: ${missing.join(" ")}`);

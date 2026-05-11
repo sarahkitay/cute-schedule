@@ -28,7 +28,7 @@ export function resolveApiOriginForRequest() {
   }
   if (typeof window !== "undefined" && Capacitor.isNativePlatform()) {
     console.warn(
-      "[apiBase] VITE_APP_ORIGIN is empty — native API calls would hit localhost. Using fallback:",
+      "[apiBase] VITE_APP_ORIGIN is empty - native API calls would hit localhost. Using fallback:",
       NATIVE_FALLBACK_API_ORIGIN,
       "Rebuild with VITE_APP_ORIGIN=https://cute-schedule.vercel.app in .env.local before `npm run build && npx cap sync ios`."
     );
@@ -43,7 +43,7 @@ export function getApiBaseDebug() {
   const r = resolveApiOriginForRequest();
   return {
     rawViteAppOrigin: raw || "(empty at build time)",
-    resolvedOrigin: r.origin || "(relative paths — web same-origin only)",
+    resolvedOrigin: r.origin || "(relative paths - web same-origin only)",
     source: r.source,
     nativePlatform: typeof window !== "undefined" && Capacitor.isNativePlatform(),
   };
