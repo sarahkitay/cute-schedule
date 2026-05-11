@@ -437,6 +437,55 @@ export async function bootstrapNativePushOnStartup() {
   }
 }
 
+/** Refresh FCM + (on iOS) local notification permission and pending task-reminder count without rescheduling. */
+export async function refreshNativeNotificationDiagnostics() {
+  if (typeof window === "undefined" || !Capacitor.isNativePlatform()) return;
+  try {
+    const fcmPerm = await FirebaseMessaging.checkPermissions();
+    nativePushDebug.permission = mapCapacitorReceive(fcmPerm.receive);
+  } catch {
+    /* ignore */
+  }
+  if (Capacitor.getPlatform() === "ios") {
+    try {
+      const { LocalNotifications } = await import("@capacitor/local-notifications");
+      const perm = await LocalNotifications.checkPermissions();
+      const display = perm?.display ?? perm?.receive ?? "unknown";
+      nativePushDebug.localNotificationPermission = String(display);
+      const pending = await LocalNotifications.getPending();
+      const existing = Array.isArray(pending?.notifications) ? pending.notifications : [];
+      nativePushDebug.scheduledLocalReminderCount = existing.filter((n) => n?.extra?.proyouSource === "task_reminder").length;
+    } catch (e) {
+      nativePushDebug.localNotificationPermission = "error";
+      nativePushDebug.lastLocalScheduleError = e?.message || String(e);
+    }
+  }
+  emitNativeDebug();
+}
+
+/** Open the system screen where the user can enable alerts for this app (iOS: PROYOU settings). */
+export async function openNativeAppSystemSettings() {
+  if (typeof window === "undefined" || !Capacitor.isNativePlatform()) {
+    return { ok: false, hint: "Open the PROYOU app on your phone to change notification settings." };
+  }
+  try {
+    const appId = "app.proyou.proyou";
+    if (Capacitor.getPlatform() === "ios") {
+      window.location.assign("app-settings:");
+      return { ok: true };
+    }
+    if (Capacitor.getPlatform() === "android") {
+      window.location.assign(
+        `intent:#Intent;action=android.settings.APPLICATION_DETAILS_SETTINGS;data=package:${appId};end`
+      );
+      return { ok: true };
+    }
+    return { ok: false, hint: "Open notification settings from the device system menu." };
+  } catch (e) {
+    return { ok: false, hint: e?.message || String(e) };
+  }
+}
+
 /**
  * Request permission + FCM token; POST registration to backend.
  */
@@ -1042,6 +1091,12 @@ export const notificationService = {
   },
   sendNativeTestPush() {
     return _notificationService.sendNativeTestPush();
+  },
+  refreshNativeDiagnostics() {
+    return refreshNativeNotificationDiagnostics();
+  },
+  openNativeNotificationSettings() {
+    return openNativeAppSystemSettings();
   },
 };
 

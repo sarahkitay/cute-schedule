@@ -20,6 +20,7 @@
     "@capacitor-community/apple-sign-in": "^7.1.0",
     "@capacitor-firebase/authentication": "^7.5.0",
     "@capacitor-firebase/messaging": "^7.5.0",
+    "@capacitor/app": "^7.1.2",
     "@capacitor/core": "^7.4.3",
     "@capacitor/ios": "^7.4.3",
     "@capacitor/local-notifications": "^7.0.6",

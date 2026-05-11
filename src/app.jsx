@@ -15,6 +15,7 @@ import {
   subscribeNativePushDebug,
   getNativePushDebugSnapshot,
   resyncIosTaskLocalNotifications,
+  refreshNativeNotificationDiagnostics,
 } from "./notifications";
 import { buildTaskPushReminderEntriesForTask, normalizeTaskReminderFields, TASK_REMINDER_BEFORE_OPTIONS } from "./taskReminderModel.js";
 import { generateCompletionMessage, checkEnergyBalance } from "./completionRitual";
@@ -645,8 +646,19 @@ function computeDropdownPosition(rect, opts = {}) {
   const vh = typeof window !== "undefined" ? window.innerHeight : 700;
   const maxH = opts.maxHeight ?? 280;
   const panelW = Math.min(opts.panelWidth ?? 200, vw - pad * 2);
-  let left = rect.left;
-  left = Math.max(pad, Math.min(left, vw - pad - panelW));
+  /** Prefer right edge of anchor (kebab) so the panel extends left — avoids clipping on the right. */
+  let left = rect.right - panelW;
+  const minLeft = pad;
+  const maxLeft = vw - pad - panelW;
+  if (left < minLeft) {
+    left = Math.min(Math.max(rect.left, minLeft), maxLeft);
+  }
+  if (left > maxLeft) left = maxLeft;
+  left = Math.max(minLeft, Math.min(left, maxLeft));
+  /** Nudge slightly left when there is room (keeps bubble off the physical edge / safe area). */
+  const leftNudge = 12;
+  if (left > minLeft) left = Math.max(minLeft, left - leftNudge);
+
   let top = rect.bottom + 6;
   if (top + maxH > vh - pad) {
     top = Math.max(pad, rect.top - maxH - 6);
@@ -1925,6 +1937,15 @@ export default function App() {
     return list;
   }, [realTodayKey, finance.bills, finance.subscriptions, appState.days, customCategories, habitTracker.habits]);
 
+  const iosResyncDaysRef = useRef(appState.days);
+  const iosResyncTodayRef = useRef(realTodayKey);
+  const iosResyncCatsRef = useRef(customCategories);
+  useEffect(() => {
+    iosResyncDaysRef.current = appState.days;
+    iosResyncTodayRef.current = realTodayKey;
+    iosResyncCatsRef.current = customCategories;
+  }, [appState.days, realTodayKey, customCategories]);
+
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return;
     const tid = setTimeout(() => {
@@ -2315,7 +2336,9 @@ export default function App() {
   // Capacitor: FCM listeners + token refresh; local notifications resync from app state (see useEffect on appState.days).
   useEffect(() => {
     if (!isCapacitorNativeApp()) return;
-    bootstrapNativePushOnStartup();
+    void bootstrapNativePushOnStartup().then(() => {
+      void refreshNativeNotificationDiagnostics();
+    });
   }, []);
 
   const [nativePushDebug, setNativePushDebug] = useState(null);
@@ -2323,6 +2346,34 @@ export default function App() {
     if (!isCapacitorNativeApp()) return;
     setNativePushDebug(getNativePushDebugSnapshot());
     return subscribeNativePushDebug(setNativePushDebug);
+  }, []);
+
+  useEffect(() => {
+    if (!isCapacitorNativeApp()) return;
+    let listener;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        if (cancelled) return;
+        listener = await App.addListener("resume", () => {
+          void refreshNativeNotificationDiagnostics();
+          if (Capacitor.getPlatform() === "ios") {
+            void resyncIosTaskLocalNotifications(
+              iosResyncDaysRef.current,
+              iosResyncTodayRef.current,
+              iosResyncCatsRef.current
+            );
+          }
+        });
+      } catch (e) {
+        console.warn("[App] resume listener", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (listener && typeof listener.remove === "function") listener.remove();
+    };
   }, []);
 
   useEffect(() => {
@@ -5850,7 +5901,8 @@ export default function App() {
                   left,
                   top,
                   width,
-                  maxWidth: "calc(100vw - 32px)",
+                  maxWidth:
+                    "min(100vw - 32px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
                   zIndex: 'var(--z-popover)',
                 }}
                 onClick={(e) => e.stopPropagation()}
@@ -5947,7 +5999,8 @@ export default function App() {
                   left,
                   top,
                   width,
-                  maxWidth: "calc(100vw - 32px)",
+                  maxWidth:
+                    "min(100vw - 32px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
                   zIndex: "var(--z-popover)",
                 }}
                 onClick={(e) => e.stopPropagation()}
@@ -6240,6 +6293,7 @@ export default function App() {
                 <span className="settings-modal-header-spacer" aria-hidden="true" />
               </div>
 
+              <div className="settings-modal-body">
               <div className="settings-section">
                 <label className="label">Account</label>
                 {!isFirebaseEnabled() ? (
@@ -6696,34 +6750,114 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="settings-section">
-                <label className="label">Notifications</label>
-                <button
-                  className="btn btn-primary"
-                  onClick={async () => {
-                    const granted = await notificationService.requestPermission();
-                    if (granted) {
-                      alert('Notifications enabled! You\'ll get reminders for tasks and completion alerts.');
-                    } else {
-                      alert(
-                        isCapacitorNativeApp()
-                          ? "Please enable notifications in Settings → PROYOU to receive task reminders."
-                          : "Please enable notifications in your browser settings to receive task reminders."
-                      );
-                    }
-                  }}
-                >
-                  {notificationService.permission === 'granted' ? <><CheckIcon style={{ width: 16, height: 16, marginRight: 6, verticalAlign: 'middle' }} />Enabled</> : 'Enable Notifications'}
-                </button>
-              </div>
-
-              {isCapacitorNativeApp() && (
+              {isCapacitorNativeApp() ? (
                 <div className="settings-section">
-                  <label className="label">Native push (iOS app)</label>
+                  <label className="label">Notifications</label>
                   <p className="settings-hint">
-                    Uses Firebase Cloud Messaging plus on-device local notifications for exact task times (not the browser service worker). Enable below to register and sync reminders to the server as a backup.
+                    {Capacitor.getPlatform() === "ios" ? (
+                      <>
+                        <strong>Task reminders</strong> use on-device scheduled alerts at the times you set on each task (open a task → Remind me).{" "}
+                        <strong>Firebase (FCM)</strong> handles test pushes and optional server backup. Allow notifications for PROYOU and use the actions below.
+                      </>
+                    ) : (
+                      <>This app uses <strong>Firebase Cloud Messaging</strong> on Android. Register below for remote messages.</>
+                    )}
+                  </p>
+
+                  {Capacitor.getPlatform() === "ios" && (
+                    <>
+                      <label className="label" style={{ marginTop: 14, display: "block", fontSize: "0.95rem" }}>
+                        Task reminders (this iPhone)
+                      </label>
+                      <p className="settings-hint" style={{ marginTop: 4 }}>
+                        Apple scheduled local notifications (not the web view). Per task: Remind me, how long before start, and optional alert when the task starts.
+                      </p>
+                      <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                        <button
+                          type="button"
+                          className="btn btn-primary"
+                          onClick={async () => {
+                            await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories);
+                            await refreshNativeNotificationDiagnostics();
+                            const snap = getNativePushDebugSnapshot();
+                            const p = snap.localNotificationPermission;
+                            if (p === "granted") {
+                              alert(
+                                `Scheduled ${snap.scheduledLocalReminderCount ?? 0} local task reminder(s) in the coming days (see status below). Tasks must have Remind me turned on.`
+                              );
+                            } else {
+                              alert(
+                                "Local reminders need notification permission. If you previously chose Don’t Allow, use Open system settings, enable Notifications for PROYOU, then tap Allow & schedule again."
+                              );
+                            }
+                          }}
+                        >
+                          Allow &amp; schedule task reminders
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={async () => {
+                            await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories);
+                            await notificationService.syncRemindersToServer(pushRemindersList);
+                            await refreshNativeNotificationDiagnostics();
+                            alert("Schedule refreshed and backup reminder list sent to the server.");
+                          }}
+                        >
+                          Refresh schedule &amp; server backup
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={async () => {
+                            const r = await notificationService.openNativeNotificationSettings();
+                            if (!r?.ok) alert(r?.hint || "Could not open Settings.");
+                          }}
+                        >
+                          Open system settings
+                        </button>
+                        <button type="button" className="btn btn-sm" onClick={() => void refreshNativeNotificationDiagnostics()}>
+                          Refresh status
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  <label className="label" style={{ marginTop: 16, display: "block", fontSize: "0.95rem" }}>
+                    {Capacitor.getPlatform() === "ios" ? "Server and test alerts (Firebase)" : "Push registration"}
+                  </label>
+                  <p className="settings-hint" style={{ marginTop: 4 }}>
+                    {Capacitor.getPlatform() === "ios"
+                      ? "Registers for remote notifications (tests, future cloud backup). Exact task times use local scheduling on iPhone."
+                      : "Registers this device with your server for FCM."}
                   </p>
                   <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      onClick={async () => {
+                        const granted = await notificationService.requestPermission();
+                        await refreshNativeNotificationDiagnostics();
+                        if (granted) {
+                          alert("Firebase / remote notification permission granted.");
+                        } else {
+                          alert(
+                            Capacitor.getPlatform() === "ios"
+                              ? "Permission not granted. Use Open system settings under Task reminders to allow alerts for PROYOU."
+                              : "Permission not granted. Open system notification settings for this app."
+                          );
+                        }
+                      }}
+                    >
+                      {notificationService.permission === "granted" ? (
+                        <>
+                          <CheckIcon style={{ width: 16, height: 16, marginRight: 6, verticalAlign: "middle" }} />
+                          Remote alerts OK
+                        </>
+                      ) : (
+                        "Allow remote alerts (Firebase)"
+                      )}
+                    </button>
                     <button
                       type="button"
                       className="btn btn-primary"
@@ -6731,6 +6865,7 @@ export default function App() {
                         const result = await notificationService.enablePush();
                         if (result?.ok) {
                           await notificationService.syncRemindersToServer(pushRemindersList);
+                          await refreshNativeNotificationDiagnostics();
                           alert("Native push registered. Reminders can sync for this device.");
                         } else {
                           alert(result?.hint || "Could not enable native push.");
@@ -6751,7 +6886,7 @@ export default function App() {
                             r?.hint || r?.error || "Test send failed.",
                             r?.status != null ? `HTTP ${r.status}` : null,
                             r?.fetchError ? `Fetch: ${r.errorName || "Error"}${r.errorCause ? ` — ${r.errorCause}` : ""}` : null,
-                            "See “Native push” debug block below for redacted body, response, and stack.",
+                            "See the Notifications status block below for redacted body, response, and stack.",
                           ].filter(Boolean);
                           alert(parts.join("\n\n"));
                         }
@@ -6824,6 +6959,7 @@ export default function App() {
                         wordBreak: "break-all",
                       }}
                     >
+                      <div style={{ fontWeight: 600, marginBottom: 6 }}>Status and debug</div>
                       <div>Permission: {nativePushDebug.permission}</div>
                       <div>Native platform: {nativePushDebug.nativePlatform ? "true" : "false"}</div>
                       <div>Native token: {nativePushDebug.tokenRegistered ? "registered" : "missing"}</div>
@@ -6941,6 +7077,33 @@ export default function App() {
                     </div>
                   )}
                 </div>
+              ) : (
+                <div className="settings-section">
+                  <label className="label">Notifications</label>
+                  <p className="settings-hint">
+                    Allow notifications so the app can remind you about tasks and show gentle nudges while this tab is open.
+                  </p>
+                  <button
+                    className="btn btn-primary"
+                    onClick={async () => {
+                      const granted = await notificationService.requestPermission();
+                      if (granted) {
+                        alert("Notifications enabled! You will get reminders for tasks and completion alerts.");
+                      } else {
+                        alert("Please enable notifications in your browser settings to receive task reminders.");
+                      }
+                    }}
+                  >
+                    {notificationService.permission === "granted" ? (
+                      <>
+                        <CheckIcon style={{ width: 16, height: 16, marginRight: 6, verticalAlign: "middle" }} />
+                        Enabled
+                      </>
+                    ) : (
+                      "Enable Notifications"
+                    )}
+                  </button>
+                </div>
               )}
 
               {!isCapacitorNativeApp() && (
@@ -7019,28 +7182,31 @@ export default function App() {
                   </button>
                 </div>
               )}
-
-              <div className="settings-privacy-footer">
-                <button
-                  type="button"
-                  className="settings-privacy-link"
-                  id="settings-privacy-policy"
-                  onClick={() => setShowPrivacyPolicy(true)}
-                >
-                  Privacy Policy
-                </button>
               </div>
 
-              <div className="modal-actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={() => {
-                    setShowPrivacyPolicy(false);
-                    setShowSettings(false);
-                  }}
-                >
-                  Done
-                </button>
+              <div className="settings-modal-footer">
+                <div className="settings-privacy-footer">
+                  <button
+                    type="button"
+                    className="settings-privacy-link"
+                    id="settings-privacy-policy"
+                    onClick={() => setShowPrivacyPolicy(true)}
+                  >
+                    Privacy Policy
+                  </button>
+                </div>
+
+                <div className="modal-actions">
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => {
+                      setShowPrivacyPolicy(false);
+                      setShowSettings(false);
+                    }}
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             </div>
           </div>
