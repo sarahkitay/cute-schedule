@@ -2257,6 +2257,50 @@ button {
 .quick-add-stack {
   margin-bottom: 0;
 }
+
+.quick-add-help-wrap {
+  margin: 6px var(--space-3) var(--space-3);
+}
+
+.quick-add-help-toggle {
+  display: inline-block;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.quick-add-help-toggle:hover {
+  color: var(--text-soft);
+}
+
+.quick-add-help-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--theme-accent, #6b9bd1) 55%, transparent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.quick-add-help-panel {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.quick-add-help-wrap--in-details {
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: var(--space-2);
+  margin-bottom: 0;
+}
+
 .quick-add-entry-mode {
   display: flex;
   gap: 0;
@@ -5405,6 +5449,17 @@ textarea.input {
 }
 
 /* Health & training */
+.today-dock-fallback-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.today-dock-fallback-card {
+  margin-bottom: 0;
+}
+
 .health-hero-cta-inner {
   display: flex;
   align-items: center;

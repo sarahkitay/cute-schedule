@@ -1890,6 +1890,42 @@ function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError }) {
   );
 }
 
+/** Dock tabs (except Today) that can be hidden from nav — Today shows a CTA above Today's Capacity when hidden. */
+const DOCK_FALLBACK_ORDER = ["list", "monthly", "coach", "notes", "finance", "health"];
+
+const DOCK_FALLBACK_COPY = {
+  list: {
+    title: "List",
+    body: "See incomplete tasks in one scrollable view across your days.",
+    btn: "Open List",
+  },
+  monthly: {
+    title: "Monthly objectives",
+    body: "Set monthly direction and track what matters for the whole month.",
+    btn: "Open Monthly",
+  },
+  coach: {
+    title: "Coach",
+    body: "Pattern insights based on how you plan and follow through.",
+    btn: "Open Coach",
+  },
+  notes: {
+    title: "Notes",
+    body: "Jot thoughts, wind-down notes, and things you do not want to lose.",
+    btn: "Open Notes",
+  },
+  finance: {
+    title: "Finance",
+    body: "Income, spending, savings & debt. Coach can help with habits.",
+    btn: "Open Finance",
+  },
+  health: {
+    title: "Health & training",
+    body: "Plan this week's lifts, track macros and weight, and keep workout tasks in sync with your schedule.",
+    btn: "Open Health",
+  },
+};
+
 /** ====== Main App ====== **/
 export default function App() {
   const [tab, setTab] = useState("today");
@@ -3751,6 +3787,8 @@ export default function App() {
   const [showPastRepeats, setShowPastRepeats] = useState(false);
   /** "type" = natural-language bar; "details" = time, category, repeat, energy */
   const [quickEntryMode, setQuickEntryMode] = useState("type");
+  const [quickAddTypeHelpOpen, setQuickAddTypeHelpOpen] = useState(false);
+  const [quickAddDetailsHelpOpen, setQuickAddDetailsHelpOpen] = useState(false);
   const [quickDetailEnergy, setQuickDetailEnergy] = useState("MEDIUM");
   /** When set to workout, quick-add (Details) tags the task for the Health rhythm tracker. */
   const [quickDetailTaskKind, setQuickDetailTaskKind] = useState("default");
@@ -3760,6 +3798,8 @@ export default function App() {
   useEffect(() => {
     setQuickAddJustAdded(false);
     setQuickDetailTaskKind("default");
+    setQuickAddTypeHelpOpen(false);
+    setQuickAddDetailsHelpOpen(false);
     if (quickAddFlashTimerRef.current) {
       clearTimeout(quickAddFlashTimerRef.current);
       quickAddFlashTimerRef.current = null;
@@ -4625,6 +4665,11 @@ export default function App() {
     ].filter((item) => nv[item.id] === true);
   }, [profile.navVisibility]);
 
+  const todayHiddenDockTabs = useMemo(() => {
+    const nv = normalizeNavVisibility(profile.navVisibility);
+    return DOCK_FALLBACK_ORDER.filter((id) => nv[id] !== true);
+  }, [profile.navVisibility]);
+
   const firebaseOn = isFirebaseEnabled();
   const authWaiting = firebaseOn && !firebaseAuthResolved;
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
@@ -4893,39 +4938,50 @@ export default function App() {
                   Details
                 </button>
               </div>
-              {quickEntryMode === "details" ? (
-                <p className="quick-add-details-hint settings-hint">
-                  In <strong>Details</strong>, use the fields below: <strong>time</strong> (clock picker), <strong>category</strong>, <strong>task</strong> text, <strong>repeat</strong> (none, daily, weekly, or option to repeat), <strong>energy</strong> level, and <strong>Past tasks</strong> for tasks you saved as repeatable.
-                </p>
-              ) : (
-                <p className="quick-add-details-hint settings-hint">
-                  In <strong>Type</strong>, include a time (e.g. <strong>4pm</strong> or <strong>16:30</strong>). Add a day so it lands on that calendar:{" "}
-                  <strong>tomorrow</strong>, <strong>today</strong>, <strong>next Monday</strong>, <strong>Friday</strong>,{" "}
-                  <strong>3/26/26</strong> or <strong>2026-03-26</strong>. Dates are from <strong>today&apos;s</strong> calendar, not only the day you have open.
-                </p>
-              )}
               {quickEntryMode === "type" ? (
-                <form className="input-group quick-add-bar" onSubmit={quickAddFromNL} autoComplete="off">
-                  <input
-                    className="input quick-add-input"
-                    type="text"
-                    name="quickAddTask"
-                    value={quickAddValue}
-                    onChange={(e) => setQuickAddValue(e.target.value)}
-                    placeholder="Add a task… e.g. Meeting 4pm tomorrow, Doctor 2pm 3/26/26"
-                    aria-label="Quick add task"
-                    autoComplete="off"
-                  />
-                  <button
-                    type="submit"
-                    className={["btn-primary", "quick-add-submit-btn", quickAddJustAdded ? "quick-add-submit-added" : ""].filter(Boolean).join(" ")}
-                    disabled={!quickAddValue.trim() || quickAddJustAdded}
-                    aria-label={quickAddJustAdded ? "Task added" : "Add task"}
-                  >
-                    {quickAddJustAdded ? "Added" : "Add"}
-                  </button>
-                </form>
+                <>
+                  <form className="input-group quick-add-bar" onSubmit={quickAddFromNL} autoComplete="off">
+                    <input
+                      className="input quick-add-input"
+                      type="text"
+                      name="quickAddTask"
+                      value={quickAddValue}
+                      onChange={(e) => setQuickAddValue(e.target.value)}
+                      placeholder="Add a task… e.g. Meeting 4pm tomorrow, Doctor 2pm 3/26/26"
+                      aria-label="Quick add task"
+                      autoComplete="off"
+                    />
+                    <button
+                      type="submit"
+                      className={["btn-primary", "quick-add-submit-btn", quickAddJustAdded ? "quick-add-submit-added" : ""].filter(Boolean).join(" ")}
+                      disabled={!quickAddValue.trim() || quickAddJustAdded}
+                      aria-label={quickAddJustAdded ? "Task added" : "Add task"}
+                    >
+                      {quickAddJustAdded ? "Added" : "Add"}
+                    </button>
+                  </form>
+                  <div className="quick-add-help-wrap">
+                    <button
+                      type="button"
+                      className="quick-add-help-toggle"
+                      aria-expanded={quickAddTypeHelpOpen}
+                      aria-controls="quick-add-type-help"
+                      id="quick-add-type-help-toggle"
+                      onClick={() => setQuickAddTypeHelpOpen((o) => !o)}
+                    >
+                      {quickAddTypeHelpOpen ? "Hide type tips" : "Type tips"}
+                    </button>
+                    {quickAddTypeHelpOpen ? (
+                      <p id="quick-add-type-help" className="quick-add-help-panel settings-hint" role="region" aria-labelledby="quick-add-type-help-toggle">
+                        In <strong>Type</strong>, include a time (e.g. <strong>4pm</strong> or <strong>16:30</strong>). Add a day so it lands on that calendar:{" "}
+                        <strong>tomorrow</strong>, <strong>today</strong>, <strong>next Monday</strong>, <strong>Friday</strong>,{" "}
+                        <strong>3/26/26</strong> or <strong>2026-03-26</strong>. Dates are from <strong>today&apos;s</strong> calendar, not only the day you have open.
+                      </p>
+                    ) : null}
+                  </div>
+                </>
               ) : (
+                <>
                 <form className="quick quick-add-details-form" onSubmit={quickAdd} autoComplete="off">
                   <div className="quick-row">
                     <label className="label" htmlFor="quick-detail-time">
@@ -5036,6 +5092,24 @@ export default function App() {
                       <RepeatIcon /> Past tasks
                     </button>
                   </div>
+                  <div className="quick-add-help-wrap quick-add-help-wrap--in-details">
+                    <button
+                      type="button"
+                      className="quick-add-help-toggle"
+                      aria-expanded={quickAddDetailsHelpOpen}
+                      aria-controls="quick-add-details-help"
+                      id="quick-add-details-help-toggle"
+                      onClick={() => setQuickAddDetailsHelpOpen((o) => !o)}
+                    >
+                      {quickAddDetailsHelpOpen ? "Hide details tips" : "Details tips"}
+                    </button>
+                    {quickAddDetailsHelpOpen ? (
+                      <p id="quick-add-details-help" className="quick-add-help-panel settings-hint" role="region" aria-labelledby="quick-add-details-help-toggle">
+                        In <strong>Details</strong>, use the fields in this card: <strong>time</strong> (clock picker), <strong>category</strong>, <strong>task</strong> text,{" "}
+                        <strong>repeat</strong> (none, daily, weekly, or option to repeat), <strong>energy</strong> level, and <strong>Past tasks</strong> for tasks you saved as repeatable.
+                      </p>
+                    ) : null}
+                  </div>
                   {showPastRepeats && (
                     <div className="past-repeats-list quick-add-past-repeats">
                       <div className="past-repeats-list-title">Tasks you marked &quot;Option to repeat&quot;</div>
@@ -5089,36 +5163,9 @@ export default function App() {
                     </div>
                   )}
                 </form>
+                </>
               )}
             </div>
-
-            {tab === "today" && (
-              <div className="panel health-hero-cta surface-glass scroll-reveal" style={{ marginBottom: 14 }}>
-                <div className="health-hero-cta-inner">
-                  <div>
-                    <div className="title" style={{ fontSize: "1.05rem", marginBottom: 4 }}>
-                      Health &amp; training
-                    </div>
-                    <p className="settings-hint" style={{ margin: 0 }}>
-                      Plan this week&apos;s lifts, track macros and weight, and keep workout tasks in sync with your schedule.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={() => {
-                      setProfile((p) => ({
-                        ...p,
-                        navVisibility: { ...normalizeNavVisibility(p.navVisibility), health: true },
-                      }));
-                      setTab("health");
-                    }}
-                  >
-                    Open Health
-                  </button>
-                </div>
-              </div>
-            )}
 
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
               <section className="panel habit-daily-card surface-glass scroll-reveal" style={{ marginBottom: 14 }}>
@@ -5300,6 +5347,42 @@ export default function App() {
                 </div>
               )}
             </section>
+
+            {tab === "today" && isSameDayKey(tKey, realTodayKey) && todayHiddenDockTabs.length > 0 && (
+              <div className="today-dock-fallback-stack scroll-reveal">
+                {todayHiddenDockTabs.map((dockId) => {
+                  const cfg = DOCK_FALLBACK_COPY[dockId];
+                  if (!cfg) return null;
+                  return (
+                    <div key={dockId} className="panel health-hero-cta surface-glass today-dock-fallback-card">
+                      <div className="health-hero-cta-inner">
+                        <div>
+                          <div className="title" style={{ fontSize: "1.05rem", marginBottom: 4 }}>
+                            {cfg.title}
+                          </div>
+                          <p className="settings-hint" style={{ margin: 0 }}>
+                            {cfg.body}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={() => {
+                            setProfile((p) => ({
+                              ...p,
+                              navVisibility: { ...normalizeNavVisibility(p.navVisibility), [dockId]: true },
+                            }));
+                            setTab(dockId);
+                          }}
+                        >
+                          {cfg.btn}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Today's Capacity: Energy + Mood pills (reference) */}
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (
