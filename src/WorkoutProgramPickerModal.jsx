@@ -61,9 +61,16 @@ export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCance
           </label>
         </div>
         {mode === "specific" ? (
-          <label className="quick-row" style={{ marginTop: 12 }}>
-            <span className="label">Program</span>
-            <select className="input" value={programId} onChange={(e) => setProgramId(e.target.value)}>
+          <div className="workout-picker-program-row" role="group" aria-label="Choose program">
+            <span className="workout-picker-program-label" id="wk-pick-program-label">
+              Program
+            </span>
+            <select
+              className="input workout-picker-program-select"
+              aria-labelledby="wk-pick-program-label"
+              value={programId}
+              onChange={(e) => setProgramId(e.target.value)}
+            >
               <option value="">Select…</option>
               {programs.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -72,7 +79,7 @@ export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCance
                 </option>
               ))}
             </select>
-          </label>
+          </div>
         ) : null}
         <div className="health-workout-footer" style={{ marginTop: 16 }}>
           <button type="button" className="btn btn-primary" disabled={!specificOk} onClick={submit}>

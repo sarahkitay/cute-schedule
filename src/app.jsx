@@ -103,8 +103,6 @@ const THEME_STORAGE_KEY = "cute_schedule_theme_v1";
 /** Legacy payloads may include moodboard; we no longer persist custom background images. */
 const EMPTY_MOODBOARD = Object.freeze({ imageUrl: "", text: "" });
 const ACCOUNT_DELETE_CONFIRM_PHRASE = "DELETE";
-/** Set to dismissed | installed so we only auto-prompt once per browser. */
-const PWA_INSTALL_PROMPT_KEY = "cute_schedule_pwa_install_v1";
 
 /** True when running inside the Capacitor iOS/Android shell (not the browser site). */
 function isCapacitorNativeApp() {
@@ -115,27 +113,6 @@ function isCapacitorNativeApp() {
   }
 }
 
-function isRunningAsInstalledPwa() {
-  if (typeof window === "undefined") return true;
-  try {
-    if (Capacitor.isNativePlatform()) return true;
-    return (
-      window.matchMedia("(display-mode: standalone)").matches ||
-      window.matchMedia("(display-mode: fullscreen)").matches ||
-      window.matchMedia("(display-mode: window-controls-overlay)").matches ||
-      (typeof navigator !== "undefined" && navigator.standalone === true)
-    );
-  } catch {
-    return false;
-  }
-}
-
-function isLikelyIosDevice() {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent || "";
-  if (/iPad|iPhone|iPod/.test(ua)) return true;
-  return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
-}
 const COACH_USER_PROFILE_KEY = "cute_schedule_coach_profile_v1";
 const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
@@ -520,6 +497,21 @@ function todayKey(d = new Date()) {
 
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
+}
+
+/** Task has a workout program (picker result or explicit workout type). */
+function taskHasWorkoutProgramAttachment(t) {
+  if (!t || t.done) return false;
+  if (t.taskType === "workout") return true;
+  if (t.workoutProgramId) return true;
+  const m = t.workoutProgramMode;
+  return m === "queue" || m === "auto" || m === "specific";
+}
+
+/** Task has a saved shopping / errand checklist (not only keyword-matched text). */
+function taskHasAssociatedGroceryList(t) {
+  if (!t?.groceryList || typeof t.groceryList !== "object") return false;
+  return Array.isArray(t.groceryList.items);
 }
 
 function sumSavingsAccounts(accounts) {
@@ -1608,22 +1600,36 @@ function HourCard({
                   )}
                   
                   {!t.done &&
-                    typeof groceryTextMatch === "function" &&
-                    groceryTextMatch(t.text) &&
-                    typeof onOpenGroceryList === "function" && (
+                    typeof onOpenGroceryList === "function" &&
+                    (taskHasAssociatedGroceryList(t) ||
+                      (typeof groceryTextMatch === "function" && groceryTextMatch(t.text))) && (
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm grocery-list-btn"
                       title="Open shopping / errand checklist"
-                      aria-label="Open shopping list for this task"
+                      aria-label="View list for this task"
                       onClick={(e) => {
                         e.stopPropagation();
                         onOpenGroceryList(hourKey, t.category, t.id);
                       }}
                     >
-                      List
+                      {taskHasAssociatedGroceryList(t) ? "View list" : "List"}
                     </button>
                   )}
+                  {!t.done && taskHasWorkoutProgramAttachment(t) && typeof onBeginWorkout === "function" ? (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm grocery-list-btn"
+                      title="Open guided workout on Health"
+                      aria-label="Begin workout for this task"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onBeginWorkout(dayKey, hourKey, t.category, t);
+                      }}
+                    >
+                      Begin workout
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="icon-btn"
@@ -1716,7 +1722,7 @@ function HourCard({
                       </div>
                     ) : null}
                     <div className="item-detail-actions">
-                      {t.taskType === "workout" && !t.done && onBeginWorkout ? (
+                      {taskHasWorkoutProgramAttachment(t) && onBeginWorkout ? (
                         <button
                           type="button"
                           className="btn btn-sm btn-primary"
@@ -2407,13 +2413,10 @@ export default function App() {
   const [dropdownAnchorRect, setDropdownAnchorRect] = useState(null); // { top, left, bottom, right } for portal
   /** Monthly / note / grocery line menus (same popover styling as task menu). */
   const [secondaryListMenu, setSecondaryListMenu] = useState(null);
-  const [showPwaInstallModal, setShowPwaInstallModal] = useState(false);
   const [onboardingActive, setOnboardingActive] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
   /** After setup, optional one-time product tour */
   const [featureWalkthroughMode, setFeatureWalkthroughMode] = useState(null);
-  const [canNativeInstallPwa, setCanNativeInstallPwa] = useState(false);
-  const deferredInstallPromptRef = useRef(null);
   const [editingTaskTime, setEditingTaskTime] = useState(null); // "hourKey-category-id" when showing time editor
   const [editTaskTimeValue, setEditTaskTimeValue] = useState("09:00"); // new time for edit
   const [expandedTaskKey, setExpandedTaskKey] = useState(null); // "hourKey-category-id" for expandable detail
@@ -2989,30 +2992,6 @@ export default function App() {
     })();
     return () => {
       if (handle && typeof handle.remove === "function") handle.remove();
-    };
-  }, []);
-
-  // PWA: capture install prompt (Chrome, Edge, Android Chrome, etc.). Skip in Capacitor; not applicable in the store app.
-  useEffect(() => {
-    if (isCapacitorNativeApp()) return;
-    const onBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      deferredInstallPromptRef.current = e;
-      setCanNativeInstallPwa(true);
-    };
-    const onAppInstalled = () => {
-      try {
-        localStorage.setItem(PWA_INSTALL_PROMPT_KEY, "installed");
-      } catch {}
-      deferredInstallPromptRef.current = null;
-      setCanNativeInstallPwa(false);
-      setShowPwaInstallModal(false);
-    };
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-    window.addEventListener("appinstalled", onAppInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-      window.removeEventListener("appinstalled", onAppInstalled);
     };
   }, []);
 
@@ -3843,8 +3822,20 @@ export default function App() {
     }
     return { type: "income", amount, label: rest || null };
   }
-  function addFinanceEntry(type, amount, label = null) {
-    const entry = { id: uid(), amount, label, dateISO: new Date().toISOString() };
+  function addFinanceEntry(type, amount, label = null, opts = null) {
+    const o = opts && typeof opts === "object" ? opts : {};
+    const dateISO =
+      typeof o.dateISO === "string" && o.dateISO.trim()
+        ? o.dateISO.trim()
+        : new Date().toISOString();
+    const entry = {
+      id: uid(),
+      amount,
+      label,
+      dateISO,
+      ...(o.billId ? { billId: String(o.billId) } : {}),
+      ...(o.billDueDate ? { billDueDate: String(o.billDueDate) } : {}),
+    };
     if (type === "income") {
       setFinance((prev) => ({ ...prev, incomeEntries: [entry, ...(prev.incomeEntries || [])].slice(0, 200) }));
     } else {
@@ -3884,6 +3875,73 @@ export default function App() {
   }
   function removeBill(id) {
     setFinance((prev) => ({ ...prev, bills: (prev.bills || []).filter((b) => b.id !== id) }));
+  }
+
+  /** Log this bill as spending on its due date (deduped per bill + due date). */
+  function markBillPaid(billId) {
+    setFinance((prev) => {
+      const bills = prev.bills || [];
+      const b = bills.find((x) => x.id === billId);
+      if (!b || !b.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(String(b.dueDate))) {
+        return prev;
+      }
+      const amt = Number(b.amount) || 0;
+      if (amt <= 0) return prev;
+      const expenses = prev.expenseEntries || [];
+      const dupe = expenses.some((e) => e.billId === billId && e.billDueDate === b.dueDate);
+      if (dupe) return prev;
+      const day = String(b.dueDate).trim();
+      const entry = {
+        id: uid(),
+        amount: amt,
+        label: `Bill paid: ${b.name}`,
+        dateISO: `${day}T12:00:00.000Z`,
+        billId,
+        billDueDate: b.dueDate,
+      };
+      return { ...prev, expenseEntries: [entry, ...expenses].slice(0, 200) };
+    });
+  }
+
+  function handleMarkBillPaid(billId) {
+    const b = (finance.bills || []).find((x) => x.id === billId);
+    if (!b) return;
+    if (!b.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(String(b.dueDate))) {
+      setToastNotification({
+        message: "Add a due date on the bill so spending can be logged on that day.",
+        taskText: String(b.name || ""),
+        type: "added",
+      });
+      setTimeout(() => setToastNotification(null), 3200);
+      return;
+    }
+    const amt = Number(b.amount) || 0;
+    if (amt <= 0) {
+      setToastNotification({
+        message: "Set a bill amount to record it as spending.",
+        taskText: String(b.name || ""),
+        type: "added",
+      });
+      setTimeout(() => setToastNotification(null), 3200);
+      return;
+    }
+    const dupe = (finance.expenseEntries || []).some((e) => e.billId === billId && e.billDueDate === b.dueDate);
+    if (dupe) {
+      setToastNotification({
+        message: "Already logged as paid for this due date.",
+        taskText: String(b.name || ""),
+        type: "added",
+      });
+      setTimeout(() => setToastNotification(null), 2800);
+      return;
+    }
+    markBillPaid(billId);
+    setToastNotification({
+      message: `Logged $${amt.toFixed(2)} spent — ${b.name} (${b.dueDate}).`,
+      taskText: "",
+      type: "added",
+    });
+    setTimeout(() => setToastNotification(null), 2800);
   }
 
   function addCreditScoreEntry() {
@@ -5066,20 +5124,6 @@ export default function App() {
     if (next !== tab) setTab(next);
   }, [tab, profile.navVisibility, profile.dockOrder]);
 
-  useEffect(() => {
-    if (authWaiting || showLoginGate || onboardingActive) return;
-    if (isCapacitorNativeApp()) return;
-    if (isRunningAsInstalledPwa()) return;
-    let alreadyHandled = false;
-    try {
-      const v = localStorage.getItem(PWA_INSTALL_PROMPT_KEY);
-      alreadyHandled = v === "dismissed" || v === "installed";
-    } catch {}
-    if (alreadyHandled) return;
-    const t = window.setTimeout(() => setShowPwaInstallModal(true), 1400);
-    return () => clearTimeout(t);
-  }, [authWaiting, showLoginGate, onboardingActive]);
-
   useLayoutEffect(() => {
     if (authWaiting || showLoginGate) return;
     if (onboardingActive) return;
@@ -5139,32 +5183,6 @@ export default function App() {
 
   function dismissFeatureWalkthrough() {
     setFeatureWalkthroughMode(null);
-  }
-
-  async function handleNativePwaInstall() {
-    const e = deferredInstallPromptRef.current;
-    if (!e) return;
-    try {
-      await e.prompt();
-      const choice = await e.userChoice;
-      deferredInstallPromptRef.current = null;
-      setCanNativeInstallPwa(false);
-      if (choice?.outcome === "accepted") {
-        try {
-          localStorage.setItem(PWA_INSTALL_PROMPT_KEY, "installed");
-        } catch {}
-        setShowPwaInstallModal(false);
-      }
-    } catch {}
-  }
-
-  function dismissPwaInstallModal() {
-    try {
-      if (localStorage.getItem(PWA_INSTALL_PROMPT_KEY) !== "installed") {
-        localStorage.setItem(PWA_INSTALL_PROMPT_KEY, "dismissed");
-      }
-    } catch {}
-    setShowPwaInstallModal(false);
   }
 
   return (
@@ -5305,6 +5323,32 @@ export default function App() {
           <>
             {/* Add bar: Type (natural language) vs Details (time, category, repeat, energy); above the add field */}
             <div className="quick-add-stack scroll-reveal">
+              {quickEntryMode === "type" ? (
+                <div className="quick-add-type-help-above">
+                  <button
+                    type="button"
+                    className="quick-add-help-toggle"
+                    aria-expanded={quickAddTypeHelpOpen}
+                    aria-controls="quick-add-type-help"
+                    id="quick-add-type-help-toggle"
+                    onClick={() => setQuickAddTypeHelpOpen((o) => !o)}
+                  >
+                    {quickAddTypeHelpOpen ? "Hide type tips" : "Type tips"}
+                  </button>
+                  {quickAddTypeHelpOpen ? (
+                    <p
+                      id="quick-add-type-help"
+                      className="quick-add-help-panel quick-add-help-panel--type-above settings-hint"
+                      role="region"
+                      aria-labelledby="quick-add-type-help-toggle"
+                    >
+                      In <strong>Type</strong>, include a time (e.g. <strong>4pm</strong> or <strong>16:30</strong>). Add a day so it lands on that calendar:{" "}
+                      <strong>tomorrow</strong>, <strong>today</strong>, <strong>next Monday</strong>, <strong>Friday</strong>,{" "}
+                      <strong>3/26/26</strong> or <strong>2026-03-26</strong>. Dates are from <strong>today&apos;s</strong> calendar, not only the day you have open.
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="quick-add-top-bar">
                 <div className="quick-add-entry-mode" role="tablist" aria-label="Add task entry">
                   <button
@@ -5326,18 +5370,6 @@ export default function App() {
                     Details
                   </button>
                 </div>
-                {quickEntryMode === "type" ? (
-                  <button
-                    type="button"
-                    className="quick-add-help-toggle quick-add-help-toggle--type-trailing"
-                    aria-expanded={quickAddTypeHelpOpen}
-                    aria-controls="quick-add-type-help"
-                    id="quick-add-type-help-toggle"
-                    onClick={() => setQuickAddTypeHelpOpen((o) => !o)}
-                  >
-                    {quickAddTypeHelpOpen ? "Hide type tips" : "Type tips"}
-                  </button>
-                ) : null}
               </div>
               {quickEntryMode === "type" ? (
                 <>
@@ -5361,18 +5393,6 @@ export default function App() {
                       {quickAddJustAdded ? "Added" : "Add"}
                     </button>
                   </form>
-                  {quickAddTypeHelpOpen ? (
-                    <p
-                      id="quick-add-type-help"
-                      className="quick-add-help-panel quick-add-help-panel--type-inline settings-hint"
-                      role="region"
-                      aria-labelledby="quick-add-type-help-toggle"
-                    >
-                      In <strong>Type</strong>, include a time (e.g. <strong>4pm</strong> or <strong>16:30</strong>). Add a day so it lands on that calendar:{" "}
-                      <strong>tomorrow</strong>, <strong>today</strong>, <strong>next Monday</strong>, <strong>Friday</strong>,{" "}
-                      <strong>3/26/26</strong> or <strong>2026-03-26</strong>. Dates are from <strong>today&apos;s</strong> calendar, not only the day you have open.
-                    </p>
-                  ) : null}
                 </>
               ) : (
                 <>
@@ -6053,7 +6073,7 @@ export default function App() {
                           <span className={`list-row-title ${t.done ? 'item-text-done' : ''}`}>{t.text}</span>
                         </label>
                         <div className="list-row-actions">
-                        {groceryTextMatch(t.text) && (
+                        {(taskHasAssociatedGroceryList(t) || groceryTextMatch(t.text)) && (
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm list-row-grocery"
@@ -6063,10 +6083,10 @@ export default function App() {
                               setGroceryListModal({ dayKey: tKey, hourKey: t.hour, category: t.category, taskId: t.id });
                             }}
                           >
-                            List
+                            {taskHasAssociatedGroceryList(t) ? "View list" : "List"}
                           </button>
                         )}
-                        {t.taskType === "workout" && !t.done ? (
+                        {taskHasWorkoutProgramAttachment(t) ? (
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm list-row-grocery"
@@ -6404,7 +6424,7 @@ export default function App() {
                 <br />
                 <br />
                 <small style={{ opacity: 0.7 }}>
-                  Optional: expand <strong>Get to know you</strong> below so suggestions stay grounded in your goals.
+                  Expand <strong>Get to know you</strong> below so suggestions stay grounded in your goals.
                 </small>
               </div>
             )}
@@ -6463,9 +6483,9 @@ export default function App() {
               </div>
             )}
 
-            <details className="coach-gtky-details surface-glass">
+            <details className="coach-gtky-details">
               <summary className="coach-gtky-summary">
-                {coachUserProfile.filled ? "Your coaching profile" : "Get to know you (optional)"}
+                {coachUserProfile.filled ? "Your coaching profile" : "Get to know you"}
               </summary>
               <div className="coach-gtky-body">
                 <p className="settings-hint" style={{ marginBottom: 12 }}>
@@ -6938,8 +6958,9 @@ export default function App() {
               <ul className="finance-list">
                 {(finance.incomeEntries || []).slice(0, 15).map((e) => (
                   <li key={e.id} className="finance-list-item income">
-                    <span className="finance-amount">+${Number(e.amount).toFixed(2)}</span>
+                    <span className="finance-meta finance-entry-date">{String(e.dateISO || "").slice(0, 10)}</span>
                     {e.label && <span className="finance-label">{e.label}</span>}
+                    <span className="finance-amount">+${Number(e.amount).toFixed(2)}</span>
                     <button type="button" className="icon-btn" onClick={() => removeFinanceEntry("income", e.id)} aria-label="Remove"><TrashIcon /></button>
                   </li>
                 ))}
@@ -6952,8 +6973,9 @@ export default function App() {
               <ul className="finance-list">
                 {(finance.expenseEntries || []).slice(0, 15).map((e) => (
                   <li key={e.id} className="finance-list-item expense">
-                    <span className="finance-amount">-${Number(e.amount).toFixed(2)}</span>
+                    <span className="finance-meta finance-entry-date">{String(e.dateISO || "").slice(0, 10)}</span>
                     {e.label && <span className="finance-label">{e.label}</span>}
+                    <span className="finance-amount">-${Number(e.amount).toFixed(2)}</span>
                     <button type="button" className="icon-btn" onClick={() => removeFinanceEntry("expense", e.id)} aria-label="Remove"><TrashIcon /></button>
                   </li>
                 ))}
@@ -7014,11 +7036,18 @@ export default function App() {
               </form>
               <ul className="finance-list">
                 {(finance.bills || []).map((b) => (
-                  <li key={b.id} className="finance-list-item">
+                  <li key={b.id} className="finance-list-item finance-bill-row">
                     <span className="finance-label">{b.name}</span>
                     {b.amount > 0 && <span className="finance-amount">${Number(b.amount).toFixed(2)}</span>}
                     {b.dueDate && <span className="finance-meta">Due {b.dueDate}</span>}
-                    <button type="button" className="icon-btn" onClick={() => removeBill(b.id)} aria-label="Remove"><TrashIcon /></button>
+                    <div className="finance-bill-actions">
+                      <button type="button" className="btn btn-sm btn-primary" onClick={() => handleMarkBillPaid(b.id)}>
+                        Mark paid
+                      </button>
+                      <button type="button" className="icon-btn" onClick={() => removeBill(b.id)} aria-label="Remove">
+                        <TrashIcon />
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -8920,26 +8949,6 @@ export default function App() {
                   })}
                 </div>
               </div>
-              {!isRunningAsInstalledPwa() && !isCapacitorNativeApp() && (
-                <div className="settings-section">
-                  <label className="label">Install on home screen</label>
-                  <p className="settings-hint">
-                    Open the add-to-home-screen helper again (one-tap on Chrome/Android, or step-by-step on iPhone).
-                  </p>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      setShowPrivacyPolicy(false);
-                      setSettingsSubView("main");
-                      setShowSettings(false);
-                      setShowPwaInstallModal(true);
-                    }}
-                  >
-                    Add PROYOU to home screen
-                  </button>
-                </div>
-              )}
                 </div>
               </details>
 
@@ -9407,55 +9416,6 @@ export default function App() {
             onComplete={completeFeatureWalkthrough}
             onDismiss={dismissFeatureWalkthrough}
           />
-        )}
-
-        {showPwaInstallModal && !isRunningAsInstalledPwa() && !isCapacitorNativeApp() && (
-          <div
-            className="modal-overlay pwa-install-overlay"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="pwa-install-title"
-            onClick={() => dismissPwaInstallModal()}
-          >
-            <div className="modal pwa-install-modal" onClick={(e) => e.stopPropagation()}>
-              <div className="pwa-install-modal-header">
-                <h3 id="pwa-install-title">Add PROYOU to your home screen</h3>
-                <button type="button" className="btn-icon pwa-install-close" onClick={() => dismissPwaInstallModal()} aria-label="Close">
-                  <CloseIcon style={{ width: 22, height: 22 }} />
-                </button>
-              </div>
-              <p className="settings-hint pwa-install-lead">
-                Install once and open PROYOU like an app. You get a full-screen experience and better support for reminders on your phone.
-              </p>
-              {canNativeInstallPwa ? (
-                <>
-                  <p className="settings-hint">Your browser can add it in one tap.</p>
-                  <button type="button" className="btn btn-primary pwa-install-cta" onClick={() => void handleNativePwaInstall()}>
-                    Add to home screen
-                  </button>
-                </>
-              ) : isLikelyIosDevice() ? (
-                <ol className="pwa-install-steps">
-                  <li>
-                    Tap the <strong>Share</strong> button (square with an arrow) in Safari, usually at the bottom bar.
-                  </li>
-                  <li>
-                    Scroll and tap <strong>Add to Home Screen</strong>
-                  </li>
-                  <li>
-                    Tap <strong>Add</strong>. Next time, open PROYOU from your home screen icon.
-                  </li>
-                </ol>
-              ) : (
-                <p className="settings-hint">
-                  Look for &quot;Install app&quot; or an install icon in your browser address bar, or open the browser menu and choose Install. If nothing appears yet, use the app for a moment and try again.
-                </p>
-              )}
-              <button type="button" className="btn btn-ghost pwa-install-later" onClick={() => dismissPwaInstallModal()}>
-                Not now
-              </button>
-            </div>
-          </div>
         )}
 
         {deleteAccountOpen &&
