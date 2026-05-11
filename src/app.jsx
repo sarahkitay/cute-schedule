@@ -5890,7 +5890,9 @@ export default function App() {
             const isEditing = editingTaskTime === editKey;
             const closeDropdown = () => { setTaskDropdown(null); setDropdownAnchorRect(null); };
             const dropdownMaxHeight = isEditing ? 340 : 300;
-            const panelWidth = isEditing ? 268 : 208;
+            const vwForPanel = typeof window !== "undefined" ? window.innerWidth : 400;
+            /** Edit time: native `input[type=time]` is wide on iOS — use almost full viewport width. */
+            const panelWidth = isEditing ? Math.max(272, Math.min(400, vwForPanel - 20)) : 208;
             const rect = dropdownAnchorRect;
             const { left, top, width } = computeDropdownPosition(rect, { panelWidth, maxHeight: dropdownMaxHeight });
             return (
@@ -5911,13 +5913,15 @@ export default function App() {
                   {isEditing ? (
                     <div className="dropdown-edit-time">
                       <label className="dropdown-edit-time-label">New time</label>
-                      <input
-                        type="time"
-                        className="input dropdown-time-input"
-                        value={editTaskTimeValue}
-                        onChange={(e) => setEditTaskTimeValue(e.target.value)}
-                        aria-label="Task time"
-                      />
+                      <div className="dropdown-time-input-wrap">
+                        <input
+                          type="time"
+                          className="input dropdown-time-input"
+                          value={editTaskTimeValue}
+                          onChange={(e) => setEditTaskTimeValue(e.target.value)}
+                          aria-label="Task time"
+                        />
+                      </div>
                       <div className="dropdown-edit-time-actions">
                         <button type="button" className="dropdown-item" onClick={() => { changeTaskTime(hourKey, category, id, editTaskTimeValue); setEditingTaskTime(null); closeDropdown(); }}>
                           Save

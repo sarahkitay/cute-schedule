@@ -4804,7 +4804,10 @@ textarea.input {
 }
 
 .dropdown-edit-time {
-  padding: 12px 16px;
+  padding: 12px 10px;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .dropdown-edit-time-label {
   display: block;
@@ -4815,13 +4818,37 @@ textarea.input {
   color: rgba(30, 30, 30, 0.6);
   margin-bottom: 8px;
 }
-.dropdown-time-input {
+.dropdown-time-input-wrap {
   width: 100%;
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  overflow: hidden;
+  border-radius: var(--radius-md);
   margin-bottom: 10px;
-  padding: 10px 12px;
+}
+.dropdown-time-input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin-bottom: 0;
+  padding: 10px 8px;
+  font-variant-numeric: tabular-nums;
+}
+/* Let WebKit shrink inline time segments so the control fits the popover width */
+.dropdown-time-input::-webkit-datetime-edit,
+.dropdown-time-input::-webkit-datetime-edit-fields-wrapper {
+  padding: 0;
+  max-width: 100%;
+}
+.dropdown-time-input::-webkit-datetime-edit-text,
+.dropdown-time-input::-webkit-datetime-edit-ampm-field,
+.dropdown-time-input::-webkit-datetime-edit-hour-field,
+.dropdown-time-input::-webkit-datetime-edit-minute-field,
+.dropdown-time-input::-webkit-datetime-edit-second-field {
+  padding: 0 2px;
 }
 .dropdown-edit-time-actions {
   display: flex;
