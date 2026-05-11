@@ -393,7 +393,7 @@ export function FireIcon({ className = "" }) {
   );
 }
 
-/** Health / training — dumbbell line-art, matches nav icons (currentColor, 1.5 stroke). */
+/** Health / training: dumbbell line-art, matches nav icons (currentColor, 1.5 stroke). */
 export function DumbbellIcon({ className = "", style = {} }) {
   return (
     <svg
@@ -416,7 +416,7 @@ export function DumbbellIcon({ className = "", style = {} }) {
   );
 }
 
-/** Macro / TDEE calculator — grid keypad silhouette (currentColor). */
+/** Macro / TDEE calculator: grid keypad silhouette (currentColor). */
 export function MacroCalculatorIcon({ className = "", style = {} }) {
   return (
     <svg

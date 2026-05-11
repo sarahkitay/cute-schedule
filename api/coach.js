@@ -78,8 +78,13 @@ export default async function handler(req, res) {
       coachFeedbackJson,
       weekAtAGlance,
       healthSummary,
+      localNowHHMM,
+      realTodayKey,
     } = req.body || {};
     if (!dayKey) return res.status(400).json({ error: "Missing dayKey" });
+
+    const todayKeyForClock = String(realTodayKey || dayKey || "").trim();
+    const nowSlot = String(localNowHHMM || "").trim();
 
     const OUTPUT_RULES = "Return valid JSON only. No markdown. No code fences.";
 
@@ -196,7 +201,9 @@ Suggestions (Coach V2): When a concrete move fits, return 0–6 items in "sugges
 { "type":"ADD_TASK"|"BREAK"|"SPLIT_TASK"|"DEFER"|"REORDER"|"TIMEBOX", "title":"short label", "description":"optional detail", "reason":"one sentence tied to THIS user's data", "category":"one of their categories", "energyLevel":"LIGHT"|"MEDIUM"|"HEAVY", "start":"HH:MM", "end":"HH:MM or null", "durationMinutes": number, "recurring": false, "recurrencePattern":"none"|"daily"|"weekly", "targetDayKey":"YYYY-MM-DD or null (which calendar day to place the block; default the request dayKey)", "weekPlanLabel":"short UI label e.g. Wed 7:30p", "confidence": 0.0-1.0, "requiresApproval": true, "targetTaskId": "existing id or null" }.
 Use ADD_TASK or BREAK for new items the app can insert after approval. Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply; requiresApproval is always true for user-facing rows. Use [] when no concrete suggestion fits.
 
-Week / recurring planning: If the user asks to spread habits (e.g. art, dog walks) across the week, use weekAtAGlance + today's schedule to infer lighter blocks and propose multiple ADD_TASK rows on different targetDayKey values with realistic times. Prefer recurrencePattern weekly for habits they want a few times per week; daily for true every-day anchors. Mention tradeoffs in "message" when the week already looks dense.
+Clock rule for new time slots: The client sends localNowHHMM (24h) and realTodayKey. When targetDayKey is null or equals realTodayKey (same true calendar day as "now"), every ADD_TASK and BREAK must use "start" strictly AFTER localNowHHMM (pick the next quarter-hour or half-hour boundary after it). Never propose an earlier clock time for that day. For ADD_TASK on that day, prefer hour blocks in today's schedule JSON that are not already stacked with unfinished tasks unless the user explicitly asked to double-book.
+
+Week / recurring planning: If the user asks to spread habits (e.g. art, dog walks) across the week, use weekAtAGlance + today's schedule to infer lighter blocks and propose multiple ADD_TASK rows on different targetDayKey values with realistic times. Prefer recurrencePattern weekly for habits they want a few times per week; daily for true every-day anchors. In "message", sound human: react to what they said (e.g. agreement, empathy, one concrete plan). Tie suggestions to their actual gaps; avoid generic filler.
 
 Long priorities: If the user writes a full paragraph (e.g. fixed work hours, a side project, fitness goals), combine weekAtAGlance, patterns, task_trends in coachIntelligenceText, health_training, and today's hours to suggest realistic time windows and which blocks to lighten - still only ADD_TASK/BREAK/etc. with requiresApproval true, never invent obligations they did not imply.
 
@@ -204,6 +211,7 @@ Anti-drift:
 - Do not sound like a therapist, life coach, or inspirational quote account.
 - Tie emotion words to evidence from the task list or pacing fields when you use them.
 - Do not repeat the same reassurance twice in different wording.
+- Do NOT open with or lean on stock lines like "Since you typically complete tasks better in the morning/afternoon" or similar pattern-stat boilerplate every turn. Use statistics only when they change the plan; otherwise respond like a thoughtful friend (short agreement, empathy, or a concrete scheduling proposal).
 - Prefer one concrete tradeoff when load is high: defer, shrink, swap, buffer, or stop.
 - Keep under ~140 words in "message" unless the user asked for depth.`;
 
@@ -235,10 +243,10 @@ ${OUTPUT_RULES}`;
     // Build pattern insights
     let patternInsights = "";
     if (patterns) {
-      patternInsights = `\n\nPatterns I've noticed:
-- You typically complete tasks best in the ${patterns.bestTime || 'morning'}
-- ${patterns.leastCompletedCategory ? `You tend to skip ${patterns.leastCompletedCategory} tasks` : ''}
-- Today you've completed ${patterns.todayCompletions || 0} tasks`;
+      patternInsights = `\n\nCompletion statistics (optional; do not parrot every reply):
+- Historical concentration: often ${patterns.bestTime || "morning"} vs other parts of day
+- ${patterns.leastCompletedCategory ? `Category with more skips: ${patterns.leastCompletedCategory}` : "No standout skip category"}
+- Today completions so far: ${patterns.todayCompletions || 0}`;
     }
     
     const notesContext = Array.isArray(notes) && notes.length > 0
@@ -318,7 +326,9 @@ ${finance.bankStatementNotes ? `- Bank/statement notes (use to spot biggest issu
 
     // Build the main prompt
     const contextPrompt = `
-Day: ${dayKey}${prettyDate ? ` (${prettyDate})` : ""}
+Day (view): ${dayKey}${prettyDate ? ` (${prettyDate})` : ""}
+User's real "today" date: ${todayKeyForClock}
+User's local clock now: ${nowSlot || "unknown (client should send localNowHHMM)"}
 Completion: ${progress?.done || 0}/${progress?.total || 0} (${progress?.pct || 0}%)
 Today's schedule: ${JSON.stringify(today || {})}
 Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesContext}${financeContext}${habitContext}${profileBlock}${pacingBlock}${categoriesLine}${billsBlock}${subsBlock}${intelBlock}${feedbackBlock}${weekBlock}${healthBlock}

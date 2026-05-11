@@ -22,6 +22,12 @@ export {
 } from "./memory";
 export { buildCoachIntelligenceSnapshot, formatIntelligenceForApi } from "./intelligence";
 export type { PatternShape, TaskLite } from "./intelligence";
-export { parseCoachApiPayload, isAffirmationToCoach, normalizeRawSuggestion } from "./suggestions";
+export {
+  applyLiveDaySuggestionGuards,
+  parseCoachApiPayload,
+  isAffirmationToCoach,
+  normalizeRawSuggestion,
+} from "./suggestions";
+export type { CoachSuggestionGuardOpts } from "./suggestions";
 export { generateCoachV2Fallback } from "./fallback";
 export { normalizeTimeKey, addMinutes, pickInsertionHourKey, taskCountInHour } from "./taskInsertion";

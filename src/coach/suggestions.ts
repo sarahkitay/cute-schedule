@@ -19,6 +19,80 @@ function newId(): string {
   }
 }
 
+function timeToMinutes(hhmm: string): number {
+  const [h, m] = normalizeTimeKey(hhmm).split(":").map(Number);
+  return h * 60 + m;
+}
+
+function minutesToTime(total: number): string {
+  const capped = Math.max(0, Math.min(24 * 60 - 1, total));
+  const h = Math.floor(capped / 60);
+  const m = capped % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** When planning "today" (real calendar date), bump task suggestions to future times and lighter hour buckets. */
+export type CoachSuggestionGuardOpts = {
+  coachViewDayKey: string;
+  realTodayKey: string;
+  localNowHHMM: string;
+};
+
+function adjustSuggestionForLiveCalendarDay(
+  s: CoachSuggestionV2,
+  todayHours: Record<string, unknown>,
+  opts: CoachSuggestionGuardOpts
+): CoachSuggestionV2 {
+  const day = s.targetDayKey || opts.coachViewDayKey;
+  if (day !== opts.realTodayKey) return s;
+  if (s.type !== "ADD_TASK" && s.type !== "BREAK") return s;
+
+  const nowM = timeToMinutes(opts.localNowHHMM);
+  let candM = timeToMinutes(s.start);
+  if (candM <= nowM) {
+    candM = Math.max(nowM + 1, nowM + 15);
+    candM = Math.ceil(candM / 15) * 15;
+  }
+
+  const hoursTyped = todayHours as Record<string, Record<string, unknown[]>>;
+  const maxTries = 96;
+  for (let i = 0; i < maxTries; i++) {
+    if (candM >= 24 * 60) {
+      candM = 23 * 60 + 45;
+    }
+    const candTime = minutesToTime(candM);
+    const hourKey = pickInsertionHourKey(candTime, todayHours);
+    const busy = taskCountInHour(hoursTyped, hourKey);
+    if (s.type === "ADD_TASK" && busy > 0) {
+      candM += 15;
+      continue;
+    }
+    const newStart = normalizeTimeKey(candTime);
+    const newHour = pickInsertionHourKey(newStart, todayHours);
+    return {
+      ...s,
+      start: newStart,
+      hour: newHour,
+      end: addMinutes(newStart, s.durationMinutes),
+    };
+  }
+  const fallbackM = Math.min(Math.max(nowM + 30, 15), 23 * 60 + 30);
+  const fb = minutesToTime(fallbackM);
+  const fbHour = pickInsertionHourKey(fb, todayHours);
+  return { ...s, start: fb, hour: fbHour, end: addMinutes(fb, s.durationMinutes) };
+}
+
+/** Apply after parsing API or generating fallback so suggested slots respect "now" and existing tasks. */
+export function applyLiveDaySuggestionGuards(
+  suggestions: CoachSuggestionV2[],
+  todayHours: Record<string, unknown>,
+  opts: CoachSuggestionGuardOpts | null | undefined
+): CoachSuggestionV2[] {
+  if (!opts || !opts.realTodayKey || !opts.coachViewDayKey || !opts.localNowHHMM) return suggestions;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.realTodayKey) || !/^\d{2}:\d{2}$/.test(normalizeTimeKey(opts.localNowHHMM))) return suggestions;
+  return suggestions.map((s) => adjustSuggestionForLiveCalendarDay(s, todayHours, opts));
+}
+
 function clamp01(n: number): number {
   if (Number.isNaN(n)) return 0.7;
   return Math.min(0.99, Math.max(0.35, n));

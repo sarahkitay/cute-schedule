@@ -5113,6 +5113,32 @@ textarea.input {
   border: 1px solid var(--border-subtle);
 }
 
+.coach-inline-followup {
+  margin-top: 10px;
+  width: 100%;
+  max-width: min(100%, 560px);
+  align-self: stretch;
+}
+.coach-inline-block {
+  margin-top: 12px;
+}
+.coach-gtky-details {
+  margin-top: var(--spacing-lg);
+  margin-bottom: 4px;
+  padding: 12px 14px;
+  border-radius: var(--radius-panel, 14px);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+.coach-gtky-summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+}
+.coach-gtky-body {
+  margin-top: 12px;
+  padding-top: 4px;
+}
+
 /* Task Dropdown Menu - in-portal popover, viewport-safe on mobile */
 .task-dropdown-portal {
   position: fixed;
@@ -6433,6 +6459,124 @@ html[data-theme="dark"] .health-exercise-row {
   flex-direction: column;
   align-items: stretch;
 }
+
+.health-guided-overlay--fullscreen {
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+}
+.health-guided-overlay--fullscreen .health-guided-sheet-full {
+  max-width: none;
+  width: 100%;
+  min-height: 100dvh;
+  max-height: none;
+  border-radius: 0;
+  margin: 0;
+  flex: 1;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+.health-guided-overlay--fullscreen .health-workout-sheet {
+  max-height: none;
+}
+.health-guided-head {
+  flex-shrink: 0;
+}
+.health-guided-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+.health-guided-one {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 4px 0 12px;
+  overflow: auto;
+}
+.health-guided-exercise-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+.health-guided-meta-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+}
+.health-guided-meta-val {
+  font-weight: 600;
+}
+.health-guided-add-notes {
+  align-self: flex-start;
+  margin-bottom: 10px;
+}
+.health-guided-list {
+  flex: 1;
+  min-height: 0;
+  max-height: min(56vh, 480px);
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+.health-exercise-text-block {
+  grid-column: 2;
+  min-width: 0;
+}
+.health-calendar-open-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+}
+.health-draft-exercise-inputs {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: var(--radius-panel, 14px);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px 12px;
+  align-items: end;
+}
+.health-draft-ex-add-wrap {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+@media (max-width: 720px) {
+  .health-draft-exercise-inputs {
+    grid-template-columns: 1fr;
+  }
+}
+.health-meal-prep-toggle-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.health-meal-prep-toggle-inner input[type="checkbox"] {
+  margin-top: 2px;
+}
+.health-meal-prep-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.health-meal-prep-chip {
+  min-width: 3rem;
+}
+
 .workout-picker-modal {
   max-width: min(440px, 94vw);
 }

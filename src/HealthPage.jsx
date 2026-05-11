@@ -2,16 +2,20 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { CloseIcon, DumbbellIcon, MacroCalculatorIcon } from "./Icons";
 import {
   PROGRAM_LIBRARY,
+  addDaysToDayKey,
   cmToFeetInches,
   computeMacroTargetsFromProfile,
   computeWorkoutConsistency,
   feetInchesToCm,
+  formatExerciseBlockLine,
   formatWeightLbFromKg,
   getWorkoutLineProgress,
   guidedSessionProgressKey,
   healthProfileComplete,
   lbToKg,
   listSelectablePrograms,
+  mondayKeyForDayKey,
+  normalizeExerciseBlock,
   normalizeHealth,
   normalizeProgramRecord,
   normalizeMacroDayEntry,
@@ -27,31 +31,45 @@ function newId(prefix) {
 
 function GuidedWorkoutOverlay({ session, health, setHealth, onClose, onMarkTaskDone }) {
   const h = useMemo(() => normalizeHealth(health), [health]);
-  const exercises = session.exercises || [];
-  const total = exercises.length;
+  const rawEx = session.exercises || [];
+  const blocks = useMemo(
+    () => rawEx.map((ex) => normalizeExerciseBlock(ex)).filter(Boolean),
+    [rawEx]
+  );
+  const total = blocks.length;
   const [step, setStep] = useState(0);
+  const [viewMode, setViewMode] = useState("one");
+  const [notesOpen, setNotesOpen] = useState(false);
+
   const safeStep = Math.min(step, Math.max(0, total - 1));
 
   useEffect(() => {
     setStep(0);
+    setViewMode("one");
+    setNotesOpen(false);
   }, [session.taskId, session.programId]);
 
   const pk = guidedSessionProgressKey(session.taskId, session.programId, safeStep);
   const prog = getWorkoutLineProgress(h, pk);
-  const line = exercises[safeStep] || "";
+  const curBlock = blocks[safeStep];
 
-  function patchRow(partial) {
+  function patchRowAt(idx, partial) {
+    const key = guidedSessionProgressKey(session.taskId, session.programId, idx);
     setHealth((prev) => {
       const base = normalizeHealth(prev);
-      const prevRow = getWorkoutLineProgress(base, pk);
+      const prevRow = getWorkoutLineProgress(base, key);
       return {
         ...base,
         workoutProgress: {
           ...(base.workoutProgress && typeof base.workoutProgress === "object" ? base.workoutProgress : {}),
-          [pk]: { ...prevRow, ...partial },
+          [key]: { ...prevRow, ...partial },
         },
       };
     });
+  }
+
+  function patchRow(partial) {
+    patchRowAt(safeStep, partial);
   }
 
   function markAllDone() {
@@ -67,18 +85,26 @@ function GuidedWorkoutOverlay({ session, health, setHealth, onClose, onMarkTaskD
     });
   }
 
-  if (!session || !total) return null;
+  function onToggleDone(checked) {
+    patchRow({ done: checked });
+    if (checked && viewMode === "one" && safeStep < total - 1) {
+      setNotesOpen(false);
+      setStep((s) => Math.min(total - 1, s + 1));
+    }
+  }
+
+  if (!session || !total || !curBlock) return null;
 
   return (
     <div
-      className="modal-overlay health-workout-overlay health-guided-overlay"
+      className="modal-overlay health-workout-overlay health-guided-overlay health-guided-overlay--fullscreen"
       role="dialog"
       aria-modal="true"
       aria-labelledby="guided-wk-title"
       onClick={onClose}
     >
-      <div className="modal health-guided-sheet surface-glass" onClick={(e) => e.stopPropagation()}>
-        <div className="health-workout-sheet-head">
+      <div className="modal health-workout-sheet health-guided-sheet health-guided-sheet-full surface-glass" onClick={(e) => e.stopPropagation()}>
+        <div className="health-workout-sheet-head health-guided-head">
           <h3 id="guided-wk-title" className="health-workout-sheet-title">
             {session.programName || "Workout"}
           </h3>
@@ -86,46 +112,108 @@ function GuidedWorkoutOverlay({ session, health, setHealth, onClose, onMarkTaskD
             <CloseIcon style={{ width: 22, height: 22 }} />
           </button>
         </div>
-        <p className="health-guided-step-label">
-          Exercise {safeStep + 1} of {total}
-        </p>
-        <div className="health-guided-exercise-title">{line}</div>
-        <label className="health-exercise-check health-guided-done-toggle">
-          <input type="checkbox" checked={prog.done} onChange={(e) => patchRow({ done: e.target.checked })} />
-          <span className="health-exercise-check-ui" />
-          <span>Done with this move</span>
-        </label>
-        <div className="health-exercise-detail surface-glass health-guided-fields">
-          <label className="quick-row">
-            <span className="label">Weight / load</span>
-            <input className="input" value={prog.weight} placeholder="e.g. 135 lb" onChange={(e) => patchRow({ weight: e.target.value })} />
-          </label>
-          <label className="quick-row">
-            <span className="label">Time / duration</span>
-            <input className="input" value={prog.duration} placeholder="e.g. 12 min" onChange={(e) => patchRow({ duration: e.target.value })} />
-          </label>
-          <label className="quick-row">
-            <span className="label">Rest (min)</span>
-            <input className="input" value={prog.breakMin} placeholder="e.g. 2" onChange={(e) => patchRow({ breakMin: e.target.value })} />
-          </label>
-          <label className="quick-row">
-            <span className="label">Notes</span>
-            <textarea className="input health-exercise-notes" rows={2} value={prog.notes} onChange={(e) => patchRow({ notes: e.target.value })} />
-          </label>
-        </div>
-        <div className="health-guided-nav">
-          <button type="button" className="btn" disabled={safeStep <= 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
-            Previous
+
+        <div className="health-guided-mode-row" role="group" aria-label="Practice layout">
+          <button type="button" className={`btn btn-sm ${viewMode === "one" ? "btn-primary" : ""}`} onClick={() => setViewMode("one")}>
+            One at a time
           </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={safeStep >= total - 1}
-            onClick={() => setStep((s) => Math.min(total - 1, s + 1))}
-          >
-            Next exercise
+          <button type="button" className={`btn btn-sm ${viewMode === "list" ? "btn-primary" : ""}`} onClick={() => setViewMode("list")}>
+            View all
           </button>
         </div>
+
+        {viewMode === "list" ? (
+          <ul className="health-exercise-list health-guided-list">
+            {blocks.map((b, i) => {
+              const key = guidedSessionProgressKey(session.taskId, session.programId, i);
+              const row = getWorkoutLineProgress(h, key);
+              return (
+                <li key={key} className={`health-exercise-row surface-glass ${row.done ? "health-exercise-row--done" : ""}`}>
+                  <label className="health-exercise-check">
+                    <input type="checkbox" checked={row.done} onChange={(e) => patchRowAt(i, { done: e.target.checked })} />
+                    <span className="health-exercise-check-ui" />
+                  </label>
+                  <div className="health-exercise-text-block">
+                    <div className="health-exercise-text">{b.name || "Exercise"}</div>
+                    {(b.setsReps || b.weightNote) && (
+                      <div className="settings-hint" style={{ marginTop: 4 }}>
+                        {[b.setsReps, b.weightNote].filter(Boolean).join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="health-guided-one">
+            <p className="health-guided-step-label">
+              Exercise {safeStep + 1} of {total}
+            </p>
+            <div className="health-guided-exercise-title">{curBlock.name || "Exercise"}</div>
+            {(curBlock.setsReps || curBlock.weightNote) && (
+              <div className="health-guided-exercise-meta surface-glass">
+                {curBlock.setsReps ? (
+                  <div>
+                    <span className="health-guided-meta-label">Sets / reps</span>
+                    <div className="health-guided-meta-val">{curBlock.setsReps}</div>
+                  </div>
+                ) : null}
+                {curBlock.weightNote ? (
+                  <div>
+                    <span className="health-guided-meta-label">Planned weight</span>
+                    <div className="health-guided-meta-val">{curBlock.weightNote}</div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+            <label className="health-exercise-check health-guided-done-toggle">
+              <input type="checkbox" checked={prog.done} onChange={(e) => onToggleDone(e.target.checked)} />
+              <span className="health-exercise-check-ui" />
+              <span>Done (goes to next)</span>
+            </label>
+            <button type="button" className="btn btn-sm health-guided-add-notes" onClick={() => setNotesOpen((v) => !v)}>
+              {notesOpen ? "Hide notes" : "Add notes"}
+            </button>
+            {notesOpen ? (
+              <div className="health-exercise-detail surface-glass health-guided-fields">
+                <label className="quick-row">
+                  <span className="label">Weight / load</span>
+                  <input className="input" value={prog.weight} placeholder="e.g. 135 lb" onChange={(e) => patchRow({ weight: e.target.value })} />
+                </label>
+                <label className="quick-row">
+                  <span className="label">Time / duration</span>
+                  <input className="input" value={prog.duration} placeholder="e.g. 12 min" onChange={(e) => patchRow({ duration: e.target.value })} />
+                </label>
+                <label className="quick-row">
+                  <span className="label">Rest (min)</span>
+                  <input className="input" value={prog.breakMin} placeholder="e.g. 2" onChange={(e) => patchRow({ breakMin: e.target.value })} />
+                </label>
+                <label className="quick-row">
+                  <span className="label">Notes</span>
+                  <textarea className="input health-exercise-notes" rows={2} value={prog.notes} onChange={(e) => patchRow({ notes: e.target.value })} />
+                </label>
+              </div>
+            ) : null}
+            <div className="health-guided-nav">
+              <button type="button" className="btn" disabled={safeStep <= 0} onClick={() => setStep((s) => Math.max(0, s - 1))}>
+                Previous
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={safeStep >= total - 1}
+                onClick={() => {
+                  setNotesOpen(false);
+                  setStep((s) => Math.min(total - 1, s + 1));
+                }}
+              >
+                Next exercise
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="health-workout-footer health-guided-footer">
           <button type="button" className="btn btn-primary" onClick={() => markAllDone()}>
             Mark all moves done
@@ -177,12 +265,17 @@ export function HealthPage({
 
   const [draftName, setDraftName] = useState("");
   const [draftExercises, setDraftExercises] = useState([]);
-  const [oneLine, setOneLine] = useState("");
+  const [draftExName, setDraftExName] = useState("");
+  const [draftExSets, setDraftExSets] = useState("");
+  const [draftExWeight, setDraftExWeight] = useState("");
   const [editingProgramId, setEditingProgramId] = useState(null);
   const [pasteName, setPasteName] = useState("");
   const [pasteBody, setPasteBody] = useState("");
   const [routineAddId, setRoutineAddId] = useState("");
   const [mealLabel, setMealLabel] = useState("");
+  const [mealFood, setMealFood] = useState("");
+  const [mealPrepMode, setMealPrepMode] = useState(false);
+  const [mealPrepDayKeys, setMealPrepDayKeys] = useState(() => []);
   const [mealProtein, setMealProtein] = useState("");
   const [mealCarbs, setMealCarbs] = useState("");
   const [mealFat, setMealFat] = useState("");
@@ -209,10 +302,12 @@ export function HealthPage({
 
   useEffect(() => {
     setMealLabel("");
+    setMealFood("");
     setMealProtein("");
     setMealCarbs("");
     setMealFat("");
     setMealCalories("");
+    setMealPrepDayKeys([macroDate]);
   }, [macroDate]);
 
   useEffect(() => {
@@ -239,6 +334,19 @@ export function HealthPage({
   );
 
   const selectable = useMemo(() => listSelectablePrograms(h), [h]);
+
+  const displayPrograms = useMemo(() => {
+    const user = h.programs || [];
+    const userIds = new Set(user.map((p) => p.id));
+    const builtIns = PROGRAM_LIBRARY.filter((lib) => !userIds.has(lib.id));
+    return [...user, ...builtIns];
+  }, [h.programs]);
+
+  const macroWeekDays = useMemo(() => {
+    const mon = mondayKeyForDayKey(macroDate);
+    const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    return labels.map((label, i) => ({ label, dayKey: addDaysToDayKey(mon, i) }));
+  }, [macroDate]);
 
   function patchProfile(partial) {
     setHealth((prev) => ({
@@ -292,10 +400,16 @@ export function HealthPage({
   }
 
   function addDraftLine() {
-    const t = oneLine.trim();
-    if (!t) return;
-    setDraftExercises((prev) => [...prev, t]);
-    setOneLine("");
+    const block = normalizeExerciseBlock({
+      name: draftExName,
+      setsReps: draftExSets,
+      weightNote: draftExWeight,
+    });
+    if (!block) return;
+    setDraftExercises((prev) => [...prev, block]);
+    setDraftExName("");
+    setDraftExSets("");
+    setDraftExWeight("");
   }
 
   function removeDraftLine(i) {
@@ -315,6 +429,7 @@ export function HealthPage({
   }
 
   function startEditProgram(id) {
+    if (PROGRAM_LIBRARY.some((l) => l.id === id)) return;
     const p = (h.programs || []).find((x) => x.id === id);
     if (!p) return;
     setEditingProgramId(id);
@@ -326,7 +441,9 @@ export function HealthPage({
     setEditingProgramId(null);
     setDraftName("");
     setDraftExercises([]);
-    setOneLine("");
+    setDraftExName("");
+    setDraftExSets("");
+    setDraftExWeight("");
   }
 
   function saveDraftProgram() {
@@ -363,18 +480,15 @@ export function HealthPage({
   }
 
   function saveLibraryCopy(lib) {
+    const src = normalizeProgramRecord(lib);
+    if (!src) return;
     const id = newId("prog");
-    const rec = normalizeProgramRecord({ id, name: `${lib.name} (copy)`, exercises: [...(lib.exercises || [])] });
+    const rec = normalizeProgramRecord({ id, name: `${src.name} (copy)`, exercises: [...src.exercises] });
     if (!rec) return;
     setHealth((prev) => {
       const base = normalizeHealth(prev);
       return { ...base, programs: [...(base.programs || []), rec] };
     });
-  }
-
-  function applyLibraryToDraft(lib) {
-    setDraftName((n) => n.trim() || lib.name);
-    setDraftExercises([...(lib.exercises || [])]);
   }
 
   function addProgramToRoutine(id) {
@@ -416,15 +530,17 @@ export function HealthPage({
     if (!name) return;
     const ids = [...(h.weekRoutineProgramIds || [])];
     if (!ids.length) return;
-    const lines = [];
+    const bundleExercises = [];
     for (const pid of ids) {
       const p = selectable.find((x) => x.id === pid);
       if (!p) continue;
-      lines.push(`## ${p.name}`);
-      for (const ex of p.exercises || []) lines.push(ex);
+      for (const ex of p.exercises || []) {
+        const b = normalizeExerciseBlock(ex);
+        if (b) bundleExercises.push(b);
+      }
     }
     const id = newId("prog");
-    const rec = normalizeProgramRecord({ id, name: `${name} (week bundle)`, exercises: lines });
+    const rec = normalizeProgramRecord({ id, name: `${name} (week bundle)`, exercises: bundleExercises });
     if (!rec) return;
     setHealth((prev) => {
       const base = normalizeHealth(prev);
@@ -455,31 +571,55 @@ export function HealthPage({
   const macroDay = normalizeMacroDayEntry(h.macroLog[macroDate], macroDate);
   const macroTotals = sumMacroDayTotals(macroDay);
 
+  function toggleMealPrepDay(dayKey) {
+    setMealPrepDayKeys((prev) => {
+      if (prev.includes(dayKey)) {
+        if (prev.length <= 1) return prev;
+        return prev.filter((k) => k !== dayKey);
+      }
+      return [...prev, dayKey];
+    });
+  }
+
   function saveMealEntry() {
     const protein = Math.round(Number(mealProtein) || 0);
     const carbs = Math.round(Number(mealCarbs) || 0);
     const fat = Math.round(Number(mealFat) || 0);
     const calories = Math.round(Number(mealCalories) || 0);
     if (protein + carbs + fat + calories <= 0) return;
-    const id = newId("meal");
+    const food = mealFood.trim();
+    const label = mealLabel.trim() || "Meal";
+    let days =
+      mealPrepMode && mealPrepDayKeys.length > 0
+        ? [...new Set(mealPrepDayKeys)].filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+        : [macroDate];
+    if (!days.length) days = [macroDate];
     setHealth((prev) => {
       const base = normalizeHealth(prev);
-      const cur = normalizeMacroDayEntry(base.macroLog[macroDate], macroDate);
-      const meals = [
-        ...cur.meals,
-        {
-          id,
-          label: mealLabel.trim() || "Meal",
-          protein,
-          carbs,
-          fat,
-          calories,
-          savedAt: new Date().toISOString(),
-        },
-      ];
-      return { ...base, macroLog: { ...base.macroLog, [macroDate]: { meals } } };
+      const ml = { ...base.macroLog };
+      const savedAt = new Date().toISOString();
+      for (const dk of days) {
+        const cur = normalizeMacroDayEntry(ml[dk], dk);
+        const id = newId("meal");
+        const meals = [
+          ...cur.meals,
+          {
+            id,
+            label,
+            food,
+            protein,
+            carbs,
+            fat,
+            calories,
+            savedAt,
+          },
+        ];
+        ml[dk] = { meals };
+      }
+      return { ...base, macroLog: ml };
     });
     setMealLabel("");
+    setMealFood("");
     setMealProtein("");
     setMealCarbs("");
     setMealFat("");
@@ -592,54 +732,21 @@ export function HealthPage({
           </div>
 
           {onOpenHealthCalendar ? (
-            <p className="settings-hint" style={{ marginTop: 10 }}>
+            <div className="health-calendar-open-block" style={{ marginTop: 10 }}>
               <button type="button" className="btn btn-sm" onClick={() => onOpenHealthCalendar(realTodayKey)}>
                 Open full calendar
-              </button>{" "}
-              to schedule one-off or repeating gym times.
-            </p>
+              </button>
+              <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                Schedule one-off or repeating gym times from there.
+              </p>
+            </div>
           ) : null}
-
-          <div className="panel-title health-week-program-title" style={{ marginTop: 14 }}>
-            <span className="title">Program templates</span>
-          </div>
-          <p className="settings-hint health-week-program-hint">
-            Each dropdown can fill the builder below or save a ready-made copy into your collection.
-          </p>
-          <div className="health-program-templates">
-            {PROGRAM_LIBRARY.map((lib) => (
-              <div key={lib.id} className="health-template-row surface-glass">
-                <div>
-                  <div className="health-template-name">{lib.name}</div>
-                  <div className="settings-hint" style={{ marginTop: 4 }}>
-                    {(lib.exercises || []).slice(0, 3).join(" · ")}
-                    {(lib.exercises || []).length > 3 ? "…" : ""}
-                  </div>
-                </div>
-                <select
-                  className="input health-template-select"
-                  aria-label={`Apply template ${lib.name}`}
-                  defaultValue=""
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    e.target.selectedIndex = 0;
-                    if (v === "fill") applyLibraryToDraft(lib);
-                    if (v === "save") saveLibraryCopy(lib);
-                  }}
-                >
-                  <option value="">Use template…</option>
-                  <option value="fill">Fill program I&apos;m building</option>
-                  <option value="save">Save copy to my programs</option>
-                </select>
-              </div>
-            ))}
-          </div>
 
           <div className="panel-title health-week-program-title" style={{ marginTop: 18 }}>
             <span className="title">Weekly routine order</span>
           </div>
           <p className="settings-hint">
-            Used when a task is set to <strong>next in weekly routine</strong>. Drag order with arrows; this does not schedule times — use Today or the
+            Used when a task is set to <strong>next in weekly routine</strong>. Drag order with arrows; this does not schedule times. Use Today or the
             calendar for that.
           </p>
           <ul className="health-routine-chips">
@@ -692,32 +799,78 @@ export function HealthPage({
           <div className="panel-title health-week-program-title" style={{ marginTop: 22 }}>
             <span className="title">{editingProgramId ? "Edit program" : "Build a program"}</span>
           </div>
-          <p className="settings-hint">Add <strong>one exercise at a time</strong>. Save to your collection, then link tasks from Today.</p>
+          <p className="settings-hint">
+            Add <strong>one exercise at a time</strong> (name, sets or reps, weight or load). Save to your collection, then link tasks from Today.
+          </p>
           <label className="quick-row">
             <span className="label">Program name</span>
             <input className="input" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="e.g. Push day A" />
           </label>
-          <div className="health-one-exercise-row">
-            <input
-              className="input"
-              value={oneLine}
-              onChange={(e) => setOneLine(e.target.value)}
-              placeholder="Next exercise (e.g. Bench press 4×6–8)"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addDraftLine();
-                }
-              }}
-            />
-            <button type="button" className="btn btn-primary" onClick={addDraftLine}>
-              Add exercise
-            </button>
+          <div className="health-draft-exercise-inputs surface-glass">
+            <label className="quick-row health-draft-ex-field">
+              <span className="label">Exercise name</span>
+              <input
+                className="input"
+                value={draftExName}
+                onChange={(e) => setDraftExName(e.target.value)}
+                placeholder="e.g. Bench press"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addDraftLine();
+                  }
+                }}
+              />
+            </label>
+            <label className="quick-row health-draft-ex-field">
+              <span className="label">Sets / reps</span>
+              <input
+                className="input"
+                value={draftExSets}
+                onChange={(e) => setDraftExSets(e.target.value)}
+                placeholder="e.g. 4×6-8"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addDraftLine();
+                  }
+                }}
+              />
+            </label>
+            <label className="quick-row health-draft-ex-field">
+              <span className="label">Weight / load</span>
+              <input
+                className="input"
+                value={draftExWeight}
+                onChange={(e) => setDraftExWeight(e.target.value)}
+                placeholder="e.g. 135 lb"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addDraftLine();
+                  }
+                }}
+              />
+            </label>
+            <div className="health-draft-ex-add-wrap">
+              <button type="button" className="btn btn-primary" onClick={addDraftLine}>
+                Add exercise
+              </button>
+            </div>
           </div>
           <ol className="health-draft-exercises">
             {draftExercises.map((ex, i) => (
-              <li key={`${i}-${ex}`} className="health-draft-exercise surface-glass">
-                <span className="health-draft-exercise-text">{ex}</span>
+              <li key={`${i}-${formatExerciseBlockLine(ex)}`} className="health-draft-exercise surface-glass">
+                <div className="health-draft-exercise-text">
+                  <div className="health-draft-ex-line">
+                    <strong>{ex.name || "Exercise"}</strong>
+                  </div>
+                  {(ex.setsReps || ex.weightNote) && (
+                    <div className="settings-hint" style={{ marginTop: 4 }}>
+                      {[ex.setsReps, ex.weightNote].filter(Boolean).join(" · ")}
+                    </div>
+                  )}
+                </div>
                 <span className="health-draft-exercise-actions">
                   <button type="button" className="btn btn-sm" disabled={i <= 0} onClick={() => moveDraftLine(i, -1)}>
                     ↑
@@ -745,45 +898,61 @@ export function HealthPage({
             <div className="panel-title" style={{ marginBottom: 8 }}>
               <span className="title">My programs</span>
             </div>
-            {(h.programs || []).length === 0 ? (
-              <p className="settings-hint">None yet — use templates above or paste from Coach.</p>
-            ) : (
-              <ul className="health-program-cards">
-                {(h.programs || []).map((p) => (
+            <p className="settings-hint" style={{ marginTop: 0 }}>
+              Sample programs are listed with yours. Save a copy to customize, or build your own below. You can also paste from Coach.
+            </p>
+            <ul className="health-program-cards">
+              {displayPrograms.map((p) => {
+                const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
+                const taskBody = (p.exercises || [])
+                  .map((ex) => formatExerciseBlockLine(ex))
+                  .filter(Boolean)
+                  .join("\n");
+                return (
                   <li key={p.id} className="health-program-card surface-glass">
                     <div className="health-program-card-head">
                       <strong>{p.name}</strong>
-                      <span className="settings-hint">{(p.exercises || []).length} moves</span>
+                      <span className="settings-hint">
+                        {(p.exercises || []).length} moves{builtIn ? " · sample" : ""}
+                      </span>
                     </div>
                     <ul className="health-program-card-preview">
                       {(p.exercises || []).slice(0, 5).map((ex, i) => (
-                        <li key={i}>{ex}</li>
+                        <li key={i}>{formatExerciseBlockLine(ex)}</li>
                       ))}
                       {(p.exercises || []).length > 5 ? <li className="settings-hint">+{(p.exercises || []).length - 5} more</li> : null}
                     </ul>
                     <div className="health-program-card-actions">
-                      <button type="button" className="btn btn-sm btn-primary" onClick={() => startEditProgram(p.id)}>
-                        Edit
-                      </button>
+                      {builtIn ? (
+                        <button type="button" className="btn btn-sm btn-primary" onClick={() => saveLibraryCopy(p)}>
+                          Save copy to edit
+                        </button>
+                      ) : (
+                        <button type="button" className="btn btn-sm btn-primary" onClick={() => startEditProgram(p.id)}>
+                          Edit
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="btn btn-sm"
                         disabled={!onScheduleWorkoutTask}
-                        onClick={() => onScheduleWorkoutTask(`Workout · ${p.name}`, (p.exercises || []).join("\n"))}
+                        onClick={() => onScheduleWorkoutTask(`Workout · ${p.name}`, taskBody)}
                       >
                         Add to Today as task
                       </button>
-                      <button type="button" className="btn btn-sm" disabled={!onPracticeProgram} onClick={() => onPracticeProgram?.(p)}>
+                      <button type="button" className="btn btn-sm" disabled={!onPracticeProgram} onClick={() => onPracticeProgram?.(normalizeProgramRecord(p) || p)}>
                         Practice here
                       </button>
-                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => deleteProgram(p.id)}>
-                        Delete
-                      </button>
+                      {builtIn ? null : (
+                        <button type="button" className="btn btn-sm btn-ghost" onClick={() => deleteProgram(p.id)}>
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </li>
-                ))}
-              </ul>
-            )}
+                );
+              })}
+            </ul>
           </div>
 
           <div className="health-coach-paste surface-glass" style={{ marginTop: 20 }}>
@@ -793,7 +962,7 @@ export function HealthPage({
             <p className="settings-hint">If Coach writes a program you like, paste one exercise per line and save it here.</p>
             <label className="quick-row">
               <span className="label">Name</span>
-              <input className="input" value={pasteName} onChange={(e) => setPasteName(e.target.value)} placeholder="Coach program — Jan" />
+              <input className="input" value={pasteName} onChange={(e) => setPasteName(e.target.value)} placeholder="Coach program - Jan" />
             </label>
             <textarea className="input health-paste-area" rows={5} value={pasteBody} onChange={(e) => setPasteBody(e.target.value)} placeholder={"Ball slams 3×10\nLeg raises…"} />
             <button type="button" className="btn-primary" style={{ marginTop: 10 }} disabled={!pasteName.trim() || !pasteBody.trim()} onClick={savePasteProgram}>
@@ -818,7 +987,7 @@ export function HealthPage({
               <span className="title">Macro tracker</span>
             </div>
             <p className="settings-hint">
-              Pick a day — totals reset each calendar day. Log one meal at a time; everything adds up for the progress bars.
+              Pick a day; totals reset each calendar day. Log one meal at a time; everything adds up for the progress bars.
             </p>
             <label className="quick-row">
               <span className="label">Day</span>
@@ -851,7 +1020,7 @@ export function HealthPage({
             )}
             <div className="health-meal-log-section">
               <p className="settings-hint" style={{ marginTop: 12, marginBottom: 8 }}>
-                <strong>Add a meal</strong> (protein, carbs, fat, calories — use any fields you have)
+                <strong>Add a meal</strong> (protein, carbs, fat, calories; use any fields you have)
               </p>
               <label className="quick-row">
                 <span className="label">Meal name (optional)</span>
@@ -862,6 +1031,41 @@ export function HealthPage({
                   placeholder="Breakfast, snack…"
                 />
               </label>
+              <label className="quick-row">
+                <span className="label">What you ate (optional)</span>
+                <input
+                  className="input"
+                  value={mealFood}
+                  onChange={(e) => setMealFood(e.target.value)}
+                  placeholder="e.g. protein bowl, scrambled eggs"
+                />
+              </label>
+              <label className="health-meal-prep-toggle quick-row">
+                <span className="label">Meal prep mode</span>
+                <span className="health-meal-prep-toggle-inner">
+                  <input type="checkbox" checked={mealPrepMode} onChange={(e) => setMealPrepMode(e.target.checked)} />
+                  <span className="settings-hint">Log this meal on every day you select (same macros). Handy when you batch-cook; other days you only log snacks or missed meals.</span>
+                </span>
+              </label>
+              {mealPrepMode ? (
+                <div className="health-meal-prep-days" role="group" aria-label="Days to log this meal">
+                  <span className="settings-hint" style={{ display: "block", marginBottom: 6 }}>
+                    Week of selected day (tap days):
+                  </span>
+                  <div className="health-meal-prep-chips">
+                    {macroWeekDays.map(({ label, dayKey }) => (
+                      <button
+                        key={dayKey}
+                        type="button"
+                        className={`btn btn-sm health-meal-prep-chip ${mealPrepDayKeys.includes(dayKey) ? "btn-primary" : ""}`}
+                        onClick={() => toggleMealPrepDay(dayKey)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="health-calc-grid" style={{ marginTop: 8 }}>
                 {["protein", "carbs", "fat", "calories"].map((field) => (
                   <label key={field} className="quick-row">
@@ -895,6 +1099,11 @@ export function HealthPage({
                   <li key={m.id} className="health-meal-list-item surface-glass">
                     <div>
                       <strong>{m.label || "Meal"}</strong>
+                      {m.food ? (
+                        <div className="settings-hint" style={{ marginTop: 4 }}>
+                          {m.food}
+                        </div>
+                      ) : null}
                       <div className="settings-hint" style={{ marginTop: 4 }}>
                         P {m.protein}g · C {m.carbs}g · F {m.fat}g · {m.calories} kcal
                       </div>
@@ -1120,7 +1329,7 @@ export function HealthPage({
                   .slice(0, 8)
                   .map((e, i) => (
                     <li key={`${e.at}-${i}`}>
-                      {e.at.slice(0, 10)} — {formatWeightLbFromKg(e.kg)} lb (~{Math.round(e.kg * 10) / 10} kg)
+                      {e.at.slice(0, 10)} - {formatWeightLbFromKg(e.kg)} lb (~{Math.round(e.kg * 10) / 10} kg)
                     </li>
                   ))}
               </ul>

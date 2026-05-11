@@ -47,11 +47,39 @@ export function emptyWeekPlan() {
   return { mon: "", tue: "", wed: "", thu: "", fri: "", sat: "", sun: "" };
 }
 
-/** @param {unknown} p @returns {{ id: string, name: string, exercises: string[] } | null} */
+/** @typedef {{ name: string, setsReps: string, weightNote: string }} ExerciseBlock */
+
+/** @param {unknown} x @returns {ExerciseBlock | null} */
+export function normalizeExerciseBlock(x) {
+  if (x == null) return null;
+  if (typeof x === "object" && x !== null) {
+    const name = String(x.name || "").trim();
+    const setsReps = String(x.setsReps || "").trim();
+    const weightNote = String(x.weightNote || "").trim();
+    if (!name && !setsReps && !weightNote) return null;
+    return {
+      name: name.slice(0, 160),
+      setsReps: setsReps.slice(0, 160),
+      weightNote: weightNote.slice(0, 160),
+    };
+  }
+  const s = String(x).trim();
+  if (!s) return null;
+  return { name: s.slice(0, 200), setsReps: "", weightNote: "" };
+}
+
+/** One line for tasks / coach (legacy-friendly). */
+export function formatExerciseBlockLine(b) {
+  const x = normalizeExerciseBlock(b);
+  if (!x) return "";
+  return [x.name, x.setsReps, x.weightNote].filter(Boolean).join(" | ");
+}
+
+/** @param {unknown} p @returns {{ id: string, name: string, exercises: ExerciseBlock[] } | null} */
 export function normalizeProgramRecord(p) {
   if (!p || typeof p !== "object" || !p.id) return null;
   const exercises = Array.isArray(p.exercises)
-    ? p.exercises.map((x) => String(x || "").trim()).filter(Boolean).slice(0, 120)
+    ? p.exercises.map(normalizeExerciseBlock).filter(Boolean).slice(0, 120)
     : [];
   return {
     id: String(p.id).slice(0, 80),
@@ -74,7 +102,11 @@ function migrateSavedRoutinesToPrograms(savedRoutines) {
       lines.push(...txt);
     }
     if (!lines.length) continue;
-    const rec = normalizeProgramRecord({ id: `mig-${r.id}`, name: r.name || "Imported routine", exercises: lines });
+    const rec = normalizeProgramRecord({
+      id: `mig-${r.id}`,
+      name: r.name || "Imported routine",
+      exercises: lines.map((t) => ({ name: t, setsReps: "", weightNote: "" })),
+    });
     if (rec) out.push(rec);
   }
   return out;
@@ -376,14 +408,14 @@ export const PROGRAM_LIBRARY = [
   {
     id: "sample_full_body",
     name: "Full body",
-    blurb: "Power, core, hinge, press, row, squat pattern — one balanced session.",
+    blurb: "Power, core, hinge, press, row, squat pattern in one balanced session.",
     exercises: [
-      "Med ball slams — 3×10",
-      "Hanging leg raises — 3×12",
-      "Romanian deadlifts (RDL) — 3×8–10",
-      "Overhead press (barbell or DB) — 3×8–10",
-      "Seated cable rows — 3×10–12",
-      "Dumbbell goblet squats — 3×10–12",
+      { name: "Med ball slams", setsReps: "3×10", weightNote: "" },
+      { name: "Hanging leg raises", setsReps: "3×12", weightNote: "" },
+      { name: "Romanian deadlifts (RDL)", setsReps: "3×8-10", weightNote: "" },
+      { name: "Overhead press (barbell or DB)", setsReps: "3×8-10", weightNote: "" },
+      { name: "Seated cable rows", setsReps: "3×10-12", weightNote: "" },
+      { name: "Dumbbell goblet squats", setsReps: "3×10-12", weightNote: "" },
     ],
   },
   {
@@ -391,12 +423,12 @@ export const PROGRAM_LIBRARY = [
     name: "Leg day",
     blurb: "Squat pattern, hinge, single-leg, isolation calves.",
     exercises: [
-      "Back squat or leg press — 4×6–10",
-      "Romanian deadlift — 3×8–10",
-      "Walking lunges or Bulgarian split squat — 3×8 each leg",
-      "Leg curl — 3×12–15",
-      "Leg extension — 3×12–15",
-      "Standing calf raises — 4×12–15",
+      { name: "Back squat or leg press", setsReps: "4×6-10", weightNote: "" },
+      { name: "Romanian deadlift", setsReps: "3×8-10", weightNote: "" },
+      { name: "Walking lunges or Bulgarian split squat", setsReps: "3×8 each leg", weightNote: "" },
+      { name: "Leg curl", setsReps: "3×12-15", weightNote: "" },
+      { name: "Leg extension", setsReps: "3×12-15", weightNote: "" },
+      { name: "Standing calf raises", setsReps: "4×12-15", weightNote: "" },
     ],
   },
   {
@@ -404,12 +436,12 @@ export const PROGRAM_LIBRARY = [
     name: "Upper body",
     blurb: "Vertical pull, vertical push, rows, incline press, arms.",
     exercises: [
-      "Pull-ups or lat pulldown — 4×6–10",
-      "Overhead DB shoulder press — 3×8–12",
-      "One-arm dumbbell row — 3×8–12 each",
-      "Incline DB bench press — 3×10–12",
-      "Face pulls — 3×15",
-      "Triceps rope pushdown — 3×12–15",
+      { name: "Pull-ups or lat pulldown", setsReps: "4×6-10", weightNote: "" },
+      { name: "Overhead DB shoulder press", setsReps: "3×8-12", weightNote: "" },
+      { name: "One-arm dumbbell row", setsReps: "3×8-12 each", weightNote: "" },
+      { name: "Incline DB bench press", setsReps: "3×10-12", weightNote: "" },
+      { name: "Face pulls", setsReps: "3×15", weightNote: "" },
+      { name: "Triceps rope pushdown", setsReps: "3×12-15", weightNote: "" },
     ],
   },
 ];
@@ -424,8 +456,8 @@ export function getProgramById(health, id) {
   if (!id) return null;
   const h = normalizeHealth(health);
   const u = (h.programs || []).find((p) => p.id === id);
-  if (u) return u;
-  return PROGRAM_LIBRARY.find((p) => p.id === id) || null;
+  const raw = u || PROGRAM_LIBRARY.find((p) => p.id === id);
+  return raw ? normalizeProgramRecord(raw) : null;
 }
 
 /** User programs first, then built-ins (for pickers). */
@@ -433,13 +465,15 @@ export function listSelectablePrograms(health) {
   const h = normalizeHealth(health);
   const user = (h.programs || []).filter((p) => p && p.id);
   const seen = new Set(user.map((p) => p.id));
-  const rest = PROGRAM_LIBRARY.filter((p) => !seen.has(p.id));
+  const rest = PROGRAM_LIBRARY.filter((p) => !seen.has(p.id))
+    .map((p) => normalizeProgramRecord(p))
+    .filter(Boolean);
   return [...user, ...rest];
 }
 
 /**
  * @param {unknown} task
- * @returns {{ program: { id: string, name: string, exercises: string[] } | null, advanceQueue: boolean }}
+ * @returns {{ program: { id: string, name: string, exercises: ExerciseBlock[] } | null, advanceQueue: boolean }}
  */
 export function resolveProgramForTask(health, task) {
   const h = normalizeHealth(health);
@@ -469,7 +503,8 @@ export function resolveProgramForTask(health, task) {
   const cur = Number(h.weekRoutineCursor) || 0;
   const lib = PROGRAM_LIBRARY;
   const li = lib.length ? ((cur % lib.length) + lib.length) % lib.length : 0;
-  return { program: lib[li] || null, advanceQueue: !!lib.length };
+  const rawLib = lib[li];
+  return { program: rawLib ? normalizeProgramRecord(rawLib) : null, advanceQueue: !!lib.length };
 }
 
 /** Patch object for `setHealth(prev => ({ ...normalizeHealth(prev), ... }))` after starting a queue/auto workout. */
@@ -495,12 +530,13 @@ function macroFieldNumber(v) {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
-/** @param {unknown} m @returns {{ id: string, label: string, protein: number, carbs: number, fat: number, calories: number, savedAt: string } | null} */
+/** @param {unknown} m @returns {{ id: string, label: string, food: string, protein: number, carbs: number, fat: number, calories: number, savedAt: string } | null} */
 export function normalizeMacroMeal(m) {
   if (!m || typeof m !== "object" || !m.id) return null;
   return {
     id: String(m.id).slice(0, 64),
     label: String(m.label || "").slice(0, 80),
+    food: String(m.food || "").slice(0, 200),
     protein: Math.round(macroFieldNumber(m.protein)),
     carbs: Math.round(macroFieldNumber(m.carbs)),
     fat: Math.round(macroFieldNumber(m.fat)),
@@ -530,6 +566,7 @@ export function normalizeMacroDayEntry(raw, dayKey = "") {
       {
         id: `legacy-${dayKey || "day"}`,
         label: "Earlier log",
+        food: "",
         protein: Math.round(p),
         carbs: Math.round(c),
         fat: Math.round(f),
@@ -585,7 +622,10 @@ export function formatHealthForCoach(health) {
     lines.push(
       `Saved workout programs: ${progs
         .map((p) => {
-          const ex = p.exercises.slice(0, 6).join("; ");
+          const ex = p.exercises
+            .slice(0, 6)
+            .map((b) => formatExerciseBlockLine(b))
+            .join("; ");
           return `${p.name} (${p.exercises.length} moves): ${ex}${p.exercises.length > 6 ? "…" : ""}`;
         })
         .join(" | ")}`

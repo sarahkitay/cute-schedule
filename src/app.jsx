@@ -12,8 +12,6 @@ import { apiUrl } from "./apiBase";
 import {
   notificationService,
   bootstrapNativePushOnStartup,
-  subscribeNativePushDebug,
-  getNativePushDebugSnapshot,
   resyncIosTaskLocalNotifications,
   refreshNativeNotificationDiagnostics,
 } from "./notifications";
@@ -56,6 +54,7 @@ import {
   isAffirmationToCoach,
   loadCoachLearning,
   parseCoachApiPayload,
+  applyLiveDaySuggestionGuards,
   recordCoachSuggestedTaskAbandoned,
   recordCoachSuggestedTaskCompleted,
   recordCoachSuggestedTaskPostponed,
@@ -2943,13 +2942,6 @@ export default function App() {
     });
   }, []);
 
-  const [nativePushDebug, setNativePushDebug] = useState(null);
-  useEffect(() => {
-    if (!isCapacitorNativeApp()) return;
-    setNativePushDebug(getNativePushDebugSnapshot());
-    return subscribeNativePushDebug(setNativePushDebug);
-  }, []);
-
   useEffect(() => {
     if (!isCapacitorNativeApp()) return;
     let listener;
@@ -2998,51 +2990,6 @@ export default function App() {
     return () => {
       if (handle && typeof handle.remove === "function") handle.remove();
     };
-  }, []);
-
-  /** Hard-coded URL + full error fields for WKWebView / allowNavigation debugging (see Xcode console). */
-  const [rawCapFetchProbe, setRawCapFetchProbe] = useState(null);
-  const runRawCapFetchProbe = useCallback(async () => {
-    const sendUrl = "https://cute-schedule.vercel.app/api/push/send";
-    const summarizeErr = (e) => {
-      if (e == null) return { name: "", message: "", string: "", stack: "", cause: "" };
-      const c = e.cause;
-      let causeStr = "";
-      if (c != null) {
-        causeStr = typeof c === "object" && c !== null && "message" in c ? String(c.message) : String(c);
-      }
-      return {
-        name: String(e.name ?? ""),
-        message: String(e.message ?? ""),
-        string: String(e),
-        stack: typeof e.stack === "string" ? e.stack.slice(0, 1200) : "",
-        cause: causeStr,
-      };
-    };
-    const next = { sendUrl, at: new Date().toISOString(), options: null, post: null };
-    try {
-      const r = await fetch(sendUrl, { method: "OPTIONS" });
-      const acao = r.headers.get("access-control-allow-origin");
-      next.options = { ok: true, status: r.status, statusText: r.statusText, acao: acao || "(no ACAO header)" };
-    } catch (e) {
-      const s = summarizeErr(e);
-      console.error("[PROYOU raw fetch] OPTIONS failed", sendUrl, s, e);
-      next.options = { ok: false, ...s };
-    }
-    try {
-      const r = await fetch(sendUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nativeIos: true, testOnly: true }),
-      });
-      const text = await r.text();
-      next.post = { ok: true, status: r.status, body: text.slice(0, 500) };
-    } catch (e) {
-      const s = summarizeErr(e);
-      console.error("[PROYOU raw fetch] POST failed", sendUrl, s, e);
-      next.post = { ok: false, ...s };
-    }
-    setRawCapFetchProbe(next);
   }, []);
 
   // PWA: capture install prompt (Chrome, Edge, Android Chrome, etc.). Skip in Capacitor; not applicable in the store app.
@@ -4349,6 +4296,16 @@ export default function App() {
     setCoachError("");
     setCoachLoading(true);
 
+    const localNowHHMM = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+    const coachGuardOpts = { coachViewDayKey: tKey, realTodayKey, localNowHHMM };
+    const guardCoachResult = (r) => {
+      if (!r || typeof r !== "object") return r;
+      return {
+        ...r,
+        suggestions: applyLiveDaySuggestionGuards(r.suggestions || [], todayHours, coachGuardOpts),
+      };
+    };
+
     try {
       const allTasks = allTasksInDay(todayHours, customCategories);
       const timeOfDay = getTimeOfDay();
@@ -4390,6 +4347,8 @@ export default function App() {
       const payload = {
         systemPrompt: GENTLE_ANCHOR_PROMPT,
         dayKey: tKey,
+        realTodayKey,
+        localNowHHMM,
         prettyDate: new Date(tKey + "T00:00:00").toLocaleDateString(),
         mood: appState.days?.[tKey]?.dailyMood || null,
         progress: prog,
@@ -4499,7 +4458,7 @@ export default function App() {
               ? data.error
               : String(data?.detail || data?.hint || `Coach request failed (${res.status}).`);
         setCoachError(hint);
-        const localResponse = fallbackPayload();
+        const localResponse = guardCoachResult(fallbackPayload());
         setCoachResult(localResponse);
         if (userQuestion) {
           setCoachConversation((prev) => [...prev, { role: "assistant", content: localResponse.message }]);
@@ -4547,8 +4506,8 @@ export default function App() {
       } else {
         setCoachConversation([]);
       }
-      setCoachResult(finalShaped);
-      
+      setCoachResult(guardCoachResult(finalShaped));
+
       setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
     } catch {
       const allTasksCatch = allTasksInDay(todayHours, customCategories);
@@ -4582,7 +4541,7 @@ export default function App() {
         todayHours,
         intelligence: snapCatch,
       });
-      setCoachResult(localResponse);
+      setCoachResult(guardCoachResult(localResponse));
       if (userQuestion) {
         setCoachConversation((prev) => [...prev, { role: "assistant", content: localResponse.message }]);
       }
@@ -6376,146 +6335,178 @@ export default function App() {
               </div>
             )}
 
-            {/* Conversation History */}
+            {/* Conversation: structured follow-up sits directly under the latest coach reply */}
             {coachConversation.length > 0 && (
-              <div className="coach-conversation" style={{ marginBottom: 'var(--spacing-md)' }}>
-                {coachConversation.map((msg, idx) => (
-                  <div key={idx} className={`coach-msg coach-msg-${msg.role}`}>
-                    <div className="coach-msg-label">{msg.role === 'user' ? 'You' : 'Coach'}</div>
-                    <div className="coach-msg-content">{msg.content}</div>
-                  </div>
-                ))}
+              <div className="coach-conversation" style={{ marginBottom: "var(--spacing-md)" }}>
+                {coachConversation.map((msg, idx) => {
+                  const showFollowUp =
+                    coachResult &&
+                    msg.role === "assistant" &&
+                    idx === coachConversation.length - 1;
+                  return (
+                    <div key={idx} className={`coach-msg coach-msg-${msg.role}`}>
+                      <div className="coach-msg-label">{msg.role === "user" ? "You" : "Coach"}</div>
+                      <div className="coach-msg-content">{msg.content}</div>
+                      {showFollowUp ? (
+                        <div className="coach-inline-followup">
+                          {renderCoachSuggestionCards(coachResult.suggestions)}
+                          {(coachResult.followUp || coachResult.question) ? (
+                            <div className="coach-block coach-inline-block">
+                              <div className="coach-block-title">A question</div>
+                              <p className="coach-message" style={{ marginTop: 0 }}>
+                                {coachResult.followUp || coachResult.question}
+                              </p>
+                            </div>
+                          ) : null}
+                          {coachResult.insight ? (
+                            <div className="coach-block coach-insight-block coach-inline-block">
+                              <div className="coach-block-title">Observation</div>
+                              <p className="coach-insight-text">{coachResult.insight}</p>
+                            </div>
+                          ) : null}
+                          {coachResult.highlights && coachResult.highlights.length > 0 ? (
+                            <div className="coach-block coach-inline-block">
+                              <div className="coach-block-title">Today&apos;s focus</div>
+                              <ul className="coach-list">
+                                {coachResult.highlights.map((h, i) => (
+                                  <li key={i}>{h}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {coachResult.ignoredMonthlies && coachResult.ignoredMonthlies.length > 0 ? (
+                            <div className="coach-block coach-inline-block">
+                              <div className="coach-block-title">Monthlies you might be ignoring</div>
+                              <ul className="coach-list">
+                                {coachResult.ignoredMonthlies.map((m) => (
+                                  <li key={m.id || m.text}>{m.text}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {coachResult.percentSummary ? (
+                            <div className="coach-block coach-inline-block">
+                              <div className="coach-block-title">Completion snapshot</div>
+                              <div className="coach-mono">{coachResult.percentSummary}</div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             )}
 
-            {!coachUserProfile.filled && (
-              <div className="panel coach-profile-card" style={{ marginBottom: 24 }}>
-                <div className="panel-title"><span className="title">Get to know you</span></div>
-                <p className="settings-hint" style={{ marginBottom: 16 }}>Answer a few questions so your coach can give better, personalized advice over time.</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {!coachResult && !coachError && !coachLoading && coachConversation.length === 0 && (
+              <div className="empty">
+                Type a question above, or click &quot;General Check-in&quot; for an overview.
+                <br />
+                <br />
+                <small style={{ opacity: 0.7 }}>
+                  Optional: expand <strong>Get to know you</strong> below so suggestions stay grounded in your goals.
+                </small>
+              </div>
+            )}
+
+            {/* Structured result when there is no chat thread (general check-in) */}
+            {coachResult && coachConversation.length === 0 && (
+              <div className="coach-body coach-body-v2">
+                {coachResult.message ? <div className="coach-message">{coachResult.message}</div> : null}
+
+                {renderCoachSuggestionCards(coachResult.suggestions)}
+
+                {(coachResult.followUp || coachResult.question) ? (
+                  <div className="coach-block">
+                    <div className="coach-block-title">A question</div>
+                    <p className="coach-message" style={{ marginTop: 0 }}>
+                      {coachResult.followUp || coachResult.question}
+                    </p>
+                  </div>
+                ) : null}
+
+                {coachResult.insight ? (
+                  <div className="coach-block coach-insight-block">
+                    <div className="coach-block-title">Observation</div>
+                    <p className="coach-insight-text">{coachResult.insight}</p>
+                  </div>
+                ) : null}
+
+                {coachResult.highlights && coachResult.highlights.length > 0 ? (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Today&apos;s focus</div>
+                    <ul className="coach-list">
+                      {coachResult.highlights.map((h, i) => (
+                        <li key={i}>{h}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {coachResult.ignoredMonthlies && coachResult.ignoredMonthlies.length > 0 ? (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Monthlies you might be ignoring</div>
+                    <ul className="coach-list">
+                      {coachResult.ignoredMonthlies.map((m) => (
+                        <li key={m.id || m.text}>{m.text}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {coachResult.percentSummary ? (
+                  <div className="coach-block">
+                    <div className="coach-block-title">Completion snapshot</div>
+                    <div className="coach-mono">{coachResult.percentSummary}</div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+
+            <details className="coach-gtky-details surface-glass">
+              <summary className="coach-gtky-summary">
+                {coachUserProfile.filled ? "Your coaching profile" : "Get to know you (optional)"}
+              </summary>
+              <div className="coach-gtky-body">
+                <p className="settings-hint" style={{ marginBottom: 12 }}>
+                  A few notes help the coach stay grounded in what matters to you. You can update this anytime.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <label className="label">What&apos;s your biggest challenge with planning or habits?</label>
-                  <input className="input" value={coachUserProfile.biggestChallenge} onChange={(e) => setCoachUserProfile(p => ({ ...p, biggestChallenge: e.target.value }))} placeholder="e.g. Overcommitting, starting late..." />
+                  <input
+                    className="input"
+                    value={coachUserProfile.biggestChallenge}
+                    onChange={(e) => setCoachUserProfile((p) => ({ ...p, biggestChallenge: e.target.value }))}
+                    placeholder="e.g. Overcommitting, starting late..."
+                  />
                   <label className="label">When do you usually have the most energy?</label>
-                  <input className="input" value={coachUserProfile.bestEnergyTime} onChange={(e) => setCoachUserProfile(p => ({ ...p, bestEnergyTime: e.target.value }))} placeholder="e.g. Morning, after lunch..." />
+                  <input
+                    className="input"
+                    value={coachUserProfile.bestEnergyTime}
+                    onChange={(e) => setCoachUserProfile((p) => ({ ...p, bestEnergyTime: e.target.value }))}
+                    placeholder="e.g. Morning, after lunch..."
+                  />
                   <label className="label">One goal you&apos;re working toward right now?</label>
-                  <input className="input" value={coachUserProfile.oneGoal} onChange={(e) => setCoachUserProfile(p => ({ ...p, oneGoal: e.target.value }))} placeholder="e.g. Ship the project, exercise 3x/week..." />
-                  <button type="button" className="btn btn-primary" onClick={() => { const next = { ...coachUserProfile, filled: true }; setCoachUserProfile(next); localStorage.setItem(COACH_USER_PROFILE_KEY, JSON.stringify(next)); }}>
-                    Save & continue
+                  <input
+                    className="input"
+                    value={coachUserProfile.oneGoal}
+                    onChange={(e) => setCoachUserProfile((p) => ({ ...p, oneGoal: e.target.value }))}
+                    placeholder="e.g. Ship the project, exercise 3x/week..."
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      const next = { ...coachUserProfile, filled: true };
+                      setCoachUserProfile(next);
+                      localStorage.setItem(COACH_USER_PROFILE_KEY, JSON.stringify(next));
+                    }}
+                  >
+                    Save profile
                   </button>
                 </div>
               </div>
-            )}
-
-            {!coachResult && !coachError && !coachLoading && coachConversation.length === 0 && coachUserProfile.filled && (
-              <div className="empty">
-                Type a question above, or click "General Check-in" for an overview.
-                <br /><br />
-                <small style={{ opacity: 0.7 }}>I'll check in on first open each day and when you've been stuck for a while.</small>
-              </div>
-            )}
-
-            {/* Structured result: full card when no chat thread; below chat when in Q&A (no duplicate message) */}
-            {coachResult && coachConversation.length === 0 && (
-              <div className="coach-body coach-body-v2">
-                {coachResult.message && (
-                  <div className="coach-message">{coachResult.message}</div>
-                )}
-
-                {coachResult.insight ? (
-                  <div className="coach-block coach-insight-block">
-                    <div className="coach-block-title">Observation</div>
-                    <p className="coach-insight-text">{coachResult.insight}</p>
-                  </div>
-                ) : null}
-
-                {coachResult.highlights && coachResult.highlights.length > 0 && (
-                  <div className="coach-block">
-                    <div className="coach-block-title">Today&apos;s focus</div>
-                    <ul className="coach-list">
-                      {coachResult.highlights.map((h, i) => (
-                        <li key={i}>{h}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {(coachResult.followUp || coachResult.question) ? (
-                  <div className="coach-block">
-                    <div className="coach-block-title">A question</div>
-                    <p className="coach-message" style={{ marginTop: 0 }}>{coachResult.followUp || coachResult.question}</p>
-                  </div>
-                ) : null}
-
-                {renderCoachSuggestionCards(coachResult.suggestions)}
-
-                {coachResult.ignoredMonthlies && coachResult.ignoredMonthlies.length > 0 && (
-                  <div className="coach-block">
-                    <div className="coach-block-title">Monthlies you might be ignoring</div>
-                    <ul className="coach-list">
-                      {coachResult.ignoredMonthlies.map((m) => (
-                        <li key={m.id || m.text}>{m.text}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {coachResult.percentSummary && (
-                  <div className="coach-block">
-                    <div className="coach-block-title">Completion snapshot</div>
-                    <div className="coach-mono">{coachResult.percentSummary}</div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {coachResult && coachConversation.length > 0 && (
-              <div className="coach-body coach-body-chat-followup coach-body-v2">
-                {coachResult.insight ? (
-                  <div className="coach-block coach-insight-block">
-                    <div className="coach-block-title">Observation</div>
-                    <p className="coach-insight-text">{coachResult.insight}</p>
-                  </div>
-                ) : null}
-
-                {coachResult.highlights && coachResult.highlights.length > 0 && (
-                  <div className="coach-block">
-                    <div className="coach-block-title">Today&apos;s focus</div>
-                    <ul className="coach-list">
-                      {coachResult.highlights.map((h, i) => (
-                        <li key={i}>{h}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {(coachResult.followUp || coachResult.question) ? (
-                  <div className="coach-block">
-                    <div className="coach-block-title">A question</div>
-                    <p className="coach-message" style={{ marginTop: 0 }}>{coachResult.followUp || coachResult.question}</p>
-                  </div>
-                ) : null}
-
-                {renderCoachSuggestionCards(coachResult.suggestions)}
-
-                {coachResult.ignoredMonthlies && coachResult.ignoredMonthlies.length > 0 && (
-                  <div className="coach-block">
-                    <div className="coach-block-title">Monthlies you might be ignoring</div>
-                    <ul className="coach-list">
-                      {coachResult.ignoredMonthlies.map((m) => (
-                        <li key={m.id || m.text}>{m.text}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {coachResult.percentSummary && (
-                  <div className="coach-block">
-                    <div className="coach-block-title">Completion snapshot</div>
-                    <div className="coach-mono">{coachResult.percentSummary}</div>
-                  </div>
-                )}
-              </div>
-            )}
+            </details>
 
             {coachEdit ? (
               <div className="coach-edit-overlay" role="dialog" aria-modal="true" aria-labelledby="coach-edit-heading">
@@ -7880,8 +7871,8 @@ export default function App() {
                   <p className="settings-hint">
                     {Capacitor.getPlatform() === "ios" ? (
                       <>
-                        <strong>Task reminders</strong> use on-device scheduled alerts at the times you set on each task (open a task → Remind me).{" "}
-                        <strong>Firebase (FCM)</strong> handles test pushes and optional server backup. Allow notifications for PROYOU and use the actions below.
+                        <strong>Task reminders</strong> use on-device alerts for times you set on each task (open a task → Remind me).{" "}
+                        <strong>Firebase</strong> can also deliver remote messages when you allow alerts below.
                       </>
                     ) : (
                       <>This app uses <strong>Firebase Cloud Messaging</strong> on Android. Register below for remote messages.</>
@@ -7903,15 +7894,20 @@ export default function App() {
                           onClick={async () => {
                             await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories, profile);
                             await refreshNativeNotificationDiagnostics();
-                            const snap = getNativePushDebugSnapshot();
-                            const p = snap.localNotificationPermission;
-                            if (p === "granted") {
+                            let granted = false;
+                            try {
+                              const perm = await LocalNotifications.checkPermissions();
+                              granted = perm.display === "granted";
+                            } catch {
+                              /* ignore */
+                            }
+                            if (granted) {
                               alert(
-                                `Scheduled ${snap.scheduledLocalReminderCount ?? 0} local task reminder(s) in the coming days (see status below). Tasks must have Remind me turned on.`
+                                "Task reminders are scheduled for the next several days. Turn on Remind me on each task you want alerts for."
                               );
                             } else {
                               alert(
-                                "Local reminders need notification permission. If you previously chose Don’t Allow, use Open system settings, enable Notifications for PROYOU, then tap Allow & schedule again."
+                                "Local reminders need notification permission. If you chose Don’t Allow before, open system settings for this app, enable Notifications, then tap Allow & schedule again."
                               );
                             }
                           }}
@@ -7925,7 +7921,7 @@ export default function App() {
                             await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories, profile);
                             await notificationService.syncRemindersToServer(pushRemindersList);
                             await refreshNativeNotificationDiagnostics();
-                            alert("Schedule refreshed and backup reminder list sent to the server.");
+                            alert("Schedule updated and reminders synced.");
                           }}
                         >
                           Refresh schedule &amp; server backup
@@ -7940,19 +7936,16 @@ export default function App() {
                         >
                           Open system settings
                         </button>
-                        <button type="button" className="btn btn-sm" onClick={() => void refreshNativeNotificationDiagnostics()}>
-                          Refresh status
-                        </button>
                       </div>
                     </>
                   )}
 
                   <label className="label" style={{ marginTop: 16, display: "block", fontSize: "0.95rem" }}>
-                    {Capacitor.getPlatform() === "ios" ? "Server and test alerts (Firebase)" : "Push registration"}
+                    {Capacitor.getPlatform() === "ios" ? "Remote alerts (Firebase)" : "Push registration"}
                   </label>
                   <p className="settings-hint" style={{ marginTop: 4 }}>
                     {Capacitor.getPlatform() === "ios"
-                      ? "Registers for remote notifications (tests, future cloud backup). Exact task times use local scheduling on iPhone."
+                      ? "Registers this device for remote notifications and syncs your reminder list. Task times you set in the app still use local scheduling on iPhone."
                       : "Registers this device with your server for FCM."}
                   </p>
                   <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8 }}>
@@ -7963,11 +7956,11 @@ export default function App() {
                         const granted = await notificationService.requestPermission();
                         await refreshNativeNotificationDiagnostics();
                         if (granted) {
-                          alert("Firebase / remote notification permission granted.");
+                          alert("Remote notification permission granted.");
                         } else {
                           alert(
                             Capacitor.getPlatform() === "ios"
-                              ? "Permission not granted. Use Open system settings under Task reminders to allow alerts for PROYOU."
+                              ? "Permission not granted. Use Open system settings under Task reminders to allow alerts for this app."
                               : "Permission not granted. Open system notification settings for this app."
                           );
                         }
@@ -7990,216 +7983,15 @@ export default function App() {
                         if (result?.ok) {
                           await notificationService.syncRemindersToServer(pushRemindersList);
                           await refreshNativeNotificationDiagnostics();
-                          alert("Native push registered. Reminders can sync for this device.");
+                          alert("Push enabled. Reminders can sync for this device.");
                         } else {
-                          alert(result?.hint || "Could not enable native push.");
+                          alert(result?.hint || "Could not enable push.");
                         }
                       }}
                     >
                       Enable native push &amp; sync reminders
                     </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={async () => {
-                        const r = await notificationService.sendNativeTestPush();
-                        if (r?.ok) {
-                          alert("Test push sent. Check Notification Center (and Firebase / FCM env if it failed).");
-                        } else {
-                          const parts = [
-                            r?.hint || r?.error || "Test send failed.",
-                            r?.status != null ? `HTTP ${r.status}` : null,
-                            r?.fetchError ? `Fetch: ${r.errorName || "Error"}${r.errorCause ? ` - ${r.errorCause}` : ""}` : null,
-                            "See the Notifications status block below for redacted body, response, and stack.",
-                          ].filter(Boolean);
-                          alert(parts.join("\n\n"));
-                        }
-                      }}
-                    >
-                      Send test push
-                    </button>
-                    <button type="button" className="btn btn-sm" onClick={() => void runRawCapFetchProbe()}>
-                      Raw fetch probe (OPTIONS + POST)
-                    </button>
                   </div>
-                  {rawCapFetchProbe && (
-                    <div
-                      className="settings-hint"
-                      style={{
-                        marginTop: 10,
-                        lineHeight: 1.45,
-                        fontFamily: "var(--font-mono, ui-monospace, monospace)",
-                        fontSize: 11,
-                        wordBreak: "break-all",
-                        borderTop: "1px solid rgba(0,0,0,0.08)",
-                        paddingTop: 8,
-                      }}
-                    >
-                      <div style={{ fontWeight: 600 }}>Raw probe (hard-coded URL)</div>
-                      <div>URL: {rawCapFetchProbe.sendUrl}</div>
-                      <div>At: {rawCapFetchProbe.at}</div>
-                      <div style={{ marginTop: 6 }}>OPTIONS - {rawCapFetchProbe.options?.ok ? "completed" : "error"}</div>
-                      {rawCapFetchProbe.options?.status != null ? (
-                        <div>status: {rawCapFetchProbe.options.status} {rawCapFetchProbe.options.statusText || ""}</div>
-                      ) : null}
-                      {rawCapFetchProbe.options?.acao ? <div>Access-Control-Allow-Origin: {rawCapFetchProbe.options.acao}</div> : null}
-                      {rawCapFetchProbe.options && !rawCapFetchProbe.options.ok ? (
-                        <>
-                          <div>error.name: {rawCapFetchProbe.options.name}</div>
-                          <div>error.message: {rawCapFetchProbe.options.message}</div>
-                          <div>String(e): {rawCapFetchProbe.options.string}</div>
-                          {rawCapFetchProbe.options.cause ? <div>cause: {rawCapFetchProbe.options.cause}</div> : null}
-                          {rawCapFetchProbe.options.stack ? (
-                            <div style={{ whiteSpace: "pre-wrap", opacity: 0.9 }}>stack: {rawCapFetchProbe.options.stack}</div>
-                          ) : null}
-                        </>
-                      ) : null}
-                      <div style={{ marginTop: 6 }}>POST - {rawCapFetchProbe.post?.ok ? "completed" : "error"}</div>
-                      {rawCapFetchProbe.post?.status != null ? (
-                        <div>status: {rawCapFetchProbe.post.status}</div>
-                      ) : null}
-                      {rawCapFetchProbe.post?.body ? <div>body: {rawCapFetchProbe.post.body}</div> : null}
-                      {rawCapFetchProbe.post && !rawCapFetchProbe.post.ok ? (
-                        <>
-                          <div>error.name: {rawCapFetchProbe.post.name}</div>
-                          <div>error.message: {rawCapFetchProbe.post.message}</div>
-                          <div>String(e): {rawCapFetchProbe.post.string}</div>
-                          {rawCapFetchProbe.post.cause ? <div>cause: {rawCapFetchProbe.post.cause}</div> : null}
-                          {rawCapFetchProbe.post.stack ? (
-                            <div style={{ whiteSpace: "pre-wrap", opacity: 0.9 }}>stack: {rawCapFetchProbe.post.stack}</div>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </div>
-                  )}
-                  {nativePushDebug && (
-                    <div
-                      className="settings-hint"
-                      style={{
-                        marginTop: 12,
-                        lineHeight: 1.5,
-                        fontFamily: "var(--font-mono, ui-monospace, monospace)",
-                        fontSize: 12,
-                        wordBreak: "break-all",
-                      }}
-                    >
-                      <div style={{ fontWeight: 600, marginBottom: 6 }}>Status and debug</div>
-                      <div>Permission: {nativePushDebug.permission}</div>
-                      <div>Native platform: {nativePushDebug.nativePlatform ? "true" : "false"}</div>
-                      <div>Native token: {nativePushDebug.tokenRegistered ? "registered" : "missing"}</div>
-                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.12)" }}>
-                        <div style={{ fontWeight: 600 }}>Firebase Cloud Messaging</div>
-                        <div>native provider: {String(nativePushDebug.nativeProvider ?? "-")}</div>
-                        <div>fcmToken registered: {nativePushDebug.fcmTokenRegistered ? "true" : "false"}</div>
-                        {nativePushDebug.lastFcmMessageId ? (
-                          <div>last FCM messageId: {nativePushDebug.lastFcmMessageId}</div>
-                        ) : null}
-                        {nativePushDebug.lastTestSendMessageId ? (
-                          <div>send test messageId: {nativePushDebug.lastTestSendMessageId}</div>
-                        ) : null}
-                      </div>
-                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(0,0,0,0.12)" }}>
-                        <div style={{ fontWeight: 600 }}>Local task reminders (iOS)</div>
-                        <div>local notification permission: {String(nativePushDebug.localNotificationPermission ?? "-")}</div>
-                        <div>
-                          scheduled local reminder count:{" "}
-                          {nativePushDebug.scheduledLocalReminderCount == null
-                            ? "-"
-                            : String(nativePushDebug.scheduledLocalReminderCount)}
-                        </div>
-                        {nativePushDebug.lastLocalScheduleError ? (
-                          <div style={{ color: "var(--color-danger, #c0392b)" }}>
-                            last local schedule error: {nativePushDebug.lastLocalScheduleError}
-                          </div>
-                        ) : (
-                          <div>last local schedule error: -</div>
-                        )}
-                        <div>
-                          last server reminder sync HTTP:{" "}
-                          {nativePushDebug.lastRemindersNativeStatus == null
-                            ? "-"
-                            : String(nativePushDebug.lastRemindersNativeStatus)}
-                        </div>
-                      </div>
-                      {nativePushDebug.apiOriginResolved != null ? (
-                        <>
-                          <div>VITE_APP_ORIGIN (build): {String(nativePushDebug.apiOriginFromEnv ?? "")}</div>
-                          <div>API origin (resolved): {String(nativePushDebug.apiOriginResolved ?? "")}</div>
-                          <div>API origin source: {String(nativePushDebug.apiOriginSource ?? "")}</div>
-                        </>
-                      ) : null}
-                      {nativePushDebug.lastTokenPrefix ? <div>Token (short): {nativePushDebug.lastTokenPrefix}</div> : null}
-                      {nativePushDebug.lastRegisterNativeUrl ? (
-                        <div>register-native URL: {nativePushDebug.lastRegisterNativeUrl}</div>
-                      ) : null}
-                      {nativePushDebug.lastRegisterNativeStatus != null ? (
-                        <div>register-native HTTP: {nativePushDebug.lastRegisterNativeStatus}</div>
-                      ) : null}
-                      {nativePushDebug.lastRegisterNativeResponseText ? (
-                        <div>register-native body: {nativePushDebug.lastRegisterNativeResponseText}</div>
-                      ) : null}
-                      {nativePushDebug.lastRegisterNativeDeviceKey ? (
-                        <div>register-native deviceKey (persisted): {nativePushDebug.lastRegisterNativeDeviceKey}</div>
-                      ) : null}
-                      {nativePushDebug.lastRemindersNativeUrl ? (
-                        <div>reminders-native URL: {nativePushDebug.lastRemindersNativeUrl}</div>
-                      ) : null}
-                      {nativePushDebug.lastRemindersNativeStatus != null ? (
-                        <div>reminders-native HTTP: {nativePushDebug.lastRemindersNativeStatus}</div>
-                      ) : null}
-                      {nativePushDebug.lastRemindersNativeResponseText ? (
-                        <div>reminders-native body: {nativePushDebug.lastRemindersNativeResponseText}</div>
-                      ) : null}
-                      {nativePushDebug.lastRegistrationError ? (
-                        <div style={{ color: "var(--color-danger, #c0392b)" }}>Last registration error: {nativePushDebug.lastRegistrationError}</div>
-                      ) : null}
-                      {nativePushDebug.lastTestSendUrl ? <div>send test URL: {nativePushDebug.lastTestSendUrl}</div> : null}
-                      {nativePushDebug.lastTestSendRequestBodyRedacted ? (
-                        <div>send test request (redacted): {nativePushDebug.lastTestSendRequestBodyRedacted}</div>
-                      ) : null}
-                      {nativePushDebug.lastTestSendDiag != null ? (
-                        <div>
-                          send test diag:{" "}
-                          {typeof nativePushDebug.lastTestSendDiag === "object"
-                            ? JSON.stringify(nativePushDebug.lastTestSendDiag)
-                            : String(nativePushDebug.lastTestSendDiag)}
-                        </div>
-                      ) : null}
-                      {nativePushDebug.lastTestSendStatus != null ? (
-                        <div>send test HTTP: {nativePushDebug.lastTestSendStatus}</div>
-                      ) : null}
-                      {nativePushDebug.lastTestSendResponseText ? (
-                        <div>send test response: {nativePushDebug.lastTestSendResponseText}</div>
-                      ) : null}
-                      {nativePushDebug.lastTestSendErrorMessage ? (
-                        <div style={{ marginTop: 8, color: "var(--color-danger, #c0392b)" }}>
-                          <div style={{ fontWeight: 600 }}>send test fetch error</div>
-                          {nativePushDebug.lastTestSendErrorName ? (
-                            <div>name: {nativePushDebug.lastTestSendErrorName}</div>
-                          ) : null}
-                          <div>message: {nativePushDebug.lastTestSendErrorMessage}</div>
-                          {nativePushDebug.lastTestSendErrorCause ? (
-                            <div>cause: {nativePushDebug.lastTestSendErrorCause}</div>
-                          ) : null}
-                          {nativePushDebug.lastTestSendErrorStack ? (
-                            <div style={{ whiteSpace: "pre-wrap", opacity: 0.92, fontSize: 10 }}>
-                              stack: {nativePushDebug.lastTestSendErrorStack}
-                            </div>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {nativePushDebug.lastTestSendAt != null ? (
-                        <div>
-                          Last test send: {new Date(nativePushDebug.lastTestSendAt).toLocaleString()} -{" "}
-                          {nativePushDebug.lastTestSendOk === true ? "ok" : nativePushDebug.lastTestSendOk === false ? "failed" : "…"}
-                          {nativePushDebug.lastTestSendDetail ? ` (${nativePushDebug.lastTestSendDetail})` : ""}
-                        </div>
-                      ) : null}
-                      {nativePushDebug.lastPushReceivedAt != null ? (
-                        <div>Last push received: {new Date(nativePushDebug.lastPushReceivedAt).toLocaleString()}</div>
-                      ) : null}
-                    </div>
-                  )}
                 </div>
               ) : (
                 <div className="settings-section">
