@@ -42,6 +42,8 @@ export function buildCoachIntelligenceSnapshot(input: {
   notes: { text?: string }[];
   learning: CoachLearningStateV1;
   healthSummary?: string | null;
+  taskBehaviorSummary?: string | null;
+  financeHints?: string | null;
 }): CoachIntelligenceSnapshot {
   const open = input.tasks.filter((t) => !t.done);
   const heavyOpen = open.filter((t) => t.energyLevel === "HEAVY").length;
@@ -53,6 +55,14 @@ export function buildCoachIntelligenceSnapshot(input: {
   const morningHeavy = open.filter((t) => t.energyLevel === "HEAVY" && hourBand(t.hour) === "morning").length;
 
   const hs = input.healthSummary != null ? String(input.healthSummary).trim() : "";
+  const tb =
+    input.taskBehaviorSummary != null && String(input.taskBehaviorSummary).trim()
+      ? String(input.taskBehaviorSummary).trim().slice(0, 800)
+      : null;
+  const fh =
+    input.financeHints != null && String(input.financeHints).trim()
+      ? String(input.financeHints).trim().slice(0, 800)
+      : null;
   return {
     emotionalState: input.emotionalState,
     timeOfDay: input.timeOfDay,
@@ -69,6 +79,8 @@ export function buildCoachIntelligenceSnapshot(input: {
     noteSnippet: extractNoteSnippet(input.notes),
     learningSummary: summarizeLearningForPrompt(input.learning),
     healthSummary: hs ? hs.slice(0, 1200) : null,
+    taskBehaviorSummary: tb,
+    financeHints: fh,
   };
 }
 
@@ -83,6 +95,8 @@ export function formatIntelligenceForApi(s: CoachIntelligenceSnapshot): string {
     s.noteSnippet ? `recent_notes: ${s.noteSnippet}` : "",
     s.learningSummary,
     s.healthSummary ? `health_training: ${s.healthSummary}` : "",
+    s.taskBehaviorSummary ? `task_trends: ${s.taskBehaviorSummary}` : "",
+    s.financeHints ? `finance_extras: ${s.financeHints}` : "",
   ]
     .filter(Boolean)
     .join("\n");

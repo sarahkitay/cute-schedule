@@ -152,7 +152,22 @@ End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progres
     // Build conversation context
     const hasSavingsAccounts = finance && Array.isArray(finance.savingsAccounts) && finance.savingsAccounts.length > 0;
     const hasDebtAccounts = finance && Array.isArray(finance.debtAccounts) && finance.debtAccounts.length > 0;
-    const hasFinance = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || finance.totalSavings > 0 || finance.totalDebt > 0 || hasSavingsAccounts || hasDebtAccounts || (finance.subscriptions && finance.subscriptions.length > 0) || (finance.wishList && finance.wishList.length > 0) || (finance.bankStatementNotes && finance.bankStatementNotes.trim()));
+    const hasCredit = finance && finance.latestCreditScore && typeof finance.latestCreditScore.score === "number";
+    const hasDebtPay = finance && Number(finance.recentDebtPaymentsTotal) > 0;
+    const hasFinance =
+      finance &&
+      (finance.incomeThisMonth > 0 ||
+        finance.spentThisMonth > 0 ||
+        finance.totalSavings > 0 ||
+        finance.totalDebt > 0 ||
+        hasSavingsAccounts ||
+        hasDebtAccounts ||
+        hasCredit ||
+        hasDebtPay ||
+        (finance.archivedMonthCount && finance.archivedMonthCount > 0) ||
+        (finance.subscriptions && finance.subscriptions.length > 0) ||
+        (finance.wishList && finance.wishList.length > 0) ||
+        (finance.bankStatementNotes && finance.bankStatementNotes.trim()));
 
     const clientPersona = String(systemPrompt || "").trim();
     const financeLayer = hasFinance
@@ -182,6 +197,8 @@ Suggestions (Coach V2): When a concrete move fits, return 0–6 items in "sugges
 Use ADD_TASK or BREAK for new items the app can insert after approval. Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply; requiresApproval is always true for user-facing rows. Use [] when no concrete suggestion fits.
 
 Week / recurring planning: If the user asks to spread habits (e.g. art, dog walks) across the week, use weekAtAGlance + today's schedule to infer lighter blocks and propose multiple ADD_TASK rows on different targetDayKey values with realistic times. Prefer recurrencePattern weekly for habits they want a few times per week; daily for true every-day anchors. Mention tradeoffs in "message" when the week already looks dense.
+
+Long priorities: If the user writes a full paragraph (e.g. fixed work hours, a side project, fitness goals), combine weekAtAGlance, patterns, task_trends in coachIntelligenceText, health_training, and today's hours to suggest realistic time windows and which blocks to lighten — still only ADD_TASK/BREAK/etc. with requiresApproval true, never invent obligations they did not imply.
 
 Anti-drift:
 - Do not sound like a therapist, life coach, or inspirational quote account.
@@ -291,6 +308,9 @@ Use these to detect recurring struggles, goals, constraints, or self-observation
 - Savings by account: ${(finance.savingsAccounts || []).map((a) => `${a.label}: $${Number(a.amount || 0).toFixed(2)}`).join("; ") || "none"}
 - Total debt (sum of debts): $${(finance.totalDebt || 0).toFixed(2)}
 - Debts by type: ${(finance.debtAccounts || []).map((a) => `${a.label}: $${Number(a.amount || 0).toFixed(2)}`).join("; ") || "none"}
+${finance.latestCreditScore && typeof finance.latestCreditScore.score === "number" ? `- Latest logged credit score: ${finance.latestCreditScore.score} (as of ${String(finance.latestCreditScore.dateISO || "").slice(0, 10)})` : ""}
+${Number(finance.recentDebtPaymentsTotal) > 0 ? `- Recent logged debt payments (sample): about $${Number(finance.recentDebtPaymentsTotal).toFixed(2)}` : ""}
+${finance.archivedMonthCount ? `- Archived monthly finance summaries stored: ${finance.archivedMonthCount}` : ""}
 - Subscriptions: ${(finance.subscriptions || []).map(s => `${s.name} $${s.amount}/${s.cycle === 'yearly' ? 'yr' : 'mo'}`).join(", ") || "none"}
 - Wish list: ${(finance.wishList || []).map(w => w.targetAmount != null ? `${w.label} (goal $${w.targetAmount})` : w.label).join("; ") || "none"}
 ${finance.bankStatementNotes ? `- Bank/statement notes (use to spot biggest issues): ${String(finance.bankStatementNotes).slice(0, 1500)}` : ""}`

@@ -101,4 +101,8 @@ export interface CoachIntelligenceSnapshot {
   learningSummary: string;
   /** Short health / training summary for grounded suggestions */
   healthSummary: string | null;
+  /** Task completion / defer / delete trends from local disposition log */
+  taskBehaviorSummary?: string | null;
+  /** Credit score, debt payments, archived month hint */
+  financeHints?: string | null;
 }

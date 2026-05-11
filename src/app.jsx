@@ -57,6 +57,22 @@ import {
   recordSuggestionDeclined,
 } from "./coach";
 import {
+  aggregateTopExpensesAcrossMonths,
+  appendTaskBehaviorEvent,
+  averageOverArchivedMonths,
+  buildFinanceHintsForCoach,
+  DEFAULT_GROCERY_KEYWORDS,
+  financeDecalForCurrentMonth,
+  financeMonthKeyFromDayKey,
+  formatTaskBehaviorForCoach,
+  rollFinanceMonthsForward,
+  processMissedEndOfDayBacklog,
+  subscribeTaskBehaviorDirty,
+  summarizeTaskBehaviorForHome,
+  normalizeGroceryKeywordsFromProfile,
+  taskMatchesGroceryKeywords,
+} from "./groceryTaskCoachHelpers.js";
+import {
   subscribeAuthState,
   completeAuthRedirectIfNeeded,
   migrateLegacyDeviceScheduleIfNeeded,
@@ -136,11 +152,6 @@ function notifyPatternsDirty() {
       fn();
     } catch {}
   });
-}
-
-/** Tasks mentioning shopping / errands get an optional checklist (saved on the task, synced via appState). */
-function taskMentionsGroceryErrandStore(text) {
-  return /\b(grocer(?:y|ies)?|store|errand)\b/i.test(String(text || "").trim());
 }
 
 function defaultHabitTracker() {
@@ -297,6 +308,43 @@ const PROFILE_COMPLETION_DEFAULTS = {
 
 const COMPLETION_TONE_IDS = ["supportive", "matter-of-fact", "funny", "harsh"];
 
+function normalizeSavedGroceryLists(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x) => {
+      if (!x || typeof x !== "object") return null;
+      const items = Array.isArray(x.items)
+        ? x.items
+            .map((it) => ({
+              id: it.id || uid(),
+              text: String(it.text || "").trim(),
+              done: !!it.done,
+            }))
+            .filter((it) => it.text)
+        : [];
+      return {
+        id: x.id || uid(),
+        title: String(x.title || "Saved list").trim() || "Saved list",
+        savedAt: typeof x.savedAt === "string" ? x.savedAt : new Date().toISOString(),
+        items,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 40);
+}
+
+function normalizeGroceryKeywordArray(raw) {
+  if (Array.isArray(raw)) {
+    const out = [...new Set(raw.map((k) => String(k).trim().toLowerCase()).filter(Boolean))];
+    return out.length ? out : null;
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    const out = [...new Set(raw.split(/[,;\n]+/).map((k) => k.trim().toLowerCase()).filter(Boolean))];
+    return out.length ? out : null;
+  }
+  return null;
+}
+
 function loadProfileFromDisk() {
   const base = {
     userName: "",
@@ -305,6 +353,9 @@ function loadProfileFromDisk() {
     ...PROFILE_COMPLETION_DEFAULTS,
     navVisibility: normalizeNavVisibility(null),
     notificationPrefs: normalizeNotificationPrefs(null),
+    groceryKeywords: null,
+    grocerySavedLists: [],
+    logMissedTasksEod: true,
   };
   try {
     const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
@@ -315,6 +366,7 @@ function loadProfileFromDisk() {
     const completionAffirmationTone = COMPLETION_TONE_IDS.includes(toneRaw)
       ? /** @type {'supportive' | 'matter-of-fact' | 'funny' | 'harsh'} */ (toneRaw)
       : PROFILE_COMPLETION_DEFAULTS.completionAffirmationTone;
+    const gkw = normalizeGroceryKeywordArray(p.groceryKeywords);
     return {
       userName: typeof p.userName === "string" ? p.userName : "",
       userBirthday: typeof p.userBirthday === "string" ? p.userBirthday : "",
@@ -330,6 +382,9 @@ function loadProfileFromDisk() {
       completionAffirmationTone,
       navVisibility: normalizeNavVisibility(p.navVisibility),
       notificationPrefs: normalizeNotificationPrefs(p.notificationPrefs),
+      groceryKeywords: gkw,
+      grocerySavedLists: normalizeSavedGroceryLists(p.grocerySavedLists),
+      logMissedTasksEod: typeof p.logMissedTasksEod === "boolean" ? p.logMissedTasksEod : true,
     };
   } catch {
     return base;
@@ -371,6 +426,12 @@ function mergeCloudProfile(prev, incoming) {
       ...normalizeNotificationPrefs(base.notificationPrefs),
       ...(typeof inc.notificationPrefs === "object" && inc.notificationPrefs ? inc.notificationPrefs : {}),
     }),
+    groceryKeywords: normalizeGroceryKeywordArray(inc.groceryKeywords) ?? base.groceryKeywords ?? null,
+    grocerySavedLists: normalizeSavedGroceryLists(inc.grocerySavedLists).length
+      ? normalizeSavedGroceryLists(inc.grocerySavedLists)
+      : normalizeSavedGroceryLists(base.grocerySavedLists || []),
+    logMissedTasksEod:
+      typeof inc.logMissedTasksEod === "boolean" ? inc.logMissedTasksEod : base.logMissedTasksEod !== false,
   };
 }
 
@@ -474,6 +535,21 @@ function normalizeFinanceLoaded(raw) {
     debtAccounts = [{ id: uid(), label: "Debt", amount: totalDebt }];
   }
   totalDebt = sumDebtAccounts(debtAccounts);
+  const monthOverviews = Array.isArray(data.monthOverviews) ? data.monthOverviews : [];
+  const debtPayments = Array.isArray(data.debtPayments) ? data.debtPayments : [];
+  const creditScoreEntries = Array.isArray(data.creditScoreEntries)
+    ? data.creditScoreEntries
+        .map((e) => ({
+          id: e.id || uid(),
+          score: Math.round(Number(e.score) || 0),
+          dateISO: typeof e.dateISO === "string" ? e.dateISO : new Date().toISOString(),
+        }))
+        .filter((e) => e.score > 0)
+    : [];
+  const financeActiveMonthKey =
+    typeof data.financeActiveMonthKey === "string" && /^\d{4}-\d{2}$/.test(data.financeActiveMonthKey)
+      ? data.financeActiveMonthKey
+      : null;
   return {
     incomeEntries,
     expenseEntries,
@@ -486,6 +562,10 @@ function normalizeFinanceLoaded(raw) {
     subscriptions: data.subscriptions || [],
     bills: data.bills || [],
     bankStatementNotes: data.bankStatementNotes || "",
+    monthOverviews,
+    debtPayments,
+    creditScoreEntries,
+    financeActiveMonthKey,
   };
 }
 
@@ -1387,6 +1467,7 @@ function HourCard({
   mode = "type",
   dayKey,
   onPatchTaskReminder,
+  groceryTextMatch,
 }) {
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   const complete = hourIsComplete(tasksByCat, cats);
@@ -1501,7 +1582,10 @@ function HourCard({
                     </>
                   )}
                   
-                  {!t.done && taskMentionsGroceryErrandStore(t.text) && typeof onOpenGroceryList === "function" && (
+                  {!t.done &&
+                    typeof groceryTextMatch === "function" &&
+                    groceryTextMatch(t.text) &&
+                    typeof onOpenGroceryList === "function" && (
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm grocery-list-btn"
@@ -2081,6 +2165,27 @@ export default function App() {
     return () => patternsDirtyListeners.delete(fn);
   }, []);
 
+  const [taskLogRev, setTaskLogRev] = useState(0);
+  useEffect(() => {
+    const off = subscribeTaskBehaviorDirty(() => setTaskLogRev((r) => r + 1));
+    return off;
+  }, []);
+
+  useEffect(() => {
+    const ym = financeMonthKeyFromDayKey(realTodayKey);
+    setFinance((prev) => rollFinanceMonthsForward(prev, ym));
+  }, [realTodayKey]);
+
+  useEffect(() => {
+    processMissedEndOfDayBacklog({
+      days: appState.days,
+      realTodayKey,
+      categories: customCategories,
+      subscriptions: finance.subscriptions,
+      enabled: profile.logMissedTasksEod !== false,
+    });
+  }, [appState.days, realTodayKey, customCategories, finance.subscriptions, profile.logMissedTasksEod]);
+
   const BILL_REMINDER_KEY = "cute_schedule_bill_reminder_date";
   useEffect(() => {
     const today = todayKey();
@@ -2218,6 +2323,13 @@ export default function App() {
   const [groceryListModal, setGroceryListModal] = useState(null);
   const [groceryListPrompt, setGroceryListPrompt] = useState(null);
   const [groceryNewItem, setGroceryNewItem] = useState("");
+  const [groceryLoadListId, setGroceryLoadListId] = useState("");
+  const [financeOverviewsOpen, setFinanceOverviewsOpen] = useState(false);
+  const [newCreditScore, setNewCreditScore] = useState("");
+  const [newCreditDate, setNewCreditDate] = useState(() => todayKey());
+  const [debtPayDraft, setDebtPayDraft] = useState({});
+  const [listAttachSavedId, setListAttachSavedId] = useState("");
+  const [listAttachTaskKey, setListAttachTaskKey] = useState("");
   const [newHabitLabel, setNewHabitLabel] = useState("");
   const [newHabitDirection, setNewHabitDirection] = useState("build");
   /** `habitId` → draft `HH:mm` for "Add time" in settings */
@@ -3390,7 +3502,8 @@ export default function App() {
         ? String(ex.targetDayKey).trim()
         : tKey;
     const checkText = normalizeText(text) || String(text || "").trim();
-    if (checkText && taskMentionsGroceryErrandStore(checkText)) {
+    const gkw = normalizeGroceryKeywordsFromProfile(profile);
+    if (checkText && taskMatchesGroceryKeywords(checkText, gkw)) {
       queueMicrotask(() => setGroceryListPrompt({ dayKey: dayKeyForAdd, hourKey, category, taskId: newId }));
     }
     setAppState((prev) => {
@@ -3489,6 +3602,16 @@ export default function App() {
           titleSnippet: String(priorTask.text || ""),
         })
       );
+    }
+    if (priorTask) {
+      appendTaskBehaviorEvent({
+        type: priorTask.done ? "uncomplete" : "complete",
+        dayKey: tKey,
+        hourKey,
+        category,
+        taskId,
+        textSnippet: String(priorTask.text || ""),
+      });
     }
     setAppState((prev) => {
       const day = prev.days[tKey];
@@ -3661,9 +3784,33 @@ export default function App() {
     setFinance((prev) => ({ ...prev, bills: (prev.bills || []).filter((b) => b.id !== id) }));
   }
 
+  function addCreditScoreEntry() {
+    const score = Math.round(parseFloat(newCreditScore) || 0);
+    if (score < 300 || score > 900) return;
+    const dateISO = newCreditDate && /^\d{4}-\d{2}-\d{2}$/.test(newCreditDate) ? `${newCreditDate}T12:00:00` : new Date().toISOString();
+    setFinance((prev) => ({
+      ...prev,
+      creditScoreEntries: [{ id: uid(), score, dateISO }, ...(prev.creditScoreEntries || [])].slice(0, 60),
+    }));
+    setNewCreditScore("");
+  }
+
+  function addDebtPaymentFor(debtAccountId, amountRaw) {
+    const amount = parseFloat(String(amountRaw).replace(/,/g, "")) || 0;
+    if (amount <= 0) return;
+    setFinance((prev) => ({
+      ...prev,
+      debtPayments: [
+        { id: uid(), debtAccountId, amount, dateISO: new Date().toISOString() },
+        ...(prev.debtPayments || []),
+      ].slice(0, 400),
+    }));
+  }
+
   function deleteTask(hourKey, category, taskId, opts = null) {
     if (String(taskId).startsWith("sub-")) return;
     const skipCoach = opts && typeof opts === "object" && opts.skipCoachLearning;
+    const skipDispositionLog = opts && typeof opts === "object" && opts.skipDispositionLog;
     const flatBefore = allTasksInDay(todayHours, customCategories);
     const priorTask = flatBefore.find(
       (x) => x.id === taskId && x.hour === hourKey && x.category === category
@@ -3675,6 +3822,16 @@ export default function App() {
           titleSnippet: String(priorTask.text || ""),
         })
       );
+    }
+    if (priorTask && !skipDispositionLog) {
+      appendTaskBehaviorEvent({
+        type: "delete",
+        dayKey: tKey,
+        hourKey,
+        category,
+        taskId,
+        textSnippet: String(priorTask.text || ""),
+      });
     }
     setAppState((prev) => {
       const day = prev.days[tKey];
@@ -3700,7 +3857,16 @@ export default function App() {
     const task = (byCat[category] || []).find((t) => t.id === taskId);
     if (!task) return;
 
-    deleteTask(hourKey, category, taskId, { skipCoachLearning: true });
+    appendTaskBehaviorEvent({
+      type: "tomorrow",
+      dayKey: tKey,
+      hourKey,
+      category,
+      taskId,
+      textSnippet: String(task.text || ""),
+    });
+
+    deleteTask(hourKey, category, taskId, { skipCoachLearning: true, skipDispositionLog: true });
 
     if (task.coachSuggestionId) {
       setCoachLearning((prev) =>
@@ -4030,6 +4196,8 @@ export default function App() {
         done: t.done,
         energyLevel: t.energyLevel,
       }));
+      const taskBehaviorSummary = formatTaskBehaviorForCoach(realTodayKey);
+      const financeHints = buildFinanceHintsForCoach(finance);
       const coachIntelSnapshot = buildCoachIntelligenceSnapshot({
         emotionalState,
         timeOfDay,
@@ -4038,6 +4206,8 @@ export default function App() {
         notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text })),
         learning: coachLearning,
         healthSummary: formatHealthForCoach(health),
+        taskBehaviorSummary,
+        financeHints,
       });
       const coachIntelligenceText = formatIntelligenceForApi(coachIntelSnapshot);
       const coachFeedbackJson = JSON.stringify((coachLearning.recentFeedback || []).slice(-8));
@@ -4089,6 +4259,8 @@ export default function App() {
             const d = new Date(e.dateISO);
             return (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) ? sum + (e.amount || 0) : sum;
           }, 0);
+          const credit = (finance.creditScoreEntries || [])[0];
+          const debtPaySum = (finance.debtPayments || []).slice(0, 20).reduce((s, p) => s + (Number(p.amount) || 0), 0);
           return {
             incomeThisMonth,
             spentThisMonth,
@@ -4100,6 +4272,9 @@ export default function App() {
             subscriptions: finance.subscriptions || [],
             wishList: finance.wishList || [],
             bankStatementNotes: (finance.bankStatementNotes || "").slice(0, 2000),
+            latestCreditScore: credit ? { score: credit.score, dateISO: credit.dateISO } : null,
+            recentDebtPaymentsTotal: debtPaySum,
+            archivedMonthCount: (finance.monthOverviews || []).length,
           };
         })(),
         coachIntelligenceText,
@@ -4580,6 +4755,18 @@ export default function App() {
       return a.hour.localeCompare(b.hour);
     });
   }, [todayHoursWithSubs, customCategories]);
+
+  const groceryKeywordsNorm = useMemo(() => normalizeGroceryKeywordsFromProfile(profile), [profile]);
+
+  const groceryTextMatch = useCallback(
+    (txt) => taskMatchesGroceryKeywords(txt, groceryKeywordsNorm),
+    [groceryKeywordsNorm]
+  );
+
+  const taskDispositionStats = useMemo(() => {
+    void taskLogRev;
+    return summarizeTaskBehaviorForHome(realTodayKey);
+  }, [realTodayKey, taskLogRev]);
 
   async function handleAuthSignOut() {
     setAuthBusy(true);
@@ -5272,6 +5459,7 @@ export default function App() {
                             setGroceryListModal({ dayKey: tKey, hourKey: hk, category: cat, taskId: id });
                             setGroceryListPrompt(null);
                           }}
+                          groceryTextMatch={groceryTextMatch}
                           mode={mode}
                           dayKey={tKey}
                           onPatchTaskReminder={patchTaskReminderFields}
@@ -5443,6 +5631,43 @@ export default function App() {
                 >
                   See full calendar
                 </button>
+                <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid color-mix(in srgb, var(--text) 12%, transparent)" }}>
+                  <div className="panel-title" style={{ marginBottom: 6 }}>
+                    <span className="title" style={{ fontSize: "0.95rem" }}>
+                      Your averages (from how you use tasks)
+                    </span>
+                  </div>
+                  <p className="settings-hint" style={{ marginTop: 0, marginBottom: 8 }}>
+                    PROYOU logs when you complete, move to tomorrow, delete, uncheck, or leave tasks incomplete when a day ends. Coach reads this with your schedule.
+                  </p>
+                  {taskDispositionStats.n > 0 && taskDispositionStats.barFracs ? (
+                    <>
+                      <div
+                        className="progress-wrap"
+                        style={{ height: 10, borderRadius: 8, overflow: "hidden", display: "flex", background: "color-mix(in srgb, var(--text) 8%, transparent)" }}
+                        aria-label="Disposition mix"
+                      >
+                        <div style={{ width: `${Math.round(taskDispositionStats.barFracs.complete * 100)}%`, background: "var(--accent, #6b9cff)" }} />
+                        <div style={{ width: `${Math.round(taskDispositionStats.barFracs.tomorrow * 100)}%`, background: "#e8b44a" }} />
+                        <div style={{ width: `${Math.round(taskDispositionStats.barFracs.delete * 100)}%`, background: "#e07a7a" }} />
+                        <div style={{ width: `${Math.round(taskDispositionStats.barFracs.uncomplete * 100)}%`, background: "color-mix(in srgb, var(--text) 35%, transparent)" }} />
+                        <div style={{ width: `${Math.round((taskDispositionStats.barFracs.missed || 0) * 100)}%`, background: "#9b7acf" }} />
+                      </div>
+                      <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0, fontSize: "0.85rem" }}>
+                        Complete ≈{taskDispositionStats.allCompletePct != null ? `${taskDispositionStats.allCompletePct}%` : "—"} of finishes (vs moved, deleted, or still open at day-end),{" "}
+                        this week ≈{taskDispositionStats.weekCompletePct != null ? `${taskDispositionStats.weekCompletePct}%` : "—"}. Moved to tomorrow{" "}
+                        {taskDispositionStats.pctTomorrow != null ? `${taskDispositionStats.pctTomorrow}%` : "—"}, deleted{" "}
+                        {taskDispositionStats.pctDelete != null ? `${taskDispositionStats.pctDelete}%` : "—"}, unchecked again{" "}
+                        {taskDispositionStats.pctUncomplete != null ? `${taskDispositionStats.pctUncomplete}%` : "—"}, missed after day ended{" "}
+                        {taskDispositionStats.pctMissedEod != null ? `${taskDispositionStats.pctMissedEod}%` : "—"} (of all logged actions).
+                      </p>
+                    </>
+                  ) : (
+                    <p className="settings-hint" style={{ marginBottom: 0 }}>
+                      As you use tasks, a color bar will grow here (blue = completed, gold = moved, red = deleted, gray = unchecked again, purple = left open when the day ended).
+                    </p>
+                  )}
+                </div>
               </section>
             )}
 
@@ -5509,7 +5734,7 @@ export default function App() {
                           <span className={`list-row-title ${t.done ? 'item-text-done' : ''}`}>{t.text}</span>
                         </label>
                         <div className="list-row-actions">
-                        {taskMentionsGroceryErrandStore(t.text) && (
+                        {groceryTextMatch(t.text) && (
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm list-row-grocery"
@@ -6157,52 +6382,83 @@ export default function App() {
                   {(finance.debtAccounts || []).length === 0 && (
                     <li className="finance-list-empty">No debts listed. Add one below if you want them in your snapshot.</li>
                   )}
-                  {(finance.debtAccounts || []).map((a) => (
-                    <li key={a.id} className="finance-list-item finance-debt-row">
-                      <input
-                        className="input"
-                        value={a.label}
-                        onChange={(e) => {
-                          const label = e.target.value;
-                          setFinance((prev) => {
-                            const next = (prev.debtAccounts || []).map((x) => (x.id === a.id ? { ...x, label } : x));
-                            return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
-                          });
-                        }}
-                        placeholder="e.g. Auto loan, Visa"
-                        aria-label="Debt type or name"
-                      />
-                      <input
-                        className="input finance-debt-balance-input"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={a.amount === 0 ? "" : a.amount}
-                        onChange={(e) => {
-                          const amount = parseFloat(e.target.value) || 0;
-                          setFinance((prev) => {
-                            const next = (prev.debtAccounts || []).map((x) => (x.id === a.id ? { ...x, amount } : x));
-                            return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
-                          });
-                        }}
-                        placeholder="0"
-                        aria-label="Amount owed"
-                      />
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={() => {
-                          setFinance((prev) => {
-                            const next = (prev.debtAccounts || []).filter((x) => x.id !== a.id);
-                            return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
-                          });
-                        }}
-                        aria-label="Remove debt"
-                      >
-                        <TrashIcon />
-                      </button>
-                    </li>
-                  ))}
+                  {(finance.debtAccounts || []).map((a) => {
+                    const paidSum = (finance.debtPayments || [])
+                      .filter((p) => p.debtAccountId === a.id)
+                      .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+                    return (
+                      <li key={a.id} className="finance-list-item finance-debt-row" style={{ flexWrap: "wrap" }}>
+                        <input
+                          className="input"
+                          value={a.label}
+                          onChange={(e) => {
+                            const label = e.target.value;
+                            setFinance((prev) => {
+                              const next = (prev.debtAccounts || []).map((x) => (x.id === a.id ? { ...x, label } : x));
+                              return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
+                            });
+                          }}
+                          placeholder="e.g. Auto loan, Visa"
+                          aria-label="Debt type or name"
+                        />
+                        <input
+                          className="input finance-debt-balance-input"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={a.amount === 0 ? "" : a.amount}
+                          onChange={(e) => {
+                            const amount = parseFloat(e.target.value) || 0;
+                            setFinance((prev) => {
+                              const next = (prev.debtAccounts || []).map((x) => (x.id === a.id ? { ...x, amount } : x));
+                              return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
+                            });
+                          }}
+                          placeholder="0"
+                          aria-label="Amount owed"
+                        />
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          onClick={() => {
+                            setFinance((prev) => {
+                              const next = (prev.debtAccounts || []).filter((x) => x.id !== a.id);
+                              return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
+                            });
+                          }}
+                          aria-label="Remove debt"
+                        >
+                          <TrashIcon />
+                        </button>
+                        <div className="finance-inline-form" style={{ width: "100%", marginTop: 8, flexWrap: "wrap" }}>
+                          <span className="settings-hint" style={{ flex: "1 1 140px", marginRight: 8 }}>
+                            Total logged pay-down: ${paidSum.toFixed(2)} (update the balance above when you pay it down, if you like)
+                          </span>
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            style={{ width: 100 }}
+                            placeholder="Payment"
+                            value={debtPayDraft[a.id] ?? ""}
+                            onChange={(e) => setDebtPayDraft((prev) => ({ ...prev, [a.id]: e.target.value }))}
+                            aria-label={`Payment toward ${a.label}`}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary"
+                            onClick={() => {
+                              addDebtPaymentFor(a.id, debtPayDraft[a.id]);
+                              setDebtPayDraft((prev) => ({ ...prev, [a.id]: "" }));
+                            }}
+                          >
+                            Log payment
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
                 <form
                   className="finance-inline-form finance-debt-add"
@@ -6257,6 +6513,54 @@ export default function App() {
                   ${((finance.totalSavings || 0) - (finance.totalDebt || 0)).toFixed(2)}
                 </span>
               </div>
+            </div>
+
+            <div className="finance-section">
+              <h3 className="finance-section-title">Credit score log</h3>
+              <p className="finance-hint">Optional — add when you check your score so Coach and trends stay grounded.</p>
+              <form
+                className="finance-inline-form"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  addCreditScoreEntry();
+                }}
+              >
+                <input
+                  className="input"
+                  type="number"
+                  min="300"
+                  max="900"
+                  value={newCreditScore}
+                  onChange={(e) => setNewCreditScore(e.target.value)}
+                  placeholder="Score"
+                  style={{ width: 100 }}
+                  aria-label="Credit score"
+                />
+                <input className="input" type="date" value={newCreditDate} onChange={(e) => setNewCreditDate(e.target.value)} aria-label="As of date" style={{ width: 150 }} />
+                <button type="submit" className="btn btn-primary">
+                  Save entry
+                </button>
+              </form>
+              <ul className="finance-list">
+                {(finance.creditScoreEntries || []).length === 0 && <li className="finance-list-empty">No scores logged yet.</li>}
+                {(finance.creditScoreEntries || []).map((e) => (
+                  <li key={e.id} className="finance-list-item">
+                    <span className="finance-label">{String(e.dateISO || "").slice(0, 10)}</span>
+                    <span className="finance-amount">{e.score}</span>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      onClick={() => setFinance((prev) => ({
+                        ...prev,
+                        creditScoreEntries: (prev.creditScoreEntries || []).filter((x) => x.id !== e.id),
+                      }))}
+                      aria-label="Remove credit entry"
+                    >
+                      <TrashIcon />
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </div>
 
             <div className="finance-section">
@@ -6386,6 +6690,90 @@ export default function App() {
                 rows={4}
               />
             </div>
+
+            {(() => {
+              const overviews = finance.monthOverviews || [];
+              const latest = overviews[0];
+              const now = new Date();
+              const spentThisMonth = (finance.expenseEntries || []).reduce((sum, e) => {
+                const d = new Date(e.dateISO);
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() ? sum + (Number(e.amount) || 0) : sum;
+              }, 0);
+              const incomeThisMonth = (finance.incomeEntries || []).reduce((sum, e) => {
+                const d = new Date(e.dateISO);
+                return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() ? sum + (Number(e.amount) || 0) : sum;
+              }, 0);
+              const avgSpend = averageOverArchivedMonths(overviews, "expenseTotal");
+              const avgIncome = averageOverArchivedMonths(overviews, "incomeTotal");
+              const topAvg = aggregateTopExpensesAcrossMonths(overviews, 4);
+              const decals = financeDecalForCurrentMonth({
+                spentThisMonth,
+                incomeThisMonth,
+                overviews,
+              });
+              return (
+                <div className="finance-section surface-glass" style={{ padding: 12, marginTop: 12 }}>
+                  <h3 className="finance-section-title">Month summaries &amp; pace</h3>
+                  <p className="finance-hint">
+                    When the calendar month advances, last month&apos;s logged income and spending lines roll into a saved overview so the top of Finance stays about the current month.
+                  </p>
+                  {latest ? (
+                    <div style={{ marginTop: 10 }}>
+                      <div className="finance-total-row">
+                        <span className="finance-total-label">Most recent overview ({latest.monthKey})</span>
+                        <span className="finance-total-value net">${Number(latest.net || 0).toFixed(2)} net</span>
+                      </div>
+                      <p className="settings-hint" style={{ marginTop: 4, marginBottom: 0 }}>
+                        Income ${Number(latest.incomeTotal || 0).toFixed(2)} · Spent ${Number(latest.expenseTotal || 0).toFixed(2)}
+                        {latest.topExpenses && latest.topExpenses[0]
+                          ? ` · Top: ${latest.topExpenses[0].label} $${Number(latest.topExpenses[0].amount || 0).toFixed(2)}`
+                          : ""}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="settings-hint" style={{ marginTop: 8 }}>
+                      No closed months yet — keep logging; summaries appear after your first month rollover.
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    style={{ marginTop: 10 }}
+                    disabled={overviews.length === 0}
+                    onClick={() => setFinanceOverviewsOpen(true)}
+                  >
+                    See all overviews
+                  </button>
+                  {overviews.length > 0 && (
+                    <div style={{ marginTop: 14 }}>
+                      <div className="finance-total-row">
+                        <span className="finance-total-label">Avg spent (archived months)</span>
+                        <span className="finance-total-value expense">
+                          {avgSpend != null ? `$${avgSpend.toFixed(2)}` : "—"}
+                        </span>
+                      </div>
+                      <div className="finance-total-row">
+                        <span className="finance-total-label">Avg income (archived months)</span>
+                        <span className="finance-total-value income">
+                          {avgIncome != null ? `$${avgIncome.toFixed(2)}` : "—"}
+                        </span>
+                      </div>
+                      {topAvg.length > 0 && (
+                        <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                          Biggest spend labels on average:{" "}
+                          {topAvg.map((x) => `${x.label} ~$${x.avg.toFixed(0)}`).join(" · ")}
+                        </p>
+                      )}
+                      {decals.map((line, i) => (
+                        <p key={i} className="settings-hint" style={{ marginTop: 8, fontStyle: "italic", marginBottom: 0 }}>
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="finance-coach-cta">
               <button type="button" className="btn btn-primary" onClick={() => setTab("coach")}>
@@ -6582,7 +6970,7 @@ export default function App() {
                       </button>
                       {(() => {
                         const taskNode = findTaskInAppState(appState, tKey, hourKey, category, id);
-                        return taskNode && taskMentionsGroceryErrandStore(taskNode.text) ? (
+                        return taskNode && groceryTextMatch(taskNode.text) ? (
                           <button
                             type="button"
                             className="dropdown-item"
@@ -6739,7 +7127,34 @@ export default function App() {
           <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grocery-prompt-title" onClick={() => setGroceryListPrompt(null)}>
             <div className="modal grocery-prompt-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
               <h3 id="grocery-prompt-title">Shopping or errand list?</h3>
-              <p className="settings-hint">This task mentions groceries, a store, or an errand. Open a checklist on the task. It saves with your schedule and syncs to the cloud.</p>
+              <p className="settings-hint">
+                If a task matches your list keywords (defaults include <strong>grocery</strong> and <strong>store</strong>), you can attach a checklist. Edit keywords under{" "}
+                <strong>Settings → Customization</strong>. The list saves on the task and syncs with your schedule.
+              </p>
+              <p className="settings-hint" style={{ marginTop: 6 }}>
+                Keywords: <strong>{groceryKeywordsNorm.join(", ")}</strong>
+              </p>
+              {(profile.grocerySavedLists || []).length > 0 && (
+                <>
+                  <label className="label" style={{ marginTop: 12, display: "block" }}>
+                    Start from a saved list
+                  </label>
+                  <select
+                    className="input modal-input"
+                    style={{ marginTop: 6 }}
+                    value={groceryLoadListId}
+                    onChange={(e) => setGroceryLoadListId(e.target.value)}
+                    aria-label="Saved checklist"
+                  >
+                    <option value="">— Pick a saved list —</option>
+                    {(profile.grocerySavedLists || []).map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.title}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
                 <button
                   type="button"
@@ -6747,11 +7162,42 @@ export default function App() {
                   onClick={() => {
                     setGroceryListModal({ ...groceryListPrompt });
                     setGroceryListPrompt(null);
+                    setGroceryLoadListId("");
                   }}
                 >
                   Open list
                 </button>
-                <button type="button" className="btn" onClick={() => setGroceryListPrompt(null)}>
+                {groceryLoadListId ? (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => {
+                      const list = (profile.grocerySavedLists || []).find((x) => x.id === groceryLoadListId);
+                      if (!list) return;
+                      const mapped = list.items.map((it) => ({ id: uid(), text: it.text, done: false }));
+                      updateTaskGroceryList(
+                        groceryListPrompt.dayKey,
+                        groceryListPrompt.hourKey,
+                        groceryListPrompt.category,
+                        groceryListPrompt.taskId,
+                        (gl) => ({ ...gl, items: mapped })
+                      );
+                      setGroceryListModal({ ...groceryListPrompt });
+                      setGroceryListPrompt(null);
+                      setGroceryLoadListId("");
+                    }}
+                  >
+                    Apply saved &amp; open
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setGroceryListPrompt(null);
+                    setGroceryLoadListId("");
+                  }}
+                >
                   Not now
                 </button>
               </div>
@@ -6874,10 +7320,95 @@ export default function App() {
                     Add
                   </button>
                 </form>
+                <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => {
+                      const title = window.prompt("Name this checklist for reuse", String(task.text || "").slice(0, 48));
+                      if (!title || !String(title).trim()) return;
+                      const toSave = items.map((it) => ({ id: uid(), text: String(it.text || "").trim(), done: false })).filter((it) => it.text);
+                      if (toSave.length === 0) {
+                        window.alert("Add at least one line before saving.");
+                        return;
+                      }
+                      setProfile((p) => ({
+                        ...p,
+                        grocerySavedLists: [
+                          { id: uid(), title: String(title).trim(), savedAt: new Date().toISOString(), items: toSave },
+                          ...(p.grocerySavedLists || []),
+                        ].slice(0, 40),
+                      }));
+                    }}
+                  >
+                    Save as reusable list
+                  </button>
+                  {(profile.grocerySavedLists || []).length > 0 && (
+                    <>
+                      <select
+                        className="input"
+                        style={{ minWidth: 160 }}
+                        value={groceryLoadListId}
+                        onChange={(e) => setGroceryLoadListId(e.target.value)}
+                        aria-label="Replace with saved list"
+                      >
+                        <option value="">Load saved…</option>
+                        {(profile.grocerySavedLists || []).map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.title}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary"
+                        disabled={!groceryLoadListId}
+                        onClick={() => {
+                          const list = (profile.grocerySavedLists || []).find((x) => x.id === groceryLoadListId);
+                          if (!list) return;
+                          updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
+                            ...gl,
+                            items: list.items.map((it) => ({ id: uid(), text: it.text, done: false })),
+                          }));
+                          setGroceryLoadListId("");
+                        }}
+                      >
+                        Replace lines
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           );
         })()}
+
+        {financeOverviewsOpen && (
+          <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="fin-over-title" onClick={() => setFinanceOverviewsOpen(false)}>
+            <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <h3 id="fin-over-title" style={{ margin: 0 }}>
+                  Month overviews
+                </h3>
+                <button type="button" className="btn-icon" aria-label="Close" onClick={() => setFinanceOverviewsOpen(false)}>
+                  <CloseIcon style={{ width: 22, height: 22 }} />
+                </button>
+              </div>
+              <ul className="finance-list" style={{ marginTop: 12 }}>
+                {(finance.monthOverviews || []).length === 0 && <li className="finance-list-empty">No archived months yet.</li>}
+                {(finance.monthOverviews || []).map((o) => (
+                  <li key={o.monthKey + (o.archivedAt || "")} className="finance-list-item">
+                    <span className="finance-label">{o.monthKey}</span>
+                    <span className="finance-meta">Net ${Number(o.net || 0).toFixed(2)}</span>
+                    <span className="finance-amount" style={{ fontSize: "0.85rem" }}>
+                      in {Number(o.incomeTotal || 0).toFixed(0)} / out {Number(o.expenseTotal || 0).toFixed(0)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
 
         {showMonthCalendar && (
           <div className="modal-overlay" onClick={() => setShowMonthCalendar(false)} aria-modal="true" role="dialog" aria-label="Calendar">
@@ -8023,6 +8554,141 @@ export default function App() {
                     }}
                   >
                     Add type
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-section">
+                <label className="label">Shopping &amp; errand lists</label>
+                <p className="settings-hint">
+                  When a task title contains one of these words (whole word), PROYOU can offer a checklist. Defaults are similar to grocery, store, and errand — change them anytime.
+                </p>
+                <input
+                  className="input modal-input"
+                  value={
+                    profile.groceryKeywords && profile.groceryKeywords.length
+                      ? profile.groceryKeywords.join(", ")
+                      : DEFAULT_GROCERY_KEYWORDS.join(", ")
+                  }
+                  onChange={(e) => {
+                    const arr = [
+                      ...new Set(
+                        e.target.value
+                          .split(/[,;\n]+/)
+                          .map((k) => k.trim().toLowerCase())
+                          .filter(Boolean)
+                      ),
+                    ];
+                    setProfile((p) => ({ ...p, groceryKeywords: arr.length ? arr : null }));
+                  }}
+                  placeholder="grocery, store, errand"
+                  aria-label="Keywords that trigger shopping checklist"
+                />
+                <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={profile.logMissedTasksEod !== false}
+                    onChange={(e) => setProfile((p) => ({ ...p, logMissedTasksEod: e.target.checked }))}
+                  />
+                  <span>Log tasks still incomplete when a calendar day ends (Coach &amp; stats)</span>
+                </label>
+                <p className="settings-hint" style={{ marginTop: 4 }}>
+                  After midnight, the app can record unchecked tasks from the previous day as missed (once each). Turn this off if you prefer not to track that.
+                </p>
+                <p className="settings-hint" style={{ marginTop: 10 }}>
+                  <strong>Saved lists</strong> — reuse lines from the checklist modal (&quot;Save as reusable list&quot;) or from the prompt when you add a matching task.
+                </p>
+                <ul className="routine-template-list">
+                  {(profile.grocerySavedLists || []).length === 0 && (
+                    <li className="settings-hint" style={{ listStyle: "none" }}>
+                      No saved lists yet.
+                    </li>
+                  )}
+                  {(profile.grocerySavedLists || []).map((l) => (
+                    <li key={l.id} className="routine-template-item">
+                      <span className="routine-template-input" style={{ flex: 1 }}>
+                        {l.title} <span className="settings-hint">({(l.items || []).length} lines)</span>
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm routine-template-remove"
+                        onClick={() =>
+                          setProfile((p) => ({
+                            ...p,
+                            grocerySavedLists: (p.grocerySavedLists || []).filter((x) => x.id !== l.id),
+                          }))
+                        }
+                        aria-label={`Remove saved list ${l.title}`}
+                      >
+                        <TrashIcon style={{ width: 14, height: 14 }} />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                <label className="label" style={{ marginTop: 12, display: "block" }}>
+                  Attach a saved list to a task on Today
+                </label>
+                <p className="settings-hint">Pick today&apos;s task and a list, then apply (replaces existing checklist lines).</p>
+                <div className="settings-add-type" style={{ flexWrap: "wrap" }}>
+                  <select
+                    className="input modal-input"
+                    style={{ minWidth: 160 }}
+                    value={listAttachTaskKey}
+                    onChange={(e) => setListAttachTaskKey(e.target.value)}
+                    aria-label="Task on today"
+                  >
+                    <option value="">— Task —</option>
+                    {allTasksInDay(
+                      mergeSubscriptionTasksIntoHours(
+                        appState.days?.[realTodayKey]?.hours || {},
+                        realTodayKey,
+                        finance.subscriptions,
+                        customCategories
+                      ),
+                      customCategories
+                    ).map((t) => {
+                      const v = `${t.hour}|${t.category}|${t.id}`;
+                      return (
+                        <option key={v} value={v}>
+                          {to12Hour(t.hour)} · {t.category}: {String(t.text || "").slice(0, 42)}
+                          {String(t.text || "").length > 42 ? "…" : ""}
+                        </option>
+                      );
+                    })}
+                  </select>
+                  <select
+                    className="input modal-input"
+                    style={{ minWidth: 140 }}
+                    value={listAttachSavedId}
+                    onChange={(e) => setListAttachSavedId(e.target.value)}
+                    aria-label="Saved list"
+                  >
+                    <option value="">— List —</option>
+                    {(profile.grocerySavedLists || []).map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.title}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    disabled={!listAttachTaskKey || !listAttachSavedId}
+                    onClick={() => {
+                      const list = (profile.grocerySavedLists || []).find((x) => x.id === listAttachSavedId);
+                      if (!list) return;
+                      const parts = String(listAttachTaskKey).split("|");
+                      if (parts.length !== 3) return;
+                      const [hourKey, category, taskId] = parts;
+                      updateTaskGroceryList(realTodayKey, hourKey, category, taskId, (gl) => ({
+                        ...gl,
+                        items: list.items.map((it) => ({ id: uid(), text: it.text, done: false })),
+                      }));
+                      setListAttachSavedId("");
+                      setListAttachTaskKey("");
+                    }}
+                  >
+                    Apply to task
                   </button>
                 </div>
               </div>
