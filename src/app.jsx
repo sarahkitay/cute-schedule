@@ -34,6 +34,7 @@ import { THEMES } from "./themes";
 import { OnboardingFlow } from "./OnboardingFlow";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
 import { HealthPage } from "./HealthPage";
+import { PageInstructions } from "./PageInstructions";
 import { WorkoutProgramPickerModal } from "./WorkoutProgramPickerModal";
 import {
   bumpWeekRoutineCursor,
@@ -50,9 +51,14 @@ import {
 } from "./health/healthModel";
 import {
   COACH_SUGGESTION_SOURCE,
+  applyCoachSpecificityToResult,
+  auditCoachSpecificity,
+  buildCoachContext,
   buildCoachIntelligenceSnapshot,
+  formatCoachContextForApi,
   formatIntelligenceForApi,
   generateCoachV2Fallback,
+  inferCoachReasoningMode,
   isAffirmationToCoach,
   loadCoachLearning,
   parseCoachApiPayload,
@@ -1494,10 +1500,18 @@ function HourCard({
   onEnsureOptionalRepeat,
   groceryTextMatch,
   onBeginWorkout,
+  /** First incomplete task this day (chronological); gets scroll anchor + highlight */
+  highlightItemKey = null,
+  /** When true, this hour’s card opens so the next task is visible */
+  forceHourOpen = false,
 }) {
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   const complete = hourIsComplete(tasksByCat, cats);
   const [open, setOpen] = useState(true);
+
+  useEffect(() => {
+    if (forceHourOpen) setOpen(true);
+  }, [forceHourOpen]);
 
   const allTasks = useMemo(() => {
     return cats.flatMap((cat) =>
@@ -1546,10 +1560,14 @@ function HourCard({
             {allTasks.map((t) => {
               const itemKey = `${hourKey}-${t.category}-${t.id}`;
               const expanded = expandedTaskKey === itemKey;
+              const isNextFocus = highlightItemKey && itemKey === highlightItemKey;
               return (
               <li
                 key={t.id}
-                className={["item", t.done ? "item-done" : "", expanded ? "item-expanded" : ""].filter(Boolean).join(" ")}
+                className={["item", t.done ? "item-done" : "", expanded ? "item-expanded" : "", isNextFocus ? "item-next-up" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
+                {...(isNextFocus ? { "data-next-task-anchor": "" } : {})}
                 style={{ cursor: "pointer" }}
               >
                 <div className="item-main">
@@ -1660,7 +1678,7 @@ function HourCard({
                     <button
                       type="button"
                       className="icon-btn item-expand-btn"
-                      title={expanded ? "Collapse" : "Details"}
+                      title={expanded ? "Collapse" : "Notes & details"}
                       onClick={(e) => {
                         e.stopPropagation();
                         onExpandTask(expanded ? null : itemKey);
@@ -2267,7 +2285,6 @@ export default function App() {
 
   const [taskLogRev, setTaskLogRev] = useState(0);
   const [taskAveragesOpen, setTaskAveragesOpen] = useState(false);
-  const [taskStatsExplainOpen, setTaskStatsExplainOpen] = useState(false);
   useEffect(() => {
     const off = subscribeTaskBehaviorDirty(() => setTaskLogRev((r) => r + 1));
     return off;
@@ -2642,6 +2659,8 @@ export default function App() {
   const [coachLoading, setCoachLoading] = useState(false);
   const [coachError, setCoachError] = useState("");
   const [coachResult, setCoachResult] = useState(null);
+  /** Last ask-coach trace: mode, pacing, specificity audit (dev / ?coachDebug=1). */
+  const [coachTrace, setCoachTrace] = useState(null);
   const [coachQuestion, setCoachQuestion] = useState("");
   const [coachConversation, setCoachConversation] = useState([]);
   const [coachMode, setCoachMode] = useState("plan"); // "plan" | "unstuck" | "review"
@@ -3309,6 +3328,25 @@ export default function App() {
     return sortedHourKeys.slice(start, start + 2);
   }, [focusMode, isOverwhelmedMode, sortedHourKeys]);
 
+  /** Earliest incomplete task (by clock, then energy order within the hour) for Today scroll + highlight */
+  const firstIncompleteTaskKeyToday = useMemo(() => {
+    const day = todayHoursWithSubs;
+    const cats = customCategories?.length ? customCategories : DEFAULT_CATEGORIES;
+    for (const hk of sortedHourKeys) {
+      const byCat = day[hk];
+      if (!byCat) continue;
+      const allTasks = cats.flatMap((cat) => (byCat[cat] || []).map((t) => ({ ...t, category: cat })));
+      allTasks.sort((a, b) => {
+        const order = { HEAVY: 0, MEDIUM: 1, LIGHT: 2 };
+        return (order[a.energyLevel] ?? 1) - (order[b.energyLevel] ?? 1);
+      });
+      for (const t of allTasks) {
+        if (!t.done) return `${hk}-${t.category}-${t.id}`;
+      }
+    }
+    return null;
+  }, [sortedHourKeys, todayHoursWithSubs, customCategories]);
+
   /** Re-run scroll-reveal when Today’s hours/tasks change (e.g. Firestore hydrate) or tab returns. */
   const scrollRevealScheduleSig = useMemo(() => {
     const keys = Object.keys(todayHoursWithSubs || {}).sort().join(",");
@@ -3331,6 +3369,31 @@ export default function App() {
       if (rafB) cancelAnimationFrame(rafB);
     };
   }, [tab, scrollRevealScheduleSig, firestoreReady]);
+
+  const prevTabForTodayScrollRef = useRef(null);
+  const prevTKeyForTodayScrollRef = useRef(tKey);
+  const todayHydratedScrollRef = useRef(false);
+  useEffect(() => {
+    const prevTab = prevTabForTodayScrollRef.current;
+    prevTabForTodayScrollRef.current = tab;
+    const switchedToToday = tab === "today" && prevTab !== "today";
+
+    const dayChangedOnToday = tab === "today" && prevTKeyForTodayScrollRef.current !== tKey;
+    prevTKeyForTodayScrollRef.current = tKey;
+    if (dayChangedOnToday) todayHydratedScrollRef.current = false;
+
+    const hydrateToday = tab === "today" && firestoreReady && !todayHydratedScrollRef.current && !!firstIncompleteTaskKeyToday;
+    if (hydrateToday) todayHydratedScrollRef.current = true;
+
+    const shouldScroll =
+      !!firstIncompleteTaskKeyToday &&
+      (switchedToToday || hydrateToday || (dayChangedOnToday && tab === "today"));
+    if (!shouldScroll) return;
+    const t = window.setTimeout(() => {
+      document.querySelector("[data-next-task-anchor]")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 180);
+    return () => clearTimeout(t);
+  }, [tab, tKey, firstIncompleteTaskKeyToday, firestoreReady]);
 
   // Fade/slide-in for main panels as they enter the viewport (respects reduced motion)
   useEffect(() => {
@@ -4287,8 +4350,6 @@ export default function App() {
   const [showPastRepeats, setShowPastRepeats] = useState(false);
   /** "type" = natural-language bar; "details" = time, category, repeat, energy */
   const [quickEntryMode, setQuickEntryMode] = useState("type");
-  const [quickAddTypeHelpOpen, setQuickAddTypeHelpOpen] = useState(false);
-  const [quickAddDetailsHelpOpen, setQuickAddDetailsHelpOpen] = useState(false);
   const [quickDetailEnergy, setQuickDetailEnergy] = useState("MEDIUM");
   /** When set to workout, quick-add (Details) tags the task for the Health rhythm tracker. */
   const [quickDetailTaskKind, setQuickDetailTaskKind] = useState("default");
@@ -4298,8 +4359,6 @@ export default function App() {
   useEffect(() => {
     setQuickAddJustAdded(false);
     setQuickDetailTaskKind("default");
-    setQuickAddTypeHelpOpen(false);
-    setQuickAddDetailsHelpOpen(false);
     if (quickAddFlashTimerRef.current) {
       clearTimeout(quickAddFlashTimerRef.current);
       quickAddFlashTimerRef.current = null;
@@ -4526,6 +4585,32 @@ export default function App() {
     setCoachLoading(true);
 
     const localNowHHMM = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+    let coachContext = null;
+    let coachReasoningMode = "general_coaching";
+    let coachContextNarrative = "";
+    try {
+      coachContext = buildCoachContext({
+        realTodayKey,
+        coachViewDayKey: tKey,
+        localNowHHMM,
+        days: appState.days || {},
+        subscriptions: finance.subscriptions || [],
+        categories: customCategories,
+        monthly: appState.monthly || [],
+        patterns: analyzePatterns(),
+        health,
+        habitTracker,
+        notes: (notes || []).slice(0, 50),
+        routineSchedule,
+      });
+      coachReasoningMode = inferCoachReasoningMode(userQuestion);
+      coachContextNarrative = formatCoachContextForApi(coachContext);
+    } catch {
+      coachContext = null;
+      coachReasoningMode = inferCoachReasoningMode(userQuestion);
+      coachContextNarrative = "";
+    }
+
     const coachGuardOpts = { coachViewDayKey: tKey, realTodayKey, localNowHHMM };
     const guardCoachResult = (r) => {
       if (!r || typeof r !== "object") return r;
@@ -4644,6 +4729,9 @@ export default function App() {
         coachFeedbackJson,
         weekAtAGlance: buildCoachWeekAtAGlance(appState.days, customCategories, tKey),
         healthSummary: formatHealthForCoach(health),
+        coachContext,
+        coachReasoningMode,
+        coachContextNarrative,
       };
 
       const res = await fetch(apiUrl("/api/coach"), {
@@ -4676,6 +4764,7 @@ export default function App() {
           categories: customCategories,
           todayHours,
           intelligence: coachIntelSnapshot,
+          coachContext,
         });
 
       if (!res.ok || looksLikeHtml) {
@@ -4687,8 +4776,17 @@ export default function App() {
               ? data.error
               : String(data?.detail || data?.hint || `Coach request failed (${res.status}).`);
         setCoachError(hint);
-        const localResponse = guardCoachResult(fallbackPayload());
+        const localResponse = guardCoachResult(applyCoachSpecificityToResult(fallbackPayload(), coachContext));
         setCoachResult(localResponse);
+        setCoachTrace({
+          mode: coachReasoningMode,
+          pacingNote: coachContext?.today?.schedulePacingNote ?? "",
+          onPace: coachContext?.today?.isOnPace ?? null,
+          neglectedObjectives: (coachContext?.monthlyObjectives?.neglected || []).map((n) => n.title),
+          recommendationSeeds: coachContext?.recommendationSeeds || [],
+          specificity: auditCoachSpecificity(localResponse.message, coachContext),
+          source: "fallback_api_error",
+        });
         if (userQuestion) {
           setCoachConversation((prev) => [...prev, { role: "assistant", content: localResponse.message }]);
         } else {
@@ -4722,6 +4820,19 @@ export default function App() {
           })()
         : shaped;
 
+      const specAudit = auditCoachSpecificity(finalShaped.message, coachContext);
+      const afterSpecificity = applyCoachSpecificityToResult(finalShaped, coachContext);
+
+      setCoachTrace({
+        mode: coachReasoningMode,
+        pacingNote: coachContext?.today?.schedulePacingNote ?? "",
+        onPace: coachContext?.today?.isOnPace ?? null,
+        neglectedObjectives: (coachContext?.monthlyObjectives?.neglected || []).map((n) => n.title),
+        recommendationSeeds: coachContext?.recommendationSeeds || [],
+        specificity: specAudit,
+        source: "api",
+      });
+
       if (isEmptyReply) {
         setCoachError(
           "Coach returned an empty reply (often a proxy or API shape issue). Showing a local summary instead."
@@ -4731,11 +4842,11 @@ export default function App() {
       }
 
       if (userQuestion) {
-        setCoachConversation((prev) => [...prev, { role: "assistant", content: finalShaped.message }]);
+        setCoachConversation((prev) => [...prev, { role: "assistant", content: afterSpecificity.message }]);
       } else {
         setCoachConversation([]);
       }
-      setCoachResult(guardCoachResult(finalShaped));
+      setCoachResult(guardCoachResult(afterSpecificity));
 
       setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
     } catch {
@@ -4769,8 +4880,18 @@ export default function App() {
         categories: customCategories,
         todayHours,
         intelligence: snapCatch,
+        coachContext,
       });
-      setCoachResult(guardCoachResult(localResponse));
+      setCoachResult(guardCoachResult(applyCoachSpecificityToResult(localResponse, coachContext)));
+      setCoachTrace({
+        mode: coachReasoningMode,
+        pacingNote: coachContext?.today?.schedulePacingNote ?? "",
+        onPace: coachContext?.today?.isOnPace ?? null,
+        neglectedObjectives: (coachContext?.monthlyObjectives?.neglected || []).map((n) => n.title),
+        recommendationSeeds: coachContext?.recommendationSeeds || [],
+        specificity: auditCoachSpecificity(localResponse.message, coachContext),
+        source: "fallback_catch",
+      });
       if (userQuestion) {
         setCoachConversation((prev) => [...prev, { role: "assistant", content: localResponse.message }]);
       }
@@ -4827,9 +4948,6 @@ export default function App() {
     if (!suggestions?.length) return null;
     return (
       <div className="coach-block coach-v2-suggestions-block">
-        <p className="settings-hint coach-v2-suggestions-hint">
-          Nothing is added until you approve.
-        </p>
         <div className="coach-v2-suggest-list">
           {suggestions.map((s) => {
             const isWorkoutProgram = s.type === "ADD_WORKOUT_PROGRAM";
@@ -5003,10 +5121,48 @@ export default function App() {
     setCoachLoading(true);
     setCoachStructuredResult(null);
     try {
+      const localNowHHMM = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
+      const adhdQuestion =
+        adhdMode === "plan"
+          ? "Plan my day for today"
+          : adhdMode === "unstuck"
+            ? "I'm stuck and need a tiny next step"
+            : "End of day review";
+      let coachContext = null;
+      let coachReasoningMode = "general_coaching";
+      let coachContextNarrative = "";
+      try {
+        coachContext = buildCoachContext({
+          realTodayKey,
+          coachViewDayKey: tKey,
+          localNowHHMM,
+          days: appState.days || {},
+          subscriptions: finance.subscriptions || [],
+          categories: customCategories,
+          monthly: appState.monthly || [],
+          patterns: analyzePatterns(),
+          health,
+          habitTracker,
+          notes: (notes || []).slice(0, 50),
+          routineSchedule,
+        });
+        coachReasoningMode = inferCoachReasoningMode(adhdQuestion);
+        coachContextNarrative = formatCoachContextForApi(coachContext);
+      } catch {
+        coachContext = null;
+        coachReasoningMode = inferCoachReasoningMode(adhdQuestion);
+        coachContextNarrative = "";
+      }
+
       const allTasks = allTasksInDay(todayHours, customCategories);
       const tasksForApi = allTasks.map((t) => ({ id: t.id, text: t.text, hour: t.hour, category: t.category, done: t.done }));
       const payload = {
         dayKey: tKey,
+        realTodayKey,
+        localNowHHMM,
+        coachContext,
+        coachReasoningMode,
+        coachContextNarrative,
         today: todayHours,
         tasks: tasksForApi,
         schedule: todayHours,
@@ -5567,32 +5723,6 @@ export default function App() {
           <>
             {/* Add bar: Type (natural language) vs Details (time, category, repeat, energy); above the add field */}
             <div className="quick-add-stack scroll-reveal">
-              {quickEntryMode === "type" ? (
-                <div className="quick-add-type-help-above">
-                  <button
-                    type="button"
-                    className="quick-add-help-toggle"
-                    aria-expanded={quickAddTypeHelpOpen}
-                    aria-controls="quick-add-type-help"
-                    id="quick-add-type-help-toggle"
-                    onClick={() => setQuickAddTypeHelpOpen((o) => !o)}
-                  >
-                    {quickAddTypeHelpOpen ? "Hide type tips" : "Type tips"}
-                  </button>
-                  {quickAddTypeHelpOpen ? (
-                    <p
-                      id="quick-add-type-help"
-                      className="quick-add-help-panel quick-add-help-panel--type-above settings-hint"
-                      role="region"
-                      aria-labelledby="quick-add-type-help-toggle"
-                    >
-                      In <strong>Type</strong>, include a time (e.g. <strong>4pm</strong> or <strong>16:30</strong>). Add a day so it lands on that calendar:{" "}
-                      <strong>tomorrow</strong>, <strong>today</strong>, <strong>next Monday</strong>, <strong>Friday</strong>,{" "}
-                      <strong>3/26/26</strong> or <strong>2026-03-26</strong>. Dates are from <strong>today&apos;s</strong> calendar, not only the day you have open.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
               <div className="quick-add-top-bar">
                 <div className="quick-add-entry-mode" role="tablist" aria-label="Add task entry">
                   <button
@@ -5750,24 +5880,6 @@ export default function App() {
                       <RepeatIcon /> Past tasks
                     </button>
                   </div>
-                  <div className="quick-add-help-wrap quick-add-help-wrap--in-details">
-                    <button
-                      type="button"
-                      className="quick-add-help-toggle"
-                      aria-expanded={quickAddDetailsHelpOpen}
-                      aria-controls="quick-add-details-help"
-                      id="quick-add-details-help-toggle"
-                      onClick={() => setQuickAddDetailsHelpOpen((o) => !o)}
-                    >
-                      {quickAddDetailsHelpOpen ? "Hide details tips" : "Details tips"}
-                    </button>
-                    {quickAddDetailsHelpOpen ? (
-                      <p id="quick-add-details-help" className="quick-add-help-panel settings-hint" role="region" aria-labelledby="quick-add-details-help-toggle">
-                        In <strong>Details</strong>, use the fields in this card: <strong>time</strong> (clock picker), <strong>category</strong>, <strong>task</strong> text,{" "}
-                        <strong>repeat</strong> (none, daily, weekly, or option to repeat), <strong>energy</strong> level, and <strong>Past tasks</strong> for tasks you saved as repeatable.
-                      </p>
-                    ) : null}
-                  </div>
                   {showPastRepeats && (
                     <div className="past-repeats-list quick-add-past-repeats">
                       <div className="past-repeats-list-title">Tasks you marked &quot;Option to repeat&quot;</div>
@@ -5830,10 +5942,6 @@ export default function App() {
                 <div className="panel-title">
                   <span className="title">Habits · today</span>
                 </div>
-                <p className="settings-hint" style={{ marginBottom: 12 }}>
-                  {habitsNeedCheckIn ? "Quick check-in when you’re ready." : "You’re logged for today. You can change answers anytime."}{" "}
-                  <strong>Build</strong> = habit you want to grow. <strong>Break</strong> = habit you want to drop.
-                </p>
                 <ul className="list habit-checkin-list">
                   {(habitTracker.habits || []).map((h) => {
                     const v = (habitTracker.log[realTodayKey] || {})[h.id];
@@ -5929,6 +6037,10 @@ export default function App() {
                           onPatchTaskFields={patchTaskFields}
                           onEnsureOptionalRepeat={ensureTaskOptionalRepeat}
                           onBeginWorkout={beginWorkoutFromTask}
+                          highlightItemKey={firstIncompleteTaskKeyToday}
+                          forceHourOpen={
+                            !!firstIncompleteTaskKeyToday && firstIncompleteTaskKeyToday.startsWith(`${hourKey}-`)
+                          }
                         />
                       </div>
                     </div>
@@ -6236,20 +6348,6 @@ export default function App() {
                             : "Start a streak by finishing every task you schedule on a day."}
                         </span>
                       </div>
-                      <button
-                        type="button"
-                        className="btn btn-sm task-averages-view-stats-btn"
-                        aria-expanded={taskStatsExplainOpen}
-                        onClick={() => setTaskStatsExplainOpen((o) => !o)}
-                      >
-                        {taskStatsExplainOpen ? "Hide stats" : "View stats"}
-                      </button>
-                      {taskStatsExplainOpen ? (
-                        <p className="settings-hint task-averages-stats-explainer">
-                          Percentages are from how you use tasks in PROYOU: completes, moving to tomorrow, deletes, unchecking, and (if enabled) automatic missed-at-day-end logs. Coach sees the same
-                          numbers plus your <strong>all-done streak</strong> and whether your last seven scheduled days were all finished.
-                        </p>
-                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -6373,7 +6471,7 @@ export default function App() {
           <section className="panel monthly-objectives-section scroll-reveal">
             <div className="panel-top">
               <div className="panel-title">
-                <div className="meta">Big picture goals that don't clutter Today.</div>
+                <div className="title">Monthly objectives</div>
               </div>
             </div>
 
@@ -6725,14 +6823,33 @@ export default function App() {
               </div>
             )}
 
+            {(typeof import.meta !== "undefined" && import.meta.env?.DEV) ||
+            (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("coachDebug")) ? (
+              coachTrace ? (
+                <details className="coach-trace-details surface-glass" style={{ marginTop: 14, padding: "10px 12px", borderRadius: 12 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 600 }}>Coach reasoning trace</summary>
+                  <pre
+                    style={{
+                      marginTop: 10,
+                      fontSize: 11,
+                      lineHeight: 1.4,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      maxHeight: 280,
+                      overflow: "auto",
+                    }}
+                  >
+                    {JSON.stringify(coachTrace, null, 2)}
+                  </pre>
+                </details>
+              ) : null
+            ) : null}
+
             <details className="coach-gtky-details">
               <summary className="coach-gtky-summary">
                 {coachUserProfile.filled ? "Your coaching profile" : "Get to know you"}
               </summary>
               <div className="coach-gtky-body">
-                <p className="settings-hint" style={{ marginBottom: 12 }}>
-                  A few notes help the coach stay grounded in what matters to you. You can update this anytime.
-                </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   <label className="label">What&apos;s your biggest challenge with planning or habits?</label>
                   <input
@@ -6845,7 +6962,7 @@ export default function App() {
           <section className="panel finance-panel surface-glass section-finance scroll-reveal">
             <div className="panel-top">
               <div className="panel-title">
-                <div className="meta">Income, spending, savings & debt. Coach can help with habits.</div>
+                <div className="title">Finance</div>
               </div>
             </div>
 
@@ -6931,7 +7048,6 @@ export default function App() {
                 <div className="finance-total-row finance-savings-header">
                   <span className="finance-total-label">Savings accounts</span>
                 </div>
-                <p className="finance-hint finance-savings-hint">Add each account and its balance; total savings below is the sum.</p>
                 <ul className="finance-list finance-savings-list">
                   {(finance.savingsAccounts || []).length === 0 && (
                     <li className="finance-list-empty">No accounts yet. Add one with the form below.</li>
@@ -7010,7 +7126,6 @@ export default function App() {
                 <div className="finance-total-row finance-debt-header">
                   <span className="finance-total-label">Debts</span>
                 </div>
-                <p className="finance-hint finance-debt-hint">e.g. auto loan, credit cards, student loans. Amounts owed; total debt below is the sum.</p>
                 <ul className="finance-list finance-debt-list">
                   {(finance.debtAccounts || []).length === 0 && (
                     <li className="finance-list-empty">No debts listed. Add one below if you want them in your snapshot.</li>
@@ -7064,8 +7179,8 @@ export default function App() {
                           <TrashIcon />
                         </button>
                         <div className="finance-inline-form" style={{ width: "100%", marginTop: 8, flexWrap: "wrap" }}>
-                          <span className="settings-hint" style={{ flex: "1 1 140px", marginRight: 8 }}>
-                            Total logged pay-down: ${paidSum.toFixed(2)} (update the balance above when you pay it down, if you like)
+                          <span className="finance-meta" style={{ flex: "1 1 140px", marginRight: 8 }}>
+                            Pay-down logged: ${paidSum.toFixed(2)}
                           </span>
                           <input
                             className="input"
@@ -7150,7 +7265,6 @@ export default function App() {
 
             <div className="finance-section">
               <h3 className="finance-section-title">Credit score log</h3>
-              <p className="finance-hint">Optional - add when you check your score so Coach and trends stay grounded.</p>
               <form
                 className="finance-inline-form"
                 onSubmit={(e) => {
@@ -7228,7 +7342,6 @@ export default function App() {
 
             <div className="finance-section">
               <h3 className="finance-section-title">Subscriptions</h3>
-              <p className="finance-hint">Add a due day (1-31) to show &quot;Pay [name]&quot; on your schedule that day each month.</p>
               <form className="finance-inline-form" onSubmit={(e) => {
                 e.preventDefault();
                 if (newSubName.trim()) {
@@ -7262,7 +7375,6 @@ export default function App() {
 
             <div className="finance-section">
               <h3 className="finance-section-title">Bills</h3>
-              <p className="finance-hint">Add due date to get a reminder that day.</p>
               <form className="finance-inline-form" onSubmit={(e) => {
                 e.preventDefault();
                 if (newBillName.trim() && newBillDueDate.trim()) {
@@ -7323,7 +7435,6 @@ export default function App() {
 
             <div className="finance-section">
               <h3 className="finance-section-title">Bank / statement notes</h3>
-              <p className="finance-hint">Paste or type notes from statements. Coach uses this to spot patterns and suggest what to work on.</p>
               <textarea
                 className="input finance-notes-textarea"
                 value={finance.bankStatementNotes}
@@ -7356,16 +7467,13 @@ export default function App() {
               return (
                 <div className="finance-section surface-glass" style={{ padding: 12, marginTop: 12 }}>
                   <h3 className="finance-section-title">Month summaries &amp; pace</h3>
-                  <p className="finance-hint">
-                    When the calendar month advances, last month&apos;s logged income and spending lines roll into a saved overview so the top of Finance stays about the current month.
-                  </p>
                   {latest ? (
                     <div style={{ marginTop: 10 }}>
                       <div className="finance-total-row">
                         <span className="finance-total-label">Most recent overview ({latest.monthKey})</span>
                         <span className="finance-total-value net">${Number(latest.net || 0).toFixed(2)} net</span>
                       </div>
-                      <p className="settings-hint" style={{ marginTop: 4, marginBottom: 0 }}>
+                      <p className="finance-meta" style={{ marginTop: 4, marginBottom: 0 }}>
                         Income ${Number(latest.incomeTotal || 0).toFixed(2)} · Spent ${Number(latest.expenseTotal || 0).toFixed(2)}
                         {latest.topExpenses && latest.topExpenses[0]
                           ? ` · Top: ${latest.topExpenses[0].label} $${Number(latest.topExpenses[0].amount || 0).toFixed(2)}`
@@ -7373,8 +7481,8 @@ export default function App() {
                       </p>
                     </div>
                   ) : (
-                    <p className="settings-hint" style={{ marginTop: 8 }}>
-                      No closed months yet - keep logging; summaries appear after your first month rollover.
+                    <p className="empty" style={{ marginTop: 8 }}>
+                      No closed months yet.
                     </p>
                   )}
                   <button
@@ -7401,13 +7509,13 @@ export default function App() {
                         </span>
                       </div>
                       {topAvg.length > 0 && (
-                        <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                        <p className="finance-meta" style={{ marginTop: 8, marginBottom: 0 }}>
                           Biggest spend labels on average:{" "}
                           {topAvg.map((x) => `${x.label} ~$${x.avg.toFixed(0)}`).join(" · ")}
                         </p>
                       )}
                       {decals.map((line, i) => (
-                        <p key={i} className="settings-hint" style={{ marginTop: 8, fontStyle: "italic", marginBottom: 0 }}>
+                        <p key={i} className="finance-meta" style={{ marginTop: 8, fontStyle: "italic", marginBottom: 0 }}>
                           {line}
                         </p>
                       ))}
@@ -7428,7 +7536,7 @@ export default function App() {
           <section className="panel notes-section scroll-reveal">
             <div className="panel-top">
               <div className="panel-title">
-                <div className="meta">Jot down thoughts, ideas, and reminders</div>
+                <div className="title">Notes</div>
               </div>
             </div>
 
@@ -7549,6 +7657,8 @@ export default function App() {
           </section>
         ) : null}
 
+        <PageInstructions tab={tab} />
+
         </main>
         <aside className="shell-rail" aria-hidden="true" />
 
@@ -7621,35 +7731,54 @@ export default function App() {
                     </div>
                   ) : (
                     <>
-                      <div className="task-dropdown-note-section">
-                        <label className="task-dropdown-section-label" htmlFor="task-menu-note">
-                          Notes (this task)
-                        </label>
-                        <textarea
-                          id="task-menu-note"
-                          className="input task-dropdown-note-input"
-                          rows={3}
-                          value={taskMenuNoteDraft}
-                          onChange={(e) => setTaskMenuNoteDraft(e.target.value)}
-                          onBlur={() => patchTaskFields(tKey, hourKey, category, id, { taskNote: taskMenuNoteDraft.trim() })}
-                          placeholder="Private note for this task…"
-                          aria-label="Notes for this task"
-                        />
-                        {showOptionalRepeatBtn ? (
-                          <button
-                            type="button"
-                            className="btn btn-sm task-dropdown-repeat-btn"
-                            onClick={() => {
-                              ensureTaskOptionalRepeat(tKey, hourKey, category, id);
-                            }}
-                          >
-                            <RepeatIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: "middle" }} />
-                            Add to Past tasks (optional repeat)
-                          </button>
-                        ) : taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
-                          <p className="task-dropdown-repeat-hint">Saved for Past tasks</p>
-                        ) : null}
-                      </div>
+                      {tab !== "today" ? (
+                        <div className="task-dropdown-note-section">
+                          <label className="task-dropdown-section-label" htmlFor="task-menu-note">
+                            Notes (this task)
+                          </label>
+                          <textarea
+                            id="task-menu-note"
+                            className="input task-dropdown-note-input"
+                            rows={3}
+                            value={taskMenuNoteDraft}
+                            onChange={(e) => setTaskMenuNoteDraft(e.target.value)}
+                            onBlur={() => patchTaskFields(tKey, hourKey, category, id, { taskNote: taskMenuNoteDraft.trim() })}
+                            placeholder="Private note for this task…"
+                            aria-label="Notes for this task"
+                          />
+                          {showOptionalRepeatBtn ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm task-dropdown-repeat-btn"
+                              onClick={() => {
+                                ensureTaskOptionalRepeat(tKey, hourKey, category, id);
+                              }}
+                            >
+                              <RepeatIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: "middle" }} />
+                              Add to Past tasks (optional repeat)
+                            </button>
+                          ) : taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
+                            <p className="task-dropdown-repeat-hint">Saved for Past tasks</p>
+                          ) : null}
+                        </div>
+                      ) : showOptionalRepeatBtn || (taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL) ? (
+                        <div className="task-dropdown-note-section">
+                          {showOptionalRepeatBtn ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm task-dropdown-repeat-btn"
+                              onClick={() => {
+                                ensureTaskOptionalRepeat(tKey, hourKey, category, id);
+                              }}
+                            >
+                              <RepeatIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: "middle" }} />
+                              Add to Past tasks (optional repeat)
+                            </button>
+                          ) : taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
+                            <p className="task-dropdown-repeat-hint">Saved for Past tasks</p>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <div className="task-dropdown-actions-block">
                         <button type="button" className="dropdown-item task-dropdown-move-item" onClick={() => { moveTaskToTomorrow(hourKey, category, id); closeDropdown(); }}>
                           <CalendarIcon style={{ marginRight: '8px' }} />
@@ -7832,12 +7961,8 @@ export default function App() {
           <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="grocery-prompt-title" onClick={() => setGroceryListPrompt(null)}>
             <div className="modal grocery-prompt-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
               <h3 id="grocery-prompt-title">Shopping or errand list?</h3>
-              <p className="settings-hint">
-                If a task matches your list keywords (defaults include <strong>grocery</strong> and <strong>store</strong>), you can attach a checklist. Edit keywords under{" "}
-                <strong>Settings → Customization</strong>. The list saves on the task and syncs with your schedule.
-              </p>
-              <p className="settings-hint" style={{ marginTop: 6 }}>
-                Keywords: <strong>{groceryKeywordsNorm.join(", ")}</strong>
+              <p className="finance-meta" style={{ marginBottom: 8 }}>
+                Keywords: <strong>{groceryKeywordsNorm.join(", ")}</strong> — edit under Settings → Customization → Shopping &amp; errand lists.
               </p>
               {(profile.grocerySavedLists || []).length > 0 && (
                 <>
@@ -7937,12 +8062,12 @@ export default function App() {
                     <CloseIcon style={{ width: 22, height: 22 }} />
                   </button>
                 </div>
-                <p className="settings-hint" style={{ marginTop: 8 }}>
+                <p className="finance-meta" style={{ marginTop: 8 }}>
                   {task.text}
                 </p>
                 <ul className="grocery-modal-items">
                   {items.length === 0 ? (
-                    <li className="settings-hint grocery-checklist-empty" style={{ listStyle: "none", padding: "8px 0" }}>
+                    <li className="empty grocery-checklist-empty" style={{ listStyle: "none", padding: "8px 0" }}>
                       No lines yet. Add below.
                     </li>
                   ) : (
@@ -8366,12 +8491,14 @@ export default function App() {
                     <span>Turn on reminders for new tasks</span>
                   </label>
                   <label
-                    className="settings-hint"
-                    style={{ display: "block", marginBottom: 6, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}
+                    className="label"
+                    htmlFor="default-remind-before-select"
+                    style={{ display: "block", marginBottom: 6, fontSize: 13, opacity: profile.defaultTaskRemindersOn !== false ? 1 : 0.45 }}
                   >
                     Remind me before task starts
                   </label>
                   <select
+                    id="default-remind-before-select"
                     className="input modal-input"
                     style={{ marginBottom: 10 }}
                     disabled={profile.defaultTaskRemindersOn === false}
@@ -8430,7 +8557,7 @@ export default function App() {
                     <span>Remind me before the task starts</span>
                   </label>
                   <div className="settings-inline-row" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 8, opacity: normalizeNotificationPrefs(profile.notificationPrefs).taskRemindBeforeEnabled === false ? 0.45 : 1 }}>
-                    <label className="settings-hint" htmlFor="notif-task-before-mins">
+                    <label className="label" htmlFor="notif-task-before-mins" style={{ fontSize: 12 }}>
                       Minutes before (1–120)
                     </label>
                     <input
@@ -8512,7 +8639,7 @@ export default function App() {
                     <option value="every30">Every 30 minutes</option>
                   </select>
                   <div className="settings-inline-row" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, alignItems: "center" }}>
-                    <label className="settings-hint" htmlFor="notif-quiet-start">
+                    <label className="label" htmlFor="notif-quiet-start" style={{ fontSize: 12 }}>
                       Quiet hours from
                     </label>
                     <input
@@ -8530,7 +8657,7 @@ export default function App() {
                         }))
                       }
                     />
-                    <label className="settings-hint" htmlFor="notif-quiet-end">
+                    <label className="label" htmlFor="notif-quiet-end" style={{ fontSize: 12 }}>
                       to
                     </label>
                     <input
@@ -8551,7 +8678,7 @@ export default function App() {
                   </div>
                   {normalizeNotificationPrefs(profile.notificationPrefs).habitReminderMode === "daily" ? (
                     <div className="settings-inline-row" style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 10, alignItems: "center" }}>
-                      <label className="settings-hint" htmlFor="notif-daily-time">
+                      <label className="label" htmlFor="notif-daily-time" style={{ fontSize: 12 }}>
                         Daily ping at
                       </label>
                       <input
@@ -8578,7 +8705,9 @@ export default function App() {
                     Per-habit reminders
                   </label>
                   {(habitTracker.habits || []).length === 0 ? (
-                    <p className="settings-hint">No habits yet. Add some under <strong>Settings → Customization → Habit tracker</strong>.</p>
+                    <p className="empty" style={{ marginTop: 4 }}>
+                      No habits yet.
+                    </p>
                   ) : (
                     <ul className="notif-habit-toggle-list">
                       {(habitTracker.habits || []).map((h) => {
@@ -8654,44 +8783,7 @@ export default function App() {
               </div>
               )}
 
-              <details className="settings-accordion settings-notifications-instructions">
-                <summary className="settings-accordion-summary">Instructions</summary>
-                <div className="settings-accordion-panel settings-notifications-instructions-panel">
-                  <p className="settings-hint">
-                    On the <strong>phone app</strong>, use <strong>Allow notifications and sync reminders</strong> once to schedule on-device task alerts (where supported), allow remote delivery, and sync your reminder list to the hosted service. Use <strong>Open system settings</strong> if you previously chose Don&apos;t allow.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>iPhone:</strong> Task times use scheduled local alerts for each task with Remind me (before start and/or at start). Remote registration keeps a backup path so nudges can still reach you when the app is not in the foreground; behavior depends on iOS and battery settings.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>Android:</strong> Task reminders use push and your system notification settings; battery saver can delay delivery.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>Browser:</strong> Use <strong>Allow notifications and background reminders</strong> for permission plus optional push when your deployment supports it. In-browser reminders still need the tab or site allowed by the browser.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>Notifications dashboard:</strong> Master switches control task delivery and habit nudges. <strong>Default reminders for new tasks</strong> sets what new tasks start with; change any task under Details → Remind me.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>How delivery differs:</strong> On iPhone, task reminder times are scheduled locally when Remind me is on. On Android, reminders follow push and permission. In the browser, reminders depend on permission and push connection. <strong>Habits</strong> use the cadence and quiet hours here for in-app nudges while you use the app; the same schedule is stored on the server for backup pings when you are away. Very frequent habit modes can be batched or delayed by the OS when the app is closed; quiet hours still apply.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>Default reminders for new tasks:</strong> Applied when you add a task. On iPhone, keep the app updated so local alerts can fire at the right time.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>Task reminder timing:</strong> Used for syncing your reminder preferences to the server and for on-device scheduling on iPhone when Remind me is on. Per-task overrides stay on the task card.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>Habit reminder cadence:</strong> Quiet hours apply to all modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list from Settings → Customization → Habit tracker.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>Per-habit reminders:</strong> Turn off Remind for habits you don&apos;t want pinged.
-                  </p>
-                  <p className="settings-hint">
-                    <strong>Background reminders (browser):</strong> Optional push connects this device to your hosted deployment so reminder pings can arrive after you close the tab. On iPhone Safari, add the app from the Share menu first. After connecting, use <strong>Send test</strong> to confirm.
-                  </p>
-                </div>
-              </details>
+              <PageInstructions tab="settings" settingsSubView="notifications" compact />
               </div>
               ) : (
               <>
@@ -8703,11 +8795,6 @@ export default function App() {
                   <div className="settings-sub-accordion-panel">
                     <div className="settings-section">
                 <label className="label">Habit check-ins</label>
-                <p className="settings-hint">
-                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them.{" "}
-                  <strong>Reminder nudges</strong> (hourly, every 30 minutes, daily, quiet hours, on/off per habit) are set in{" "}
-                  <strong>Notifications &amp; reminders</strong> (button below in Customization). When that page is set to <strong>Custom</strong>, you can pick hourly vs exact times here for each habit.
-                </p>
                 <ul className="habit-settings-list">
                   {(habitTracker.habits || []).map((h) => {
                     const row = normalizeHabitRow(h) || h;
@@ -8719,7 +8806,7 @@ export default function App() {
                         <div className="habit-settings-card-head">
                           <div className="habit-settings-card-title">
                             {row.label}{" "}
-                            <span className="settings-hint" style={{ marginLeft: 6 }}>
+                            <span className="settings-item-meta">
                               ({row.direction === "break" ? "break" : "build"})
                             </span>
                           </div>
@@ -8834,11 +8921,7 @@ export default function App() {
                               </div>
                             )}
                           </>
-                        ) : (
-                          <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-                            Nudges use the <strong>global schedule</strong> from Notifications &amp; reminders (not per-habit clocks).
-                          </p>
-                        )}
+                        ) : null}
                       </li>
                     );
                   })}
@@ -8894,9 +8977,6 @@ export default function App() {
                 <details className="settings-sub-accordion settings-dock-sub">
                   <summary className="settings-sub-accordion-summary">Bottom navigation</summary>
                   <div className="settings-sub-accordion-panel">
-                    <p className="settings-hint">
-                      <strong>Today</strong> always stays first in the app bar. Drag blocks to reorder other tabs. Open the menu on a tab to remove it from the dock or move it next to Today (first slot after Today).
-                    </p>
                     <div className="settings-dock-blocks" role="list">
                       {normalizeDockOrder(profile.dockOrder).map((rowId) => {
                         const row = DOCK_NAV_SETTINGS_ROWS.find((r) => r.id === rowId);
@@ -9020,9 +9100,6 @@ export default function App() {
 
               <div className="settings-section">
                 <label className="label">Task completion messages</label>
-                <p className="settings-hint">
-                  Pop-up line when you check off a task. Tap outside the card to dismiss it anytime. Turning this off still saves the task; you just won&apos;t see the affirmation.
-                </p>
                 <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <input
                     type="checkbox"
@@ -9031,10 +9108,11 @@ export default function App() {
                   />
                   <span>Show completion affirmations</span>
                 </label>
-                <label className="settings-hint" style={{ display: "block", marginBottom: 6, opacity: profile.completionAffirmationsOn !== false ? 1 : 0.45 }}>
+                <label className="label" htmlFor="completion-tone-select" style={{ display: "block", marginBottom: 6, fontSize: 13, opacity: profile.completionAffirmationsOn !== false ? 1 : 0.45 }}>
                   Tone
                 </label>
                 <select
+                  id="completion-tone-select"
                   className="input modal-input"
                   style={{ marginBottom: 0 }}
                   disabled={profile.completionAffirmationsOn === false}
@@ -9066,7 +9144,6 @@ export default function App() {
                   <input type="checkbox" checked={routineSchedule.enabledMorning !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))} />
                   <span>Show morning routine on Today</span>
                 </label>
-                <p className="settings-hint">Steps that appear at the start of your day. Choose which days to show it.</p>
                 <ul className="routine-template-list">
                   {morningRoutineTemplate.map((r, idx) => (
                     <li key={r.id} className="routine-template-item">
@@ -9086,8 +9163,7 @@ export default function App() {
                 <button type="button" className="btn btn-sm" onClick={() => setMorningRoutineTemplate((prev) => [...prev, { id: `morning-${Date.now()}`, text: "New step" }])}>
                   Add step
                 </button>
-                <p className="settings-hint" style={{ marginTop: 8 }}>Show on:</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                   <button type="button" className={`btn btn-sm ${routineSchedule.morning === "every" ? "btn-primary" : ""}`} onClick={() => setRoutineSchedule((s) => ({ ...s, morning: "every" }))}>
                     Every day
                   </button>
@@ -9119,7 +9195,6 @@ export default function App() {
                   <input type="checkbox" checked={routineSchedule.enabledNight !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledNight: e.target.checked }))} />
                   <span>Show wind-down routine on Today</span>
                 </label>
-                <p className="settings-hint">Edit the steps that appear in your nightly routine.</p>
                 <ul className="routine-template-list">
                   {routineTemplate.map((r, idx) => (
                     <li key={r.id} className="routine-template-item">
@@ -9148,8 +9223,7 @@ export default function App() {
                 >
                   Add step
                 </button>
-                <p className="settings-hint" style={{ marginTop: 8 }}>Show on:</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>
                   <button type="button" className={`btn btn-sm ${routineSchedule.night === "every" ? "btn-primary" : ""}`} onClick={() => setRoutineSchedule((s) => ({ ...s, night: "every" }))}>
                     Every day
                   </button>
@@ -9177,7 +9251,6 @@ export default function App() {
 
               <div className="settings-section">
                 <label className="label">Task types</label>
-                <p className="settings-hint">Types for organizing tasks (e.g. Work, Personal). Quick add and tasks use these.</p>
                 <ul className="routine-template-list">
                   {customCategories.map((cat) => (
                     <li key={cat} className="routine-template-item">
@@ -9234,9 +9307,6 @@ export default function App() {
 
               <div className="settings-section">
                 <label className="label">Shopping &amp; errand lists</label>
-                <p className="settings-hint">
-                  When a task title contains one of these words (whole word), PROYOU can offer a checklist. Defaults are similar to grocery, store, and errand - change them anytime.
-                </p>
                 <input
                   className="input modal-input"
                   value={
@@ -9266,22 +9336,16 @@ export default function App() {
                   />
                   <span>Log tasks still incomplete when a calendar day ends (Coach &amp; stats)</span>
                 </label>
-                <p className="settings-hint" style={{ marginTop: 4 }}>
-                  After midnight, the app can record unchecked tasks from the previous day as missed (once each). Turn this off if you prefer not to track that.
-                </p>
-                <p className="settings-hint" style={{ marginTop: 10 }}>
-                  <strong>Saved lists</strong> - reuse lines from the checklist modal (&quot;Save as reusable list&quot;) or from the prompt when you add a matching task.
-                </p>
                 <ul className="routine-template-list">
                   {(profile.grocerySavedLists || []).length === 0 && (
-                    <li className="settings-hint" style={{ listStyle: "none" }}>
+                    <li className="empty" style={{ listStyle: "none", padding: "8px 0" }}>
                       No saved lists yet.
                     </li>
                   )}
                   {(profile.grocerySavedLists || []).map((l) => (
                     <li key={l.id} className="routine-template-item">
                       <span className="routine-template-input" style={{ flex: 1 }}>
-                        {l.title} <span className="settings-hint">({(l.items || []).length} lines)</span>
+                        {l.title} <span className="settings-item-meta">({(l.items || []).length} lines)</span>
                       </span>
                       <button
                         type="button"
@@ -9302,7 +9366,6 @@ export default function App() {
                 <label className="label" style={{ marginTop: 12, display: "block" }}>
                   Attach a saved list to a task on Today
                 </label>
-                <p className="settings-hint">Pick today&apos;s task and a list, then apply (replaces existing checklist lines).</p>
                 <div className="settings-add-type" style={{ flexWrap: "wrap" }}>
                   <select
                     className="input modal-input"
@@ -9394,7 +9457,6 @@ export default function App() {
 
               <div className="settings-section settings-nav-deep-link-card">
                 <label className="label">Notifications &amp; reminders</label>
-                <p className="settings-hint">Device alerts, background sync, task and habit timing, quiet hours, and per-habit nudges.</p>
                 <button type="button" className="btn btn-primary" onClick={() => setSettingsSubView("notifications")}>
                   Open notifications &amp; reminders
                 </button>
@@ -9406,10 +9468,6 @@ export default function App() {
                 <summary className="settings-accordion-summary">Guides &amp; tours</summary>
                 <div className="settings-accordion-panel">
               <div className="settings-section">
-                <label className="label">Guides &amp; tours</label>
-                <p className="settings-hint">
-                  Replay the short overview of tabs and features, or the longer full walkthrough. Closing a tour with &quot;Exit&quot; does not mark it complete; finishing the last slide does.
-                </p>
                 <div className="settings-push-actions" style={{ flexWrap: "wrap" }}>
                   <button type="button" className="btn btn-primary" onClick={() => startReplayFeatureTour("quick")}>
                     Replay quick tour
@@ -9428,12 +9486,10 @@ export default function App() {
                   <div className="settings-section">
                     <label className="label">Account</label>
                     {!isFirebaseEnabled() ? (
-                      <p className="settings-hint">
-                        Add cloud sync in your deployment (environment variables) to sync your schedule, notes, finance, and settings across devices.
-                      </p>
+                      <p className="empty">Cloud sync is not configured on this deployment.</p>
                     ) : (
                       <>
-                        <p className="settings-hint settings-account-status" style={{ marginBottom: 12 }}>
+                        <p className="finance-meta settings-account-status" style={{ marginBottom: 12 }}>
                           {firebaseUser?.isAnonymous ? (
                             <>Logged in as <strong>guest</strong> (this browser)</>
                           ) : firebaseUser?.email ? (
@@ -9466,9 +9522,6 @@ export default function App() {
                                 {firebaseUser.isAnonymous ? "Delete guest data" : "Delete account"}
                               </button>
                             </div>
-                            <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-                              Opens a short flow. Your account is removed permanently (not deactivated), then this device reloads.
-                            </p>
                           </>
                         ) : null}
                       </>
@@ -9497,11 +9550,11 @@ export default function App() {
                       aria-label="Birthday month and day"
                       maxLength={4}
                     />
-                    <p className="settings-hint">Enter as MMDD (e.g. 0315 for March 15). We&apos;ll wish you happy birthday on the day.</p>
                   </div>
                 </div>
               </details>
 
+              <PageInstructions tab="settings" settingsSubView="main" compact />
               </>
               )}
               </div>
@@ -9778,7 +9831,7 @@ export default function App() {
                       <li>Your schedule, notes, finance entries, habits, and coach profile in sync storage</li>
                       <li>Your sign-in for this app (you can create a new account later if you want)</li>
                     </ul>
-                    <p className="settings-hint" style={{ marginBottom: 0 }}>
+                    <p className="delete-account-footnote">
                       When deletion succeeds, you&apos;ll see a short confirmation, then this device reloads.
                     </p>
                     <div className="delete-account-actions">

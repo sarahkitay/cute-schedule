@@ -32,7 +32,7 @@ const FULL_SLIDES = [
   {
     title: "Today tab & the timeline",
     body:
-      "Each **time block** can hold tasks in your categories. Tap a task to expand details, use the **⋯** menu to move to tomorrow, edit time, add to notes, or open a **shopping / errand checklist** when the title mentions stores or groceries.",
+      "Each **time block** holds tasks by category. Tap the small **▸ / ▾** on a row to open details (including **private notes** for that task). Use **⋯** for move to tomorrow, edit time, shopping lists, and more — notes stay on the expand panel on Today. Every main tab has a small **Instructions** strip at the bottom for full help.",
   },
   {
     title: "Adding tasks: Type vs Details (top bar)",
@@ -73,6 +73,11 @@ const FULL_SLIDES = [
     title: "Routines & capacity",
     body:
       "Morning and **wind-down** routines can appear on Today when enabled in Settings. **Today's Capacity** (mood and energy pills) nudges the coach and your self-awareness: optional metadata, not a grade.",
+  },
+  {
+    title: "Instructions on each tab",
+    body:
+      "Longer help lives in the **Instructions** bar at the bottom of Today, List, Coach, Notes, Finance, and Health — open it anytime. This tour is the overview; combine both when you need detail.",
   },
   {
     title: "Sync & account",

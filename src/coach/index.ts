@@ -22,6 +22,18 @@ export {
 } from "./memory";
 export { buildCoachIntelligenceSnapshot, formatIntelligenceForApi } from "./intelligence";
 export type { PatternShape, TaskLite } from "./intelligence";
+export { buildCoachContext, formatCoachContextForApi } from "./coachContext";
+export type {
+  BuildCoachContextInput,
+  CoachContext,
+  CoachTimeOfDayBand,
+  MonthlyObjectiveContext,
+  NeglectedObjectiveContext,
+} from "./coachContext";
+export { inferCoachReasoningMode } from "./coachMode";
+export type { CoachReasoningMode } from "./coachMode";
+export { auditCoachSpecificity, applyCoachSpecificityToResult } from "./specificity";
+export type { CoachSpecificityAudit } from "./specificity";
 export {
   applyLiveDaySuggestionGuards,
   parseCoachApiPayload,

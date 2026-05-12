@@ -1,5 +1,6 @@
 import { applyApiCors } from "./lib/cors.js";
 import { assertCoachRateLimit } from "./lib/coachRateLimit.js";
+import { validateCoachSpecificity } from "./lib/coachValidate.js";
 import { clientSafeDetail, logServerError } from "./lib/safeJsonError.js";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -80,6 +81,9 @@ export default async function handler(req, res) {
       healthSummary,
       localNowHHMM,
       realTodayKey,
+      coachContext,
+      coachReasoningMode,
+      coachContextNarrative,
     } = req.body || {};
     if (!dayKey) return res.status(400).json({ error: "Missing dayKey" });
 
@@ -286,6 +290,54 @@ Use these to detect recurring struggles, goals, constraints, or self-observation
     }
     const pacingBlock = pacingLines.length ? `\n\n${pacingLines.join("\n")}` : "";
 
+    const coachModeLine = coachReasoningMode
+      ? `\n\nREASONING_MODE: ${String(coachReasoningMode)} (weight your answer toward this lens; still return valid Coach V2 JSON).`
+      : "";
+
+    const coachContextBlock = coachContextNarrative
+      ? `\n\nCOACH_CONTEXT_NARRATIVE (highest-trust pacing and monthly signals — follow this over raw completion counts):\n${String(coachContextNarrative).slice(0, 8500)}`
+      : coachContext && typeof coachContext === "object"
+        ? `\n\nCOACH_CONTEXT_JSON (highest-trust — follow isOnPace, overdueTasks, schedulePacingNote, timeOfDay over raw completion counts):\n${JSON.stringify(coachContext).slice(0, 8500)}`
+        : "";
+
+    const evidencePriorityOrder = `
+IMPORTANT PRIORITY ORDER (highest trust first):
+1. COACH_CONTEXT / coachContextNarrative above — trust its pacing fields (isOnPace, overdueTasks, schedulePacingNote, timeOfDay) over raw completion ratios.
+2. Today's schedule JSON
+3. Monthly objectives
+4. Health / training data
+5. Recent patterns and week-at-a-glance
+6. Generic productivity heuristics (avoid; never let these override 1)
+
+Rules:
+- If COACH_CONTEXT says the user is on pace, do not contradict it.
+- If COACH_CONTEXT says it is still morning and nothing is overdue, do not imply the user is behind or overwhelmed from completion count alone.
+- If COACH_CONTEXT lists neglected monthly objectives, mention the strongest one by name when the user asks what is missing or what to add.
+`.trim();
+
+    const pacingAndSpecificityRules = `
+PACING & COMPLETION (critical):
+- Do NOT treat a low "completed so far" count as failure when COACH_CONTEXT says it is still morning/before 11 local, nothing is overdue, and on_pace is true.
+- Never write that the user is "overwhelmed" or "behind" solely from completion ratio early in the day.
+- If overdue_tasks = 0, prefer language like "on pace for the clock" or "nothing is behind yet" rather than shaming partial progress.
+- If many heavy tasks are still scheduled later today, name that as upcoming density — not current failure.
+
+SPECIFICITY (critical):
+- Do not summarize the obvious row counts. Interpret what they mean.
+- Every reply should tie to at least two of: a concrete task title from today's JSON, a monthly objective title, yesterday / recent pattern, time-of-day pacing, health/program detail, a missing category, or one concrete ADD_TASK / program suggestion.
+- Avoid stock productivity lines unless immediately tied to their data: "lot on your plate", "break into smaller steps", "take a break", "stay consistent", "prioritize", "only one task completed" as a problem statement, "focus on what matters", "this suggests overwhelm".
+
+FEW_SHOT (style only; still use their real JSON):
+Q: "What has my schedule been missing the last few days?"
+A style: "Your schedule has not been missing effort — yesterday had strong follow-through on admin. What looks missing is direct movement on [MONTHLY_OBJECTIVE]. I do not see a task tied to that objective today. A useful add: one 30–45 minute block on [objective], e.g. [concrete subtask]."
+
+Q: "Am I behind today?" (10am, 1 done, 0 overdue)
+A style: "No — for 10am you look on pace. One completion is not a red flag yet. I would watch whether medium-energy tasks cluster this afternoon; if so, move one or swap in a 20-minute objective slice."
+
+Q: "What should I add today?" (first prebuilt workout used this week)
+A style: "Add one block that advances your most neglected monthly objective, and one that upgrades your training system — since you used a sample program recently, pick a goal (strength, fat loss, glute focus, endurance, consistency, mobility) and we can draft a short progression program for approval."
+`.trim();
+
     const categoriesLine =
       Array.isArray(categories) && categories.length ? `\nWorkspace categories: ${categories.join(", ")}.` : "";
 
@@ -328,14 +380,30 @@ ${finance.archivedMonthCount ? `- Archived monthly finance summaries stored: ${f
 ${finance.bankStatementNotes ? `- Bank/statement notes (use to spot biggest issues): ${String(finance.bankStatementNotes).slice(0, 1500)}` : ""}`
       : "";
 
-    // Build the main prompt
-    const contextPrompt = `
+    const coachEvidenceFirst = `
+${evidencePriorityOrder}
+
+${coachModeLine || "\nREASONING_MODE: (not sent — default to grounded schedule reading.)"}
+
+${coachContextBlock || "\n(No COACH_CONTEXT bundle was sent — rely on schedule JSON; do not infer overload from completion counts alone early in the day.)"}
+
+${pacingAndSpecificityRules}
+`.trim();
+
+    const scheduleDetails = `
 Day (view): ${dayKey}${prettyDate ? ` (${prettyDate})` : ""}
 User's real "today" date: ${todayKeyForClock}
 User's local clock now: ${nowSlot || "unknown (client should send localNowHHMM)"}
 Completion: ${progress?.done || 0}/${progress?.total || 0} (${progress?.pct || 0}%)
 Today's schedule: ${JSON.stringify(today || {})}
 Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesContext}${financeContext}${habitContext}${profileBlock}${pacingBlock}${categoriesLine}${billsBlock}${subsBlock}${intelBlock}${feedbackBlock}${weekBlock}${healthBlock}
+`.trim();
+
+    const contextPrompt = `
+${coachEvidenceFirst}
+
+--- Calendar / schedule details (secondary to COACH_CONTEXT when both exist) ---
+${scheduleDetails}
 `.trim();
 
     let replyDirective;
@@ -461,7 +529,30 @@ Return JSON EXACTLY in this schema (Coach V2). When you propose a full workout t
       );
     }
 
-    return res.status(200).json(parsed);
+    const { parsed: patchedParsed, patched: specificityPatched, usedDeterministicMessage } = validateCoachSpecificity(
+      parsed,
+      {
+        coachContext,
+        coachReasoningMode,
+        localNowHHMM: nowSlot,
+        realTodayKey: todayKeyForClock,
+        categories,
+        userQuestion,
+      }
+    );
+
+    if (!isProd) {
+      console.log("[coach]", {
+        coachReasoningMode,
+        schedulePacingNote: coachContext?.today?.schedulePacingNote,
+        isOnPace: coachContext?.today?.isOnPace,
+        neglectedMonthly: coachContext?.monthlyObjectives?.neglected,
+        specificityPatched,
+        usedDeterministicMessage,
+      });
+    }
+
+    return res.status(200).json(patchedParsed);
   } catch (e) {
     logServerError("Coach handler", e);
     const detail = clientSafeDetail(e, isProd);

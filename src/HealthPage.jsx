@@ -11,7 +11,6 @@ import {
   formatWeightLbFromKg,
   getWorkoutLineProgress,
   guidedSessionProgressKey,
-  healthProfileComplete,
   lbToKg,
   listSelectablePrograms,
   mondayKeyForDayKey,
@@ -136,7 +135,7 @@ function GuidedWorkoutOverlay({ session, health, setHealth, onClose, onMarkTaskD
                   <div className="health-exercise-text-block">
                     <div className="health-exercise-text">{b.name || "Exercise"}</div>
                     {(b.setsReps || b.weightNote) && (
-                      <div className="settings-hint" style={{ marginTop: 4 }}>
+                      <div className="health-subline">
                         {[b.setsReps, b.weightNote].filter(Boolean).join(" · ")}
                       </div>
                     )}
@@ -687,8 +686,6 @@ export function HealthPage({
     }
   }
 
-  const profileOk = healthProfileComplete(h);
-
   return (
     <section className="panel health-panel surface-glass scroll-reveal section-health">
       <div className="panel-top health-page-head">
@@ -696,7 +693,6 @@ export function HealthPage({
           <DumbbellIcon style={{ width: 22, height: 22, marginRight: 8 }} />
           <div>
             <div className="title">Health &amp; training</div>
-            <div className="meta">Programs for the gym tab, macros &amp; weight. Coach sees a short summary.</div>
           </div>
         </div>
       </div>
@@ -734,9 +730,6 @@ export function HealthPage({
               {editingProgramId ? "Edit program" : "Build a program"}
             </summary>
             <div className="health-build-program-panel">
-              <p className="settings-hint">
-                Add <strong>one exercise at a time</strong> (name, sets or reps, weight or load). Save to your collection, then link tasks from Today.
-              </p>
               <label className="quick-row">
                 <span className="label">Program name</span>
                 <input className="input" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="e.g. Push day A" />
@@ -801,7 +794,7 @@ export function HealthPage({
                         <strong>{ex.name || "Exercise"}</strong>
                       </div>
                       {(ex.setsReps || ex.weightNote) && (
-                        <div className="settings-hint" style={{ marginTop: 4 }}>
+                        <div className="health-subline">
                           {[ex.setsReps, ex.weightNote].filter(Boolean).join(" · ")}
                         </div>
                       )}
@@ -833,9 +826,6 @@ export function HealthPage({
                   <button type="button" className="btn btn-sm" onClick={() => onOpenHealthCalendar(realTodayKey)}>
                     Open full calendar
                   </button>
-                  <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-                    Schedule one-off or repeating gym times from there.
-                  </p>
                 </div>
               ) : null}
             </div>
@@ -845,9 +835,6 @@ export function HealthPage({
             <div className="panel-title" style={{ marginBottom: 8 }}>
               <span className="title">My programs</span>
             </div>
-            <p className="settings-hint" style={{ marginTop: 0 }}>
-              Sample programs are listed with yours. Save a copy to customize, or use <strong>Build a program</strong> above. Delete any of your saved programs you no longer want.
-            </p>
             <ul className="health-program-cards">
               {displayPrograms.map((p) => {
                 const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
@@ -859,7 +846,7 @@ export function HealthPage({
                   <li key={p.id} className="health-program-card surface-glass">
                     <div className="health-program-card-head">
                       <strong>{p.name}</strong>
-                      <span className="settings-hint">
+                      <span className="health-subline">
                         {(p.exercises || []).length} moves{builtIn ? " · sample" : ""}
                       </span>
                     </div>
@@ -867,7 +854,7 @@ export function HealthPage({
                       {(p.exercises || []).slice(0, 5).map((ex, i) => (
                         <li key={i}>{formatExerciseBlockLine(ex)}</li>
                       ))}
-                      {(p.exercises || []).length > 5 ? <li className="settings-hint">+{(p.exercises || []).length - 5} more</li> : null}
+                      {(p.exercises || []).length > 5 ? <li className="health-subline">+{(p.exercises || []).length - 5} more</li> : null}
                     </ul>
                     <div className="health-program-card-actions">
                       {builtIn ? (
@@ -902,16 +889,6 @@ export function HealthPage({
             </ul>
           </div>
 
-          <div className="health-coach-program-hint surface-glass" style={{ marginTop: 20 }}>
-            <div className="panel-title" style={{ marginBottom: 8 }}>
-              <span className="title">Programs from Coach</span>
-            </div>
-            <p className="settings-hint" style={{ margin: 0 }}>
-              When Coach suggests a workout program, open the <strong>Coach</strong> tab and tap <strong>Approve</strong> — it is saved to{" "}
-              <strong>My programs</strong> here automatically (no copy-paste).
-            </p>
-          </div>
-
           <div className="panel-title health-week-program-title" style={{ marginTop: 22 }}>
             <span className="title">Weekly routine order</span>
           </div>
@@ -927,13 +904,6 @@ export function HealthPage({
               <option value="shuffle">Shuffle (random from this list each time)</option>
             </select>
           </label>
-          <p className="settings-hint">
-            Used when a task uses <strong>next in weekly routine</strong> or <strong>auto</strong> and these programs are set. Order is workout 1, workout 2, … for{" "}
-            <em>repeat in order</em>. Shuffle ignores order and picks at random (cursor does not advance).
-          </p>
-          <p className="settings-hint">
-            Drag order with arrows; this does not schedule times. Use Today or the calendar (under Build a program) for that.
-          </p>
           <ul className="health-routine-chips">
             {(h.weekRoutineProgramIds || []).map((pid, i) => {
               const p = selectable.find((x) => x.id === pid);
@@ -978,7 +948,6 @@ export function HealthPage({
             <button type="button" className="btn btn-sm" disabled={!(h.weekRoutineProgramIds || []).length} onClick={saveWeekBundle}>
               Save routine order as one named program (bundle)
             </button>
-            <span className="settings-hint">Uses the program name from Build a program (open the section above if needed).</span>
           </div>
 
           <div className="health-consistency surface-glass health-consistency--after-program" style={{ marginTop: 24 }}>
@@ -991,20 +960,8 @@ export function HealthPage({
             <div className="health-progress-track" role="progressbar" aria-valuenow={consistency.blendPct} aria-valuemin={0} aria-valuemax={100}>
               <div className="health-progress-fill" style={{ width: `${consistency.blendPct}%` }} />
             </div>
-            <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-              Counts days with a <strong>workout</strong> task plus completed workout tasks vs your weekly target.
-            </p>
           </div>
 
-          {!profileOk ? (
-            <p className="settings-hint" style={{ marginTop: 16 }}>
-              Add age, height, and weight in <strong>Macros</strong> to unlock the <strong>Workout</strong> task type in Today&apos;s quick add (Details).
-            </p>
-          ) : (
-            <p className="settings-hint" style={{ marginTop: 16 }}>
-              Add a task with <strong>gym</strong>, <strong>workout</strong>, or <strong>exercise</strong> in the text (or pick Workout in Details) to choose how programs attach.
-            </p>
-          )}
         </>
       ) : (
         <>
@@ -1012,9 +969,6 @@ export function HealthPage({
             <div className="panel-title" style={{ marginBottom: 8 }}>
               <span className="title">Macro tracker</span>
             </div>
-            <p className="settings-hint">
-              Pick a day; totals reset each calendar day. Log one meal at a time; everything adds up for the progress bars.
-            </p>
             <label className="quick-row">
               <span className="label">Day</span>
               <input className="input" type="date" value={macroDate} onChange={(e) => setMacroDate(e.target.value)} />
@@ -1039,15 +993,8 @@ export function HealthPage({
                   );
                 })}
               </div>
-            ) : (
-              <p className="settings-hint" style={{ marginTop: 10 }}>
-                Set targets with the calculator below, then your bars will show progress for this day.
-              </p>
-            )}
+            ) : null}
             <div className="health-meal-log-section">
-              <p className="settings-hint" style={{ marginTop: 12, marginBottom: 8 }}>
-                <strong>Add a meal</strong> (protein, carbs, fat, calories; use any fields you have)
-              </p>
               <label className="quick-row">
                 <span className="label">Meal name (optional)</span>
                 <input
@@ -1069,14 +1016,18 @@ export function HealthPage({
               <label className="health-meal-prep-toggle quick-row">
                 <span className="label">Meal prep mode</span>
                 <span className="health-meal-prep-toggle-inner">
-                  <input type="checkbox" checked={mealPrepMode} onChange={(e) => setMealPrepMode(e.target.checked)} />
-                  <span className="settings-hint">Log this meal on every day you select (same macros). Handy when you batch-cook; other days you only log snacks or missed meals.</span>
+                  <input
+                    type="checkbox"
+                    checked={mealPrepMode}
+                    onChange={(e) => setMealPrepMode(e.target.checked)}
+                    title="Log this meal on every selected day (same macros)"
+                  />
                 </span>
               </label>
               {mealPrepMode ? (
                 <div className="health-meal-prep-days" role="group" aria-label="Days to log this meal">
-                  <span className="settings-hint" style={{ display: "block", marginBottom: 6 }}>
-                    Week of selected day (tap days):
+                  <span className="health-subline" style={{ display: "block", marginBottom: 6 }}>
+                    Week of selected day
                   </span>
                   <div className="health-meal-prep-chips">
                     {macroWeekDays.map(({ label, dayKey }) => (
@@ -1116,7 +1067,6 @@ export function HealthPage({
                 <button type="button" className="btn btn-primary" onClick={saveMealEntry}>
                   Save meal
                 </button>
-                <span className="settings-hint">Clears the form so you can log the next meal right away.</span>
               </div>
             </div>
             {macroDay.meals?.length ? (
@@ -1126,11 +1076,11 @@ export function HealthPage({
                     <div>
                       <strong>{m.label || "Meal"}</strong>
                       {m.food ? (
-                        <div className="settings-hint" style={{ marginTop: 4 }}>
+                        <div className="health-subline">
                           {m.food}
                         </div>
                       ) : null}
-                      <div className="settings-hint" style={{ marginTop: 4 }}>
+                      <div className="health-subline">
                         P {m.protein}g · C {m.carbs}g · F {m.fat}g · {m.calories} kcal
                       </div>
                     </div>
@@ -1141,9 +1091,9 @@ export function HealthPage({
                 ))}
               </ul>
             ) : (
-              <p className="settings-hint" style={{ marginTop: 10 }}>
-                No meals logged for this day yet.
-              </p>
+              <div className="empty" style={{ marginTop: 10 }}>
+                No meals for this day.
+              </div>
             )}
           </div>
 
@@ -1165,15 +1115,12 @@ export function HealthPage({
                 </span>
               </button>
               {macroTargetsApplied && !macroCalcExpanded ? (
-                <p className="settings-hint health-macro-calc-compact-meta">
+                <p className="health-subline health-macro-calc-compact-meta">
                   Targets: {targets.calories} kcal · P{targets.proteinG} C{targets.carbsG} F{targets.fatG}
                 </p>
               ) : null}
             </div>
             <div id="health-macro-calc-body" className={macroCalcExpanded ? "health-macro-calc-body" : "health-macro-calc-body health-macro-calc-body--hidden"}>
-              <p className="settings-hint" style={{ marginTop: 4 }}>
-                Mifflin–St Jeor × activity, adjusted for your goal. Apply to set daily targets for the tracker above.
-              </p>
               <div className="health-calc-grid">
                 <label className="quick-row">
                   <span className="label">Age</span>
@@ -1198,7 +1145,7 @@ export function HealthPage({
                   <span className="label">Height</span>
                   <div className="health-imperial-row">
                     <label className="health-imperial-field">
-                      <span className="settings-hint">Feet</span>
+                      <span className="health-subline">Feet</span>
                       <input
                         className="input"
                         type="number"
@@ -1212,7 +1159,7 @@ export function HealthPage({
                       />
                     </label>
                     <label className="health-imperial-field">
-                      <span className="settings-hint">Inches</span>
+                      <span className="health-subline">Inches</span>
                       <input
                         className="input"
                         type="number"
@@ -1227,8 +1174,8 @@ export function HealthPage({
                     </label>
                   </div>
                   {h.profile.heightCm ? (
-                    <span className="settings-hint" style={{ marginTop: 6, display: "block" }}>
-                      Stored as ~{h.profile.heightCm} cm for calculations.
+                    <span className="health-subline" style={{ marginTop: 6, display: "block" }}>
+                      ~{h.profile.heightCm} cm stored
                     </span>
                   ) : null}
                 </div>
@@ -1245,8 +1192,8 @@ export function HealthPage({
                     placeholder="e.g. 165"
                   />
                   {h.profile.weightKg ? (
-                    <span className="settings-hint" style={{ marginTop: 6, display: "block" }}>
-                      ~{Math.round(h.profile.weightKg * 10) / 10} kg internally.
+                    <span className="health-subline" style={{ marginTop: 6, display: "block" }}>
+                      ~{Math.round(h.profile.weightKg * 10) / 10} kg stored
                     </span>
                   ) : null}
                 </label>
@@ -1276,11 +1223,7 @@ export function HealthPage({
                   Targets: <strong>{targets.calories}</strong> kcal · P <strong>{targets.proteinG}</strong>g · C <strong>{targets.carbsG}</strong>g · F{" "}
                   <strong>{targets.fatG}</strong>g
                 </p>
-              ) : (
-                <p className="settings-hint" style={{ marginTop: 12 }}>
-                  Fill age, height, weight, then apply.
-                </p>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -1301,8 +1244,8 @@ export function HealthPage({
                 placeholder="e.g. 150"
               />
               {h.profile.goalWeightKg ? (
-                <span className="settings-hint" style={{ marginTop: 6, display: "block" }}>
-                  ~{Math.round(h.profile.goalWeightKg * 10) / 10} kg internally.
+                <span className="health-subline" style={{ marginTop: 6, display: "block" }}>
+                  ~{Math.round(h.profile.goalWeightKg * 10) / 10} kg stored
                 </span>
               ) : null}
             </label>
@@ -1339,15 +1282,11 @@ export function HealthPage({
                 <div className="health-progress-track" role="progressbar" aria-valuenow={weightBarPct}>
                   <div className="health-progress-fill health-progress-fill-goal" style={{ width: `${weightBarPct}%` }} />
                 </div>
-                <p className="settings-hint" style={{ marginTop: 6 }}>
-                  Progress toward goal {formatWeightLbFromKg(goalW)} lb (latest log: {formatWeightLbFromKg(lastWeight)} lb).
+                <p className="health-subline" style={{ marginTop: 6 }}>
+                  Goal {formatWeightLbFromKg(goalW)} lb · latest {formatWeightLbFromKg(lastWeight)} lb
                 </p>
               </div>
-            ) : (
-              <p className="settings-hint" style={{ marginTop: 8 }}>
-                Set a goal weight and log entries to see a gentle progress bar.
-              </p>
-            )}
+            ) : null}
             {(h.weightLog || []).length > 0 && (
               <ul className="health-weight-log">
                 {[...(h.weightLog || [])]
@@ -1368,7 +1307,6 @@ export function HealthPage({
         <button type="button" className="btn btn-primary health-overview-btn" onClick={() => setMacroOverviewOpen(true)}>
           Macro overview
         </button>
-        <span className="settings-hint health-overview-hint">Daily meal totals across past weeks</span>
       </div>
 
       {macroOverviewOpen ? (
@@ -1388,10 +1326,9 @@ export function HealthPage({
                 <CloseIcon style={{ width: 22, height: 22 }} />
               </button>
             </div>
-            <p className="settings-hint">Each row is the sum of all meals saved that day. Change day in Macros to log or edit a specific date.</p>
             {macroOverviewRows.length === 0 ? (
-              <p className="settings-hint" style={{ marginTop: 12 }}>
-                No logged days yet. Open <strong>Macros</strong> and use <strong>Save meal</strong> to start.
+              <p className="empty" style={{ marginTop: 12 }}>
+                No logged days yet.
               </p>
             ) : (
               <div className="health-overview-table-wrap">

@@ -1,5 +1,6 @@
 import type { CoachIntelligenceSnapshot } from "./types";
 import type { PatternShape, TaskLite } from "./intelligence";
+import type { CoachContext } from "./coachContext";
 import { normalizeTimeKey, pickInsertionHourKey } from "./taskInsertion";
 import { COACH_SUGGESTION_SOURCE, type CoachSuggestionV2, type NormalizedCoachResult } from "./types";
 
@@ -106,8 +107,9 @@ export function generateCoachV2Fallback(input: {
   categories: string[];
   todayHours: Record<string, unknown>;
   intelligence: CoachIntelligenceSnapshot;
+  coachContext?: CoachContext | null;
 }): NormalizedCoachResult {
-  const { emotionalState, completed, total, tasks, timeOfDay, intelligence } = input;
+  const { emotionalState, completed, total, tasks, timeOfDay, intelligence, coachContext } = input;
   const heavyUndone = tasks.filter((t) => !t.done && t.energyLevel === "HEAVY").length;
   const sortedHours = [...new Set(tasks.map((t) => t.hour).filter(Boolean))].sort();
 
@@ -123,10 +125,21 @@ export function generateCoachV2Fallback(input: {
         : "Tradeoff: keep one heavy, shrink one, or add a buffer between two.",
     ];
   } else if (emotionalState === "drained") {
-    message =
-      completed === 0
-        ? `${total} task${total === 1 ? "" : "s"} on the board, none checked yet; that often reads as thin fuel, not lack of care.`
-        : `${completed} of ${total} moved; quiet progress still shifts the shape of the day.`;
+    const onPaceMorning =
+      coachContext?.today?.isOnPace &&
+      coachContext.timeOfDay === "morning" &&
+      completed > 0 &&
+      completed <= 2 &&
+      total > 0;
+    if (onPaceMorning) {
+      message =
+        "So far today looks on pace for the morning: a small number of checkoffs is normal before most of your blocks run, especially with nothing overdue yet.";
+    } else {
+      message =
+        completed === 0
+          ? `${total} task${total === 1 ? "" : "s"} on the board, none checked yet; that often reads as thin fuel, not lack of care.`
+          : `${completed} of ${total} moved; quiet progress still shifts the shape of the day.`;
+    }
     highlights = ["Pick one visible 5-minute starter; completion is optional.", `Current band: ${timeOfDay}.`];
   } else if (emotionalState === "avoidant") {
     message =

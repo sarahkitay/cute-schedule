@@ -216,6 +216,22 @@ export function dayScheduleProgress(days, dayKey, subscriptions, categories) {
 }
 
 /**
+ * Flat task list for a calendar day (subscription synthetic rows included).
+ * @param {Record<string, unknown>} days
+ * @param {string} dayKey
+ * @param {unknown[]} subscriptions
+ * @param {string[]} categories
+ */
+export function listMergedTasksForDay(days, dayKey, subscriptions, categories) {
+  const dayObj = days?.[dayKey];
+  const raw = dayObj?.hours;
+  if (!raw || typeof raw !== "object") return [];
+  const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES_FALLBACK;
+  const merged = mergeSubscriptionTasksIntoHoursLocal(raw, dayKey, subscriptions, categories);
+  return allTasksInDayLocal(merged, cats);
+}
+
+/**
  * Consecutive calendar days (walking back from endDayKey) where every day that had at least one task
  * was fully checked off. Empty days before the first busy day are skipped; empty days after the streak
  * started end the streak. If endDayKey still has open tasks, counting starts from the previous day.
