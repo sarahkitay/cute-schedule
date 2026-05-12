@@ -43,6 +43,8 @@ import {
   normalizeHealth,
   normalizeNavVisibility,
   normalizeDockOrder,
+  normalizeExerciseBlock,
+  normalizeProgramRecord,
   resolveProgramForTask,
   textHintsWorkoutTask,
 } from "./health/healthModel";
@@ -2055,11 +2057,11 @@ function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError }) {
 /** Dock tabs (except Today) that can be hidden from nav - Today shows a CTA above Today's Capacity when hidden. */
 const DOCK_NAV_SETTINGS_ROWS = [
   { id: "list", label: "List" },
+  { id: "health", label: "Health" },
   { id: "monthly", label: "Monthly" },
   { id: "coach", label: "Coach (pattern insights)" },
   { id: "notes", label: "Notes" },
   { id: "finance", label: "Finance" },
-  { id: "health", label: "Health" },
 ];
 
 const DOCK_EDITOR_ICON_BY_ID = {
@@ -2168,6 +2170,7 @@ export default function App() {
 
   const [health, setHealth] = useState(() => loadHealthFromDisk());
   const [workoutProgramPicker, setWorkoutProgramPicker] = useState(null);
+  const [healthProgramBuilderScroll, setHealthProgramBuilderScroll] = useState(0);
   const [guidedWorkoutSession, setGuidedWorkoutSession] = useState(null);
 
   // Editable bedtime routine template (persisted)
@@ -3842,6 +3845,10 @@ export default function App() {
       ...(pick.workoutProgramId ? { workoutProgramId: pick.workoutProgramId } : {}),
     };
     flushSync(() => addTask(p.hourKey, p.category, p.text, p.repeat, null, ex));
+    if (pick.openHealthProgramBuilder) {
+      setTab("health");
+      setHealthProgramBuilderScroll((n) => n + 1);
+    }
     void cloudStorage.saveFullState({
       appState: appStateRef.current,
       notes,
@@ -4825,8 +4832,9 @@ export default function App() {
         </p>
         <div className="coach-v2-suggest-list">
           {suggestions.map((s) => {
-            const canAuto = s.type === "ADD_TASK" || s.type === "BREAK" || s.type === "SPLIT_TASK";
-            const whenLine = coachSuggestionWhenLine(s.hour || s.start);
+            const isWorkoutProgram = s.type === "ADD_WORKOUT_PROGRAM";
+            const canAuto = isWorkoutProgram || s.type === "ADD_TASK" || s.type === "BREAK" || s.type === "SPLIT_TASK";
+            const whenLine = isWorkoutProgram ? "Workout program (saves to Health)" : coachSuggestionWhenLine(s.hour || s.start);
             const planDayLine =
               s.weekPlanLabel ||
               (s.targetDayKey && s.targetDayKey !== tKey ? `Planned for ${s.targetDayKey}` : null);
@@ -4834,16 +4842,37 @@ export default function App() {
               <div key={s.id} className="coach-v2-card surface-glass">
                 <div className="coach-v2-eyebrow">
                   {whenLine}
-                  {planDayLine ? <span className="coach-v2-plan-day"> · {planDayLine}</span> : null}
+                  {!isWorkoutProgram && planDayLine ? <span className="coach-v2-plan-day"> · {planDayLine}</span> : null}
                 </div>
-                <div className="coach-v2-card-top">
-                  <span className="coach-v2-meta">
-                    <Pill label={s.category} />
-                    <span className="coach-v2-energy">{s.energyLevel}</span>
-                    <span className="coach-v2-time">{to12Hour(s.hour || s.start)}</span>
-                  </span>
-                </div>
+                {!isWorkoutProgram ? (
+                  <div className="coach-v2-card-top">
+                    <span className="coach-v2-meta">
+                      <Pill label={s.category} />
+                      <span className="coach-v2-energy">{s.energyLevel}</span>
+                      <span className="coach-v2-time">{to12Hour(s.hour || s.start)}</span>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="coach-v2-card-top">
+                    <span className="coach-v2-meta">
+                      <span className="coach-v2-energy">My programs</span>
+                      <span className="settings-hint" style={{ marginLeft: 8 }}>
+                        {(s.workoutProgram?.exerciseLines || []).length} moves
+                      </span>
+                    </span>
+                  </div>
+                )}
                 <div className="coach-v2-card-title">{s.title}</div>
+                {isWorkoutProgram && s.workoutProgram?.exerciseLines?.length ? (
+                  <ul className="settings-hint" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                    {s.workoutProgram.exerciseLines.slice(0, 6).map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                    {s.workoutProgram.exerciseLines.length > 6 ? (
+                      <li>+{s.workoutProgram.exerciseLines.length - 6} more</li>
+                    ) : null}
+                  </ul>
+                ) : null}
                 {s.description ? <p className="coach-v2-desc">{s.description}</p> : null}
                 <div className="coach-v2-why">
                   <div className="coach-v2-why-label">Why this fits</div>
@@ -4859,7 +4888,7 @@ export default function App() {
                       Not auto-applied
                     </button>
                   )}
-                  {canAuto ? (
+                  {canAuto && !isWorkoutProgram ? (
                     <button
                       type="button"
                       className="btn"
@@ -4888,6 +4917,35 @@ export default function App() {
   }
 
   function acceptCoachSuggestion(s, overrides = null) {
+    if (s.type === "ADD_WORKOUT_PROGRAM" && s.workoutProgram?.name && s.workoutProgram.exerciseLines?.length) {
+      const exercises = s.workoutProgram.exerciseLines
+        .map((line) => normalizeExerciseBlock({ name: String(line).trim() }))
+        .filter(Boolean);
+      if (!exercises.length) {
+        setCoachToast({ text: "That program suggestion had no exercises we could save.", kind: "info" });
+        removeCoachSuggestionById(s.id);
+        return;
+      }
+      const id = `prog-${uid()}`;
+      const rec = normalizeProgramRecord({ id, name: s.workoutProgram.name, exercises });
+      if (!rec) return;
+      setHealth((prev) => {
+        const base = normalizeHealth(prev);
+        return { ...base, programs: [...(base.programs || []), rec] };
+      });
+      setCoachLearning((prev) =>
+        recordSuggestionAccepted(prev, {
+          type: s.type,
+          category: customCategories[0] || "Work",
+          energyLevel: "MEDIUM",
+          edited: false,
+          titleLower: s.workoutProgram.name.toLowerCase(),
+        })
+      );
+      removeCoachSuggestionById(s.id);
+      setCoachToast({ text: "Program saved under Health → My programs", detail: s.workoutProgram.name, kind: "ok" });
+      return;
+    }
     const ov = overrides && typeof overrides === "object" ? overrides : {};
     const hour = normalizeTimeKey(ov.hour || s.hour || s.start || "09:00");
     const cat = customCategories.includes(ov.category || s.category)
@@ -6781,6 +6839,7 @@ export default function App() {
             guidedSession={guidedWorkoutSession}
             onClearGuidedSession={() => setGuidedWorkoutSession(null)}
             onMarkGuidedTaskDone={markGuidedTaskDone}
+            scrollToProgramBuilderSignal={healthProgramBuilderScroll}
           />
         ) : tab === "finance" ? (
           <section className="panel finance-panel surface-glass section-finance scroll-reveal">

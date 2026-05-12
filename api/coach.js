@@ -357,7 +357,7 @@ Give a brief check-in on today's schedule: name what the data suggests about loa
 
 ${replyDirective}
 
-Return JSON EXACTLY in this schema (Coach V2):
+Return JSON EXACTLY in this schema (Coach V2). When you propose a full workout the user should keep in their library (multi-move split), use suggestion type ADD_WORKOUT_PROGRAM with "name" and "exercises" (array of strings, one exercise per line, optional sets in the text). The app saves it to Health when they tap Approve. Use ADD_TASK for a single scheduled workout block on the calendar.
 {
   "message": "${hasConv || hasUserQuestion ? "3-5 sentences: open with observation OR reframing (never banned openers). Then mechanism in plain language, then scheduling moves (move/shrink/swap/buffer/remove) grounded in their JSON." : "2-4 sentences: attune + one clear scheduling angle from their data"}",
   "insight": "one crisp observation tied to their data, or null",
@@ -378,6 +378,14 @@ Return JSON EXACTLY in this schema (Coach V2):
       "confidence": 0.82,
       "requiresApproval": true,
       "targetTaskId": null
+    },
+    {
+      "type": "ADD_WORKOUT_PROGRAM",
+      "name": "Short program title",
+      "reason": "why this split fits them",
+      "exercises": ["Exercise one 3x10", "Exercise two 3x12"],
+      "requiresApproval": true,
+      "confidence": 0.8
     }
   ],
   "ignoredMonthlies": [{"id":"optional","text":"..."}],

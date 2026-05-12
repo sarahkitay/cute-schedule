@@ -10,7 +10,7 @@ export const DEFAULT_NAV_VISIBILITY = Object.freeze({
   coach: true,
   notes: true,
   finance: true,
-  health: false,
+  health: true,
 });
 
 export function normalizeNavVisibility(raw) {
@@ -23,8 +23,8 @@ export function normalizeNavVisibility(raw) {
   return out;
 }
 
-/** Bottom dock order for every tab except Today (Today is always first). */
-export const DOCK_ORDERABLE_IDS = Object.freeze(["list", "monthly", "coach", "notes", "finance", "health"]);
+/** Bottom dock order for every tab except Today (Today is always first). Health defaults early so it stays on the bar; users can hide it to show the Today home card instead. */
+export const DOCK_ORDERABLE_IDS = Object.freeze(["list", "health", "monthly", "coach", "notes", "finance"]);
 
 export function normalizeDockOrder(raw) {
   const defaults = [...DOCK_ORDERABLE_IDS];
@@ -132,6 +132,8 @@ export function createDefaultHealth() {
     programs: [],
     weekRoutineProgramIds: [],
     weekRoutineCursor: 0,
+    /** "queue" = repeat weekly list in order (workout 1 → 2 → 3…); "shuffle" = random pick from that list each time. */
+    workoutRotationMode: "queue",
     weekRepeatEnabled: false,
     weekRepeatTemplate: null,
     workoutProgress: {},
@@ -226,6 +228,7 @@ export function normalizeHealth(raw) {
       typeof raw.weekRoutineCursor === "number" && Number.isFinite(raw.weekRoutineCursor)
         ? Math.max(0, Math.round(raw.weekRoutineCursor))
         : 0,
+    workoutRotationMode: raw.workoutRotationMode === "shuffle" ? "shuffle" : "queue",
     weekRepeatEnabled: raw.weekRepeatEnabled === true,
     weekRepeatTemplate:
       raw.weekRepeatTemplate && typeof raw.weekRepeatTemplate === "object"
@@ -493,6 +496,12 @@ export function resolveProgramForTask(health, task) {
     return p && p.exercises?.length;
   });
   if (valid.length > 0) {
+    const rotation = h.workoutRotationMode === "shuffle" ? "shuffle" : "queue";
+    if (rotation === "shuffle") {
+      const idx = Math.floor(Math.random() * valid.length);
+      const p = getProgramById(h, valid[idx]);
+      return { program: p, advanceQueue: false };
+    }
     const cur = Number(h.weekRoutineCursor) || 0;
     const idx = ((cur % valid.length) + valid.length) % valid.length;
     const p = getProgramById(h, valid[idx]);

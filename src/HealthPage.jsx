@@ -253,6 +253,8 @@ export function HealthPage({
   guidedSession = null,
   onClearGuidedSession,
   onMarkGuidedTaskDone,
+  /** Increment from parent to scroll the program builder into view (e.g. after adding a gym task). */
+  scrollToProgramBuilderSignal = 0,
 }) {
   const h = useMemo(() => normalizeHealth(health), [health]);
   const [macroDate, setMacroDate] = useState(() => realTodayKey);
@@ -269,9 +271,8 @@ export function HealthPage({
   const [draftExSets, setDraftExSets] = useState("");
   const [draftExWeight, setDraftExWeight] = useState("");
   const [editingProgramId, setEditingProgramId] = useState(null);
-  const [pasteName, setPasteName] = useState("");
-  const [pasteBody, setPasteBody] = useState("");
   const [routineAddId, setRoutineAddId] = useState("");
+  const [buildProgramOpen, setBuildProgramOpen] = useState(false);
   const [mealLabel, setMealLabel] = useState("");
   const [mealFood, setMealFood] = useState("");
   const [mealPrepMode, setMealPrepMode] = useState(false);
@@ -313,6 +314,24 @@ export function HealthPage({
   useEffect(() => {
     if (guidedSession?.exercises?.length) setHealthTab("workouts");
   }, [guidedSession?.taskId, guidedSession?.programId, guidedSession?.exercises?.length]);
+
+  const handledProgramBuilderScroll = useRef(0);
+  useEffect(() => {
+    if (!scrollToProgramBuilderSignal) return;
+    setHealthTab("workouts");
+    setBuildProgramOpen(true);
+  }, [scrollToProgramBuilderSignal]);
+
+  useEffect(() => {
+    if (healthTab !== "workouts") return;
+    const sig = scrollToProgramBuilderSignal;
+    if (!sig || sig <= handledProgramBuilderScroll.current) return;
+    handledProgramBuilderScroll.current = sig;
+    const id = requestAnimationFrame(() => {
+      document.getElementById("health-build-program")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [healthTab, scrollToProgramBuilderSignal]);
 
   useEffect(() => {
     const { feet, inches } = cmToFeetInches(h.profile.heightCm);
@@ -549,22 +568,11 @@ export function HealthPage({
     clearBuilder();
   }
 
-  function savePasteProgram() {
-    const name = pasteName.trim();
-    const lines = String(pasteBody || "")
-      .split(/\n+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-    if (!name || !lines.length) return;
-    const id = newId("prog");
-    const rec = normalizeProgramRecord({ id, name, exercises: lines });
-    if (!rec) return;
-    setHealth((prev) => {
-      const base = normalizeHealth(prev);
-      return { ...base, programs: [...(base.programs || []), rec] };
-    });
-    setPasteName("");
-    setPasteBody("");
+  function patchRotationMode(mode) {
+    setHealth((prev) => ({
+      ...normalizeHealth(prev),
+      workoutRotationMode: mode === "shuffle" ? "shuffle" : "queue",
+    }));
   }
 
   const targets = h.macroTargets;
@@ -716,190 +724,129 @@ export function HealthPage({
 
       {healthTab === "workouts" ? (
         <>
-          <div className="health-consistency surface-glass health-consistency--after-program">
-            <div className="health-consistency-head">
-              <span className="title">Workout rhythm this week</span>
-              <span className="health-consistency-meta">
-                {consistency.scheduleDays}/7 days scheduled · {consistency.completed}/{consistency.target} completed
-              </span>
-            </div>
-            <div className="health-progress-track" role="progressbar" aria-valuenow={consistency.blendPct} aria-valuemin={0} aria-valuemax={100}>
-              <div className="health-progress-fill" style={{ width: `${consistency.blendPct}%` }} />
-            </div>
-            <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-              Counts days with a <strong>workout</strong> task plus completed workout tasks vs your weekly target.
-            </p>
-          </div>
-
-          {onOpenHealthCalendar ? (
-            <div className="health-calendar-open-block" style={{ marginTop: 10 }}>
-              <button type="button" className="btn btn-sm" onClick={() => onOpenHealthCalendar(realTodayKey)}>
-                Open full calendar
-              </button>
-              <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-                Schedule one-off or repeating gym times from there.
+          <details
+            id="health-build-program"
+            className="health-build-program-details"
+            open={buildProgramOpen}
+            onToggle={(e) => setBuildProgramOpen(e.target.open)}
+          >
+            <summary className="health-build-program-summary">
+              {editingProgramId ? "Edit program" : "Build a program"}
+            </summary>
+            <div className="health-build-program-panel">
+              <p className="settings-hint">
+                Add <strong>one exercise at a time</strong> (name, sets or reps, weight or load). Save to your collection, then link tasks from Today.
               </p>
-            </div>
-          ) : null}
-
-          <div className="panel-title health-week-program-title" style={{ marginTop: 18 }}>
-            <span className="title">Weekly routine order</span>
-          </div>
-          <p className="settings-hint">
-            Used when a task is set to <strong>next in weekly routine</strong>. Drag order with arrows; this does not schedule times. Use Today or the
-            calendar for that.
-          </p>
-          <ul className="health-routine-chips">
-            {(h.weekRoutineProgramIds || []).map((pid, i) => {
-              const p = selectable.find((x) => x.id === pid);
-              return (
-                <li key={`${pid}-${i}`} className="health-routine-chip surface-glass">
-                  <span className="health-routine-chip-label">{p?.name || pid}</span>
-                  <span className="health-routine-chip-actions">
-                    <button type="button" className="btn btn-sm" aria-label="Move up" disabled={i <= 0} onClick={() => moveRoutineSlot(i, -1)}>
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      aria-label="Move down"
-                      disabled={i >= (h.weekRoutineProgramIds || []).length - 1}
-                      onClick={() => moveRoutineSlot(i, 1)}
-                    >
-                      ↓
-                    </button>
-                    <button type="button" className="btn btn-sm btn-ghost" onClick={() => removeRoutineSlot(i)}>
-                      Remove
-                    </button>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="health-routine-add-row">
-            <select className="input" value={routineAddId} onChange={(e) => setRoutineAddId(e.target.value)} aria-label="Add program to routine">
-              <option value="">Add program to rotation…</option>
-              {selectable.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            <button type="button" className="btn btn-primary" disabled={!routineAddId} onClick={() => addProgramToRoutine(routineAddId)}>
-              Add
-            </button>
-          </div>
-          <div className="health-save-bundle-row">
-            <button type="button" className="btn btn-sm" disabled={!(h.weekRoutineProgramIds || []).length} onClick={saveWeekBundle}>
-              Save routine order as one named program (bundle)
-            </button>
-            <span className="settings-hint">Uses the name in the builder below as the bundle title.</span>
-          </div>
-
-          <div className="panel-title health-week-program-title" style={{ marginTop: 22 }}>
-            <span className="title">{editingProgramId ? "Edit program" : "Build a program"}</span>
-          </div>
-          <p className="settings-hint">
-            Add <strong>one exercise at a time</strong> (name, sets or reps, weight or load). Save to your collection, then link tasks from Today.
-          </p>
-          <label className="quick-row">
-            <span className="label">Program name</span>
-            <input className="input" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="e.g. Push day A" />
-          </label>
-          <div className="health-draft-exercise-inputs surface-glass">
-            <label className="quick-row health-draft-ex-field">
-              <span className="label">Exercise name</span>
-              <input
-                className="input"
-                value={draftExName}
-                onChange={(e) => setDraftExName(e.target.value)}
-                placeholder="e.g. Bench press"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addDraftLine();
-                  }
-                }}
-              />
-            </label>
-            <label className="quick-row health-draft-ex-field">
-              <span className="label">Sets / reps</span>
-              <input
-                className="input"
-                value={draftExSets}
-                onChange={(e) => setDraftExSets(e.target.value)}
-                placeholder="e.g. 4×6-8"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addDraftLine();
-                  }
-                }}
-              />
-            </label>
-            <label className="quick-row health-draft-ex-field">
-              <span className="label">Weight / load</span>
-              <input
-                className="input"
-                value={draftExWeight}
-                onChange={(e) => setDraftExWeight(e.target.value)}
-                placeholder="e.g. 135 lb"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addDraftLine();
-                  }
-                }}
-              />
-            </label>
-            <div className="health-draft-ex-add-wrap">
-              <button type="button" className="btn btn-primary" onClick={addDraftLine}>
-                Add exercise
-              </button>
-            </div>
-          </div>
-          <ol className="health-draft-exercises">
-            {draftExercises.map((ex, i) => (
-              <li key={`${i}-${formatExerciseBlockLine(ex)}`} className="health-draft-exercise surface-glass">
-                <div className="health-draft-exercise-text">
-                  <div className="health-draft-ex-line">
-                    <strong>{ex.name || "Exercise"}</strong>
-                  </div>
-                  {(ex.setsReps || ex.weightNote) && (
-                    <div className="settings-hint" style={{ marginTop: 4 }}>
-                      {[ex.setsReps, ex.weightNote].filter(Boolean).join(" · ")}
-                    </div>
-                  )}
+              <label className="quick-row">
+                <span className="label">Program name</span>
+                <input className="input" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="e.g. Push day A" />
+              </label>
+              <div className="health-draft-exercise-inputs surface-glass">
+                <label className="quick-row health-draft-ex-field">
+                  <span className="label">Exercise name</span>
+                  <input
+                    className="input"
+                    value={draftExName}
+                    onChange={(e) => setDraftExName(e.target.value)}
+                    placeholder="e.g. Bench press"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addDraftLine();
+                      }
+                    }}
+                  />
+                </label>
+                <label className="quick-row health-draft-ex-field">
+                  <span className="label">Sets / reps</span>
+                  <input
+                    className="input"
+                    value={draftExSets}
+                    onChange={(e) => setDraftExSets(e.target.value)}
+                    placeholder="e.g. 4×6-8"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addDraftLine();
+                      }
+                    }}
+                  />
+                </label>
+                <label className="quick-row health-draft-ex-field">
+                  <span className="label">Weight / load</span>
+                  <input
+                    className="input"
+                    value={draftExWeight}
+                    onChange={(e) => setDraftExWeight(e.target.value)}
+                    placeholder="e.g. 135 lb"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addDraftLine();
+                      }
+                    }}
+                  />
+                </label>
+                <div className="health-draft-ex-add-wrap">
+                  <button type="button" className="btn btn-primary" onClick={addDraftLine}>
+                    Add exercise
+                  </button>
                 </div>
-                <span className="health-draft-exercise-actions">
-                  <button type="button" className="btn btn-sm" disabled={i <= 0} onClick={() => moveDraftLine(i, -1)}>
-                    ↑
+              </div>
+              <ol className="health-draft-exercises">
+                {draftExercises.map((ex, i) => (
+                  <li key={`${i}-${formatExerciseBlockLine(ex)}`} className="health-draft-exercise surface-glass">
+                    <div className="health-draft-exercise-text">
+                      <div className="health-draft-ex-line">
+                        <strong>{ex.name || "Exercise"}</strong>
+                      </div>
+                      {(ex.setsReps || ex.weightNote) && (
+                        <div className="settings-hint" style={{ marginTop: 4 }}>
+                          {[ex.setsReps, ex.weightNote].filter(Boolean).join(" · ")}
+                        </div>
+                      )}
+                    </div>
+                    <span className="health-draft-exercise-actions">
+                      <button type="button" className="btn btn-sm" disabled={i <= 0} onClick={() => moveDraftLine(i, -1)}>
+                        ↑
+                      </button>
+                      <button type="button" className="btn btn-sm" disabled={i >= draftExercises.length - 1} onClick={() => moveDraftLine(i, 1)}>
+                        ↓
+                      </button>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => removeDraftLine(i)}>
+                        Remove
+                      </button>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <div className="health-draft-actions">
+                <button type="button" className="btn btn-primary" disabled={!draftName.trim() || !draftExercises.length} onClick={saveDraftProgram}>
+                  {editingProgramId ? "Update program" : "Save to my programs"}
+                </button>
+                <button type="button" className="btn" onClick={clearBuilder}>
+                  Clear builder
+                </button>
+              </div>
+              {onOpenHealthCalendar ? (
+                <div className="health-calendar-open-block" style={{ marginTop: 16 }}>
+                  <button type="button" className="btn btn-sm" onClick={() => onOpenHealthCalendar(realTodayKey)}>
+                    Open full calendar
                   </button>
-                  <button type="button" className="btn btn-sm" disabled={i >= draftExercises.length - 1} onClick={() => moveDraftLine(i, 1)}>
-                    ↓
-                  </button>
-                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => removeDraftLine(i)}>
-                    Remove
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ol>
-          <div className="health-draft-actions">
-            <button type="button" className="btn btn-primary" disabled={!draftName.trim() || !draftExercises.length} onClick={saveDraftProgram}>
-              {editingProgramId ? "Update program" : "Save to my programs"}
-            </button>
-            <button type="button" className="btn" onClick={clearBuilder}>
-              Clear builder
-            </button>
-          </div>
+                  <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                    Schedule one-off or repeating gym times from there.
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </details>
 
-          <div className="health-saved-routines" style={{ marginTop: 28 }}>
+          <div className="health-saved-routines" style={{ marginTop: 22 }}>
             <div className="panel-title" style={{ marginBottom: 8 }}>
               <span className="title">My programs</span>
             </div>
             <p className="settings-hint" style={{ marginTop: 0 }}>
-              Sample programs are listed with yours. Save a copy to customize, or build your own below. You can also paste from Coach.
+              Sample programs are listed with yours. Save a copy to customize, or use <strong>Build a program</strong> above. Delete any of your saved programs you no longer want.
             </p>
             <ul className="health-program-cards">
               {displayPrograms.map((p) => {
@@ -955,19 +902,98 @@ export function HealthPage({
             </ul>
           </div>
 
-          <div className="health-coach-paste surface-glass" style={{ marginTop: 20 }}>
+          <div className="health-coach-program-hint surface-glass" style={{ marginTop: 20 }}>
             <div className="panel-title" style={{ marginBottom: 8 }}>
-              <span className="title">From Coach (paste)</span>
+              <span className="title">Programs from Coach</span>
             </div>
-            <p className="settings-hint">If Coach writes a program you like, paste one exercise per line and save it here.</p>
-            <label className="quick-row">
-              <span className="label">Name</span>
-              <input className="input" value={pasteName} onChange={(e) => setPasteName(e.target.value)} placeholder="Coach program - Jan" />
-            </label>
-            <textarea className="input health-paste-area" rows={5} value={pasteBody} onChange={(e) => setPasteBody(e.target.value)} placeholder={"Ball slams 3×10\nLeg raises…"} />
-            <button type="button" className="btn-primary" style={{ marginTop: 10 }} disabled={!pasteName.trim() || !pasteBody.trim()} onClick={savePasteProgram}>
-              Save pasted program
+            <p className="settings-hint" style={{ margin: 0 }}>
+              When Coach suggests a workout program, open the <strong>Coach</strong> tab and tap <strong>Approve</strong> — it is saved to{" "}
+              <strong>My programs</strong> here automatically (no copy-paste).
+            </p>
+          </div>
+
+          <div className="panel-title health-week-program-title" style={{ marginTop: 22 }}>
+            <span className="title">Weekly routine order</span>
+          </div>
+          <label className="quick-row">
+            <span className="label">How the next workout is picked</span>
+            <select
+              className="input"
+              value={h.workoutRotationMode === "shuffle" ? "shuffle" : "queue"}
+              onChange={(e) => patchRotationMode(e.target.value)}
+              aria-label="Workout rotation mode"
+            >
+              <option value="queue">Repeat in order (workout 1 → 2 → 3 → … then back to 1)</option>
+              <option value="shuffle">Shuffle (random from this list each time)</option>
+            </select>
+          </label>
+          <p className="settings-hint">
+            Used when a task uses <strong>next in weekly routine</strong> or <strong>auto</strong> and these programs are set. Order is workout 1, workout 2, … for{" "}
+            <em>repeat in order</em>. Shuffle ignores order and picks at random (cursor does not advance).
+          </p>
+          <p className="settings-hint">
+            Drag order with arrows; this does not schedule times. Use Today or the calendar (under Build a program) for that.
+          </p>
+          <ul className="health-routine-chips">
+            {(h.weekRoutineProgramIds || []).map((pid, i) => {
+              const p = selectable.find((x) => x.id === pid);
+              return (
+                <li key={`${pid}-${i}`} className="health-routine-chip surface-glass">
+                  <span className="health-routine-chip-label">{p?.name || pid}</span>
+                  <span className="health-routine-chip-actions">
+                    <button type="button" className="btn btn-sm" aria-label="Move up" disabled={i <= 0} onClick={() => moveRoutineSlot(i, -1)}>
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      aria-label="Move down"
+                      disabled={i >= (h.weekRoutineProgramIds || []).length - 1}
+                      onClick={() => moveRoutineSlot(i, 1)}
+                    >
+                      ↓
+                    </button>
+                    <button type="button" className="btn btn-sm btn-ghost" onClick={() => removeRoutineSlot(i)}>
+                      Remove
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="health-routine-add-row">
+            <select className="input" value={routineAddId} onChange={(e) => setRoutineAddId(e.target.value)} aria-label="Add program to routine">
+              <option value="">Add program to rotation…</option>
+              {selectable.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn btn-primary" disabled={!routineAddId} onClick={() => addProgramToRoutine(routineAddId)}>
+              Add
             </button>
+          </div>
+          <div className="health-save-bundle-row">
+            <button type="button" className="btn btn-sm" disabled={!(h.weekRoutineProgramIds || []).length} onClick={saveWeekBundle}>
+              Save routine order as one named program (bundle)
+            </button>
+            <span className="settings-hint">Uses the program name from Build a program (open the section above if needed).</span>
+          </div>
+
+          <div className="health-consistency surface-glass health-consistency--after-program" style={{ marginTop: 24 }}>
+            <div className="health-consistency-head">
+              <span className="title">Workout rhythm this week</span>
+              <span className="health-consistency-meta">
+                {consistency.scheduleDays}/7 days scheduled · {consistency.completed}/{consistency.target} completed
+              </span>
+            </div>
+            <div className="health-progress-track" role="progressbar" aria-valuenow={consistency.blendPct} aria-valuemin={0} aria-valuemax={100}>
+              <div className="health-progress-fill" style={{ width: `${consistency.blendPct}%` }} />
+            </div>
+            <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+              Counts days with a <strong>workout</strong> task plus completed workout tasks vs your weekly target.
+            </p>
           </div>
 
           {!profileOk ? (

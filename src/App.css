@@ -6879,6 +6879,28 @@ html[data-theme="dark"] .health-exercise-row {
 .workout-picker-modal {
   max-width: min(440px, 94vw);
 }
+.workout-picker-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.workout-picker-quick-btn {
+  width: 100%;
+  justify-content: center;
+}
+.workout-picker-quick-hint {
+  margin: 0 0 14px;
+  font-size: 13px;
+}
+.workout-picker-advanced-label {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-soft);
+}
 .workout-picker-modes {
   display: flex;
   flex-direction: column;
@@ -6919,6 +6941,42 @@ html[data-theme="dark"] .health-exercise-row {
   max-width: min(220px, 72vw);
   padding: 6px 10px;
   font-size: 14px;
+}
+
+.health-build-program-details {
+  margin-top: 12px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--theme-primary) 6%, var(--surface-solid));
+  overflow: hidden;
+}
+.health-build-program-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px 16px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.health-build-program-summary::-webkit-details-marker {
+  display: none;
+}
+.health-build-program-summary::after {
+  content: "▾";
+  font-size: 12px;
+  color: var(--text-soft);
+  transition: transform var(--transition-fast);
+}
+.health-build-program-details[open] .health-build-program-summary::after {
+  transform: rotate(-180deg);
+}
+.health-build-program-panel {
+  padding: 0 16px 16px;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .health-meal-save-row {

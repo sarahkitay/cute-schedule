@@ -4,11 +4,18 @@ export type CoachEnergy = "LIGHT" | "MEDIUM" | "HEAVY";
 
 export type CoachSuggestionType =
   | "ADD_TASK"
+  | "ADD_WORKOUT_PROGRAM"
   | "REORDER"
   | "TIMEBOX"
   | "BREAK"
   | "SPLIT_TASK"
   | "DEFER";
+
+/** When type is ADD_WORKOUT_PROGRAM, Approve saves to Health → My programs. */
+export type CoachWorkoutProgramDraft = {
+  name: string;
+  exerciseLines: string[];
+};
 
 export type CoachRecurrencePattern = "none" | "daily" | "weekly";
 
@@ -37,6 +44,7 @@ export interface CoachSuggestionV2 {
   /** Convenience for schedule keys */
   hour: string;
   targetTaskId?: string | null;
+  workoutProgram?: CoachWorkoutProgramDraft | null;
 }
 
 export interface NormalizedCoachResult {

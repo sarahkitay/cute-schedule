@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { CloseIcon } from "./Icons";
 
 /**
- * @param {{ open: boolean, taskPreview: string, programs: { id: string, name: string, exercises?: string[] }[], onCancel: () => void, onConfirm: (pick: { workoutProgramMode: 'specific'|'queue'|'auto', workoutProgramId?: string }) => void }} props
+ * @param {{ open: boolean, taskPreview: string, programs: { id: string, name: string, exercises?: string[] }[], onCancel: () => void, onConfirm: (pick: { workoutProgramMode: 'specific'|'queue'|'auto', workoutProgramId?: string, openHealthProgramBuilder?: boolean }) => void }} props
  */
 export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCancel, onConfirm }) {
   const [mode, setMode] = useState("auto");
@@ -29,6 +29,11 @@ export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCance
     onConfirm({ workoutProgramMode: "auto" });
   }
 
+  /** Add the task with auto-linking; optionally jump to Health to build a program first. */
+  function confirmAuto(openHealthProgramBuilder) {
+    onConfirm({ workoutProgramMode: "auto", openHealthProgramBuilder: openHealthProgramBuilder === true });
+  }
+
   const specificOk = mode !== "specific" || !!programId;
 
   return (
@@ -46,6 +51,16 @@ export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCance
           Task: <strong>{taskPreview || "Workout"}</strong>. Pick how we should choose the exercises when you tap{" "}
           <strong>Begin workout</strong> on the schedule.
         </p>
+        <div className="workout-picker-quick-actions">
+          <button type="button" className="btn btn-primary workout-picker-quick-btn" onClick={() => confirmAuto(false)}>
+            Skip for now
+          </button>
+          <button type="button" className="btn workout-picker-quick-btn" onClick={() => confirmAuto(true)}>
+            Create a program in Health
+          </button>
+        </div>
+        <p className="settings-hint workout-picker-quick-hint">Adds the task either way. Open Health to name exercises and save a program, or set that up later.</p>
+        <p className="workout-picker-advanced-label">Or choose how programs attach</p>
         <div className="workout-picker-modes">
           <label className="workout-picker-radio">
             <input type="radio" name="wkpm" checked={mode === "specific"} onChange={() => setMode("specific")} />
@@ -83,7 +98,7 @@ export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCance
         ) : null}
         <div className="health-workout-footer" style={{ marginTop: 16 }}>
           <button type="button" className="btn btn-primary" disabled={!specificOk} onClick={submit}>
-            Add task
+            Add with options above
           </button>
           <button type="button" className="btn" onClick={onCancel}>
             Cancel

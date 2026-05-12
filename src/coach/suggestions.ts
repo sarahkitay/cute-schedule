@@ -1,9 +1,11 @@
 import { COACH_SUGGESTION_SOURCE, type CoachEnergy, type CoachSuggestionType, type CoachSuggestionV2, type NormalizedCoachResult } from "./types";
 import { addMinutes, normalizeTimeKey, pickInsertionHourKey } from "./taskInsertion";
+import { formatExerciseBlockLine, normalizeExerciseBlock } from "../health/healthModel";
 
 const ENERGIES: CoachEnergy[] = ["LIGHT", "MEDIUM", "HEAVY"];
 const TYPES: CoachSuggestionType[] = [
   "ADD_TASK",
+  "ADD_WORKOUT_PROGRAM",
   "REORDER",
   "TIMEBOX",
   "BREAK",
@@ -45,6 +47,7 @@ function adjustSuggestionForLiveCalendarDay(
 ): CoachSuggestionV2 {
   const day = s.targetDayKey || opts.coachViewDayKey;
   if (day !== opts.realTodayKey) return s;
+  if (s.type === "ADD_WORKOUT_PROGRAM") return s;
   if (s.type !== "ADD_TASK" && s.type !== "BREAK") return s;
 
   const nowM = timeToMinutes(opts.localNowHHMM);
@@ -140,6 +143,63 @@ export function normalizeRawSuggestion(
   categories: string[],
   todayHours: Record<string, unknown>
 ): CoachSuggestionV2 | null {
+  const rawTypeUpper = String(row.type || "")
+    .trim()
+    .toUpperCase()
+    .replace(/-/g, "_");
+  if (rawTypeUpper === "ADD_WORKOUT_PROGRAM") {
+    const name = String(row.name || row.title || row.programName || "")
+      .trim()
+      .slice(0, 100);
+    const lines: string[] = [];
+    if (Array.isArray(row.exercises)) {
+      for (const ex of row.exercises) {
+        if (typeof ex === "string") {
+          const t = ex.trim();
+          if (t) lines.push(t.slice(0, 220));
+        } else if (ex && typeof ex === "object") {
+          const b = normalizeExerciseBlock(ex as Record<string, unknown>);
+          if (b) {
+            const line = formatExerciseBlockLine(b);
+            if (line) lines.push(line.slice(0, 220));
+          }
+        }
+      }
+    }
+    if (Array.isArray(row.exerciseLines)) {
+      for (const x of row.exerciseLines) {
+        const t = String(x || "").trim();
+        if (t) lines.push(t.slice(0, 220));
+      }
+    }
+    if (!name || !lines.length) return null;
+    const category = categories[0] || "Work";
+    const start = normalizeTimeKey("09:00");
+    const duration = 15;
+    return {
+      id: String(row.id || newId()),
+      type: "ADD_WORKOUT_PROGRAM",
+      title: name,
+      description: row.description != null ? String(row.description).slice(0, 400) : null,
+      reason: String(row.reason || row.why || "Coach drafted this program for you to save if you want it.").slice(0, 500),
+      category,
+      energyLevel: "MEDIUM",
+      start,
+      end: addMinutes(start, duration),
+      durationMinutes: duration,
+      recurring: false,
+      recurrencePattern: null,
+      targetDayKey: null,
+      weekPlanLabel: null,
+      confidence: clamp01(coerceNumber(row.confidence, 0.78)),
+      requiresApproval: coerceBool(row.requiresApproval, true),
+      source: COACH_SUGGESTION_SOURCE,
+      hour: pickInsertionHourKey(start, todayHours),
+      targetTaskId: null,
+      workoutProgram: { name, exerciseLines: lines },
+    };
+  }
+
   const title =
     String(row.title || row.text || row.label || "")
       .trim()
