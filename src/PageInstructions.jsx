@@ -32,7 +32,14 @@ const INSTRUCTIONS = {
       </p>
     </>
   ),
-  notes: <p>Search filters the list; add notes with the form at the top. Tap a search result to jump to that note.</p>,
+  notes: (
+    <>
+      <p>
+        Use <strong>This day</strong> for notes tied to the calendar day you have selected on Today, or <strong>All notes</strong> for workspace-wide entries. Pick a <strong>subject</strong> when adding (or change it from the ⋯ menu) and filter the list with <em>Organize by subject</em>.
+      </p>
+      <p>Search still filters the current view. Tap a search result to jump to that note.</p>
+    </>
+  ),
   finance: (
     <>
       <p>

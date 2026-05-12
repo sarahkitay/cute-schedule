@@ -123,6 +123,14 @@ function isCapacitorNativeApp() {
 
 const COACH_USER_PROFILE_KEY = "cute_schedule_coach_profile_v1";
 const NOTES_STORAGE_KEY = "cute_schedule_notes_v1";
+const NOTES_SCOPE_STORAGE_KEY = "cute_schedule_notes_scope_v1";
+/** Presets merged with workspace categories for note subjects. */
+const NOTE_SUBJECT_PRESETS = ["General", "Ideas", "Journal", "Work", "Personal", "Health", "Finance"];
+
+function getNoteDisplaySubject(n) {
+  const s = n && typeof n.subject === "string" ? n.subject.trim() : "";
+  return s || "General";
+}
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
 const HABITS_STORAGE_KEY = "cute_schedule_habits_v1";
 const ONBOARDING_DONE_KEY = "cute_schedule_onboarding_done_v1";
@@ -2412,6 +2420,17 @@ export default function App() {
   }, [routineTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [noteSearch, setNoteSearch] = useState("");
+  const [notesScope, setNotesScope] = useState(() => {
+    try {
+      const s = sessionStorage.getItem(NOTES_SCOPE_STORAGE_KEY);
+      if (s === "day" || s === "all") return s;
+    } catch {
+      /* ignore */
+    }
+    return "all";
+  });
+  const [noteSubjectFilter, setNoteSubjectFilter] = useState("");
+  const [newNoteSubject, setNewNoteSubject] = useState("General");
   const [financeQuickInput, setFinanceQuickInput] = useState("");
   const [newSavingsLabel, setNewSavingsLabel] = useState("");
   const [newSavingsAmount, setNewSavingsAmount] = useState("");
@@ -3023,6 +3042,18 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
   }, [notes]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(NOTES_SCOPE_STORAGE_KEY, notesScope);
+    } catch {
+      /* ignore */
+    }
+  }, [notesScope]);
+
+  useEffect(() => {
+    setNoteSubjectFilter("");
+  }, [notesScope]);
 
   // Request notification permission on mount
   useEffect(() => {
@@ -4534,11 +4565,62 @@ export default function App() {
   const [newNote, setNewNote] = useState("");
   const [editingNoteId, setEditingNoteId] = useState(null);
   const [editingNoteText, setEditingNoteText] = useState("");
+
+  const subjectPickerList = useMemo(() => {
+    const out = new Set(NOTE_SUBJECT_PRESETS);
+    (customCategories || []).forEach((c) => {
+      const t = String(c || "").trim();
+      if (t) out.add(t);
+    });
+    return Array.from(out).sort((a, b) => a.localeCompare(b));
+  }, [customCategories]);
+
+  const notesInScope = useMemo(() => {
+    return notes.filter((n) => {
+      if (notesScope === "day") return n.dayKey === tKey;
+      return !n.dayKey;
+    });
+  }, [notes, notesScope, tKey]);
+
+  const filteredNotes = useMemo(() => {
+    let list = notesInScope;
+    if (noteSubjectFilter.trim()) {
+      const sub = noteSubjectFilter.trim();
+      list = list.filter((n) => getNoteDisplaySubject(n) === sub);
+    }
+    if (!noteSearch.trim()) return list;
+    const searchLower = noteSearch.toLowerCase();
+    return list.filter((n) => n.text.toLowerCase().includes(searchLower));
+  }, [notesInScope, noteSubjectFilter, noteSearch]);
+
+  const noteSubjectFilterOptions = useMemo(() => {
+    const fromNotes = new Set(notesInScope.map((n) => getNoteDisplaySubject(n)));
+    subjectPickerList.forEach((s) => fromNotes.add(s));
+    return Array.from(fromNotes).sort((a, b) => a.localeCompare(b));
+  }, [notesInScope, subjectPickerList]);
+
+  const noteScopeDayLabel = useMemo(
+    () =>
+      new Date(tKey + "T12:00:00").toLocaleDateString(undefined, {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      }),
+    [tKey]
+  );
+
   function addNote(e) {
     e.preventDefault();
     const clean = normalizeText(newNote);
     if (!clean) return;
-    const note = { id: uid(), text: clean, createdAt: new Date().toISOString() };
+    const sub = (newNoteSubject || "General").trim() || "General";
+    const note = {
+      id: uid(),
+      text: clean,
+      createdAt: new Date().toISOString(),
+      dayKey: notesScope === "day" ? tKey : null,
+      subject: sub,
+    };
     setNotes((prev) => [...prev, note]);
     setNewNote("");
   }
@@ -4548,7 +4630,16 @@ export default function App() {
     const taskText = task?.text ? String(task.text).trim() : "";
     if (!taskText) return;
     const line = `From Today task (${to12Hour(hourKey)} · ${category}): ${taskText}`;
-    setNotes((prev) => [...prev, { id: uid(), text: line, createdAt: new Date().toISOString() }]);
+    setNotes((prev) => [
+      ...prev,
+      {
+        id: uid(),
+        text: line,
+        createdAt: new Date().toISOString(),
+        dayKey: tKey,
+        subject: "General",
+      },
+    ]);
   }
 
   function deleteNote(id) {
@@ -4559,11 +4650,16 @@ export default function App() {
     setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, text: newText } : n)));
   }
 
-  const filteredNotes = useMemo(() => {
-    if (!noteSearch.trim()) return notes;
-    const searchLower = noteSearch.toLowerCase();
-    return notes.filter((n) => n.text.toLowerCase().includes(searchLower));
-  }, [notes, noteSearch]);
+  function setNoteDayKey(id, dayKeyOrNull) {
+    setNotes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, dayKey: dayKeyOrNull || null } : n))
+    );
+  }
+
+  function setNoteSubject(id, subject) {
+    const s = String(subject || "").trim() || "General";
+    setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, subject: s } : n)));
+  }
 
   const noteSearchDropdownItems = useMemo(
     () => (noteSearch.trim() ? filteredNotes.slice(0, 10) : []),
@@ -4649,7 +4745,7 @@ export default function App() {
         timeOfDay,
         tasks: taskLite,
         patterns,
-        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text })),
+        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text, subject: getNoteDisplaySubject(n) })),
         learning: coachLearning,
         healthSummary: formatHealthForCoach(health),
         taskBehaviorSummary,
@@ -4668,7 +4764,11 @@ export default function App() {
         progress: prog,
         today: todayHours,
         monthly: (appState.monthly || []).map((m) => ({ id: m.id, text: m.text, done: m.done })),
-        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text, createdAt: n.createdAt })),
+        notes: (notes || []).slice(0, 50).map((n) => ({
+          text: n.text,
+          createdAt: n.createdAt,
+          subject: getNoteDisplaySubject(n),
+        })),
         categories: customCategories,
         timeOfDay,
         emotionalState,
@@ -4866,7 +4966,7 @@ export default function App() {
         timeOfDay: getTimeOfDay(),
         tasks: taskLiteCatch,
         patterns: patternsCatch,
-        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text })),
+        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text, subject: getNoteDisplaySubject(n) })),
         learning: coachLearning,
         healthSummary: formatHealthForCoach(health),
       });
@@ -6214,13 +6314,7 @@ export default function App() {
                     type="button"
                     className={`btn task-averages-open-btn ${taskAveragesOpen ? "task-averages-open-btn--open" : ""}`}
                     aria-expanded={taskAveragesOpen}
-                    onClick={() => {
-                      setTaskAveragesOpen((o) => {
-                        const next = !o;
-                        if (!next) setTaskStatsExplainOpen(false);
-                        return next;
-                      });
-                    }}
+                    onClick={() => setTaskAveragesOpen((o) => !o)}
                   >
                     {taskAveragesOpen ? "Close averages" : "Open averages"}
                   </button>
@@ -7540,6 +7634,51 @@ export default function App() {
               </div>
             </div>
 
+            <div className="health-segment-toggle notes-segment-toggle" role="tablist" aria-label="Notes scope">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={notesScope === "day"}
+                className={`health-segment-btn ${notesScope === "day" ? "health-segment-btn--on" : ""}`}
+                onClick={() => setNotesScope("day")}
+              >
+                This day
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={notesScope === "all"}
+                className={`health-segment-btn ${notesScope === "all" ? "health-segment-btn--on" : ""}`}
+                onClick={() => setNotesScope("all")}
+              >
+                All notes
+              </button>
+            </div>
+            <p className="notes-scope-hint">
+              {notesScope === "day"
+                ? `Showing notes pinned to ${noteScopeDayLabel}${tKey === realTodayKey ? " (selected calendar day)" : ""}. All notes keeps workspace-wide entries.`
+                : "Workspace-wide notes (not tied to a calendar day). Use This day for reflections or logs for the day you have selected on Today."}
+            </p>
+
+            <div className="notes-organize-row">
+              <span className="notes-organize-label" id="notes-subject-filter-label">
+                Organize by subject
+              </span>
+              <select
+                className="input"
+                aria-labelledby="notes-subject-filter-label"
+                value={noteSubjectFilter}
+                onChange={(e) => setNoteSubjectFilter(e.target.value)}
+              >
+                <option value="">All subjects</option>
+                {noteSubjectFilterOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="notes-search-wrap">
               <div className="notes-search">
                 <input
@@ -7594,12 +7733,38 @@ export default function App() {
                 aria-label="New note"
                 rows={2}
               />
-              <button className="btn btn-primary notes-add-submit" type="submit">Add</button>
+              <div className="notes-add-actions">
+                <label className="notes-add-subject-label" htmlFor="new-note-subject">
+                  Subject
+                </label>
+                <select
+                  id="new-note-subject"
+                  className="input notes-subject-select"
+                  value={newNoteSubject}
+                  onChange={(e) => setNewNoteSubject(e.target.value)}
+                  aria-label="Note subject"
+                >
+                  {subjectPickerList.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn btn-primary notes-add-submit" type="submit">
+                  Add
+                </button>
+              </div>
             </form>
 
             {filteredNotes.length === 0 ? (
               <div className="empty">
-                {noteSearch ? "No notes match your search." : "Add your first note or idea."}
+                {noteSearch
+                  ? "No notes match your search."
+                  : noteSubjectFilter
+                    ? "No notes with this subject in this view."
+                    : notesScope === "day"
+                      ? `No notes for ${noteScopeDayLabel} yet. Add one above (it will pin to this day), or switch to All notes.`
+                      : "Add your first workspace note, or switch to This day for day-specific entries."}
               </div>
             ) : (
               <ul className="list list-page-list notes-list-page">
@@ -7625,6 +7790,9 @@ export default function App() {
                           <span className="note-date note-list-date">
                             {new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                           </span>
+                          {getNoteDisplaySubject(note) !== "General" && (
+                            <span className="note-subject-badge">{getNoteDisplaySubject(note)}</span>
+                          )}
                           <span className="list-row-title note-list-text">{note.text}</span>
                         </div>
                         <div className="list-row-actions">
@@ -7896,35 +8064,80 @@ export default function App() {
                       </button>
                     </>
                   )}
-                  {secondaryListMenu.kind === "note" && (
-                    <>
-                      <button
-                        type="button"
-                        className="dropdown-item"
-                        onClick={() => {
-                          const n = notes.find((x) => x.id === secondaryListMenu.id);
-                          if (n) {
+                  {secondaryListMenu.kind === "note" && (() => {
+                    const nid = secondaryListMenu.id;
+                    const n = notes.find((x) => x.id === nid);
+                    if (!n) return null;
+                    const pinned = Boolean(n.dayKey);
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          className="dropdown-item"
+                          onClick={() => {
                             setEditingNoteId(n.id);
                             setEditingNoteText(n.text);
-                          }
-                          closeSecondary();
-                        }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        className="dropdown-item dropdown-item-danger"
-                        onClick={() => {
-                          deleteNote(secondaryListMenu.id);
-                          closeSecondary();
-                        }}
-                      >
-                        <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
-                        Delete
-                      </button>
-                    </>
-                  )}
+                            closeSecondary();
+                          }}
+                        >
+                          Edit
+                        </button>
+                        <div className="notes-menu-subject-wrap" onClick={(e) => e.stopPropagation()}>
+                          <label className="notes-menu-subject-label" htmlFor={`note-subject-${nid}`}>
+                            Subject
+                          </label>
+                          <select
+                            id={`note-subject-${nid}`}
+                            className="input notes-menu-subject-select"
+                            value={getNoteDisplaySubject(n)}
+                            onChange={(e) => {
+                              setNoteSubject(nid, e.target.value);
+                            }}
+                          >
+                            {subjectPickerList.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        {pinned ? (
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              setNoteDayKey(nid, null);
+                              closeSecondary();
+                            }}
+                          >
+                            Move to all notes
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              setNoteDayKey(nid, tKey);
+                              closeSecondary();
+                            }}
+                          >
+                            Pin to {noteScopeDayLabel}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="dropdown-item dropdown-item-danger"
+                          onClick={() => {
+                            deleteNote(nid);
+                            closeSecondary();
+                          }}
+                        >
+                          <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
+                          Delete
+                        </button>
+                      </>
+                    );
+                  })()}
                   {secondaryListMenu.kind === "grocery" && (
                     <button
                       type="button"
