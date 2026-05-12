@@ -5090,29 +5090,173 @@ textarea.input {
   color: var(--soft-charcoal);
 }
 
-.settings-dock-order-row {
+/* Nested accordion (e.g. Bottom navigation inside Customization) */
+.settings-sub-accordion {
+  margin-top: var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card, 12px);
+  background: color-mix(in srgb, var(--theme-primary, #f5d5d0) 6%, rgba(255, 250, 249, 0.55));
+  overflow: hidden;
+}
+.settings-sub-accordion-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
+  justify-content: space-between;
+  gap: var(--space-2);
+  user-select: none;
 }
-.settings-dock-order-move {
+.settings-sub-accordion-summary::-webkit-details-marker {
+  display: none;
+}
+.settings-sub-accordion-summary::after {
+  content: "▾";
+  font-size: 11px;
+  opacity: 0.55;
+}
+.settings-sub-accordion[open] > .settings-sub-accordion-summary::after {
+  content: "▴";
+}
+.settings-sub-accordion-panel {
+  padding: 0 14px 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.settings-sub-accordion-panel > .settings-hint:first-child {
+  margin-top: 12px;
+}
+
+.settings-dock-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+}
+.settings-dock-block {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 12px 12px 10px;
+  border-radius: var(--radius-card, 12px);
+  border: 2px solid color-mix(in srgb, var(--theme-accent, #e8b8b0) 35%, rgba(60, 48, 44, 0.12));
+  background: color-mix(in srgb, var(--theme-primary, #f5d5d0) 10%, rgba(255, 252, 250, 0.92));
+  box-shadow: 0 2px 12px rgba(100, 70, 90, 0.06);
+  cursor: grab;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+}
+.settings-dock-block:active {
+  cursor: grabbing;
+}
+.settings-dock-block.is-drag-over {
+  border-color: color-mix(in srgb, var(--theme-accent) 70%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent) 25%, transparent);
+}
+.settings-dock-block-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+.settings-dock-grip {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  flex-shrink: 0;
+  padding: 4px 2px;
+  opacity: 0.45;
+}
+.settings-dock-grip-line {
+  display: block;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--text-soft);
+}
+.settings-dock-block-main svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  color: var(--text-soft);
+}
+.settings-dock-block-text {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+}
+.settings-dock-block-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.25;
+}
+.settings-dock-block-status {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+.settings-dock-block-status.is-on {
+  color: #2d7a4a;
+}
+.settings-dock-block-status.is-off {
+  color: var(--text-soft);
+}
+.settings-dock-block-menu-wrap {
+  position: relative;
   flex-shrink: 0;
+  align-self: flex-start;
 }
-.settings-dock-order-btn {
-  min-width: 36px;
-  padding: 4px 8px;
-  line-height: 1;
+.settings-dock-block-menu-btn {
+  border-radius: var(--radius-md);
 }
-.settings-dock-order-toggle {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 0 !important;
+.settings-dock-block-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 6;
+  min-width: 200px;
+  padding: 6px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-subtle);
+  background: rgba(255, 252, 250, 0.98);
+  box-shadow: 0 8px 28px rgba(40, 30, 35, 0.14);
+}
+.settings-dock-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+}
+.settings-dock-menu-item:hover {
+  background: var(--surface-secondary, rgba(0, 0, 0, 0.04));
+}
+
+html[data-theme="dark"] .settings-sub-accordion {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--ink-border-soft, rgba(255, 255, 255, 0.12));
+}
+html[data-theme="dark"] .settings-dock-block {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--ink-border-soft);
+}
+html[data-theme="dark"] .settings-dock-block-menu {
+  background: rgba(28, 26, 30, 0.98);
+  border-color: var(--ink-border-soft);
 }
 
 /* Subtle Animations */
@@ -5295,6 +5439,16 @@ html[data-theme="dark"] .coach-gtky-body {
   overflow-x: hidden;
   animation: dropdownSlideDown 0.25s var(--ease-out-soft);
 }
+
+/* Edit-time popover: native time inputs need full width; avoid clipping borders */
+.task-dropdown-portal--edit-time {
+  overflow-x: visible;
+  overflow-y: visible;
+}
+.task-dropdown-portal--edit-time .task-dropdown {
+  overflow-x: visible;
+  overflow-y: visible;
+}
 .task-dropdown {
   position: absolute;
   top: 100%;
@@ -5425,10 +5579,10 @@ html[data-theme="dark"] .coach-gtky-body {
 }
 
 .dropdown-edit-time {
-  padding: 12px 10px;
+  padding: 12px 12px;
   max-width: 100%;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
 }
 .dropdown-edit-time-label {
   display: block;
@@ -5444,7 +5598,7 @@ html[data-theme="dark"] .coach-gtky-body {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  overflow: hidden;
+  overflow: visible;
   border-radius: var(--radius-md);
   margin-bottom: 10px;
 }
@@ -5455,7 +5609,7 @@ html[data-theme="dark"] .coach-gtky-body {
   min-width: 0;
   box-sizing: border-box;
   margin-bottom: 0;
-  padding: 10px 8px;
+  padding: 10px 10px;
   font-variant-numeric: tabular-nums;
 }
 /* Let WebKit shrink inline time segments so the control fits the popover width */

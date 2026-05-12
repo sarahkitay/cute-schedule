@@ -958,8 +958,11 @@ function habitReminderPushEntries(habits, dayKeyToday, nowMs, maxAtMs, notificat
 /** Viewport-safe fixed position for task / list dropdowns. */
 function computeDropdownPosition(rect, opts = {}) {
   const pad = 16;
-  const vw = typeof window !== "undefined" ? window.innerWidth : 400;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 700;
+  const vv = typeof window !== "undefined" ? window.visualViewport : null;
+  const vw =
+    typeof window !== "undefined" ? Math.min(vv?.width ?? window.innerWidth, window.innerWidth) : 400;
+  const vh =
+    typeof window !== "undefined" ? Math.min(vv?.height ?? window.innerHeight, window.innerHeight) : 700;
   const maxH = opts.maxHeight ?? 280;
   const panelW = Math.min(opts.panelWidth ?? 200, vw - pad * 2);
   /** Prefer right edge of anchor (kebab) so the panel extends left - avoids clipping on the right. */
@@ -972,8 +975,10 @@ function computeDropdownPosition(rect, opts = {}) {
   if (left > maxLeft) left = maxLeft;
   left = Math.max(minLeft, Math.min(left, maxLeft));
   /** Nudge slightly left when there is room (keeps bubble off the physical edge / safe area). */
-  const leftNudge = 12;
-  if (left > minLeft) left = Math.max(minLeft, left - leftNudge);
+  const leftNudge = opts.leftNudge ?? 12;
+  if (left > minLeft && leftNudge > 0) left = Math.max(minLeft, left - leftNudge);
+  /** Keep entire panel inside horizontal viewport after nudge (avoids right-edge clip). */
+  left = Math.max(minLeft, Math.min(left, vw - pad - panelW));
 
   let top = rect.bottom + 6;
   if (top + maxH > vh - pad) {
@@ -2057,6 +2062,15 @@ const DOCK_NAV_SETTINGS_ROWS = [
   { id: "health", label: "Health" },
 ];
 
+const DOCK_EDITOR_ICON_BY_ID = {
+  list: MenuIcon,
+  monthly: CalendarIcon,
+  coach: SparkleIcon,
+  notes: MoonIcon,
+  finance: FinanceIcon,
+  health: DumbbellIcon,
+};
+
 const DOCK_FALLBACK_COPY = {
   list: {
     title: "List",
@@ -2421,6 +2435,26 @@ export default function App() {
   const [habitReminderDraft, setHabitReminderDraft] = useState({});
   const habitReminderFiredRef = useRef(new Set());
   const [newTypeName, setNewTypeName] = useState("");
+  const [dockNavEditorMenuId, setDockNavEditorMenuId] = useState(null);
+  const [dockNavDragOverId, setDockNavDragOverId] = useState(null);
+  const dockNavDragSourceRef = useRef(null);
+
+  useEffect(() => {
+    if (!showSettings) setDockNavEditorMenuId(null);
+  }, [showSettings]);
+
+  useEffect(() => {
+    if (!dockNavEditorMenuId) return undefined;
+    const close = (e) => {
+      if (e.target.closest(".settings-dock-block-menu-wrap")) return;
+      setDockNavEditorMenuId(null);
+    };
+    const t = window.setTimeout(() => document.addEventListener("click", close), 0);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("click", close);
+    };
+  }, [dockNavEditorMenuId]);
 
   useEffect(() => {
     try {
@@ -5174,19 +5208,41 @@ export default function App() {
     habitTracker,
   };
 
-  const moveDockNavItem = useCallback((direction, id) => {
+  const reorderDockNavOnDrop = useCallback((targetId) => {
+    const sourceId = dockNavDragSourceRef.current;
+    if (!sourceId || sourceId === targetId) return;
+    setProfile((p) => {
+      const cur = normalizeDockOrder(p.dockOrder);
+      const from = cur.indexOf(sourceId);
+      const to = cur.indexOf(targetId);
+      if (from < 0 || to < 0 || from === to) return p;
+      const next = [...cur];
+      const [piece] = next.splice(from, 1);
+      next.splice(to, 0, piece);
+      return { ...p, dockOrder: next };
+    });
+    dockNavDragSourceRef.current = null;
+    setDockNavDragOverId(null);
+  }, []);
+
+  const moveDockNavNextToToday = useCallback((id) => {
     setProfile((p) => {
       const cur = normalizeDockOrder(p.dockOrder);
       const i = cur.indexOf(id);
-      if (i < 0) return p;
-      const j = direction === "up" ? i - 1 : i + 1;
-      if (j < 0 || j >= cur.length) return p;
-      const next = cur.slice();
-      const t = next[i];
-      next[i] = next[j];
-      next[j] = t;
+      if (i <= 0) return p;
+      const next = cur.filter((x) => x !== id);
+      next.unshift(id);
       return { ...p, dockOrder: next };
     });
+    setDockNavEditorMenuId(null);
+  }, []);
+
+  const removeDockNavFromBar = useCallback((id) => {
+    setProfile((p) => ({
+      ...p,
+      navVisibility: { ...normalizeNavVisibility(p.navVisibility), [id]: false },
+    }));
+    setDockNavEditorMenuId(null);
   }, []);
 
   const openHealthCalendarFromHealth = useCallback((mondayKey) => {
@@ -7447,17 +7503,30 @@ export default function App() {
             const isEditing = editingTaskTime === editKey;
             const closeDropdown = () => handleTaskMenuOpen(null, null);
             const dropdownMaxHeight = isEditing ? 340 : 440;
-            const vwForPanel = typeof window !== "undefined" ? window.innerWidth : 400;
-            /** Edit time: native `input[type=time]` is wide on iOS - use almost full viewport width. */
-            const panelWidth = isEditing ? Math.max(272, Math.min(400, vwForPanel - 20)) : Math.max(220, Math.min(300, vwForPanel - 24));
+            const vv = typeof window !== "undefined" ? window.visualViewport : null;
+            const vwForPanel =
+              typeof window !== "undefined"
+                ? Math.min(vv?.width ?? window.innerWidth, window.innerWidth)
+                : 400;
+            /** Edit time: native `input[type=time]` is wide on iOS — width must match computeDropdown margins (vw − 32). */
+            const panelWidth = isEditing
+              ? Math.max(240, Math.min(400, vwForPanel - 32))
+              : Math.max(220, Math.min(300, vwForPanel - 24));
             const taskNodeForMenu = findTaskInAppState(appState, tKey, hourKey, category, id);
             const showOptionalRepeatBtn =
               taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.NONE;
             const rect = dropdownAnchorRect;
-            const { left, top, width } = computeDropdownPosition(rect, { panelWidth, maxHeight: dropdownMaxHeight });
+            const { left, top, width } = computeDropdownPosition(rect, {
+              panelWidth,
+              maxHeight: dropdownMaxHeight,
+              /** Avoid horizontal nudge for wide edit-time panel so `left + width` stays inside the viewport. */
+              leftNudge: isEditing ? 0 : undefined,
+            });
             return (
               <div
-                className="task-dropdown-portal"
+                className={["task-dropdown-portal", isEditing ? "task-dropdown-portal--edit-time" : ""]
+                  .filter(Boolean)
+                  .join(" ")}
                 style={{
                   position: 'fixed',
                   left,
@@ -8450,7 +8519,7 @@ export default function App() {
                     Per-habit reminders
                   </label>
                   {(habitTracker.habits || []).length === 0 ? (
-                    <p className="settings-hint">No habits yet. Add some under <strong>Settings → Habit tracker</strong>.</p>
+                    <p className="settings-hint">No habits yet. Add some under <strong>Settings → Customization → Habit tracker</strong>.</p>
                   ) : (
                     <ul className="notif-habit-toggle-list">
                       {(habitTracker.habits || []).map((h) => {
@@ -8554,7 +8623,7 @@ export default function App() {
                     <strong>Task reminder timing:</strong> Used for syncing your reminder preferences to the server and for on-device scheduling on iPhone when Remind me is on. Per-task overrides stay on the task card.
                   </p>
                   <p className="settings-hint">
-                    <strong>Habit reminder cadence:</strong> Quiet hours apply to all modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list from Settings → Habit tracker.
+                    <strong>Habit reminder cadence:</strong> Quiet hours apply to all modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list from Settings → Customization → Habit tracker.
                   </p>
                   <p className="settings-hint">
                     <strong>Per-habit reminders:</strong> Turn off Remind for habits you don&apos;t want pinged.
@@ -8570,52 +8639,324 @@ export default function App() {
               <details className="settings-accordion" open>
                 <summary className="settings-accordion-summary">Customization</summary>
                 <div className="settings-accordion-panel">
-              <div className="settings-section">
-                <label className="label">Bottom navigation</label>
+                <details className="settings-sub-accordion settings-habit-sub" open>
+                  <summary className="settings-sub-accordion-summary">Habit tracker</summary>
+                  <div className="settings-sub-accordion-panel">
+                    <div className="settings-section">
+                <label className="label">Habit check-ins</label>
                 <p className="settings-hint">
-                  Choose which destinations appear in the dock and in what order. <strong>Today</strong> always stays first.
+                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them.{" "}
+                  <strong>Reminder nudges</strong> (hourly, every 30 minutes, daily, quiet hours, on/off per habit) are set in{" "}
+                  <strong>Notifications &amp; reminders</strong> (button below in Customization). When that page is set to <strong>Custom</strong>, you can pick hourly vs exact times here for each habit.
                 </p>
-                {normalizeDockOrder(profile.dockOrder).map((rowId, idx, arr) => {
-                  const row = DOCK_NAV_SETTINGS_ROWS.find((r) => r.id === rowId);
-                  if (!row) return null;
-                  return (
-                    <div key={row.id} className="settings-dock-order-row">
-                      <div className="settings-dock-order-move">
-                        <button
-                          type="button"
-                          className="btn btn-sm settings-dock-order-btn"
-                          disabled={idx === 0}
-                          aria-label={`Move ${row.label} up in dock`}
-                          onClick={() => moveDockNavItem("up", row.id)}
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm settings-dock-order-btn"
-                          disabled={idx === arr.length - 1}
-                          aria-label={`Move ${row.label} down in dock`}
-                          onClick={() => moveDockNavItem("down", row.id)}
-                        >
-                          ↓
-                        </button>
-                      </div>
-                      <label className="settings-toggle-row settings-dock-order-toggle">
-                        <input
-                          type="checkbox"
-                          checked={normalizeNavVisibility(profile.navVisibility)[row.id] === true}
-                          onChange={(e) =>
-                            setProfile((p) => ({
-                              ...p,
-                              navVisibility: { ...normalizeNavVisibility(p.navVisibility), [row.id]: e.target.checked },
-                            }))
-                          }
-                        />
-                        <span>{row.label}</span>
-                      </label>
+                <ul className="habit-settings-list">
+                  {(habitTracker.habits || []).map((h) => {
+                    const row = normalizeHabitRow(h) || h;
+                    const sch = row.reminderSchedule || "none";
+                    const hours = row.reminderHours || [];
+                    const dashNp = normalizeNotificationPrefs(profile.notificationPrefs);
+                    return (
+                      <li key={row.id} className="habit-settings-card">
+                        <div className="habit-settings-card-head">
+                          <div className="habit-settings-card-title">
+                            {row.label}{" "}
+                            <span className="settings-hint" style={{ marginLeft: 6 }}>
+                              ({row.direction === "break" ? "break" : "build"})
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm routine-template-remove"
+                            onClick={() =>
+                              setHabitTracker((prev) => ({
+                                habits: (prev.habits || []).filter((x) => x.id !== row.id),
+                                log: Object.fromEntries(
+                                  Object.entries(prev.log || {}).map(([dk, day]) => [
+                                    dk,
+                                    typeof day === "object" && day != null
+                                      ? Object.fromEntries(Object.entries(day).filter(([k]) => k !== row.id))
+                                      : day,
+                                  ])
+                                ),
+                              }))
+                            }
+                            aria-label={`Remove habit ${row.label}`}
+                          >
+                            <TrashIcon style={{ width: 14, height: 14 }} />
+                          </button>
+                        </div>
+                        {dashNp.habitReminderMode === "custom" ? (
+                          <>
+                            <label className="habit-settings-remind-label" htmlFor={`habit-remind-${row.id}`}>
+                              Reminders (custom)
+                            </label>
+                            <select
+                              id={`habit-remind-${row.id}`}
+                              className="input habit-settings-remind-select"
+                              value={sch}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setHabitTracker((prev) => ({
+                                  ...prev,
+                                  habits: (prev.habits || []).map((x) =>
+                                    x.id === row.id
+                                      ? normalizeHabitRow({
+                                          ...x,
+                                          reminderSchedule: v === "hourly" || v === "hours" ? v : "none",
+                                          reminderHours: v === "hours" ? (Array.isArray(x.reminderHours) ? x.reminderHours : []) : [],
+                                        })
+                                      : x
+                                  ),
+                                }));
+                              }}
+                            >
+                              <option value="none">None</option>
+                              <option value="hourly">Hourly (uses quiet hours from the notifications page)</option>
+                              <option value="hours">Choose times</option>
+                            </select>
+                            {sch === "hours" && (
+                              <div className="habit-reminder-hours">
+                                <div className="habit-reminder-hour-chips">
+                                  {hours.map((hm) => (
+                                    <span key={hm} className="habit-reminder-chip">
+                                      {to12Hour(hm)}
+                                      <button
+                                        type="button"
+                                        aria-label={`Remove ${hm}`}
+                                        onClick={() =>
+                                          setHabitTracker((prev) => ({
+                                            ...prev,
+                                            habits: (prev.habits || []).map((x) =>
+                                              x.id === row.id
+                                                ? normalizeHabitRow({
+                                                    ...x,
+                                                    reminderHours: hours.filter((t) => t !== hm),
+                                                  })
+                                                : x
+                                            ),
+                                          }))
+                                        }
+                                      >
+                                        ×
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                                <div className="habit-reminder-add-row">
+                                  <input
+                                    className="input"
+                                    type="time"
+                                    value={habitReminderDraft[row.id] ?? "09:00"}
+                                    onChange={(e) =>
+                                      setHabitReminderDraft((d) => ({ ...d, [row.id]: e.target.value }))
+                                    }
+                                    aria-label={`Add reminder time for ${row.label}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    className="btn btn-sm btn-primary"
+                                    onClick={() => {
+                                      const draft = habitReminderDraft[row.id] ?? "09:00";
+                                      const slot = normalizeTimeKey(draft);
+                                      setHabitTracker((prev) => ({
+                                        ...prev,
+                                        habits: (prev.habits || []).map((x) => {
+                                          if (x.id !== row.id) return x;
+                                          const cur = normalizeHabitRow(x)?.reminderHours || [];
+                                          if (cur.includes(slot)) return x;
+                                          return normalizeHabitRow({ ...x, reminderHours: [...cur, slot].sort() });
+                                        }),
+                                      }));
+                                    }}
+                                  >
+                                    Add time
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                            Nudges use the <strong>global schedule</strong> from Notifications &amp; reminders (not per-habit clocks).
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+                <div className="settings-add-type" style={{ marginTop: 10 }}>
+                  <input
+                    className="input modal-input"
+                    type="text"
+                    value={newHabitLabel}
+                    onChange={(e) => setNewHabitLabel(e.target.value)}
+                    placeholder="e.g. Drink water / stretch"
+                    aria-label="New habit label"
+                  />
+                  <select
+                    className="input"
+                    value={newHabitDirection}
+                    onChange={(e) => setNewHabitDirection(e.target.value)}
+                    aria-label="Build or break habit"
+                    style={{ minWidth: 100 }}
+                  >
+                    <option value="build">Build</option>
+                    <option value="break">Break</option>
+                  </select>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      const label = (newHabitLabel || "").trim();
+                      if (!label) return;
+                      const next = normalizeHabitRow({
+                        id: uid(),
+                        label,
+                        direction: newHabitDirection === "break" ? "break" : "build",
+                        reminderSchedule: "none",
+                        reminderHours: [],
+                      });
+                      if (!next) return;
+                      setHabitTracker((prev) => ({
+                        habits: [...(prev.habits || []), next],
+                        log: prev.log || {},
+                      }));
+                      setNewHabitLabel("");
+                    }}
+                  >
+                    Add habit
+                  </button>
+                </div>
                     </div>
-                  );
-                })}
+                  </div>
+                </details>
+
+              <div className="settings-section">
+                <details className="settings-sub-accordion settings-dock-sub">
+                  <summary className="settings-sub-accordion-summary">Bottom navigation</summary>
+                  <div className="settings-sub-accordion-panel">
+                    <p className="settings-hint">
+                      <strong>Today</strong> always stays first in the app bar. Drag blocks to reorder other tabs. Open the menu on a tab to remove it from the dock or move it next to Today (first slot after Today).
+                    </p>
+                    <div className="settings-dock-blocks" role="list">
+                      {normalizeDockOrder(profile.dockOrder).map((rowId) => {
+                        const row = DOCK_NAV_SETTINGS_ROWS.find((r) => r.id === rowId);
+                        if (!row) return null;
+                        const Icon = DOCK_EDITOR_ICON_BY_ID[row.id] || MenuIcon;
+                        const nv = normalizeNavVisibility(profile.navVisibility);
+                        const onDock = nv[row.id] === true;
+                        const menuOpen = dockNavEditorMenuId === row.id;
+                        return (
+                          <div
+                            key={row.id}
+                            role="listitem"
+                            className={[
+                              "settings-dock-block",
+                              dockNavDragOverId === row.id ? "is-drag-over" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            draggable
+                            onDragStart={(e) => {
+                              setDockNavEditorMenuId(null);
+                              e.dataTransfer.effectAllowed = "move";
+                              try {
+                                e.dataTransfer.setData("text/plain", row.id);
+                              } catch {
+                                /* ignore */
+                              }
+                              dockNavDragSourceRef.current = row.id;
+                            }}
+                            onDragEnd={() => {
+                              dockNavDragSourceRef.current = null;
+                              setDockNavDragOverId(null);
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              setDockNavDragOverId(row.id);
+                            }}
+                            onDragLeave={(e) => {
+                              if (!e.currentTarget.contains(e.relatedTarget)) setDockNavDragOverId(null);
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              reorderDockNavOnDrop(row.id);
+                            }}
+                          >
+                            <div className="settings-dock-block-main">
+                              <span className="settings-dock-grip" aria-hidden="true" title="Drag to reorder">
+                                <span className="settings-dock-grip-line" />
+                                <span className="settings-dock-grip-line" />
+                                <span className="settings-dock-grip-line" />
+                              </span>
+                              <Icon className="settings-dock-block-icon" aria-hidden />
+                              <div className="settings-dock-block-text">
+                                <span className="settings-dock-block-title">{row.label}</span>
+                                <span className={onDock ? "settings-dock-block-status is-on" : "settings-dock-block-status is-off"}>
+                                  {onDock ? "On dock" : "Hidden — shortcut on Today"}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="settings-dock-block-menu-wrap">
+                              <button
+                                type="button"
+                                className="settings-dock-block-menu-btn icon-btn"
+                                aria-expanded={menuOpen}
+                                aria-haspopup="true"
+                                aria-label={`Options for ${row.label}`}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDockNavEditorMenuId((prev) => (prev === row.id ? null : row.id));
+                                }}
+                              >
+                                <MenuIcon style={{ width: 20, height: 20 }} />
+                              </button>
+                              {menuOpen ? (
+                                <div className="settings-dock-block-menu" role="menu">
+                                  {onDock ? (
+                                    <button
+                                      type="button"
+                                      className="settings-dock-menu-item"
+                                      role="menuitem"
+                                      onClick={() => removeDockNavFromBar(row.id)}
+                                    >
+                                      Remove from bottom nav
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      className="settings-dock-menu-item"
+                                      role="menuitem"
+                                      onClick={() => {
+                                        setProfile((p) => ({
+                                          ...p,
+                                          navVisibility: { ...normalizeNavVisibility(p.navVisibility), [row.id]: true },
+                                        }));
+                                        setDockNavEditorMenuId(null);
+                                      }}
+                                    >
+                                      Add to bottom nav
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    className="settings-dock-menu-item"
+                                    role="menuitem"
+                                    onClick={() => moveDockNavNextToToday(row.id)}
+                                  >
+                                    Move next to Today
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </details>
               </div>
 
               <div className="settings-section">
@@ -9000,197 +9341,7 @@ export default function App() {
                 </button>
               </div>
 
-              <details className="settings-accordion">
-                <summary className="settings-accordion-summary">Habit tracker</summary>
-                <div className="settings-accordion-panel">
-              <div className="settings-section">
-                <label className="label">Habit check-ins</label>
-                <p className="settings-hint">
-                  Habits you want to <strong>build</strong> or <strong>break</strong>. On Today, the app asks once a day whether you did them.{" "}
-                  <strong>Reminder nudges</strong> (hourly, every 30 minutes, daily, quiet hours, on/off per habit) are set in{" "}
-                  <strong>Notifications &amp; reminders</strong> (button above). When that page is set to <strong>Custom</strong>, you can pick hourly vs exact times here for each habit.
-                </p>
-                <ul className="habit-settings-list">
-                  {(habitTracker.habits || []).map((h) => {
-                    const row = normalizeHabitRow(h) || h;
-                    const sch = row.reminderSchedule || "none";
-                    const hours = row.reminderHours || [];
-                    const dashNp = normalizeNotificationPrefs(profile.notificationPrefs);
-                    return (
-                      <li key={row.id} className="habit-settings-card">
-                        <div className="habit-settings-card-head">
-                          <div className="habit-settings-card-title">
-                            {row.label}{" "}
-                            <span className="settings-hint" style={{ marginLeft: 6 }}>
-                              ({row.direction === "break" ? "break" : "build"})
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm routine-template-remove"
-                            onClick={() =>
-                              setHabitTracker((prev) => ({
-                                habits: (prev.habits || []).filter((x) => x.id !== row.id),
-                                log: Object.fromEntries(
-                                  Object.entries(prev.log || {}).map(([dk, day]) => [
-                                    dk,
-                                    typeof day === "object" && day != null
-                                      ? Object.fromEntries(Object.entries(day).filter(([k]) => k !== row.id))
-                                      : day,
-                                  ])
-                                ),
-                              }))
-                            }
-                            aria-label={`Remove habit ${row.label}`}
-                          >
-                            <TrashIcon style={{ width: 14, height: 14 }} />
-                          </button>
-                        </div>
-                        {dashNp.habitReminderMode === "custom" ? (
-                          <>
-                            <label className="habit-settings-remind-label" htmlFor={`habit-remind-${row.id}`}>
-                              Reminders (custom)
-                            </label>
-                            <select
-                              id={`habit-remind-${row.id}`}
-                              className="input habit-settings-remind-select"
-                              value={sch}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                setHabitTracker((prev) => ({
-                                  ...prev,
-                                  habits: (prev.habits || []).map((x) =>
-                                    x.id === row.id
-                                      ? normalizeHabitRow({
-                                          ...x,
-                                          reminderSchedule: v === "hourly" || v === "hours" ? v : "none",
-                                          reminderHours: v === "hours" ? (Array.isArray(x.reminderHours) ? x.reminderHours : []) : [],
-                                        })
-                                      : x
-                                  ),
-                                }));
-                              }}
-                            >
-                              <option value="none">None</option>
-                              <option value="hourly">Hourly (uses quiet hours from the notifications page)</option>
-                              <option value="hours">Choose times</option>
-                            </select>
-                            {sch === "hours" && (
-                              <div className="habit-reminder-hours">
-                                <div className="habit-reminder-hour-chips">
-                                  {hours.map((hm) => (
-                                    <span key={hm} className="habit-reminder-chip">
-                                      {to12Hour(hm)}
-                                      <button
-                                        type="button"
-                                        aria-label={`Remove ${hm}`}
-                                        onClick={() =>
-                                          setHabitTracker((prev) => ({
-                                            ...prev,
-                                            habits: (prev.habits || []).map((x) =>
-                                              x.id === row.id
-                                                ? normalizeHabitRow({
-                                                    ...x,
-                                                    reminderHours: hours.filter((t) => t !== hm),
-                                                  })
-                                                : x
-                                            ),
-                                          }))
-                                        }
-                                      >
-                                        ×
-                                      </button>
-                                    </span>
-                                  ))}
-                                </div>
-                                <div className="habit-reminder-add-row">
-                                  <input
-                                    className="input"
-                                    type="time"
-                                    value={habitReminderDraft[row.id] ?? "09:00"}
-                                    onChange={(e) =>
-                                      setHabitReminderDraft((d) => ({ ...d, [row.id]: e.target.value }))
-                                    }
-                                    aria-label={`Add reminder time for ${row.label}`}
-                                  />
-                                  <button
-                                    type="button"
-                                    className="btn btn-sm btn-primary"
-                                    onClick={() => {
-                                      const draft = habitReminderDraft[row.id] ?? "09:00";
-                                      const slot = normalizeTimeKey(draft);
-                                      setHabitTracker((prev) => ({
-                                        ...prev,
-                                        habits: (prev.habits || []).map((x) => {
-                                          if (x.id !== row.id) return x;
-                                          const cur = normalizeHabitRow(x)?.reminderHours || [];
-                                          if (cur.includes(slot)) return x;
-                                          return normalizeHabitRow({ ...x, reminderHours: [...cur, slot].sort() });
-                                        }),
-                                      }));
-                                    }}
-                                  >
-                                    Add time
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        ) : (
-                          <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-                            Nudges use the <strong>global schedule</strong> from Notifications &amp; reminders (not per-habit clocks).
-                          </p>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-                <div className="settings-add-type" style={{ marginTop: 10 }}>
-                  <input
-                    className="input modal-input"
-                    type="text"
-                    value={newHabitLabel}
-                    onChange={(e) => setNewHabitLabel(e.target.value)}
-                    placeholder="e.g. Drink water / stretch"
-                    aria-label="New habit label"
-                  />
-                  <select
-                    className="input"
-                    value={newHabitDirection}
-                    onChange={(e) => setNewHabitDirection(e.target.value)}
-                    aria-label="Build or break habit"
-                    style={{ minWidth: 100 }}
-                  >
-                    <option value="build">Build</option>
-                    <option value="break">Break</option>
-                  </select>
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-primary"
-                    onClick={() => {
-                      const label = (newHabitLabel || "").trim();
-                      if (!label) return;
-                      const next = normalizeHabitRow({
-                        id: uid(),
-                        label,
-                        direction: newHabitDirection === "break" ? "break" : "build",
-                        reminderSchedule: "none",
-                        reminderHours: [],
-                      });
-                      if (!next) return;
-                      setHabitTracker((prev) => ({
-                        habits: [...(prev.habits || []), next],
-                        log: prev.log || {},
-                      }));
-                      setNewHabitLabel("");
-                    }}
-                  >
-                    Add habit
-                  </button>
-                </div>
-              </div>
-                </div>
-              </details>
+              
 
               <details className="settings-accordion">
                 <summary className="settings-accordion-summary">Guides &amp; tours</summary>
