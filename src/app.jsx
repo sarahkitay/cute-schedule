@@ -1483,6 +1483,8 @@ function HourCard({
   mode = "type",
   dayKey,
   onPatchTaskReminder,
+  onPatchTaskFields,
+  onEnsureOptionalRepeat,
   groceryTextMatch,
   onBeginWorkout,
 }) {
@@ -1721,7 +1723,35 @@ function HourCard({
                         })()}
                       </div>
                     ) : null}
-                    <div className="item-detail-actions">
+                    {typeof dayKey === "string" && typeof onPatchTaskFields === "function" ? (
+                      <div className="item-detail-task-note-block">
+                        <label className="item-detail-note-label" htmlFor={`task-note-${hourKey}-${t.category}-${t.id}`}>
+                          Notes (this task)
+                        </label>
+                        <textarea
+                          id={`task-note-${hourKey}-${t.category}-${t.id}`}
+                          className="input item-detail-note-input"
+                          rows={2}
+                          value={t.taskNote != null ? String(t.taskNote) : ""}
+                          onChange={(e) => onPatchTaskFields(dayKey, hourKey, t.category, t.id, { taskNote: e.target.value })}
+                          placeholder="Private note…"
+                          aria-label="Notes for this task"
+                        />
+                        {(t.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.NONE && typeof onEnsureOptionalRepeat === "function" ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm item-detail-repeat-btn"
+                            onClick={() => onEnsureOptionalRepeat(dayKey, hourKey, t.category, t.id)}
+                          >
+                            <RepeatIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: "middle" }} />
+                            Add to Past tasks (optional repeat)
+                          </button>
+                        ) : (t.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
+                          <span className="item-detail-repeat-hint">In Past tasks</span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="item-detail-actions item-detail-actions-spaced">
                       {taskHasWorkoutProgramAttachment(t) && onBeginWorkout ? (
                         <button
                           type="button"
@@ -2411,6 +2441,12 @@ export default function App() {
   const [morningGreeting, setMorningGreeting] = useState(false);
   const [taskDropdown, setTaskDropdown] = useState(null); // "hourKey-category-id"
   const [dropdownAnchorRect, setDropdownAnchorRect] = useState(null); // { top, left, bottom, right } for portal
+  const [taskMenuNoteDraft, setTaskMenuNoteDraft] = useState("");
+  const taskMenuNoteDraftRef = useRef("");
+  taskMenuNoteDraftRef.current = taskMenuNoteDraft;
+  const taskDropdownRef = useRef(null);
+  taskDropdownRef.current = taskDropdown;
+  const flushTaskMenuNoteForKeyRef = useRef(() => {});
   /** Monthly / note / grocery line menus (same popover styling as task menu). */
   const [secondaryListMenu, setSecondaryListMenu] = useState(null);
   const [onboardingActive, setOnboardingActive] = useState(false);
@@ -3077,8 +3113,10 @@ export default function App() {
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (taskDropdown && !e.target.closest('.task-dropdown-portal') && !e.target.closest('[data-task-menu-trigger]')) {
+        flushTaskMenuNoteForKeyRef.current(taskDropdownRef.current);
         setTaskDropdown(null);
         setDropdownAnchorRect(null);
+        setTaskMenuNoteDraft("");
       }
       if (secondaryListMenu && !e.target.closest('.task-dropdown-portal') && !e.target.closest('[data-list-menu-trigger]')) {
         setSecondaryListMenu(null);
@@ -3433,6 +3471,98 @@ export default function App() {
       hours[hourKey] = { ...byCat, [category]: list };
       return { ...prev, days: { ...prev.days, [dayKey]: { ...day, hours } } };
     });
+  }
+
+  function patchTaskFields(dayKey, hourKey, category, taskId, partial) {
+    if (!partial || typeof partial !== "object") return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dayKey || "").trim())) return;
+    setAppState((prev) => {
+      const day = prev.days[dayKey];
+      if (!day?.hours) return prev;
+      const hours = { ...day.hours };
+      const byCat = { ...(hours[hourKey] || {}) };
+      const list = (byCat[category] || []).map((t) => (t.id !== taskId ? t : { ...t, ...partial }));
+      hours[hourKey] = { ...byCat, [category]: list };
+      return { ...prev, days: { ...prev.days, [dayKey]: { ...day, hours } } };
+    });
+  }
+
+  function ensureTaskOptionalRepeat(dayKey, hourKey, category, taskId) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dayKey || "").trim())) return;
+    setAppState((prev) => {
+      const day = prev.days[dayKey];
+      if (!day?.hours) return prev;
+      const hours = { ...day.hours };
+      const byCat = { ...(hours[hourKey] || {}) };
+      const list = (byCat[category] || []).map((t) => {
+        if (t.id !== taskId) return t;
+        const r = t.repeat ?? REPEAT_OPTIONS.NONE;
+        if (r !== REPEAT_OPTIONS.NONE) return t;
+        return { ...t, repeat: REPEAT_OPTIONS.OPTIONAL, repeatUntil: null };
+      });
+      const updated = list.find((t) => t.id === taskId);
+      hours[hourKey] = { ...byCat, [category]: list };
+      if (updated && updated.repeat === REPEAT_OPTIONS.OPTIONAL) {
+        try {
+          const repeatedTasks = JSON.parse(localStorage.getItem("repeatedTasks") || "[]");
+          const nextStore = [...repeatedTasks.filter((x) => x.id !== taskId), { ...updated, category, hour: hourKey }];
+          localStorage.setItem("repeatedTasks", JSON.stringify(nextStore));
+        } catch {
+          /* ignore */
+        }
+      }
+      return { ...prev, days: { ...prev.days, [dayKey]: { ...day, hours } } };
+    });
+  }
+
+  function flushTaskMenuNoteForKey(key) {
+    if (!key) return;
+    const parts = key.split("-");
+    if (parts.length < 3) return;
+    const hourKey = parts[0];
+    const category = parts[1];
+    const id = parts.slice(2).join("-") || parts[2];
+    const next = String(taskMenuNoteDraftRef.current || "").trim();
+    setAppState((prev) => {
+      const day = prev.days[tKey];
+      if (!day?.hours) return prev;
+      const task = findTaskInAppState(prev, tKey, hourKey, category, id);
+      if (!task) return prev;
+      const prevNote = task.taskNote != null ? String(task.taskNote).trim() : "";
+      if (next === prevNote) return prev;
+      const hours = { ...day.hours };
+      const byCat = { ...(hours[hourKey] || {}) };
+      const list = (byCat[category] || []).map((t) => (t.id !== id ? t : { ...t, taskNote: next }));
+      hours[hourKey] = { ...byCat, [category]: list };
+      return { ...prev, days: { ...prev.days, [tKey]: { ...day, hours } } };
+    });
+  }
+  flushTaskMenuNoteForKeyRef.current = flushTaskMenuNoteForKey;
+
+  function handleTaskMenuOpen(key, rect) {
+    setSecondaryListMenu(null);
+    flushTaskMenuNoteForKeyRef.current(taskDropdownRef.current);
+    setTaskDropdown(key);
+    setDropdownAnchorRect(key ? rect || null : null);
+    if (key) {
+      const parts = key.split("-");
+      if (parts.length >= 3) {
+        const hourKey = parts[0];
+        const cat = parts[1];
+        const tid = parts.slice(2).join("-") || parts[2];
+        const task = findTaskInAppState(appStateRef.current, tKey, hourKey, cat, tid);
+        setTaskMenuNoteDraft(task?.taskNote != null ? String(task.taskNote) : "");
+      }
+    } else {
+      setTaskMenuNoteDraft("");
+    }
+  }
+
+  function dismissTaskDropdownOnly() {
+    flushTaskMenuNoteForKeyRef.current(taskDropdownRef.current);
+    setTaskDropdown(null);
+    setDropdownAnchorRect(null);
+    setTaskMenuNoteDraft("");
   }
 
   function ensureHour(hourKey, optionalDayKey) {
@@ -4060,7 +4190,7 @@ export default function App() {
       };
     });
 
-    setTaskDropdown(null);
+    dismissTaskDropdownOnly();
   }
 
   function changeTaskTime(hourKey, category, taskId, newHourKey) {
@@ -4089,7 +4219,7 @@ export default function App() {
         })
       );
     }
-    setTaskDropdown(null);
+    dismissTaskDropdownOnly();
     setEditingTaskTime(null);
   }
 
@@ -5670,7 +5800,7 @@ export default function App() {
                           onDeleteTask={deleteTask}
                           onDeleteHour={deleteHour}
                           onMoveToTomorrow={moveTaskToTomorrow}
-                          onOpenDropdown={(key, rect) => { setSecondaryListMenu(null); setTaskDropdown(key); setDropdownAnchorRect(rect || null); }}
+                          onOpenDropdown={handleTaskMenuOpen}
                           taskDropdown={taskDropdown}
                           expandedTaskKey={expandedTaskKey}
                           onExpandTask={setExpandedTaskKey}
@@ -5682,6 +5812,8 @@ export default function App() {
                           mode={mode}
                           dayKey={tKey}
                           onPatchTaskReminder={patchTaskReminderFields}
+                          onPatchTaskFields={patchTaskFields}
+                          onEnsureOptionalRepeat={ensureTaskOptionalRepeat}
                           onBeginWorkout={beginWorkoutFromTask}
                         />
                       </div>
@@ -6056,11 +6188,9 @@ export default function App() {
                       className={["list-row", t.energyLevel === "HEAVY" ? "list-row-heavy" : ""].filter(Boolean).join(" ")}
                       onClick={(e) => {
                         if (e.target.closest('.list-row-more, .check, input')) return;
-                        setSecondaryListMenu(null);
                         const opening = taskDropdown !== dropdownKey;
-                        setTaskDropdown(opening ? dropdownKey : null);
                         const btn = e.currentTarget.querySelector("[data-task-menu-trigger]");
-                        setDropdownAnchorRect(opening && btn ? btn.getBoundingClientRect() : null);
+                        handleTaskMenuOpen(opening ? dropdownKey : null, opening && btn ? btn.getBoundingClientRect() : null);
                       }}
                     >
                       <div className="list-row-body list-row-body-task">
@@ -6105,11 +6235,10 @@ export default function App() {
                           title="Task options"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (taskDropdown === dropdownKey) { setTaskDropdown(null); setDropdownAnchorRect(null); }
-                            else {
-                              setSecondaryListMenu(null);
-                              setTaskDropdown(dropdownKey);
-                              setDropdownAnchorRect(e.currentTarget.getBoundingClientRect());
+                            if (taskDropdown === dropdownKey) {
+                              handleTaskMenuOpen(null, null);
+                            } else {
+                              handleTaskMenuOpen(dropdownKey, e.currentTarget.getBoundingClientRect());
                             }
                           }}
                           data-task-menu-trigger
@@ -6181,8 +6310,7 @@ export default function App() {
                               const anchorEl = e.currentTarget;
                               if (!anchorEl) return;
                               const rect = anchorEl.getBoundingClientRect();
-                              setTaskDropdown(null);
-                              setDropdownAnchorRect(null);
+                              dismissTaskDropdownOnly();
                               setSecondaryListMenu((prev) =>
                                 prev?.kind === "monthly" && prev.id === m.id ? null : { kind: "monthly", id: m.id, rect }
                               );
@@ -7288,8 +7416,7 @@ export default function App() {
                               const anchorEl = e.currentTarget;
                               if (!anchorEl) return;
                               const rect = anchorEl.getBoundingClientRect();
-                              setTaskDropdown(null);
-                              setDropdownAnchorRect(null);
+                              dismissTaskDropdownOnly();
                               setSecondaryListMenu((prev) =>
                                 prev?.kind === "note" && prev.id === note.id ? null : { kind: "note", id: note.id, rect }
                               );
@@ -7318,11 +7445,14 @@ export default function App() {
             const id = parts.slice(2).join('-') || parts[2];
             const editKey = `${hourKey}-${category}-${id}`;
             const isEditing = editingTaskTime === editKey;
-            const closeDropdown = () => { setTaskDropdown(null); setDropdownAnchorRect(null); };
-            const dropdownMaxHeight = isEditing ? 340 : 300;
+            const closeDropdown = () => handleTaskMenuOpen(null, null);
+            const dropdownMaxHeight = isEditing ? 340 : 440;
             const vwForPanel = typeof window !== "undefined" ? window.innerWidth : 400;
             /** Edit time: native `input[type=time]` is wide on iOS - use almost full viewport width. */
-            const panelWidth = isEditing ? Math.max(272, Math.min(400, vwForPanel - 20)) : 208;
+            const panelWidth = isEditing ? Math.max(272, Math.min(400, vwForPanel - 20)) : Math.max(220, Math.min(300, vwForPanel - 24));
+            const taskNodeForMenu = findTaskInAppState(appState, tKey, hourKey, category, id);
+            const showOptionalRepeatBtn =
+              taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.NONE;
             const rect = dropdownAnchorRect;
             const { left, top, width } = computeDropdownPosition(rect, { panelWidth, maxHeight: dropdownMaxHeight });
             return (
@@ -7353,7 +7483,7 @@ export default function App() {
                         />
                       </div>
                       <div className="dropdown-edit-time-actions">
-                        <button type="button" className="dropdown-item" onClick={() => { changeTaskTime(hourKey, category, id, editTaskTimeValue); setEditingTaskTime(null); closeDropdown(); }}>
+                        <button type="button" className="dropdown-item" onClick={() => { flushTaskMenuNoteForKeyRef.current(taskDropdown); changeTaskTime(hourKey, category, id, editTaskTimeValue); setEditingTaskTime(null); }}>
                           Save
                         </button>
                         <button type="button" className="dropdown-item" onClick={() => { setEditingTaskTime(null); closeDropdown(); }}>
@@ -7363,52 +7493,92 @@ export default function App() {
                     </div>
                   ) : (
                     <>
-                      <button type="button" className="dropdown-item" onClick={() => { moveTaskToTomorrow(hourKey, category, id); closeDropdown(); }}>
-                        <CalendarIcon style={{ marginRight: '8px' }} />
-                        Move to tomorrow
-                      </button>
-                      {(() => {
-                        const taskNode = findTaskInAppState(appState, tKey, hourKey, category, id);
-                        return taskNode && groceryTextMatch(taskNode.text) ? (
+                      <div className="task-dropdown-note-section">
+                        <label className="task-dropdown-section-label" htmlFor="task-menu-note">
+                          Notes (this task)
+                        </label>
+                        <textarea
+                          id="task-menu-note"
+                          className="input task-dropdown-note-input"
+                          rows={3}
+                          value={taskMenuNoteDraft}
+                          onChange={(e) => setTaskMenuNoteDraft(e.target.value)}
+                          onBlur={() => patchTaskFields(tKey, hourKey, category, id, { taskNote: taskMenuNoteDraft.trim() })}
+                          placeholder="Private note for this task…"
+                          aria-label="Notes for this task"
+                        />
+                        {showOptionalRepeatBtn ? (
                           <button
                             type="button"
-                            className="dropdown-item"
+                            className="btn btn-sm task-dropdown-repeat-btn"
                             onClick={() => {
-                              setGroceryListModal({ dayKey: tKey, hourKey, category, taskId: id });
-                              closeDropdown();
+                              ensureTaskOptionalRepeat(tKey, hourKey, category, id);
                             }}
                           >
-                            Shopping / errand list
+                            <RepeatIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: "middle" }} />
+                            Add to Past tasks (optional repeat)
                           </button>
-                        ) : null;
-                      })()}
-                      <button
-                        type="button"
-                        className="dropdown-item"
-                        onClick={() => {
-                          appendNoteFromTask(hourKey, category, id);
-                          closeDropdown();
-                        }}
-                      >
-                        Add to Notes
-                      </button>
-                      <button type="button" className="dropdown-item" onClick={() => { setEditTaskTimeValue(hourKey); setEditingTaskTime(editKey); }}>
-                        Edit time
-                      </button>
-                      <button type="button" className="dropdown-item" onClick={() => { closeDropdown(); }}>
-                        Keep task
-                      </button>
-                      <button
-                        type="button"
-                        className="dropdown-item dropdown-item-danger"
-                        onClick={() => {
-                          deleteTask(hourKey, category, id);
-                          closeDropdown();
-                        }}
-                      >
-                        <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
-                        Delete task
-                      </button>
+                        ) : taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
+                          <p className="task-dropdown-repeat-hint">Saved for Past tasks</p>
+                        ) : null}
+                      </div>
+                      <div className="task-dropdown-actions-block">
+                        <button type="button" className="dropdown-item task-dropdown-move-item" onClick={() => { moveTaskToTomorrow(hourKey, category, id); closeDropdown(); }}>
+                          <CalendarIcon style={{ marginRight: '8px' }} />
+                          Move to tomorrow
+                        </button>
+                        {(() => {
+                          const taskNode = findTaskInAppState(appState, tKey, hourKey, category, id);
+                          return taskNode && groceryTextMatch(taskNode.text) ? (
+                            <button
+                              type="button"
+                              className="dropdown-item"
+                              onClick={() => {
+                                setGroceryListModal({ dayKey: tKey, hourKey, category, taskId: id });
+                                closeDropdown();
+                              }}
+                            >
+                              Shopping / errand list
+                            </button>
+                          ) : null;
+                        })()}
+                        <button
+                          type="button"
+                          className="dropdown-item"
+                          onClick={() => {
+                            appendNoteFromTask(hourKey, category, id);
+                            closeDropdown();
+                          }}
+                        >
+                          Add to Notes
+                        </button>
+                        <button
+                          type="button"
+                          className="dropdown-item"
+                          onClick={() => {
+                            flushTaskMenuNoteForKeyRef.current(taskDropdown);
+                            setEditTaskTimeValue(hourKey);
+                            setEditingTaskTime(editKey);
+                          }}
+                        >
+                          Edit time
+                        </button>
+                        <button type="button" className="dropdown-item" onClick={() => { closeDropdown(); }}>
+                          Keep task
+                        </button>
+                        <button
+                          type="button"
+                          className="dropdown-item dropdown-item-danger"
+                          onClick={() => {
+                            flushTaskMenuNoteForKeyRef.current(taskDropdown);
+                            deleteTask(hourKey, category, id);
+                            closeDropdown();
+                          }}
+                        >
+                          <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
+                          Delete task
+                        </button>
+                      </div>
                     </>
                   )}
                 </div>
@@ -7677,8 +7847,7 @@ export default function App() {
                                 const anchorEl = e.currentTarget;
                                 if (!anchorEl) return;
                                 const rect = anchorEl.getBoundingClientRect();
-                                setTaskDropdown(null);
-                                setDropdownAnchorRect(null);
+                                dismissTaskDropdownOnly();
                                 setSecondaryListMenu((prev) =>
                                   prev?.kind === "grocery" && prev.itemId === it.id
                                     ? null
@@ -7897,100 +8066,102 @@ export default function App() {
               {isCapacitorNativeApp() ? (
                 <div className="settings-section">
                   <label className="label">Notifications</label>
-                  <p className="settings-hint">
-                    {Capacitor.getPlatform() === "ios" ? (
-                      <>
-                        <strong>Task reminders</strong> use on-device alerts for times you set on each task (open a task → Remind me).{" "}
-                        <strong>Firebase</strong> can also deliver remote messages when you allow alerts below.
-                      </>
-                    ) : (
-                      <>This app uses <strong>Firebase Cloud Messaging</strong> on Android. Register below for remote messages.</>
-                    )}
-                  </p>
-
-                  {Capacitor.getPlatform() === "ios" && (
-                    <>
-                      <label className="label" style={{ marginTop: 14, display: "block", fontSize: "0.95rem" }}>
-                        Task reminders (this iPhone)
-                      </label>
-                      <p className="settings-hint" style={{ marginTop: 4 }}>
-                        Apple scheduled local notifications (not the web view). Per task: Remind me, how long before start, and optional alert when the task starts.
-                      </p>
-                      <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          onClick={async () => {
+                  <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={async () => {
+                        try {
+                          if (Capacitor.getPlatform() === "ios") {
                             await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories, profile);
-                            await refreshNativeNotificationDiagnostics();
-                            let granted = false;
-                            try {
-                              const perm = await LocalNotifications.checkPermissions();
-                              granted = perm.display === "granted";
-                            } catch {
-                              /* ignore */
-                            }
-                            if (granted) {
-                              alert(
-                                "Task reminders are scheduled for the next several days. Turn on Remind me on each task you want alerts for."
-                              );
-                            } else {
-                              alert(
-                                "Local reminders need notification permission. If you chose Don’t Allow before, open system settings for this app, enable Notifications, then tap Allow & schedule again."
-                              );
-                            }
-                          }}
-                        >
-                          Allow &amp; schedule task reminders
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={async () => {
-                            await resyncIosTaskLocalNotifications(appState.days, realTodayKey, customCategories, profile);
+                          }
+                          await notificationService.requestPermission();
+                          await refreshNativeNotificationDiagnostics();
+                          const pushResult = await notificationService.enablePush();
+                          if (pushResult?.ok) {
                             await notificationService.syncRemindersToServer(pushRemindersList);
-                            await refreshNativeNotificationDiagnostics();
-                            alert("Schedule updated and reminders synced.");
-                          }}
-                        >
-                          Refresh schedule &amp; server backup
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={async () => {
-                            const r = await notificationService.openNativeNotificationSettings();
-                            if (!r?.ok) alert(r?.hint || "Could not open Settings.");
-                          }}
-                        >
-                          Open system settings
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  <label className="label" style={{ marginTop: 16, display: "block", fontSize: "0.95rem" }}>
-                    {Capacitor.getPlatform() === "ios" ? "Remote alerts (Firebase)" : "Push registration"}
-                  </label>
-                  <p className="settings-hint" style={{ marginTop: 4 }}>
-                    {Capacitor.getPlatform() === "ios"
-                      ? "Registers this device for remote notifications and syncs your reminder list. Task times you set in the app still use local scheduling on iPhone."
-                      : "Registers this device with your server for FCM."}
-                  </p>
-                  <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8 }}>
+                          }
+                          await refreshNativeNotificationDiagnostics();
+                          let localGranted = true;
+                          if (Capacitor.getPlatform() === "ios") {
+                            try {
+                              const lp = await LocalNotifications.checkPermissions();
+                              localGranted = lp.display === "granted";
+                            } catch {
+                              localGranted = false;
+                            }
+                          }
+                          const remoteOk = !!pushResult?.ok;
+                          let msg = "";
+                          if (Capacitor.getPlatform() === "ios") {
+                            if (localGranted && remoteOk) {
+                              msg =
+                                "Task reminders are scheduled for the next several days, and remote alerts are connected. Turn on Remind me on each task you want alerts for.";
+                            } else if (localGranted) {
+                              msg = `Task reminders are scheduled. Remote alerts: ${pushResult?.hint || "could not finish — check connection or try again."}`;
+                            } else if (remoteOk) {
+                              msg =
+                                "Remote alerts are on. For on-device task times, allow Notifications for this app in system settings, then tap this button again.";
+                            } else {
+                              msg =
+                                (pushResult?.hint || "Setup did not finish.") +
+                                " If alerts are missing, enable Notifications for this app in system settings.";
+                            }
+                          } else {
+                            msg = remoteOk
+                              ? "Notifications are on and your reminder list is synced."
+                              : pushResult?.hint || "Could not enable remote notifications.";
+                          }
+                          alert(msg);
+                        } catch (e) {
+                          alert(e?.message || String(e));
+                        }
+                      }}
+                    >
+                      {notificationService.permission === "granted" ? (
+                        <>
+                          <CheckIcon style={{ width: 16, height: 16, marginRight: 6, verticalAlign: "middle" }} />
+                          Allow notifications and sync reminders
+                        </>
+                      ) : (
+                        "Allow notifications and sync reminders"
+                      )}
+                    </button>
                     <button
                       type="button"
                       className="btn btn-sm"
                       onClick={async () => {
+                        const r = await notificationService.openNativeNotificationSettings();
+                        if (!r?.ok) alert(r?.hint || "Could not open Settings.");
+                      }}
+                    >
+                      Open system settings
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="settings-section">
+                  <label className="label">Notifications</label>
+                  <div className="settings-push-actions" style={{ marginTop: 8 }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={async () => {
                         const granted = await notificationService.requestPermission();
-                        await refreshNativeNotificationDiagnostics();
-                        if (granted) {
-                          alert("Remote notification permission granted.");
+                        if (!granted) {
+                          alert("Please enable notifications in your browser settings to receive task reminders.");
+                          return;
+                        }
+                        const result = await notificationService.enablePush();
+                        if (result?.ok) {
+                          await notificationService.syncRemindersToServer(pushRemindersList);
+                          alert(
+                            "Notifications and background reminders are set up. You can get task reminders and gentle nudges when this tab is open or in the background (when your site supports push)."
+                          );
                         } else {
                           alert(
-                            Capacitor.getPlatform() === "ios"
-                              ? "Permission not granted. Use Open system settings under Task reminders to allow alerts for this app."
-                              : "Permission not granted. Open system notification settings for this app."
+                            result?.hint ||
+                              "Browser notifications are on, but background reminders could not connect. You may still get reminders while this tab is open."
                           );
                         }
                       }}
@@ -7998,85 +8169,18 @@ export default function App() {
                       {notificationService.permission === "granted" ? (
                         <>
                           <CheckIcon style={{ width: 16, height: 16, marginRight: 6, verticalAlign: "middle" }} />
-                          Remote alerts OK
+                          Allow notifications and background reminders
                         </>
                       ) : (
-                        "Allow remote alerts (Firebase)"
+                        "Allow notifications and background reminders"
                       )}
                     </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={async () => {
-                        const result = await notificationService.enablePush();
-                        if (result?.ok) {
-                          await notificationService.syncRemindersToServer(pushRemindersList);
-                          await refreshNativeNotificationDiagnostics();
-                          alert("Push enabled. Reminders can sync for this device.");
-                        } else {
-                          alert(result?.hint || "Could not enable push.");
-                        }
-                      }}
-                    >
-                      Enable native push &amp; sync reminders
-                    </button>
                   </div>
-                </div>
-              ) : (
-                <div className="settings-section">
-                  <label className="label">Notifications</label>
-                  <p className="settings-hint">
-                    Allow notifications so the app can remind you about tasks and show gentle nudges while this tab is open.
-                  </p>
-                  <button
-                    className="btn btn-primary"
-                    onClick={async () => {
-                      const granted = await notificationService.requestPermission();
-                      if (granted) {
-                        alert("Notifications enabled! You will get reminders for tasks and completion alerts.");
-                      } else {
-                        alert("Please enable notifications in your browser settings to receive task reminders.");
-                      }
-                    }}
-                  >
-                    {notificationService.permission === "granted" ? (
-                      <>
-                        <CheckIcon style={{ width: 16, height: 16, marginRight: 6, verticalAlign: "middle" }} />
-                        Enabled
-                      </>
-                    ) : (
-                      "Enable Notifications"
-                    )}
-                  </button>
                 </div>
               )}
 
               <div className="settings-section settings-notifications-dashboard">
                 <label className="label">Notifications dashboard</label>
-                <p className="settings-hint">
-                  Choose how <strong>task</strong> and <strong>habit</strong> reminders behave. <strong>Default reminders for new tasks</strong> (below) set what new tasks start with; change any task anytime under Details → Remind me.
-                </p>
-                <p className="settings-notifications-callout" role="note">
-                  <strong>How delivery differs.</strong>{" "}
-                  {isCapacitorNativeApp() && Capacitor.getPlatform() === "ios" ? (
-                    <>
-                      On <strong>iPhone</strong>, task times you set here are scheduled as <strong>local</strong> alerts, so they stay on the clock even offline.
-                    </>
-                  ) : isCapacitorNativeApp() && Capacitor.getPlatform() === "android" ? (
-                    <>
-                      On <strong>Android</strong>, task reminders use <strong>push</strong> and your notification settings; battery saver can delay delivery.
-                    </>
-                  ) : isCapacitorNativeApp() ? (
-                    <>
-                      On this <strong>native app</strong>, reminders follow notification permission and push scheduling.
-                    </>
-                  ) : (
-                    <>
-                      In the <strong>browser</strong>, task reminders depend on permission and whether background sync is connected.
-                    </>
-                  )}{" "}
-                  <strong>Habits</strong> use the cadence and quiet hours here for <strong>in-app nudges</strong> while you are using the app, and the same schedule is also sent to the <strong>server</strong> for backup pushes when you are away. Very frequent habit modes can be <strong>batched or delayed</strong> by the OS when the app is closed; quiet hours still apply to what we schedule.
-                </p>
 
                 <div className="settings-subsection">
                   <label className="label" style={{ fontSize: "0.95rem" }}>
@@ -8096,7 +8200,7 @@ export default function App() {
                         }))
                       }
                     />
-                    <span>Task reminders (scheduled / background sync)</span>
+                    <span>Task reminders (on-device schedule and remote sync)</span>
                   </label>
                   <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <input
@@ -8120,9 +8224,6 @@ export default function App() {
                   <label className="label" style={{ fontSize: "0.95rem" }}>
                     Default reminders for new tasks
                   </label>
-                  <p className="settings-hint" style={{ marginTop: 4 }}>
-                    Applied when you add a task. On iPhone, allow scheduled reminders here and keep the app updated so local alerts can fire at the right time.
-                  </p>
                   <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginBottom: 10 }}>
                     <input
                       type="checkbox"
@@ -8184,9 +8285,6 @@ export default function App() {
                   <label className="label" style={{ fontSize: "0.95rem" }}>
                     Task reminder timing
                   </label>
-                  <p className="settings-hint" style={{ marginTop: 4 }}>
-                    Used for <strong>push backup</strong> and <strong>iPhone local</strong> scheduling when a task has Remind me on. Per-task overrides stay in the task card.
-                  </p>
                   <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
                     <input
                       type="checkbox"
@@ -8266,9 +8364,6 @@ export default function App() {
                   <label className="label" style={{ fontSize: "0.95rem" }}>
                     Habit reminder cadence
                   </label>
-                  <p className="settings-hint" style={{ marginTop: 4 }}>
-                    Quiet hours apply to <strong>all</strong> modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list from <strong>Settings → Habit tracker</strong>.
-                  </p>
                   <select
                     className="input modal-input"
                     style={{ marginTop: 8 }}
@@ -8354,7 +8449,6 @@ export default function App() {
                   <label className="label" style={{ fontSize: "0.95rem" }}>
                     Per-habit reminders
                   </label>
-                  <p className="settings-hint" style={{ marginTop: 4 }}>Turn off nudges for habits you don&apos;t want pinged.</p>
                   {(habitTracker.habits || []).length === 0 ? (
                     <p className="settings-hint">No habits yet. Add some under <strong>Settings → Habit tracker</strong>.</p>
                   ) : (
@@ -8392,34 +8486,17 @@ export default function App() {
 
               {!isCapacitorNativeApp() && (
               <div className="settings-section">
-                <label className="label">Background reminders (browser)</label>
-                <p className="settings-hint">
-                  Optional: connect this device to your hosted deployment so reminder pings can arrive after you close the tab.
-                  On iPhone Safari, install from the Share menu first, then enable here. Use &quot;Send test&quot; after enabling to confirm it works.
-                </p>
+                <label className="label">Test background reminder</label>
                 <div className="settings-push-actions">
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={async () => {
-                      const result = await notificationService.enablePush();
-                      if (result?.ok) {
-                        await notificationService.syncRemindersToServer(pushRemindersList);
-                        alert("Connected. Reminders can sync when you have tasks scheduled.");
-                      } else {
-                        alert(result?.hint || "Could not enable background reminders.");
-                      }
-                    }}
-                  >
-                    Enable background reminders
-                  </button>
                   <button
                     type="button"
                     className="btn btn-sm"
                     onClick={async () => {
                       const subscription = await notificationService.getWebPushSubscription();
                       if (!subscription) {
-                        alert("No push subscription on this device yet. Tap “Enable background reminders” first, then try again.");
+                        alert(
+                          'No push subscription on this device yet. Use "Allow notifications and background reminders" above first, then try again.'
+                        );
                         return;
                       }
                       const res = await fetch(apiUrl("/api/push/send"), {
@@ -8435,7 +8512,9 @@ export default function App() {
                       if (res.ok && j.sent > 0) {
                         alert(`Sent test to ${j.sent} device(s). Check your notification tray.`);
                       } else if (res.ok && j.sent === 0) {
-                        alert("No saved device connection yet. Tap “Enable background reminders” first, then try again.");
+                        alert(
+                          'No saved device connection yet. Use "Allow notifications and background reminders" above first, then try again.'
+                        );
                       } else {
                         alert(j.hint || j.error || `Test failed (${res.status}).`);
                       }
@@ -8446,6 +8525,45 @@ export default function App() {
                 </div>
               </div>
               )}
+
+              <details className="settings-accordion settings-notifications-instructions">
+                <summary className="settings-accordion-summary">Instructions</summary>
+                <div className="settings-accordion-panel settings-notifications-instructions-panel">
+                  <p className="settings-hint">
+                    On the <strong>phone app</strong>, use <strong>Allow notifications and sync reminders</strong> once to schedule on-device task alerts (where supported), allow remote delivery, and sync your reminder list to the hosted service. Use <strong>Open system settings</strong> if you previously chose Don&apos;t allow.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>iPhone:</strong> Task times use scheduled local alerts for each task with Remind me (before start and/or at start). Remote registration keeps a backup path so nudges can still reach you when the app is not in the foreground; behavior depends on iOS and battery settings.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>Android:</strong> Task reminders use push and your system notification settings; battery saver can delay delivery.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>Browser:</strong> Use <strong>Allow notifications and background reminders</strong> for permission plus optional push when your deployment supports it. In-browser reminders still need the tab or site allowed by the browser.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>Notifications dashboard:</strong> Master switches control task delivery and habit nudges. <strong>Default reminders for new tasks</strong> sets what new tasks start with; change any task under Details → Remind me.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>How delivery differs:</strong> On iPhone, task reminder times are scheduled locally when Remind me is on. On Android, reminders follow push and permission. In the browser, reminders depend on permission and push connection. <strong>Habits</strong> use the cadence and quiet hours here for in-app nudges while you use the app; the same schedule is stored on the server for backup pings when you are away. Very frequent habit modes can be batched or delayed by the OS when the app is closed; quiet hours still apply.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>Default reminders for new tasks:</strong> Applied when you add a task. On iPhone, keep the app updated so local alerts can fire at the right time.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>Task reminder timing:</strong> Used for syncing your reminder preferences to the server and for on-device scheduling on iPhone when Remind me is on. Per-task overrides stay on the task card.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>Habit reminder cadence:</strong> Quiet hours apply to all modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list from Settings → Habit tracker.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>Per-habit reminders:</strong> Turn off Remind for habits you don&apos;t want pinged.
+                  </p>
+                  <p className="settings-hint">
+                    <strong>Background reminders (browser):</strong> Optional push connects this device to your hosted deployment so reminder pings can arrive after you close the tab. On iPhone Safari, add the app from the Share menu first. After connecting, use <strong>Send test</strong> to confirm.
+                  </p>
+                </div>
+              </details>
               </div>
               ) : (
               <>
@@ -8455,7 +8573,9 @@ export default function App() {
               <div className="settings-section">
                 <label className="label">Account</label>
                 {!isFirebaseEnabled() ? (
-                  <p className="settings-hint">Add your Firebase web config (env vars) to sync your schedule, notes, finance, and settings across devices.</p>
+                  <p className="settings-hint">
+                    Add cloud sync in your deployment (environment variables) to sync your schedule, notes, finance, and settings across devices.
+                  </p>
                 ) : (
                   <>
                     <p className="settings-hint settings-account-status" style={{ marginBottom: 12 }}>

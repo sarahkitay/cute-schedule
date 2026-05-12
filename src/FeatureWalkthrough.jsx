@@ -67,7 +67,7 @@ const FULL_SLIDES = [
   {
     title: "Habits & reminders",
     body:
-      "In **Settings → Habit check-ins**, define build/break habits. You can add **reminders**: **Hourly** (daytime hours) for nudges like water, or **Choose times** for specific clock times. Allow notifications so the app can remind you when it is open; use **Background reminders** for push when the app is closed (if your deployment supports it).",
+      "In **Settings → Habit check-ins**, define build/break habits. You can add **reminders**: **Hourly** (daytime hours) for nudges like water, or **Choose times** for specific clock times. In **Settings → Notifications**, use **Allow notifications and background reminders** (browser) or **Allow notifications and sync reminders** (app) so alerts and optional push work when your deployment supports it.",
   },
   {
     title: "Routines & capacity",
@@ -77,7 +77,7 @@ const FULL_SLIDES = [
   {
     title: "Sync & account",
     body:
-      "With Firebase configured and an account, your schedule, notes, finance, and settings can sync across devices. Guest mode keeps data on this browser until you link an account from Settings.",
+      "With cloud sync configured and an account, your schedule, notes, finance, and settings can sync across devices. Guest mode keeps data on this browser until you link an account from Settings.",
   },
   {
     title: "You are ready",
