@@ -5718,11 +5718,10 @@ html[data-theme="dark"] .coach-gtky-body {
 .settings-account-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   align-items: center;
 }
 .settings-delete-account-btn {
-  margin-top: 10px;
   color: #b71c1c;
   border-color: color-mix(in srgb, #b71c1c 35%, transparent);
   background: transparent;

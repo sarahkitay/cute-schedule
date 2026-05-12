@@ -8568,86 +8568,6 @@ export default function App() {
               ) : (
               <>
               <details className="settings-accordion" open>
-                <summary className="settings-accordion-summary">Personal &amp; account</summary>
-                <div className="settings-accordion-panel">
-              <div className="settings-section">
-                <label className="label">Account</label>
-                {!isFirebaseEnabled() ? (
-                  <p className="settings-hint">
-                    Add cloud sync in your deployment (environment variables) to sync your schedule, notes, finance, and settings across devices.
-                  </p>
-                ) : (
-                  <>
-                    <p className="settings-hint settings-account-status" style={{ marginBottom: 12 }}>
-                      {firebaseUser?.isAnonymous ? (
-                        <>Logged in as <strong>guest</strong> (this browser)</>
-                      ) : firebaseUser?.email ? (
-                        <>
-                          Logged in as <strong>{firebaseUser.email}</strong>
-                        </>
-                      ) : firebaseUser?.displayName ? (
-                        <>
-                          Logged in as <strong>{firebaseUser.displayName}</strong>
-                        </>
-                      ) : firebaseUser ? (
-                        "Logged in"
-                      ) : (
-                        "Not signed in."
-                      )}
-                    </p>
-                    {firebaseUser ? (
-                      <>
-                        <div className="settings-account-actions">
-                          <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
-                            Log out
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          id="delete-account-entry"
-                          className="btn btn-sm settings-delete-account-btn"
-                          disabled={authBusy}
-                          onClick={() => openDeleteAccountFlow()}
-                        >
-                          {firebaseUser.isAnonymous ? "Delete guest data" : "Delete account"}
-                        </button>
-                        <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
-                          Opens a short flow. Your account is removed permanently (not deactivated), then this device reloads.
-                        </p>
-                      </>
-                    ) : null}
-                  </>
-                )}
-              </div>
-
-              <div className="settings-section">
-                <label className="label">Your name</label>
-                <input
-                  className="input modal-input"
-                  type="text"
-                  value={profile.userName}
-                  onChange={(e) => setProfile((p) => ({ ...p, userName: e.target.value.trim() }))}
-                  placeholder="e.g. Sarah"
-                  aria-label="Your name"
-                />
-              </div>
-              <div className="settings-section">
-                <label className="label">Birthday (for greetings)</label>
-                <input
-                  className="input modal-input"
-                  type="text"
-                  value={profile.userBirthday}
-                  onChange={(e) => setProfile((p) => ({ ...p, userBirthday: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
-                  placeholder="MMDD e.g. 0315"
-                  aria-label="Birthday month and day"
-                  maxLength={4}
-                />
-                <p className="settings-hint">Enter as MMDD (e.g. 0315 for March 15). We&apos;ll wish you happy birthday on the day.</p>
-              </div>
-                </div>
-              </details>
-
-              <details className="settings-accordion">
                 <summary className="settings-accordion-summary">Customization</summary>
                 <div className="settings-accordion-panel">
               <div className="settings-section">
@@ -9289,6 +9209,86 @@ export default function App() {
                   </button>
                 </div>
               </div>
+                </div>
+              </details>
+
+              <details className="settings-accordion">
+                <summary className="settings-accordion-summary">Personal &amp; account</summary>
+                <div className="settings-accordion-panel">
+                  <div className="settings-section">
+                    <label className="label">Account</label>
+                    {!isFirebaseEnabled() ? (
+                      <p className="settings-hint">
+                        Add cloud sync in your deployment (environment variables) to sync your schedule, notes, finance, and settings across devices.
+                      </p>
+                    ) : (
+                      <>
+                        <p className="settings-hint settings-account-status" style={{ marginBottom: 12 }}>
+                          {firebaseUser?.isAnonymous ? (
+                            <>Logged in as <strong>guest</strong> (this browser)</>
+                          ) : firebaseUser?.email ? (
+                            <>
+                              Logged in as <strong>{firebaseUser.email}</strong>
+                            </>
+                          ) : firebaseUser?.displayName ? (
+                            <>
+                              Logged in as <strong>{firebaseUser.displayName}</strong>
+                            </>
+                          ) : firebaseUser ? (
+                            "Logged in"
+                          ) : (
+                            "Not signed in."
+                          )}
+                        </p>
+                        {firebaseUser ? (
+                          <>
+                            <div className="settings-account-actions">
+                              <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
+                                Log out
+                              </button>
+                              <button
+                                type="button"
+                                id="delete-account-entry"
+                                className="btn btn-sm settings-delete-account-btn"
+                                disabled={authBusy}
+                                onClick={() => openDeleteAccountFlow()}
+                              >
+                                {firebaseUser.isAnonymous ? "Delete guest data" : "Delete account"}
+                              </button>
+                            </div>
+                            <p className="settings-hint" style={{ marginTop: 8, marginBottom: 0 }}>
+                              Opens a short flow. Your account is removed permanently (not deactivated), then this device reloads.
+                            </p>
+                          </>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+
+                  <div className="settings-section">
+                    <label className="label">Your name</label>
+                    <input
+                      className="input modal-input"
+                      type="text"
+                      value={profile.userName}
+                      onChange={(e) => setProfile((p) => ({ ...p, userName: e.target.value.trim() }))}
+                      placeholder="e.g. Sarah"
+                      aria-label="Your name"
+                    />
+                  </div>
+                  <div className="settings-section">
+                    <label className="label">Birthday (for greetings)</label>
+                    <input
+                      className="input modal-input"
+                      type="text"
+                      value={profile.userBirthday}
+                      onChange={(e) => setProfile((p) => ({ ...p, userBirthday: e.target.value.replace(/\D/g, "").slice(0, 4) }))}
+                      placeholder="MMDD e.g. 0315"
+                      aria-label="Birthday month and day"
+                      maxLength={4}
+                    />
+                    <p className="settings-hint">Enter as MMDD (e.g. 0315 for March 15). We&apos;ll wish you happy birthday on the day.</p>
+                  </div>
                 </div>
               </details>
 
