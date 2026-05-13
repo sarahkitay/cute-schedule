@@ -5573,13 +5573,13 @@ html[data-theme="dark"] .coach-gtky-body {
   animation: dropdownSlideDown 0.25s var(--ease-out-soft);
 }
 
-/* Edit-time popover: native time inputs need full width; avoid clipping borders */
+/* Edit-time popover: time control is width-capped in .dropdown-time-input; keep popover edges clean */
 .task-dropdown-portal--edit-time {
-  overflow-x: visible;
+  overflow-x: hidden;
   overflow-y: visible;
 }
 .task-dropdown-portal--edit-time .task-dropdown {
-  overflow-x: visible;
+  overflow-x: hidden;
   overflow-y: visible;
 }
 .task-dropdown {
@@ -5697,6 +5697,52 @@ html[data-theme="dark"] .coach-gtky-body {
 .note-list-text {
   -webkit-line-clamp: 4;
 }
+.note-list-check,
+.note-list-check.list-row-main {
+  pointer-events: auto;
+  align-items: flex-start;
+  cursor: pointer;
+}
+.note-list-check .note-list-text-block {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+.note-list-row-archived {
+  opacity: 0.94;
+}
+.notes-archive-details {
+  margin-top: var(--space-4, 16px);
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.notes-archive-summary {
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+  padding: 8px 0;
+  user-select: none;
+}
+.notes-archive-summary::-webkit-details-marker {
+  display: none;
+}
+.notes-archive-summary::after {
+  content: " ▾";
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+.notes-archive-details[open] .notes-archive-summary::after {
+  content: " ▴";
+}
+.notes-archive-list {
+  margin-top: var(--space-2, 8px);
+}
+.notes-empty-active {
+  margin-bottom: var(--space-2, 8px);
+}
 .grocery-checklist-row {
   padding: var(--space-2) 0;
   border-bottom: 1px solid var(--border-subtle);
@@ -5712,10 +5758,10 @@ html[data-theme="dark"] .coach-gtky-body {
 }
 
 .dropdown-edit-time {
-  padding: 12px 12px;
+  padding: 12px 10px;
   max-width: 100%;
   box-sizing: border-box;
-  overflow: visible;
+  overflow-x: hidden;
 }
 .dropdown-edit-time-label {
   display: block;
@@ -5731,19 +5777,23 @@ html[data-theme="dark"] .coach-gtky-body {
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  overflow: visible;
+  overflow: hidden;
   border-radius: var(--radius-md);
   margin-bottom: 10px;
+  display: flex;
+  justify-content: flex-start;
 }
 .dropdown-time-input {
   display: block;
-  width: 100%;
-  max-width: 100%;
+  width: auto;
+  max-width: min(100%, 12rem);
   min-width: 0;
   box-sizing: border-box;
   margin-bottom: 0;
-  padding: 10px 10px;
+  padding: 8px 6px 8px 10px;
+  font-size: 0.9375rem;
   font-variant-numeric: tabular-nums;
+  flex: 0 1 auto;
 }
 /* Let WebKit shrink inline time segments so the control fits the popover width */
 .dropdown-time-input::-webkit-datetime-edit,
@@ -5756,7 +5806,7 @@ html[data-theme="dark"] .coach-gtky-body {
 .dropdown-time-input::-webkit-datetime-edit-hour-field,
 .dropdown-time-input::-webkit-datetime-edit-minute-field,
 .dropdown-time-input::-webkit-datetime-edit-second-field {
-  padding: 0 2px;
+  padding: 0 1px 0 2px;
 }
 .dropdown-edit-time-actions {
   display: flex;
@@ -7086,7 +7136,7 @@ html[data-theme="dark"] .health-exercise-row {
 .health-build-program-summary {
   list-style: none;
   cursor: pointer;
-  padding: 14px 16px;
+  padding: 16px 16px 18px;
   font-size: 1.05rem;
   font-weight: 600;
   color: var(--text);
@@ -7108,7 +7158,7 @@ html[data-theme="dark"] .health-exercise-row {
   transform: rotate(-180deg);
 }
 .health-build-program-panel {
-  padding: 0 16px 16px;
+  padding: 20px 16px 18px;
   border-top: 1px solid var(--border-subtle);
 }
 

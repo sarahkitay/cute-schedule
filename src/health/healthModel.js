@@ -132,7 +132,7 @@ export function createDefaultHealth() {
     programs: [],
     weekRoutineProgramIds: [],
     weekRoutineCursor: 0,
-    /** "queue" = repeat weekly list in order (workout 1 → 2 → 3…); "shuffle" = random pick from that list each time. */
+    /** Legacy field; rotation is always sequential through `weekRoutineProgramIds` (see `resolveProgramForTask`). */
     workoutRotationMode: "queue",
     weekRepeatEnabled: false,
     weekRepeatTemplate: null,
@@ -228,7 +228,7 @@ export function normalizeHealth(raw) {
       typeof raw.weekRoutineCursor === "number" && Number.isFinite(raw.weekRoutineCursor)
         ? Math.max(0, Math.round(raw.weekRoutineCursor))
         : 0,
-    workoutRotationMode: raw.workoutRotationMode === "shuffle" ? "shuffle" : "queue",
+    workoutRotationMode: "queue",
     weekRepeatEnabled: raw.weekRepeatEnabled === true,
     weekRepeatTemplate:
       raw.weekRepeatTemplate && typeof raw.weekRepeatTemplate === "object"
@@ -496,12 +496,6 @@ export function resolveProgramForTask(health, task) {
     return p && p.exercises?.length;
   });
   if (valid.length > 0) {
-    const rotation = h.workoutRotationMode === "shuffle" ? "shuffle" : "queue";
-    if (rotation === "shuffle") {
-      const idx = Math.floor(Math.random() * valid.length);
-      const p = getProgramById(h, valid[idx]);
-      return { program: p, advanceQueue: false };
-    }
     const cur = Number(h.weekRoutineCursor) || 0;
     const idx = ((cur % valid.length) + valid.length) % valid.length;
     const p = getProgramById(h, valid[idx]);
@@ -644,7 +638,11 @@ export function formatHealthForCoach(health) {
     .map((id) => getProgramById(h, id))
     .filter(Boolean)
     .map((p) => p.name);
-  if (wr.length) lines.push(`Weekly routine order (for rotating gym tasks): ${wr.join(" → ")}.`);
+  if (wr.length) {
+    lines.push(
+      `Weekly gym rotation: ${wr.join(" → ")}. The next guided workout uses the program at the current position, then advances (wraps to the first after the last).`
+    );
+  }
 
   const mon = mondayKeyForDayKey(new Date().toISOString().slice(0, 10));
   const plan = getEffectiveWeekPlan(h, mon);

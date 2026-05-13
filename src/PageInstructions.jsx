@@ -35,7 +35,7 @@ const INSTRUCTIONS = {
   notes: (
     <>
       <p>
-        Use <strong>This day</strong> for notes tied to the calendar day you have selected on Today, or <strong>All notes</strong> for workspace-wide entries. Pick a <strong>subject</strong> when adding (or change it from the ⋯ menu) and filter the list with <em>Organize by subject</em>.
+        Use <strong>This day</strong> for notes tied to the calendar day you have selected on Today, or <strong>All notes</strong> for workspace-wide entries. Pick a <strong>subject</strong> when adding (or change it from the ⋯ menu) and filter the list with <em>Organize by subject</em>. Check the circle to cross off a note and move it to <strong>Archive</strong>; open Archive and uncheck to restore.
       </p>
       <p>Search still filters the current view. Tap a search result to jump to that note.</p>
     </>
@@ -62,8 +62,8 @@ const INSTRUCTIONS = {
   health: (
     <>
       <p>
-        <strong>Programs:</strong> Open <em>Build a program</em> to add exercises and save to My programs. <strong>Weekly routine order</strong> plus <em>Repeat in order</em> or <em>Shuffle</em> controls
-        auto / queue workout picks. Coach can suggest a program; approve in the Coach tab and it appears here.
+        <strong>Programs:</strong> Open <em>Build a program</em> to add exercises and save to My programs. Under <strong>Weekly routine order</strong>, list programs top-to-bottom: that order is the rotation. When a gym task uses <strong>Auto</strong> or <strong>Next in weekly routine</strong>,{" "}
+        <strong>Begin workout</strong> picks the current slot, then advances to the next (wrapping after the last). Coach can suggest a program; approve in the Coach tab and it appears here.
       </p>
       <p>
         <strong>Macros:</strong> Set age, height, and weight, then use the calculator (Mifflin–St Jeor × activity, adjusted for goal) and <strong>Apply</strong> for tracker bars. Log meals per day; <strong>Meal prep mode</strong> copies one meal to the week days you select.

@@ -131,6 +131,11 @@ function getNoteDisplaySubject(n) {
   const s = n && typeof n.subject === "string" ? n.subject.trim() : "";
   return s || "General";
 }
+
+/** Notes marked done are archived; exclude them from coach / intelligence context. */
+function activeNotesForCoach(notesList) {
+  return (notesList || []).filter((n) => !n.done);
+}
 const PATTERNS_STORAGE_KEY = "cute_schedule_patterns_v1";
 const HABITS_STORAGE_KEY = "cute_schedule_habits_v1";
 const ONBOARDING_DONE_KEY = "cute_schedule_onboarding_done_v1";
@@ -971,7 +976,7 @@ function habitReminderPushEntries(habits, dayKeyToday, nowMs, maxAtMs, notificat
   return out;
 }
 
-/** Viewport-safe fixed position for task / list dropdowns. */
+/** Viewport-safe fixed position for task / list dropdowns. Returns `top` (below anchor) or `bottom` (above anchor), never both. */
 function computeDropdownPosition(rect, opts = {}) {
   const pad = 16;
   const vv = typeof window !== "undefined" ? window.visualViewport : null;
@@ -996,12 +1001,19 @@ function computeDropdownPosition(rect, opts = {}) {
   /** Keep entire panel inside horizontal viewport after nudge (avoids right-edge clip). */
   left = Math.max(minLeft, Math.min(left, vw - pad - panelW));
 
-  let top = rect.bottom + 6;
-  if (top + maxH > vh - pad) {
-    top = Math.max(pad, rect.top - maxH - 6);
+  const gap = 6;
+  const topBelow = rect.bottom + gap;
+  let top;
+  let bottom;
+  /** Flip above only when the max plausible height would not fit below (conservative). */
+  if (topBelow + maxH > vh - pad) {
+    /** Anchor the panel’s bottom edge to `rect.top - gap` — do not assume height `maxH`
+     *  (actual menu is shorter, so `rect.top - maxH` left a large gap above the task). */
+    bottom = vh - rect.top + gap;
+  } else {
+    top = Math.max(pad, Math.min(topBelow, vh - pad - 48));
   }
-  top = Math.max(pad, Math.min(top, vh - pad - 48));
-  return { left, top, width: panelW };
+  return { left, top, bottom, width: panelW };
 }
 
 function isSameDayKey(a, b) {
@@ -2696,6 +2708,9 @@ export default function App() {
   const [coachLearning, setCoachLearning] = useState(() => loadCoachLearning());
   const [coachToast, setCoachToast] = useState(null);
   const [coachEdit, setCoachEdit] = useState(null);
+  const [coachProfileSaveShowsSaved, setCoachProfileSaveShowsSaved] = useState(false);
+  const coachGtkyDetailsRef = useRef(null);
+  const coachProfileSaveCloseTimerRef = useRef(null);
   const coachResultRef = useRef(null);
   const [sprintEndsAt, setSprintEndsAt] = useState(null); // timestamp; when set, 10-min sprint is active
   const [sprintTick, setSprintTick] = useState(0); // force re-render every second during sprint
@@ -2713,6 +2728,13 @@ export default function App() {
     const t = setTimeout(() => setCoachToast(null), 4200);
     return () => clearTimeout(t);
   }, [coachToast]);
+
+  useEffect(
+    () => () => {
+      if (coachProfileSaveCloseTimerRef.current) clearTimeout(coachProfileSaveCloseTimerRef.current);
+    },
+    []
+  );
 
   // Only add a day when it's missing; never overwrite existing (keeps all days persisted)
   useEffect(() => {
@@ -4582,7 +4604,7 @@ export default function App() {
     });
   }, [notes, notesScope, tKey]);
 
-  const filteredNotes = useMemo(() => {
+  const filteredNotesBase = useMemo(() => {
     let list = notesInScope;
     if (noteSubjectFilter.trim()) {
       const sub = noteSubjectFilter.trim();
@@ -4592,6 +4614,19 @@ export default function App() {
     const searchLower = noteSearch.toLowerCase();
     return list.filter((n) => n.text.toLowerCase().includes(searchLower));
   }, [notesInScope, noteSubjectFilter, noteSearch]);
+
+  const filteredNotesActive = useMemo(
+    () => filteredNotesBase.filter((n) => !n.done),
+    [filteredNotesBase]
+  );
+
+  const filteredNotesArchived = useMemo(() => {
+    return filteredNotesBase
+      .filter((n) => n.done)
+      .sort((a, b) =>
+        String(b.archivedAt || b.createdAt || "").localeCompare(String(a.archivedAt || a.createdAt || ""))
+      );
+  }, [filteredNotesBase]);
 
   const noteSubjectFilterOptions = useMemo(() => {
     const fromNotes = new Set(notesInScope.map((n) => getNoteDisplaySubject(n)));
@@ -4620,6 +4655,8 @@ export default function App() {
       createdAt: new Date().toISOString(),
       dayKey: notesScope === "day" ? tKey : null,
       subject: sub,
+      done: false,
+      archivedAt: null,
     };
     setNotes((prev) => [...prev, note]);
     setNewNote("");
@@ -4638,6 +4675,8 @@ export default function App() {
         createdAt: new Date().toISOString(),
         dayKey: tKey,
         subject: "General",
+        done: false,
+        archivedAt: null,
       },
     ]);
   }
@@ -4661,9 +4700,23 @@ export default function App() {
     setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, subject: s } : n)));
   }
 
+  function toggleNoteDone(id) {
+    setNotes((prev) =>
+      prev.map((n) => {
+        if (n.id !== id) return n;
+        const nextDone = !n.done;
+        return {
+          ...n,
+          done: nextDone,
+          archivedAt: nextDone ? new Date().toISOString() : null,
+        };
+      })
+    );
+  }
+
   const noteSearchDropdownItems = useMemo(
-    () => (noteSearch.trim() ? filteredNotes.slice(0, 10) : []),
-    [noteSearch, filteredNotes]
+    () => (noteSearch.trim() ? filteredNotesActive.slice(0, 10) : []),
+    [noteSearch, filteredNotesActive]
   );
 
   const newNoteTextareaRef = useRef(null);
@@ -4696,7 +4749,7 @@ export default function App() {
         patterns: analyzePatterns(),
         health,
         habitTracker,
-        notes: (notes || []).slice(0, 50),
+        notes: activeNotesForCoach(notes).slice(0, 50),
         routineSchedule,
       });
       coachReasoningMode = inferCoachReasoningMode(userQuestion);
@@ -4745,7 +4798,7 @@ export default function App() {
         timeOfDay,
         tasks: taskLite,
         patterns,
-        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text, subject: getNoteDisplaySubject(n) })),
+        notes: activeNotesForCoach(notes).slice(0, 50).map((n) => ({ text: n.text, subject: getNoteDisplaySubject(n) })),
         learning: coachLearning,
         healthSummary: formatHealthForCoach(health),
         taskBehaviorSummary,
@@ -4764,7 +4817,7 @@ export default function App() {
         progress: prog,
         today: todayHours,
         monthly: (appState.monthly || []).map((m) => ({ id: m.id, text: m.text, done: m.done })),
-        notes: (notes || []).slice(0, 50).map((n) => ({
+        notes: activeNotesForCoach(notes).slice(0, 50).map((n) => ({
           text: n.text,
           createdAt: n.createdAt,
           subject: getNoteDisplaySubject(n),
@@ -4966,7 +5019,7 @@ export default function App() {
         timeOfDay: getTimeOfDay(),
         tasks: taskLiteCatch,
         patterns: patternsCatch,
-        notes: (notes || []).slice(0, 50).map((n) => ({ text: n.text, subject: getNoteDisplaySubject(n) })),
+        notes: activeNotesForCoach(notes).slice(0, 50).map((n) => ({ text: n.text, subject: getNoteDisplaySubject(n) })),
         learning: coachLearning,
         healthSummary: formatHealthForCoach(health),
       });
@@ -5243,7 +5296,7 @@ export default function App() {
           patterns: analyzePatterns(),
           health,
           habitTracker,
-          notes: (notes || []).slice(0, 50),
+          notes: activeNotesForCoach(notes).slice(0, 50),
           routineSchedule,
         });
         coachReasoningMode = inferCoachReasoningMode(adhdQuestion);
@@ -6939,7 +6992,19 @@ export default function App() {
               ) : null
             ) : null}
 
-            <details className="coach-gtky-details">
+            <details
+              ref={coachGtkyDetailsRef}
+              className="coach-gtky-details"
+              onToggle={(e) => {
+                if (e.currentTarget.open) {
+                  if (coachProfileSaveCloseTimerRef.current) {
+                    clearTimeout(coachProfileSaveCloseTimerRef.current);
+                    coachProfileSaveCloseTimerRef.current = null;
+                  }
+                  setCoachProfileSaveShowsSaved(false);
+                }
+              }}
+            >
               <summary className="coach-gtky-summary">
                 {coachUserProfile.filled ? "Your coaching profile" : "Get to know you"}
               </summary>
@@ -6969,13 +7034,24 @@ export default function App() {
                   <button
                     type="button"
                     className="btn btn-primary"
+                    disabled={coachProfileSaveShowsSaved}
                     onClick={() => {
                       const next = { ...coachUserProfile, filled: true };
                       setCoachUserProfile(next);
                       localStorage.setItem(COACH_USER_PROFILE_KEY, JSON.stringify(next));
+                      setCoachProfileSaveShowsSaved(true);
+                      if (coachProfileSaveCloseTimerRef.current) {
+                        clearTimeout(coachProfileSaveCloseTimerRef.current);
+                      }
+                      coachProfileSaveCloseTimerRef.current = setTimeout(() => {
+                        coachProfileSaveCloseTimerRef.current = null;
+                        setCoachProfileSaveShowsSaved(false);
+                        const el = coachGtkyDetailsRef.current;
+                        if (el) el.open = false;
+                      }, 450);
                     }}
                   >
-                    Save profile
+                    {coachProfileSaveShowsSaved ? "Saved" : "Save profile"}
                   </button>
                 </div>
               </div>
@@ -7778,7 +7854,7 @@ export default function App() {
               </div>
             </form>
 
-            {filteredNotes.length === 0 ? (
+            {filteredNotesBase.length === 0 ? (
               <div className="empty">
                 {noteSearch
                   ? "No notes match your search."
@@ -7789,60 +7865,139 @@ export default function App() {
                       : "Add your first workspace note, or switch to This day for day-specific entries."}
               </div>
             ) : (
-              <ul className="list list-page-list notes-list-page">
-                {filteredNotes.map((note) => (
-                  <li key={note.id} className="list-row note-list-row" data-note-id={note.id}>
-                    {editingNoteId === note.id ? (
-                      <div className="note-edit-row list-row-edit-row">
-                        <input
-                          className="input"
-                          value={editingNoteText}
-                          onChange={(e) => setEditingNoteText(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(""); } if (e.key === "Escape") { setEditingNoteId(null); setEditingNoteText(""); } }}
-                          autoFocus
-                        />
-                        <div className="list-row-edit-actions">
-                          <button type="button" className="btn btn-sm btn-primary" onClick={() => { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(""); }}>Save</button>
-                          <button type="button" className="btn btn-sm" onClick={() => { setEditingNoteId(null); setEditingNoteText(""); }}>Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="list-row-body note-list-row-body">
-                        <div className="note-list-text-block">
-                          <span className="note-date note-list-date">
-                            {new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                          </span>
-                          {getNoteDisplaySubject(note) !== "General" && (
-                            <span className="note-subject-badge">{getNoteDisplaySubject(note)}</span>
+              <>
+                {filteredNotesActive.length === 0 ? (
+                  <div className="empty notes-empty-active">
+                    {noteSearch.trim() || noteSubjectFilter.trim()
+                      ? "No active notes match your filters. Matching archived notes are below."
+                      : "No active notes in this view. Check off a note to send it to the archive below."}
+                  </div>
+                ) : (
+                  <ul className="list list-page-list notes-list-page">
+                    {filteredNotesActive.map((note) => (
+                      <li key={note.id} className="list-row note-list-row" data-note-id={note.id}>
+                        {editingNoteId === note.id ? (
+                          <div className="note-edit-row list-row-edit-row">
+                            <input
+                              className="input"
+                              value={editingNoteText}
+                              onChange={(e) => setEditingNoteText(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === "Enter") { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(""); } if (e.key === "Escape") { setEditingNoteId(null); setEditingNoteText(""); } }}
+                              autoFocus
+                            />
+                            <div className="list-row-edit-actions">
+                              <button type="button" className="btn btn-sm btn-primary" onClick={() => { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(""); }}>Save</button>
+                              <button type="button" className="btn btn-sm" onClick={() => { setEditingNoteId(null); setEditingNoteText(""); }}>Cancel</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="list-row-body note-list-row-body">
+                            <label className="list-row-main check note-list-check" onClick={(e) => e.stopPropagation()}>
+                              <input type="checkbox" checked={!!note.done} onChange={() => toggleNoteDone(note.id)} aria-label="Archive note" />
+                              <span className="checkmark" />
+                              <div className="note-list-text-block">
+                                <span className="note-date note-list-date">
+                                  {new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                                </span>
+                                {getNoteDisplaySubject(note) !== "General" && (
+                                  <span className="note-subject-badge">{getNoteDisplaySubject(note)}</span>
+                                )}
+                                <span className={`list-row-title note-list-text ${note.done ? "item-text-done" : ""}`}>{note.text}</span>
+                              </div>
+                            </label>
+                            <div className="list-row-actions">
+                              <button
+                                type="button"
+                                className="icon-btn list-row-action list-row-more"
+                                title="Note options"
+                                aria-label="Note options"
+                                data-list-menu-trigger
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const anchorEl = e.currentTarget;
+                                  if (!anchorEl) return;
+                                  const rect = anchorEl.getBoundingClientRect();
+                                  dismissTaskDropdownOnly();
+                                  setSecondaryListMenu((prev) =>
+                                    prev?.kind === "note" && prev.id === note.id ? null : { kind: "note", id: note.id, rect }
+                                  );
+                                }}
+                              >
+                                <MenuIcon style={{ width: 18, height: 18 }} />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {filteredNotesArchived.length > 0 ? (
+                  <details className="notes-archive-details">
+                    <summary className="notes-archive-summary">
+                      Archive ({filteredNotesArchived.length})
+                    </summary>
+                    <ul className="list list-page-list notes-list-page notes-archive-list">
+                      {filteredNotesArchived.map((note) => (
+                        <li key={note.id} className="list-row note-list-row note-list-row-archived" data-note-id={note.id}>
+                          {editingNoteId === note.id ? (
+                            <div className="note-edit-row list-row-edit-row">
+                              <input
+                                className="input"
+                                value={editingNoteText}
+                                onChange={(e) => setEditingNoteText(e.target.value)}
+                                onKeyDown={(e) => { if (e.key === "Enter") { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(""); } if (e.key === "Escape") { setEditingNoteId(null); setEditingNoteText(""); } }}
+                                autoFocus
+                              />
+                              <div className="list-row-edit-actions">
+                                <button type="button" className="btn btn-sm btn-primary" onClick={() => { editNote(note.id, editingNoteText.trim()); setEditingNoteId(null); setEditingNoteText(""); }}>Save</button>
+                                <button type="button" className="btn btn-sm" onClick={() => { setEditingNoteId(null); setEditingNoteText(""); }}>Cancel</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="list-row-body note-list-row-body">
+                              <label className="list-row-main check note-list-check" onClick={(e) => e.stopPropagation()}>
+                                <input type="checkbox" checked={!!note.done} onChange={() => toggleNoteDone(note.id)} aria-label="Restore note from archive" />
+                                <span className="checkmark" />
+                                <div className="note-list-text-block">
+                                  <span className="note-date note-list-date">
+                                    {new Date(note.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                                  </span>
+                                  {getNoteDisplaySubject(note) !== "General" && (
+                                    <span className="note-subject-badge">{getNoteDisplaySubject(note)}</span>
+                                  )}
+                                  <span className="list-row-title note-list-text item-text-done">{note.text}</span>
+                                </div>
+                              </label>
+                              <div className="list-row-actions">
+                                <button
+                                  type="button"
+                                  className="icon-btn list-row-action list-row-more"
+                                  title="Note options"
+                                  aria-label="Note options"
+                                  data-list-menu-trigger
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const anchorEl = e.currentTarget;
+                                    if (!anchorEl) return;
+                                    const rect = anchorEl.getBoundingClientRect();
+                                    dismissTaskDropdownOnly();
+                                    setSecondaryListMenu((prev) =>
+                                      prev?.kind === "note" && prev.id === note.id ? null : { kind: "note", id: note.id, rect }
+                                    );
+                                  }}
+                                >
+                                  <MenuIcon style={{ width: 18, height: 18 }} />
+                                </button>
+                              </div>
+                            </div>
                           )}
-                          <span className="list-row-title note-list-text">{note.text}</span>
-                        </div>
-                        <div className="list-row-actions">
-                          <button
-                            type="button"
-                            className="icon-btn list-row-action list-row-more"
-                            title="Note options"
-                            aria-label="Note options"
-                            data-list-menu-trigger
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const anchorEl = e.currentTarget;
-                              if (!anchorEl) return;
-                              const rect = anchorEl.getBoundingClientRect();
-                              dismissTaskDropdownOnly();
-                              setSecondaryListMenu((prev) =>
-                                prev?.kind === "note" && prev.id === note.id ? null : { kind: "note", id: note.id, rect }
-                              );
-                            }}
-                          >
-                            <MenuIcon style={{ width: 18, height: 18 }} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                ) : null}
+              </>
             )}
           </section>
         ) : null}
@@ -7875,7 +8030,7 @@ export default function App() {
             const showOptionalRepeatBtn =
               taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.NONE;
             const rect = dropdownAnchorRect;
-            const { left, top, width } = computeDropdownPosition(rect, {
+            const { left, top, bottom, width } = computeDropdownPosition(rect, {
               panelWidth,
               maxHeight: dropdownMaxHeight,
               /** Avoid horizontal nudge for wide edit-time panel so `left + width` stays inside the viewport. */
@@ -7889,7 +8044,7 @@ export default function App() {
                 style={{
                   position: 'fixed',
                   left,
-                  top,
+                  ...(bottom != null ? { top: "auto", bottom } : { top }),
                   width,
                   maxWidth:
                     "min(100vw - 32px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
@@ -8040,7 +8195,7 @@ export default function App() {
             const rect = secondaryListMenu.rect;
             const dropdownMaxHeight = 220;
             const panelWidth = 216;
-            const { left, top, width } = computeDropdownPosition(rect, { panelWidth, maxHeight: dropdownMaxHeight });
+            const { left, top, bottom, width } = computeDropdownPosition(rect, { panelWidth, maxHeight: dropdownMaxHeight });
             const closeSecondary = () => setSecondaryListMenu(null);
             return (
               <div
@@ -8048,7 +8203,7 @@ export default function App() {
                 style={{
                   position: "fixed",
                   left,
-                  top,
+                  ...(bottom != null ? { top: "auto", bottom } : { top }),
                   width,
                   maxWidth:
                     "min(100vw - 32px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
@@ -8093,6 +8248,18 @@ export default function App() {
                     const pinned = Boolean(n.dayKey);
                     return (
                       <>
+                        {n.done ? (
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              toggleNoteDone(n.id);
+                              closeSecondary();
+                            }}
+                          >
+                            Restore from archive
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           className="dropdown-item"

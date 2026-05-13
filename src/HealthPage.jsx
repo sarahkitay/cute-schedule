@@ -356,7 +356,10 @@ export function HealthPage({
   const displayPrograms = useMemo(() => {
     const user = h.programs || [];
     const userIds = new Set(user.map((p) => p.id));
-    const builtIns = PROGRAM_LIBRARY.filter((lib) => !userIds.has(lib.id));
+    const savedCopyName = (libName) => `${String(libName || "").trim()} (saved)`;
+    const hasSavedLibraryCopy = (lib) =>
+      user.some((p) => String(p.name || "").trim() === savedCopyName(lib.name));
+    const builtIns = PROGRAM_LIBRARY.filter((lib) => !userIds.has(lib.id) && !hasSavedLibraryCopy(lib));
     return [...user, ...builtIns];
   }, [h.programs]);
 
@@ -565,13 +568,6 @@ export function HealthPage({
       return { ...base, programs: [...(base.programs || []), rec] };
     });
     clearBuilder();
-  }
-
-  function patchRotationMode(mode) {
-    setHealth((prev) => ({
-      ...normalizeHealth(prev),
-      workoutRotationMode: mode === "shuffle" ? "shuffle" : "queue",
-    }));
   }
 
   const targets = h.macroTargets;
@@ -892,18 +888,10 @@ export function HealthPage({
           <div className="panel-title health-week-program-title" style={{ marginTop: 22 }}>
             <span className="title">Weekly routine order</span>
           </div>
-          <label className="quick-row">
-            <span className="label">How the next workout is picked</span>
-            <select
-              className="input"
-              value={h.workoutRotationMode === "shuffle" ? "shuffle" : "queue"}
-              onChange={(e) => patchRotationMode(e.target.value)}
-              aria-label="Workout rotation mode"
-            >
-              <option value="queue">Repeat in order (workout 1 → 2 → 3 → … then back to 1)</option>
-              <option value="shuffle">Shuffle (random from this list each time)</option>
-            </select>
-          </label>
+          <p className="settings-hint health-week-routine-hint" style={{ marginBottom: 10 }}>
+            Stack programs below in the order you want. For gym tasks set to <strong>Auto</strong> or <strong>Next in weekly routine</strong>,{" "}
+            <strong>Begin workout</strong> opens the program at the current slot, then moves to the next (after the last, it wraps to the first).
+          </p>
           <ul className="health-routine-chips">
             {(h.weekRoutineProgramIds || []).map((pid, i) => {
               const p = selectable.find((x) => x.id === pid);
