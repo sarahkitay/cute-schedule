@@ -7,13 +7,13 @@ const INSTRUCTIONS = {
         <strong>Add tasks:</strong> Use <em>Type</em> with a time (e.g. 4pm) and optional day (tomorrow, Friday, 3/26/26). <em>Details</em> uses the time picker, category, repeat, energy, and optional workout type.
       </p>
       <p>
-        <strong>Task notes:</strong> On Today, tap the small <strong>▸ / ▾</strong> arrow on a task row to open details — notes live there only. The <strong>⋯</strong> menu is for move, delete, time, lists, etc.
+        <strong>Task notes:</strong> On Today, tap the small <strong>▸ / ▾</strong> arrow on a task row to open details; notes live there only. The <strong>⋯</strong> menu is for move, delete, time, lists, etc.
       </p>
       <p>
         When you open Today, the schedule scrolls to your <strong>next incomplete</strong> task and highlights it. Habits, routines, and dock cards stay above the timeline.
       </p>
       <p>
-        <strong>Today’s Capacity bars:</strong> Percentages reflect completes, moved to tomorrow, deletes, unchecking, and (if enabled) missed-at-day-end logs — plus your all-done streak and whether your last seven scheduled days were all finished.
+        <strong>Today’s Capacity bars:</strong> Percentages reflect completes, moved to tomorrow, deletes, unchecking, and (if enabled) missed-at-day-end logs, plus your all-done streak and whether your last seven scheduled days were all finished.
       </p>
     </>
   ),
@@ -26,7 +26,7 @@ const INSTRUCTIONS = {
   coach: (
     <>
       <p>Suggestions need your <strong>Approve</strong> before anything is added. Workout <em>programs</em> from Coach save under Health → My programs when approved.</p>
-      <p>Structured modes (plan / unstuck / review) may return timebox or reorder actions — apply from the buttons shown.</p>
+      <p>Structured modes (plan / unstuck / review) may return timebox or reorder actions; apply from the buttons shown.</p>
       <p>
         Optional <strong>Get to know you</strong> fields (expand on Coach) give the coach stable context; update anytime.
       </p>
@@ -43,7 +43,10 @@ const INSTRUCTIONS = {
   finance: (
     <>
       <p>
-        Quick-add: <strong>+amount</strong> for income, <strong>-amount</strong> or &quot;50 label&quot; for spending. Coach uses what you log — not medical or investment advice.
+        Quick-add: <strong>+amount</strong> for income, <strong>-amount</strong> or &quot;50 label&quot; for spending. Coach uses what you log, not medical or investment advice.
+      </p>
+      <p>
+        Below the month snapshot, each block (savings through month summaries) is a collapsible section: tap the row to expand or collapse.
       </p>
       <p>
         <strong>Savings &amp; debt:</strong> totals are the sum of listed accounts; update balances when you pay debt down. <strong>Credit score</strong> log is optional.
@@ -60,7 +63,7 @@ const INSTRUCTIONS = {
     <>
       <p>
         <strong>Programs:</strong> Open <em>Build a program</em> to add exercises and save to My programs. <strong>Weekly routine order</strong> plus <em>Repeat in order</em> or <em>Shuffle</em> controls
-        auto / queue workout picks. Coach can suggest a program — approve in the Coach tab and it appears here.
+        auto / queue workout picks. Coach can suggest a program; approve in the Coach tab and it appears here.
       </p>
       <p>
         <strong>Macros:</strong> Set age, height, and weight, then use the calculator (Mifflin–St Jeor × activity, adjusted for goal) and <strong>Apply</strong> for tracker bars. Log meals per day; <strong>Meal prep mode</strong> copies one meal to the week days you select.
@@ -91,7 +94,7 @@ const INSTRUCTIONS = {
         <strong>Shopping &amp; errand lists:</strong> When a task title contains a <strong>whole-word</strong> keyword (comma-separated list), the app can offer a checklist. Defaults are similar to grocery / store / errand. <strong>Saved lists</strong> come from the checklist modal or the attach flow below. <strong>Log missed tasks when a day ends</strong> records still-unchecked tasks after midnight for Coach and stats (optional).
       </p>
       <p>
-        <strong>Attach a saved list:</strong> Pick a task on real today and a saved list — <strong>Apply</strong> replaces that task&apos;s checklist lines.
+        <strong>Attach a saved list:</strong> Pick a task on real today and a saved list; <strong>Apply</strong> replaces that task&apos;s checklist lines.
       </p>
       <p>
         <strong>Shopping prompt (matching tasks):</strong> If a task matches your keywords, you can attach a checklist; keywords are editable here under Shopping &amp; errand lists.
@@ -100,13 +103,13 @@ const INSTRUCTIONS = {
         <strong>Theme:</strong> Accent / palette for the app.
       </p>
       <p>
-        <strong>Notifications &amp; reminders</strong> opens the full screen for permissions, task defaults, timing, habit cadence, quiet hours, and per-habit toggles — see <strong>Instructions</strong> on that screen for platform details (iOS, Android, browser).
+        <strong>Notifications &amp; reminders</strong> opens the full screen for permissions, task defaults, timing, habit cadence, quiet hours, and per-habit toggles; see <strong>Instructions</strong> on that screen for platform details (iOS, Android, browser).
       </p>
       <p>
         <strong>Guides &amp; tours:</strong> Replay the quick tab overview or the full walkthrough. Exiting early does not mark complete; finishing the last slide does.
       </p>
       <p>
-        <strong>Account:</strong> With Firebase enabled, you sync across devices. <strong>Guest</strong> is this browser only until you link an account. <strong>Delete account / guest data</strong> runs a short flow — removal is permanent, then this device reloads. <strong>Birthday</strong> as MMDD (e.g. 0315) for an in-app greeting.
+        <strong>Account:</strong> With Firebase enabled, you sync across devices. <strong>Guest</strong> is this browser only until you link an account. <strong>Delete account / guest data</strong> runs a short flow; removal is permanent, then this device reloads. <strong>Birthday</strong> as MMDD (e.g. 0315) for an in-app greeting.
       </p>
     </>
   ),
@@ -148,9 +151,9 @@ const INSTRUCTIONS = {
 
 /**
  * Collapsible help strip at the bottom of a scroll area (main tabs or Settings modal).
- * @param {string} tab — Main tab id, or `"settings"` with `settingsSubView`.
- * @param {"main"|"notifications"} [settingsSubView] — When `tab === "settings"`, which copy to show.
- * @param {boolean} [compact] — Tighter spacing (e.g. inside Settings modal).
+ * @param {string} tab - Main tab id, or `"settings"` with `settingsSubView`.
+ * @param {"main"|"notifications"} [settingsSubView] - When `tab === "settings"`, which copy to show.
+ * @param {boolean} [compact] - Tighter spacing (e.g. inside Settings modal).
  */
 export function PageInstructions({ tab, settingsSubView = "main", compact }) {
   let body;

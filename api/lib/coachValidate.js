@@ -142,7 +142,7 @@ export function validateCoachSpecificity(parsed, opts) {
   function buildDeterministicMissing() {
     const pacing = pacingNote || "From the clock, nothing is overdue yet.";
     const y = ySummary ? `${ySummary}` : "";
-    let msg = `Your schedule does not look behind right now — ${pacing}`;
+    let msg = `Your schedule does not look behind right now: ${pacing}`;
     if (y) msg += ` ${y}`;
     if (neglectedTitle) {
       const nextAct =

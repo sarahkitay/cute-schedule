@@ -228,12 +228,12 @@ export function buildCoachContext(input: BuildCoachContextInput): CoachContext {
   } else if (totalTasks === 0) {
     schedulePacingNote = "No tasks are on today's board yet.";
   } else if (overdueTasks > 0) {
-    schedulePacingNote = `${overdueTasks} open task(s) are already past their scheduled time — that is the clearest pressure signal, not raw completion count.`;
+    schedulePacingNote = `${overdueTasks} open task(s) are already past their scheduled time; that is the clearest pressure signal, not raw completion count.`;
   } else if (morningEarly && completedTasks <= 2) {
     schedulePacingNote =
       "It is still morning; a low completion count so far is not automatically a problem if nothing is overdue yet.";
   } else if (overdueTasks === 0 && remainingTasks > 0) {
-    schedulePacingNote = "Nothing is behind the clock yet — you appear on pace for the current time.";
+    schedulePacingNote = "Nothing is behind the clock yet; you appear on pace for the current time.";
   } else {
     schedulePacingNote = "Schedule is light or fully checked; momentum reads as steady.";
   }

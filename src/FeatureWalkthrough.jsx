@@ -32,7 +32,7 @@ const FULL_SLIDES = [
   {
     title: "Today tab & the timeline",
     body:
-      "Each **time block** holds tasks by category. Tap the small **▸ / ▾** on a row to open details (including **private notes** for that task). Use **⋯** for move to tomorrow, edit time, shopping lists, and more — notes stay on the expand panel on Today. Every main tab has a small **Instructions** strip at the bottom for full help.",
+      "Each **time block** holds tasks by category. Tap the small **▸ / ▾** on a row to open details (including **private notes** for that task). Use **⋯** for move to tomorrow, edit time, shopping lists, and more; notes stay on the expand panel on Today. Every main tab has a small **Instructions** strip at the bottom for full help.",
   },
   {
     title: "Adding tasks: Type vs Details (top bar)",
@@ -77,7 +77,7 @@ const FULL_SLIDES = [
   {
     title: "Instructions on each tab",
     body:
-      "Longer help lives in the **Instructions** bar at the bottom of Today, List, Coach, Notes, Finance, and Health — open it anytime. This tour is the overview; combine both when you need detail.",
+      "Longer help lives in the **Instructions** bar at the bottom of Today, List, Coach, Notes, Finance, and Health; open it anytime. This tour is the overview; combine both when you need detail.",
   },
   {
     title: "Sync & account",

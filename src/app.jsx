@@ -4202,7 +4202,7 @@ export default function App() {
     }
     markBillPaid(billId);
     setToastNotification({
-      message: `Logged $${amt.toFixed(2)} spent — ${b.name} (${b.dueDate}).`,
+      message: `Logged $${amt.toFixed(2)} spent: ${b.name} (${b.dueDate}).`,
       taskText: "",
       type: "added",
     });
@@ -7138,6 +7138,11 @@ export default function App() {
                   })()}
                 </span>
               </div>
+            </div>
+
+            <details className="finance-details-block surface-glass">
+              <summary className="finance-details-summary">Savings, debt &amp; liquidity</summary>
+              <div className="finance-details-body">
               <div className="finance-savings-block">
                 <div className="finance-total-row finance-savings-header">
                   <span className="finance-total-label">Savings accounts</span>
@@ -7350,15 +7355,17 @@ export default function App() {
                 />
               </div>
               <div className="finance-total-row finance-total-row-total">
-                <span className="finance-total-label">Liquid (savings − debt)</span>
+                <span className="finance-total-label">Liquid (savings - debt)</span>
                 <span className="finance-total-value total">
                   ${((finance.totalSavings || 0) - (finance.totalDebt || 0)).toFixed(2)}
                 </span>
               </div>
-            </div>
+              </div>
+            </details>
 
-            <div className="finance-section">
-              <h3 className="finance-section-title">Credit score log</h3>
+            <details className="finance-section finance-details-section surface-glass">
+              <summary className="finance-details-summary">Credit score log</summary>
+              <div className="finance-details-panel">
               <form
                 className="finance-inline-form"
                 onSubmit={(e) => {
@@ -7402,10 +7409,12 @@ export default function App() {
                   </li>
                 ))}
               </ul>
-            </div>
+              </div>
+            </details>
 
-            <div className="finance-section">
-              <h3 className="finance-section-title">Recent income</h3>
+            <details className="finance-section finance-details-section surface-glass">
+              <summary className="finance-details-summary">Recent income</summary>
+              <div className="finance-details-panel">
               <ul className="finance-list">
                 {(finance.incomeEntries || []).slice(0, 15).map((e) => (
                   <li key={e.id} className="finance-list-item income">
@@ -7417,10 +7426,12 @@ export default function App() {
                 ))}
                 {(finance.incomeEntries || []).length === 0 && <li className="finance-list-empty">No income logged yet. Try +500</li>}
               </ul>
-            </div>
+              </div>
+            </details>
 
-            <div className="finance-section">
-              <h3 className="finance-section-title">Recent spending</h3>
+            <details className="finance-section finance-details-section surface-glass">
+              <summary className="finance-details-summary">Recent spending</summary>
+              <div className="finance-details-panel">
               <ul className="finance-list">
                 {(finance.expenseEntries || []).slice(0, 15).map((e) => (
                   <li key={e.id} className="finance-list-item expense">
@@ -7432,10 +7443,12 @@ export default function App() {
                 ))}
                 {(finance.expenseEntries || []).length === 0 && <li className="finance-list-empty">No spending logged yet. Try -200 or &quot;50 coffee&quot;</li>}
               </ul>
-            </div>
+              </div>
+            </details>
 
-            <div className="finance-section">
-              <h3 className="finance-section-title">Subscriptions</h3>
+            <details className="finance-section finance-details-section surface-glass">
+              <summary className="finance-details-summary">Subscriptions</summary>
+              <div className="finance-details-panel">
               <form className="finance-inline-form" onSubmit={(e) => {
                 e.preventDefault();
                 if (newSubName.trim()) {
@@ -7465,10 +7478,12 @@ export default function App() {
                   </li>
                 ))}
               </ul>
-            </div>
+              </div>
+            </details>
 
-            <div className="finance-section">
-              <h3 className="finance-section-title">Bills</h3>
+            <details className="finance-section finance-details-section surface-glass">
+              <summary className="finance-details-summary">Bills</summary>
+              <div className="finance-details-panel">
               <form className="finance-inline-form" onSubmit={(e) => {
                 e.preventDefault();
                 if (newBillName.trim() && newBillDueDate.trim()) {
@@ -7500,10 +7515,12 @@ export default function App() {
                   </li>
                 ))}
               </ul>
-            </div>
+              </div>
+            </details>
 
-            <div className="finance-section">
-              <h3 className="finance-section-title">Wish list</h3>
+            <details className="finance-section finance-details-section surface-glass">
+              <summary className="finance-details-summary">Wish list</summary>
+              <div className="finance-details-panel">
               <form className="finance-inline-form" onSubmit={(e) => {
                 e.preventDefault();
                 if (newWishLabel.trim()) {
@@ -7525,10 +7542,12 @@ export default function App() {
                   </li>
                 ))}
               </ul>
-            </div>
+              </div>
+            </details>
 
-            <div className="finance-section">
-              <h3 className="finance-section-title">Bank / statement notes</h3>
+            <details className="finance-section finance-details-section surface-glass">
+              <summary className="finance-details-summary">Bank / statement notes</summary>
+              <div className="finance-details-panel">
               <textarea
                 className="input finance-notes-textarea"
                 value={finance.bankStatementNotes}
@@ -7536,7 +7555,8 @@ export default function App() {
                 placeholder="e.g. Biggest charges this month: Amazon 120, dining 80…"
                 rows={4}
               />
-            </div>
+              </div>
+            </details>
 
             {(() => {
               const overviews = finance.monthOverviews || [];
@@ -7559,8 +7579,9 @@ export default function App() {
                 overviews,
               });
               return (
-                <div className="finance-section surface-glass" style={{ padding: 12, marginTop: 12 }}>
-                  <h3 className="finance-section-title">Month summaries &amp; pace</h3>
+                <details className="finance-section finance-details-section surface-glass" style={{ marginTop: 12 }}>
+                  <summary className="finance-details-summary">Month summaries &amp; pace</summary>
+                  <div className="finance-details-panel" style={{ padding: 12 }}>
                   {latest ? (
                     <div style={{ marginTop: 10 }}>
                       <div className="finance-total-row">
@@ -7615,7 +7636,8 @@ export default function App() {
                       ))}
                     </div>
                   )}
-                </div>
+                  </div>
+                </details>
               );
             })()}
 
@@ -7845,7 +7867,7 @@ export default function App() {
               typeof window !== "undefined"
                 ? Math.min(vv?.width ?? window.innerWidth, window.innerWidth)
                 : 400;
-            /** Edit time: native `input[type=time]` is wide on iOS — width must match computeDropdown margins (vw − 32). */
+            /** Edit time: native `input[type=time]` is wide on iOS; width must match computeDropdown margins (vw - 32). */
             const panelWidth = isEditing
               ? Math.max(240, Math.min(400, vwForPanel - 32))
               : Math.max(220, Math.min(300, vwForPanel - 24));
@@ -8175,7 +8197,7 @@ export default function App() {
             <div className="modal grocery-prompt-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
               <h3 id="grocery-prompt-title">Shopping or errand list?</h3>
               <p className="finance-meta" style={{ marginBottom: 8 }}>
-                Keywords: <strong>{groceryKeywordsNorm.join(", ")}</strong> — edit under Settings → Customization → Shopping &amp; errand lists.
+                Keywords: <strong>{groceryKeywordsNorm.join(", ")}</strong>; edit under Settings → Customization → Shopping &amp; errand lists.
               </p>
               {(profile.grocerySavedLists || []).length > 0 && (
                 <>
@@ -8564,7 +8586,7 @@ export default function App() {
                               msg =
                                 "Task reminders are scheduled for the next several days, and remote alerts are connected. Turn on Remind me on each task you want alerts for.";
                             } else if (localGranted) {
-                              msg = `Task reminders are scheduled. Remote alerts: ${pushResult?.hint || "could not finish — check connection or try again."}`;
+                              msg = `Task reminders are scheduled. Remote alerts: ${pushResult?.hint || "could not finish; check connection or try again."}`;
                             } else if (remoteOk) {
                               msg =
                                 "Remote alerts are on. For on-device task times, allow Notifications for this app in system settings, then tap this button again.";
@@ -9246,7 +9268,7 @@ export default function App() {
                               <div className="settings-dock-block-text">
                                 <span className="settings-dock-block-title">{row.label}</span>
                                 <span className={onDock ? "settings-dock-block-status is-on" : "settings-dock-block-status is-off"}>
-                                  {onDock ? "On dock" : "Hidden — shortcut on Today"}
+                                  {onDock ? "On dock" : "Hidden; shortcut on Today"}
                                 </span>
                               </div>
                             </div>

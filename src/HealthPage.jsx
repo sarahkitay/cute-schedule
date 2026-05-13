@@ -501,7 +501,7 @@ export function HealthPage({
     const src = normalizeProgramRecord(lib);
     if (!src) return;
     const id = newId("prog");
-    const rec = normalizeProgramRecord({ id, name: `${src.name} (copy)`, exercises: [...src.exercises] });
+    const rec = normalizeProgramRecord({ id, name: `${src.name} (saved)`, exercises: [...src.exercises] });
     if (!rec) return;
     setHealth((prev) => {
       const base = normalizeHealth(prev);
@@ -847,7 +847,7 @@ export function HealthPage({
                     <div className="health-program-card-head">
                       <strong>{p.name}</strong>
                       <span className="health-subline">
-                        {(p.exercises || []).length} moves{builtIn ? " · sample" : ""}
+                        {(p.exercises || []).length} moves{builtIn ? " · built-in" : ""}
                       </span>
                     </div>
                     <ul className="health-program-card-preview">
@@ -859,7 +859,7 @@ export function HealthPage({
                     <div className="health-program-card-actions">
                       {builtIn ? (
                         <button type="button" className="btn btn-sm btn-primary" onClick={() => saveLibraryCopy(p)}>
-                          Save copy to edit
+                          Save to my programs
                         </button>
                       ) : (
                         <button type="button" className="btn btn-sm btn-primary" onClick={() => startEditProgram(p.id)}>

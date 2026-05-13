@@ -72,7 +72,7 @@ export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCance
           </label>
           <label className="workout-picker-radio">
             <input type="radio" name="wkpm" checked={mode === "auto"} onChange={() => setMode("auto")} />
-            <span>Auto-pick (routine if set, otherwise your first saved program or a sample)</span>
+            <span>Auto-pick (routine if set, otherwise your first saved program or a built-in template)</span>
           </label>
         </div>
         {mode === "specific" ? (
