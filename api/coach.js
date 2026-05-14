@@ -1,6 +1,6 @@
 import { applyApiCors } from "./lib/cors.js";
 import { assertCoachRateLimit } from "./lib/coachRateLimit.js";
-import { validateCoachSpecificity } from "./lib/coachValidate.js";
+import { userWantsWorkoutProgramDraft, validateCoachSpecificity } from "./lib/coachValidate.js";
 import { clientSafeDetail, logServerError } from "./lib/safeJsonError.js";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -201,15 +201,19 @@ Banned sentence openers (do not start the message with these): "To help you", "Y
 
 Start the message with an observation about their data OR a reframing, not a preamble about helping.
 
-Suggestions (Coach V2): When a concrete move fits, return 0–6 items in "suggestions". Each item MUST use this shape:
-{ "type":"ADD_TASK"|"BREAK"|"SPLIT_TASK"|"DEFER"|"REORDER"|"TIMEBOX", "title":"short label", "description":"optional detail", "reason":"one sentence tied to THIS user's data", "category":"one of their categories", "energyLevel":"LIGHT"|"MEDIUM"|"HEAVY", "start":"HH:MM", "end":"HH:MM or null", "durationMinutes": number, "recurring": false, "recurrencePattern":"none"|"daily"|"weekly", "targetDayKey":"YYYY-MM-DD or null (which calendar day to place the block; default the request dayKey)", "weekPlanLabel":"short UI label e.g. Wed 7:30p", "confidence": 0.0-1.0, "requiresApproval": true, "targetTaskId": "existing id or null" }.
-Use ADD_TASK or BREAK for new items the app can insert after approval. Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply; requiresApproval is always true for user-facing rows. Use [] when no concrete suggestion fits.
+Suggestions (Coach V2): When a concrete move fits, return 0–6 items in "suggestions". Each item uses ONE of these shapes:
+
+(A) Calendar block: { "type":"ADD_TASK"|"BREAK"|"SPLIT_TASK"|"DEFER"|"REORDER"|"TIMEBOX", "title":"short label", "description":"optional detail", "reason":"one sentence tied to THIS user's data", "category":"one of their categories", "energyLevel":"LIGHT"|"MEDIUM"|"HEAVY", "start":"HH:MM", "end":"HH:MM or null", "durationMinutes": number, "recurring": false, "recurrencePattern":"none"|"daily"|"weekly", "targetDayKey":"YYYY-MM-DD or null (which calendar day to place the block; default the request dayKey)", "weekPlanLabel":"short UI label e.g. Wed 7:30p", "confidence": 0.0-1.0, "requiresApproval": true, "targetTaskId": "existing id or null" }.
+
+(B) Saved workout program (Health → My programs): { "type":"ADD_WORKOUT_PROGRAM", "name":"Short title", "reason":"why this split fits them", "exercises": ["Exercise one 3x10", "Exercise two 3x12", "...4-8 lines total, each a real lift + sets/reps"], "requiresApproval": true, "confidence": 0.8 }. No "start"/hour on this row — it is not a calendar block until they schedule it.
+
+Use ADD_TASK or BREAK for new calendar items. Use ADD_WORKOUT_PROGRAM when they ask you to write/build/draft a program, routine, or exercise list (e.g. glute day, leg day). Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply; requiresApproval is always true. Use [] only when nothing concrete fits.
 
 Clock rule for new time slots: The client sends localNowHHMM (24h) and realTodayKey. When targetDayKey is null or equals realTodayKey (same true calendar day as "now"), every ADD_TASK and BREAK must use "start" strictly AFTER localNowHHMM (pick the next quarter-hour or half-hour boundary after it). Never propose an earlier clock time for that day. For ADD_TASK on that day, prefer hour blocks in today's schedule JSON that are not already stacked with unfinished tasks unless the user explicitly asked to double-book.
 
 Week / recurring planning: If the user asks to spread habits (e.g. art, dog walks) across the week, use weekAtAGlance + today's schedule to infer lighter blocks and propose multiple ADD_TASK rows on different targetDayKey values with realistic times. Prefer recurrencePattern weekly for habits they want a few times per week; daily for true every-day anchors. In "message", sound human: react to what they said (e.g. agreement, empathy, one concrete plan). Tie suggestions to their actual gaps; avoid generic filler.
 
-Long priorities: If the user writes a full paragraph (e.g. fixed work hours, a side project, fitness goals), combine weekAtAGlance, patterns, task_trends in coachIntelligenceText, health_training, and today's hours to suggest realistic time windows and which blocks to lighten - still only ADD_TASK/BREAK/etc. with requiresApproval true, never invent obligations they did not imply.
+Long priorities: If the user writes a full paragraph (e.g. fixed work hours, a side project, fitness goals), combine weekAtAGlance, patterns, task_trends in coachIntelligenceText, health_training, and today's hours to suggest realistic time windows and which blocks to lighten - still return ADD_TASK/BREAK/etc. with requiresApproval true, or ADD_WORKOUT_PROGRAM when they want a saved gym program, never invent obligations they did not imply.
 
 Finance and health (when present in the prompt):
 - If the Finance block and/or Health / training block is non-empty, you MUST weave at least one concrete datum from it into "message" or "insight" (a dollar amount, account label, macro number, logged meal, workout program name, or weight trend). Do not answer with generic wellness or budgeting platitudes alone.
@@ -220,6 +224,7 @@ Anti-drift:
 - Tie emotion words to evidence from the task list or pacing fields when you use them.
 - Do not repeat the same reassurance twice in different wording.
 - Do NOT open with or lean on stock lines like "Since you typically complete tasks better in the morning/afternoon" or similar pattern-stat boilerplate every turn. Use statistics only when they change the plan; otherwise respond like a thoughtful friend (short agreement, empathy, or a concrete scheduling proposal).
+- For training/program questions: never open with "Based on your schedule" or "Looking at your calendar"; lead with the muscle or session goal, or one datum from health_training.
 - Prefer one concrete tradeoff when load is high: defer, shrink, swap, buffer, or stop.
 - Keep under ~140 words in "message" unless the user asked for depth.`;
 
@@ -292,6 +297,24 @@ Use these to detect recurring struggles, goals, constraints, or self-observation
 
     const coachModeLine = coachReasoningMode
       ? `\n\nREASONING_MODE: ${String(coachReasoningMode)} (weight your answer toward this lens; still return valid Coach V2 JSON).`
+      : "";
+
+    const programDraftAsk = userWantsWorkoutProgramDraft(userQuestion, coachReasoningMode);
+    const healthProgrammingHardRule = programDraftAsk
+      ? `
+
+PROGRAM_DRAFT (mandatory for this user message):
+They asked for a workout program, session, or focused exercise list. You MUST include at least one "suggestions" entry of type ADD_WORKOUT_PROGRAM with:
+- "name": short specific title (e.g. "Arms — pump + strength" not "Workout program")
+- "exercises": array of 5–8 non-empty strings; each line = real exercise + sets/reps or time (e.g. "EZ-bar curl 3×10–12"); no "TBD", no vague "arm work".
+- "reason": one sentence tied to their stated goal AND (if present) one detail from health_training (equipment, prior program, goal) — if health is sparse, say what you assumed in six words max.
+
+PERSONALIZATION (mandatory):
+- Open "message" with their training ask or one sharp fact from health_training — NOT with "Based on your schedule", "Given your day", "It sounds like", or similar template openers.
+- In the body of "message", naturally weave in at least two exercise names that also appear in the exercises array (same spelling).
+- Sound like a coach who read their note, not a blog: no "stay hydrated", "listen to your body", "consistency is key", "remember to warm up" unless tied to a concrete issue from their data.
+
+Do NOT reply with only generic encouragement.`
       : "";
 
     const coachContextBlock = coachContextNarrative
@@ -401,6 +424,7 @@ Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesCon
 
     const contextPrompt = `
 ${coachEvidenceFirst}
+${healthProgrammingHardRule}
 
 --- Calendar / schedule details (secondary to COACH_CONTEXT when both exist) ---
 ${scheduleDetails}
@@ -462,6 +486,8 @@ Return JSON EXACTLY in this schema (Coach V2). When you propose a full workout t
 
     messages.push({ role: "user", content: fullPrompt });
 
+    const openAITemperature = programDraftAsk ? 0.62 : 0.4;
+
     async function callOpenAI(tryNum) {
       const r = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
@@ -471,7 +497,7 @@ Return JSON EXACTLY in this schema (Coach V2). When you propose a full workout t
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
-          temperature: 0.4,
+          temperature: openAITemperature,
           messages: messages,
           response_format: { type: "json_object" },
         }),

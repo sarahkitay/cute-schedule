@@ -332,6 +332,231 @@ export function computeMacroTargetsFromProfile(profile) {
   return { calories, proteinG, carbsG, fatG };
 }
 
+/**
+ * Example day structures (rough USDA-style totals). Scaled to the user’s calorie target in
+ * {@link suggestMealPlansForTargets}; macro % may differ slightly from the calculator split.
+ * @type {{ id: string, name: string, blurb: string, meals: { slot: string, lines: string[], protein: number, carbs: number, fat: number, calories: number }[] }[]}
+ */
+const MEAL_PLAN_TEMPLATES = [
+  {
+    id: "balanced",
+    name: "Balanced plates",
+    blurb: "Steady breakfast, protein at lunch, fish and complex carbs at dinner.",
+    meals: [
+      {
+        slot: "Breakfast",
+        lines: ["Oatmeal (~1 cup cooked)", "Eggs (2 large)", "Banana (1 medium)"],
+        protein: 19,
+        carbs: 55,
+        fat: 14,
+        calories: 399,
+      },
+      {
+        slot: "Snack",
+        lines: ["Protein shake (~12 oz)"],
+        protein: 25,
+        carbs: 3,
+        fat: 2,
+        calories: 130,
+      },
+      {
+        slot: "Lunch",
+        lines: ["Chicken breast (~4 oz cooked)", "White rice (~1 cup cooked)", "Broccoli (~1 cup)"],
+        protein: 42,
+        carbs: 51,
+        fat: 5,
+        calories: 423,
+      },
+      {
+        slot: "Dinner",
+        lines: ["Salmon (~6 oz cooked)", "Sweet potato (1 medium baked)", "Side salad (~2 cups veg + light dressing)"],
+        protein: 42,
+        carbs: 32,
+        fat: 26,
+        calories: 504,
+      },
+    ],
+  },
+  {
+    id: "high_protein",
+    name: "Higher protein",
+    blurb: "Extra dairy and fish; still includes carbs for training days.",
+    meals: [
+      {
+        slot: "Breakfast",
+        lines: ["Greek yogurt (~170g)", "Eggs (2 large)", "Egg whites (~½ cup)"],
+        protein: 42,
+        carbs: 8,
+        fat: 10,
+        calories: 312,
+      },
+      {
+        slot: "Snack",
+        lines: ["Protein shake (~12 oz)", "Cottage cheese (~½ cup 2%)"],
+        protein: 39,
+        carbs: 8,
+        fat: 4,
+        calories: 220,
+      },
+      {
+        slot: "Lunch",
+        lines: ["Chicken breast (~4 oz cooked)", "White rice (~½ cup cooked)", "Broccoli (~1 cup)"],
+        protein: 37,
+        carbs: 28,
+        fat: 5,
+        calories: 320,
+      },
+      {
+        slot: "Dinner",
+        lines: ["Tuna (~5 oz can in water)", "Quinoa (~1 cup cooked)", "Broccoli (~1 cup)"],
+        protein: 45,
+        carbs: 45,
+        fat: 5,
+        calories: 403,
+      },
+    ],
+  },
+  {
+    id: "practical",
+    name: "Practical / on-the-go",
+    blurb: "Simple foods that pack for work or school; sandwich midday, lighter dinner.",
+    meals: [
+      {
+        slot: "Breakfast",
+        lines: ["Oatmeal (~1 cup cooked)", "Peanut butter (2 tbsp)", "Apple (1 medium)"],
+        protein: 15,
+        carbs: 58,
+        fat: 20,
+        calories: 435,
+      },
+      {
+        slot: "Snack",
+        lines: ["Greek yogurt (~170g)"],
+        protein: 17,
+        carbs: 6,
+        fat: 0,
+        calories: 100,
+      },
+      {
+        slot: "Lunch",
+        lines: ["Turkey sandwich (deli + 2 slices bread)"],
+        protein: 22,
+        carbs: 34,
+        fat: 8,
+        calories: 320,
+      },
+      {
+        slot: "Dinner",
+        lines: ["Salmon (~6 oz cooked)", "Sweet potato (1 medium baked)", "Side salad (~2 cups veg + light dressing)"],
+        protein: 42,
+        carbs: 32,
+        fat: 26,
+        calories: 504,
+      },
+    ],
+  },
+  {
+    id: "plant_forward",
+    name: "Plant-forward",
+    blurb: "More plants and tofu at lunch; fish at dinner for omega-3s.",
+    meals: [
+      {
+        slot: "Breakfast",
+        lines: ["Oatmeal (~1 cup cooked)", "Blueberries (~1 cup)", "Soy milk (1 cup)"],
+        protein: 16,
+        carbs: 52,
+        fat: 9,
+        calories: 339,
+      },
+      {
+        slot: "Snack",
+        lines: ["Apple (1 medium)", "Almonds (~1 oz / 23 nuts)"],
+        protein: 6,
+        carbs: 31,
+        fat: 14,
+        calories: 259,
+      },
+      {
+        slot: "Lunch",
+        lines: ["Tofu firm (~6 oz)", "Quinoa (~1 cup cooked)", "Broccoli (~1 cup)"],
+        protein: 29,
+        carbs: 48,
+        fat: 10,
+        calories: 403,
+      },
+      {
+        slot: "Dinner",
+        lines: ["Salmon (~6 oz cooked)", "White rice (~½ cup cooked)", "Side salad (~2 cups veg + light dressing)"],
+        protein: 39,
+        carbs: 45,
+        fat: 18,
+        calories: 503,
+      },
+    ],
+  },
+];
+
+/**
+ * Scale example meal plans to the user’s calculator targets (by calories; macros scale together).
+ * @param {{ calories: number, proteinG: number, carbsG: number, fatG: number } | null | undefined} targets
+ * @returns {{ id: string, name: string, blurb: string, meals: { slot: string, lines: string[], protein: number, carbs: number, fat: number, calories: number }[], totals: { protein: number, carbs: number, fat: number, calories: number }, vsTargetsPct: { calories: number | null, protein: number | null, carbs: number | null, fat: number | null } }[]}
+ */
+export function suggestMealPlansForTargets(targets) {
+  if (!targets || typeof targets !== "object") return [];
+  const tCal = Math.max(0, Math.round(Number(targets.calories) || 0));
+  if (tCal < 1000) return [];
+  const tP = Math.max(0, Math.round(Number(targets.proteinG) || 0));
+  const tC = Math.max(0, Math.round(Number(targets.carbsG) || 0));
+  const tF = Math.max(0, Math.round(Number(targets.fatG) || 0));
+
+  const pct = (actual, target) => {
+    if (target <= 0) return actual > 0 ? 100 : null;
+    return Math.round((100 * actual) / target);
+  };
+
+  return MEAL_PLAN_TEMPLATES.map((tpl) => {
+    const baseCal = tpl.meals.reduce((s, m) => s + m.calories, 0);
+    if (baseCal <= 0) return null;
+    const f = tCal / baseCal;
+    const meals = tpl.meals.map((m) => ({
+      slot: m.slot,
+      lines: [...m.lines],
+      protein: Math.max(0, Math.round(m.protein * f)),
+      carbs: Math.max(0, Math.round(m.carbs * f)),
+      fat: Math.max(0, Math.round(m.fat * f)),
+      calories: Math.max(0, Math.round(m.calories * f)),
+    }));
+    const totCalBefore = meals.reduce((s, m) => s + m.calories, 0);
+    const drift = tCal - totCalBefore;
+    if (meals.length && drift !== 0) {
+      const last = meals[meals.length - 1];
+      last.calories = Math.max(0, last.calories + drift);
+    }
+    const totals = meals.reduce(
+      (acc, m) => ({
+        protein: acc.protein + m.protein,
+        carbs: acc.carbs + m.carbs,
+        fat: acc.fat + m.fat,
+        calories: acc.calories + m.calories,
+      }),
+      { protein: 0, carbs: 0, fat: 0, calories: 0 }
+    );
+    return {
+      id: tpl.id,
+      name: tpl.name,
+      blurb: tpl.blurb,
+      meals,
+      totals,
+      vsTargetsPct: {
+        calories: pct(totals.calories, tCal),
+        protein: pct(totals.protein, tP),
+        carbs: pct(totals.carbs, tC),
+        fat: pct(totals.fat, tF),
+      },
+    };
+  }).filter(Boolean);
+}
+
 export function mondayKeyForDayKey(dayKey) {
   const d = new Date(`${dayKey}T12:00:00`);
   if (Number.isNaN(d.getTime())) return dayKey;
@@ -592,6 +817,213 @@ export function sumMacroDayTotals(dayEntry) {
     }),
     { protein: 0, carbs: 0, fat: 0, calories: 0 }
   );
+}
+
+/** Lowercase, trim, collapse spaces — used to match repeated food descriptions in macro log. */
+export function normalizeMacroFoodKey(raw) {
+  return String(raw || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 120);
+}
+
+/**
+ * Latest macros per normalized food string (most recent `savedAt` wins).
+ * @param {unknown} macroLog
+ * @returns {Map<string, { protein: number, carbs: number, fat: number, calories: number, savedAt: string, displayFood: string }>}
+ */
+export function getMacroFoodHistoryLookup(macroLog) {
+  /** @type {Map<string, { protein: number, carbs: number, fat: number, calories: number, savedAt: string, displayFood: string }>} */
+  const map = new Map();
+  const ml = macroLog && typeof macroLog === "object" ? macroLog : {};
+  for (const dk of Object.keys(ml)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dk)) continue;
+    const day = ml[dk];
+    const meals = day?.meals;
+    if (!Array.isArray(meals)) continue;
+    for (const raw of meals) {
+      const nm = normalizeMacroMeal(raw);
+      if (!nm) continue;
+      const fk = normalizeMacroFoodKey(nm.food);
+      if (fk.length < 2) continue;
+      if (nm.protein + nm.carbs + nm.fat + nm.calories <= 0) continue;
+      const displayFood = String(nm.food || "").trim().slice(0, 200) || fk;
+      const prev = map.get(fk);
+      if (!prev || String(nm.savedAt).localeCompare(String(prev.savedAt)) > 0) {
+        map.set(fk, {
+          protein: nm.protein,
+          carbs: nm.carbs,
+          fat: nm.fat,
+          calories: nm.calories,
+          savedAt: nm.savedAt,
+          displayFood,
+        });
+      }
+    }
+  }
+  return map;
+}
+
+/**
+ * Rough single-serving estimates for quick fills (not medical advice).
+ * Order matters: first matching preset wins — put specific phrases before broad ones
+ * (e.g. "brown rice" before "rice", "almond milk" uses its own keys so plain "milk" stays dairy).
+ */
+export const MACRO_GENERIC_PRESETS = [
+  { keys: ["banana"], label: "Banana (1 medium)", protein: 1, carbs: 27, fat: 0, calories: 105 },
+  { keys: ["apple"], label: "Apple (1 medium)", protein: 0, carbs: 25, fat: 0, calories: 95 },
+  { keys: ["orange"], label: "Orange (1 medium)", protein: 1, carbs: 15, fat: 0, calories: 62 },
+  { keys: ["pear"], label: "Pear (1 medium)", protein: 1, carbs: 28, fat: 0, calories: 102 },
+  { keys: ["grapes"], label: "Grapes (~1 cup)", protein: 1, carbs: 27, fat: 0, calories: 104 },
+  { keys: ["blueberries"], label: "Blueberries (~1 cup)", protein: 1, carbs: 21, fat: 0, calories: 84 },
+  { keys: ["strawberries"], label: "Strawberries (~1 cup sliced)", protein: 1, carbs: 12, fat: 0, calories: 49 },
+  { keys: ["watermelon"], label: "Watermelon (~2 cups diced)", protein: 2, carbs: 22, fat: 0, calories: 91 },
+  { keys: ["egg white", "egg whites"], label: "Egg whites (~½ cup)", protein: 13, carbs: 1, fat: 0, calories: 68 },
+  { keys: ["egg", "eggs"], label: "Eggs (2 large)", protein: 12, carbs: 1, fat: 10, calories: 144 },
+  { keys: ["bacon"], label: "Bacon (2 strips)", protein: 6, carbs: 0, fat: 7, calories: 87 },
+  { keys: ["sausage"], label: "Breakfast sausage (2 links)", protein: 12, carbs: 1, fat: 18, calories: 210 },
+  { keys: ["oatmeal", "oats"], label: "Oatmeal (~1 cup cooked)", protein: 6, carbs: 27, fat: 4, calories: 150 },
+  { keys: ["cereal"], label: "Cold cereal (~1 cup + ½ cup 2% milk)", protein: 8, carbs: 38, fat: 4, calories: 220 },
+  { keys: ["waffle"], label: "Frozen waffle (1)", protein: 4, carbs: 15, fat: 7, calories: 150 },
+  { keys: ["pancake"], label: "Pancakes (2 medium)", protein: 5, carbs: 22, fat: 4, calories: 150 },
+  { keys: ["bagel"], label: "Bagel (plain, medium)", protein: 10, carbs: 55, fat: 2, calories: 280 },
+  { keys: ["croissant"], label: "Croissant (1 medium)", protein: 5, carbs: 26, fat: 12, calories: 231 },
+  { keys: ["toast", "bread"], label: "Bread (2 slices)", protein: 6, carbs: 28, fat: 2, calories: 160 },
+  { keys: ["tortilla"], label: "Flour tortilla (10\")", protein: 4, carbs: 26, fat: 3, calories: 150 },
+  { keys: ["pita"], label: "Pita bread (1 pocket)", protein: 6, carbs: 33, fat: 1, calories: 165 },
+  { keys: ["rice", "white rice", "jasmine rice"], label: "White rice (~1 cup cooked)", protein: 4, carbs: 45, fat: 1, calories: 205 },
+  { keys: ["brown rice"], label: "Brown rice (~1 cup cooked)", protein: 5, carbs: 45, fat: 2, calories: 216 },
+  { keys: ["wild rice"], label: "Wild rice (~1 cup cooked)", protein: 7, carbs: 35, fat: 1, calories: 166 },
+  { keys: ["quinoa"], label: "Quinoa (~1 cup cooked)", protein: 8, carbs: 39, fat: 4, calories: 222 },
+  { keys: ["pasta", "spaghetti"], label: "Pasta (~1 cup cooked)", protein: 8, carbs: 43, fat: 1, calories: 221 },
+  { keys: ["sweet potato"], label: "Sweet potato (1 medium baked)", protein: 4, carbs: 24, fat: 0, calories: 103 },
+  { keys: ["baked potato", "russet"], label: "Baked potato (1 medium)", protein: 5, carbs: 37, fat: 0, calories: 164 },
+  { keys: ["fries", "french fries"], label: "French fries (medium fast-food)", protein: 4, carbs: 48, fat: 17, calories: 378 },
+  { keys: ["broccoli"], label: "Broccoli (~1 cup chopped)", protein: 3, carbs: 6, fat: 0, calories: 31 },
+  { keys: ["spinach"], label: "Spinach (~2 cups raw)", protein: 2, carbs: 2, fat: 0, calories: 14 },
+  { keys: ["salad"], label: "Garden salad (~2 cups veg + 2 tbsp ranch)", protein: 4, carbs: 8, fat: 14, calories: 160 },
+  { keys: ["carrots"], label: "Baby carrots (~10)", protein: 1, carbs: 8, fat: 0, calories: 35 },
+  { keys: ["hummus"], label: "Hummus (~¼ cup)", protein: 5, carbs: 9, fat: 5, calories: 100 },
+  { keys: ["black beans"], label: "Black beans (~½ cup canned, drained)", protein: 8, carbs: 20, fat: 1, calories: 110 },
+  { keys: ["lentils"], label: "Lentils (~1 cup cooked)", protein: 18, carbs: 40, fat: 1, calories: 230 },
+  { keys: ["chickpeas", "garbanzo"], label: "Chickpeas (~½ cup cooked)", protein: 7, carbs: 22, fat: 2, calories: 135 },
+  { keys: ["tofu"], label: "Tofu firm (~6 oz)", protein: 18, carbs: 3, fat: 9, calories: 150 },
+  { keys: ["edamame"], label: "Edamame (~1 cup shelled)", protein: 18, carbs: 14, fat: 8, calories: 188 },
+  { keys: ["chicken noodle soup", "chicken noodle"], label: "Chicken noodle soup (1 cup canned)", protein: 7, carbs: 15, fat: 3, calories: 120 },
+  { keys: ["chicken breast"], label: "Chicken breast (~4 oz cooked)", protein: 35, carbs: 0, fat: 4, calories: 187 },
+  { keys: ["chicken thigh"], label: "Chicken thigh (~4 oz cooked, skinless)", protein: 26, carbs: 0, fat: 10, calories: 186 },
+  { keys: ["rotisserie chicken", "chicken"], label: "Chicken (~4 oz cooked, mixed)", protein: 30, carbs: 0, fat: 8, calories: 200 },
+  { keys: ["turkey breast"], label: "Turkey breast (~3 oz deli)", protein: 19, carbs: 1, fat: 3, calories: 100 },
+  { keys: ["ground beef"], label: "Ground beef (~4 oz cooked, 85% lean)", protein: 22, carbs: 0, fat: 17, calories: 240 },
+  { keys: ["steak"], label: "Steak (~6 oz cooked, sirloin)", protein: 42, carbs: 0, fat: 12, calories: 300 },
+  { keys: ["pork chop"], label: "Pork chop (~6 oz cooked)", protein: 39, carbs: 0, fat: 14, calories: 290 },
+  { keys: ["salmon"], label: "Salmon (~6 oz cooked)", protein: 34, carbs: 0, fat: 12, calories: 241 },
+  { keys: ["tuna"], label: "Tuna (~5 oz can in water)", protein: 33, carbs: 0, fat: 1, calories: 150 },
+  { keys: ["shrimp"], label: "Shrimp (~4 oz cooked)", protein: 24, carbs: 1, fat: 0, calories: 112 },
+  { keys: ["cod", "tilapia", "white fish"], label: "White fish (~6 oz cooked)", protein: 36, carbs: 0, fat: 3, calories: 180 },
+  { keys: ["greek yogurt", "yogurt"], label: "Greek yogurt (~170g)", protein: 17, carbs: 6, fat: 0, calories: 100 },
+  { keys: ["cottage cheese"], label: "Cottage cheese (~½ cup 2%)", protein: 14, carbs: 5, fat: 2, calories: 90 },
+  { keys: ["cream cheese"], label: "Cream cheese (2 tbsp)", protein: 2, carbs: 2, fat: 10, calories: 100 },
+  { keys: ["cheddar", "cheese"], label: "Cheddar (~1 oz)", protein: 7, carbs: 0, fat: 9, calories: 113 },
+  { keys: ["mozzarella"], label: "Mozzarella (~1 oz)", protein: 7, carbs: 1, fat: 6, calories: 85 },
+  { keys: ["milk", "dairy milk"], label: "Milk (1 cup 2%)", protein: 8, carbs: 12, fat: 5, calories: 122 },
+  { keys: ["almond milk"], label: "Almond milk (1 cup unsweetened)", protein: 1, carbs: 1, fat: 3, calories: 30 },
+  { keys: ["oat milk"], label: "Oat milk (1 cup)", protein: 3, carbs: 16, fat: 5, calories: 120 },
+  { keys: ["soy milk"], label: "Soy milk (1 cup)", protein: 7, carbs: 9, fat: 4, calories: 105 },
+  { keys: ["protein shake", "protein powder"], label: "Protein shake (~12 oz)", protein: 25, carbs: 3, fat: 2, calories: 130 },
+  { keys: ["protein bar"], label: "Protein bar (typical)", protein: 20, carbs: 25, fat: 7, calories: 250 },
+  { keys: ["granola bar"], label: "Granola bar (1)", protein: 2, carbs: 24, fat: 6, calories: 140 },
+  { keys: ["avocado"], label: "Avocado (½ medium)", protein: 2, carbs: 4, fat: 11, calories: 120 },
+  { keys: ["olive oil"], label: "Olive oil (1 tbsp)", protein: 0, carbs: 0, fat: 14, calories: 120 },
+  { keys: ["butter"], label: "Butter (1 tbsp)", protein: 0, carbs: 0, fat: 12, calories: 102 },
+  { keys: ["peanut butter"], label: "Peanut butter (2 tbsp)", protein: 8, carbs: 6, fat: 16, calories: 190 },
+  { keys: ["almonds"], label: "Almonds (~1 oz / 23 nuts)", protein: 6, carbs: 6, fat: 14, calories: 164 },
+  { keys: ["trail mix"], label: "Trail mix (~¼ cup)", protein: 4, carbs: 9, fat: 7, calories: 100 },
+  { keys: ["popcorn"], label: "Air-popped popcorn (~3 cups)", protein: 3, carbs: 19, fat: 1, calories: 93 },
+  { keys: ["pretzels"], label: "Pretzels (~1 oz handful)", protein: 3, carbs: 22, fat: 1, calories: 110 },
+  { keys: ["chips", "potato chips"], label: "Potato chips (~1 oz bag)", protein: 2, carbs: 15, fat: 10, calories: 160 },
+  { keys: ["sushi roll"], label: "Sushi roll (California, ~8 pcs)", protein: 9, carbs: 38, fat: 7, calories: 255 },
+  { keys: ["burrito"], label: "Bean & cheese burrito (typical)", protein: 14, carbs: 52, fat: 12, calories: 380 },
+  { keys: ["taco"], label: "Ground beef tacos (2 hard shell)", protein: 18, carbs: 24, fat: 18, calories: 340 },
+  { keys: ["burger"], label: "Cheeseburger (fast-food single)", protein: 17, carbs: 33, fat: 14, calories: 320 },
+  { keys: ["pizza"], label: "Pizza (1 slice cheese, 14\")", protein: 12, carbs: 36, fat: 10, calories: 285 },
+  { keys: ["hot dog"], label: "Hot dog (1 bun + frank)", protein: 11, carbs: 24, fat: 15, calories: 290 },
+  { keys: ["sandwich"], label: "Turkey sandwich (deli + 2 slices bread)", protein: 22, carbs: 34, fat: 8, calories: 320 },
+  { keys: ["ramen"], label: "Instant ramen (1 package prepared)", protein: 10, carbs: 52, fat: 15, calories: 380 },
+  { keys: ["soup", "tomato soup", "vegetable soup"], label: "Soup (~1 cup, tomato or veg)", protein: 2, carbs: 12, fat: 3, calories: 90 },
+  { keys: ["chili"], label: "Chili (~1 cup with beans & beef)", protein: 18, carbs: 25, fat: 12, calories: 280 },
+  { keys: ["lasagna"], label: "Lasagna (~1 piece home-style)", protein: 20, carbs: 35, fat: 18, calories: 380 },
+  { keys: ["ice cream"], label: "Ice cream (~½ cup vanilla)", protein: 3, carbs: 16, fat: 7, calories: 140 },
+  { keys: ["dark chocolate"], label: "Dark chocolate (~1 oz 70%)", protein: 2, carbs: 13, fat: 12, calories: 170 },
+  { keys: ["cookie"], label: "Chocolate chip cookie (1 large)", protein: 2, carbs: 28, fat: 12, calories: 220 },
+  { keys: ["donut"], label: "Glazed donut (1 medium)", protein: 3, carbs: 31, fat: 14, calories: 260 },
+  { keys: ["beer"], label: "Beer (12 oz)", protein: 1, carbs: 13, fat: 0, calories: 150 },
+  { keys: ["wine"], label: "Wine (5 oz)", protein: 0, carbs: 4, fat: 0, calories: 125 },
+];
+
+/**
+ * Suggest macros from past logs (exact or similar food text) or generic presets.
+ * @param {unknown} macroLog
+ * @param {string} inputRaw
+ * @returns {{ source: "history", matchKind: "exact" | "similar", displayLabel: string, protein: number, carbs: number, fat: number, calories: number } | { source: "generic", displayLabel: string, protein: number, carbs: number, fat: number, calories: number } | null}
+ */
+export function findMacroSuggestionForInput(macroLog, inputRaw) {
+  const key = normalizeMacroFoodKey(inputRaw);
+  if (key.length < 2) return null;
+  const lookup = getMacroFoodHistoryLookup(macroLog);
+  const exact = lookup.get(key);
+  if (exact) {
+    return {
+      source: "history",
+      matchKind: "exact",
+      displayLabel: exact.displayFood,
+      protein: exact.protein,
+      carbs: exact.carbs,
+      fat: exact.fat,
+      calories: exact.calories,
+    };
+  }
+  let best = null;
+  let bestScore = 0;
+  for (const [histKey, row] of lookup) {
+    let score = 0;
+    if (histKey.includes(key) && key.length >= 3) score = 60 + Math.min(histKey.length, 40);
+    else if (key.includes(histKey) && histKey.length >= 4) score = 50 + Math.min(histKey.length, 40);
+    if (score > bestScore) {
+      bestScore = score;
+      best = row;
+    }
+  }
+  if (best && bestScore >= 50) {
+    return {
+      source: "history",
+      matchKind: "similar",
+      displayLabel: best.displayFood,
+      protein: best.protein,
+      carbs: best.carbs,
+      fat: best.fat,
+      calories: best.calories,
+    };
+  }
+  for (const preset of MACRO_GENERIC_PRESETS) {
+    for (const kw of preset.keys) {
+      const nk = normalizeMacroFoodKey(kw);
+      if (nk.length < 3) continue;
+      if (key === nk || key.includes(nk) || nk.includes(key)) {
+        return {
+          source: "generic",
+          displayLabel: preset.label,
+          protein: preset.protein,
+          carbs: preset.carbs,
+          fat: preset.fat,
+          calories: preset.calories,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 export function formatHealthForCoach(health) {

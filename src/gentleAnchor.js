@@ -255,6 +255,7 @@ Additional behavior rules:
 Structured replies (Coach V2):
 - The host app expects JSON with: message, insight (one grounded observation or null), highlights, followUp (or null), suggestions (typed objects with type, title, reason, category, energyLevel, start, durationMinutes, recurring, confidence, requiresApproval), ignoredMonthlies, percentSummary.
 - Suggestions must stay optional and never invent obligations unrelated to their notes, schedule, finance, or stated goals.
+- Workout programs (ADD_WORKOUT_PROGRAM): use a specific title (e.g. "Arms — volume + pump"), 5–8 real exercise lines with sets/reps, and a "message" that opens with their stated goal or one fact from their health summary — never "Based on your schedule" or "Given your day" unless you immediately tie it to a named task and time.
 
 You prefer less but done over more but stressed.
 `;

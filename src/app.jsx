@@ -2541,7 +2541,6 @@ export default function App() {
   const [editingTaskTime, setEditingTaskTime] = useState(null); // "hourKey-category-id" when showing time editor
   const [editTaskTimeValue, setEditTaskTimeValue] = useState("09:00"); // new time for edit
   const [expandedTaskKey, setExpandedTaskKey] = useState(null); // "hourKey-category-id" for expandable detail
-  const [focusMode, setFocusMode] = useState(false);
   const [quickAddValue, setQuickAddValue] = useState("");
   const [taskBanner, setTaskBanner] = useState(null); // { type: 'start'|'wrapup', task, nextTask?, hourKey }
   /** Shown briefly when the in-app task banner first appears (null → visible). */
@@ -3372,14 +3371,14 @@ export default function App() {
 
   const visibleHourKeys = useMemo(() => {
     if (sortedHourKeys.length === 0) return sortedHourKeys;
-    const limitView = focusMode || isOverwhelmedMode;
+    const limitView = isOverwhelmedMode;
     if (!limitView) return sortedHourKeys;
     const now = new Date();
     const currentHour = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes() >= 30 ? 30 : 0).padStart(2, "0")}`;
     const idx = sortedHourKeys.findIndex((h) => h >= currentHour);
     const start = idx >= 0 ? idx : 0;
     return sortedHourKeys.slice(start, start + 2);
-  }, [focusMode, isOverwhelmedMode, sortedHourKeys]);
+  }, [isOverwhelmedMode, sortedHourKeys]);
 
   /** Earliest incomplete task (by clock, then energy order within the hour) for Today scroll + highlight */
   const firstIncompleteTaskKeyToday = useMemo(() => {
@@ -3538,7 +3537,6 @@ export default function App() {
     } catch {
       /* ignore */
     }
-    setFocusMode(false);
     setTab("today");
     setExpandedTaskKey(`${target.hour}-${target.category}-${target.id}`);
     setTaskBanner(null);
@@ -5215,6 +5213,8 @@ export default function App() {
       );
       removeCoachSuggestionById(s.id);
       setCoachToast({ text: "Program saved under Health → My programs", detail: s.workoutProgram.name, kind: "ok" });
+      setTab("health");
+      setHealthProgramBuilderScroll((n) => n + 1);
       return;
     }
     const ov = overrides && typeof overrides === "object" ? overrides : {};
@@ -5801,7 +5801,7 @@ export default function App() {
             </div>
 
             <div className="top-actions">
-              {(tab === "today" || tab === "list") && (
+              {tab === "list" && (
                 <button
                   type="button"
                   className="btn-icon"
@@ -6158,10 +6158,8 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  {(focusMode || isOverwhelmedMode) && sortedHourKeys.length > 2 && (
-                    <p className="focus-mode-notice">
-                      {isOverwhelmedMode ? "Drained mode: showing current + next block only." : "Focus mode: showing current + next block only."}
-                    </p>
+                  {isOverwhelmedMode && sortedHourKeys.length > 2 && (
+                    <p className="focus-mode-notice">Drained mode: showing current + next block only.</p>
                   )}
                   {visibleHourKeys.map((hourKey) => (
                     <div key={hourKey} className="timeline-row" data-timeline-hour={hourKey}>
@@ -6201,35 +6199,6 @@ export default function App() {
                 </>
               )}
             </section>
-
-            {/* Next up + Daily progress, below this day's tasks */}
-            {(() => {
-              const nextTasks = incompleteTasks.slice(0, 1);
-              const next = nextTasks[0];
-              return (
-                <div className="next-up-card surface-featured scroll-reveal">
-                  <div className="next-up-card-inner">
-                    <div className="next-up-icon-badge">
-                      <CalendarIcon style={{ width: 18, height: 18 }} aria-hidden />
-                    </div>
-                    <div className="next-up-label">Next up</div>
-                    {next ? (
-                      <>
-                        <div className="next-up-task">{next.text}</div>
-                        <div className="next-up-meta">{to12Hour(next.hour)}</div>
-                      </>
-                    ) : (
-                      <div className="next-up-task next-up-task-muted">no tasks yet</div>
-                    )}
-                  </div>
-                  {next && (
-                    <button type="button" className="next-up-prep btn-primary" onClick={() => setFocusMode(true)}>
-                      Prep
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
 
             <section className="panel panel-hero daily-progress-card surface-glass scroll-reveal">
               <div className="panel-top">
@@ -6352,16 +6321,6 @@ export default function App() {
                     Drained
                   </button>
                 </div>
-                <button
-                  type="button"
-                  className="see-full-calendar-btn"
-                  onClick={() => {
-                    setShowMonthCalendar(true);
-                    setMonthCalendarMonth({ year: new Date().getFullYear(), month: new Date().getMonth() });
-                  }}
-                >
-                  See full calendar
-                </button>
                 <div className="task-averages-capacity-footer">
                   <button
                     type="button"

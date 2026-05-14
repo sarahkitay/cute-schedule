@@ -7162,6 +7162,110 @@ html[data-theme="dark"] .health-exercise-row {
   border-top: 1px solid var(--border-subtle);
 }
 
+.health-macro-food-suggest {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-btn, 12px);
+  border: 1px solid color-mix(in srgb, var(--theme-primary) 35%, var(--border-subtle));
+  background: color-mix(in srgb, var(--theme-primary) 6%, var(--surface-solid));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 12px;
+}
+.health-macro-food-suggest-line {
+  margin: 0;
+  flex: 1 1 200px;
+  min-width: 0;
+  line-height: 1.45;
+}
+.health-macro-quick-presets {
+  margin-top: 12px;
+}
+.health-macro-quick-presets-label {
+  display: block;
+  margin-bottom: 6px;
+}
+.health-macro-quick-presets-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.health-macro-meal-plans {
+  margin-top: 4px;
+}
+.health-macro-meal-plan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.health-macro-meal-plan-card {
+  border-radius: var(--radius-btn, 12px);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  background: color-mix(in srgb, var(--surface-solid) 92%, var(--theme-primary) 5%);
+  overflow: hidden;
+}
+.health-macro-meal-plan-summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 12px;
+  font-weight: 600;
+  color: inherit;
+}
+.health-macro-meal-plan-summary::-webkit-details-marker {
+  display: none;
+}
+.health-macro-meal-plan-summary::after {
+  content: "▸";
+  float: right;
+  font-size: 11px;
+  opacity: 0.5;
+  margin-left: 8px;
+}
+.health-macro-meal-plan-card[open] .health-macro-meal-plan-summary::after {
+  content: "▾";
+}
+.health-macro-meal-plan-summary-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.health-macro-meal-plan-summary-meta {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+.health-macro-meal-plan-body {
+  padding: 0 14px 14px;
+  border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+.health-macro-meal-plan-meals {
+  margin: 10px 0 0;
+  padding: 0 0 0 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+}
+.health-macro-meal-plan-meal-macros {
+  font-weight: 500;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+.health-macro-meal-plan-meal-lines {
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.health-macro-meal-plan-vs {
+  margin: 12px 0 10px;
+}
+
 .health-meal-save-row {
   display: flex;
   flex-wrap: wrap;

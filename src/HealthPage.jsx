@@ -17,7 +17,10 @@ import {
   normalizeExerciseBlock,
   normalizeHealth,
   normalizeProgramRecord,
+  MACRO_GENERIC_PRESETS,
+  findMacroSuggestionForInput,
   normalizeMacroDayEntry,
+  suggestMealPlansForTargets,
   sumMacroDayTotals,
 } from "./health/healthModel";
 
@@ -573,6 +576,23 @@ export function HealthPage({
   const targets = h.macroTargets;
   const macroDay = normalizeMacroDayEntry(h.macroLog[macroDate], macroDate);
   const macroTotals = sumMacroDayTotals(macroDay);
+  const macroFoodSuggest = useMemo(() => findMacroSuggestionForInput(h.macroLog, mealFood), [h.macroLog, mealFood]);
+  const macroMealPlanSuggestions = useMemo(
+    () => (targets?.calories ? suggestMealPlansForTargets(targets) : []),
+    [targets]
+  );
+
+  function applyMacroFill(s) {
+    setMealProtein(String(Math.round(Number(s.protein) || 0)));
+    setMealCarbs(String(Math.round(Number(s.carbs) || 0)));
+    setMealFat(String(Math.round(Number(s.fat) || 0)));
+    setMealCalories(String(Math.round(Number(s.calories) || 0)));
+  }
+
+  function applyMacroPreset(preset) {
+    setMealFood(preset.label);
+    applyMacroFill(preset);
+  }
 
   function toggleMealPrepDay(dayKey) {
     setMealPrepDayKeys((prev) => {
@@ -627,6 +647,27 @@ export function HealthPage({
     setMealCarbs("");
     setMealFat("");
     setMealCalories("");
+  }
+
+  /** Add scaled plan meals to the macro day (does not clear existing meals). */
+  function logSuggestedPlanToMacroDay(plan) {
+    const savedAt = new Date().toISOString();
+    setHealth((prev) => {
+      const base = normalizeHealth(prev);
+      const cur = normalizeMacroDayEntry(base.macroLog[macroDate], macroDate);
+      const additions = plan.meals.map((m) => ({
+        id: newId("meal"),
+        label: m.slot,
+        food: m.lines.join(" · "),
+        protein: m.protein,
+        carbs: m.carbs,
+        fat: m.fat,
+        calories: m.calories,
+        savedAt,
+      }));
+      const meals = [...cur.meals, ...additions];
+      return { ...base, macroLog: { ...base.macroLog, [macroDate]: { meals } } };
+    });
   }
 
   function deleteMealEntry(mealId) {
@@ -999,8 +1040,45 @@ export function HealthPage({
                   value={mealFood}
                   onChange={(e) => setMealFood(e.target.value)}
                   placeholder="e.g. protein bowl, scrambled eggs"
+                  autoComplete="off"
                 />
               </label>
+              {macroFoodSuggest ? (
+                <div className="health-macro-food-suggest" role="region" aria-label="Suggested macros">
+                  <p className="health-subline health-macro-food-suggest-line">
+                    {macroFoodSuggest.source === "history" ? (
+                      macroFoodSuggest.matchKind === "exact" ? (
+                        <>
+                          Last time you logged <strong>{macroFoodSuggest.displayLabel}</strong>:{" "}
+                        </>
+                      ) : (
+                        <>
+                          Similar to your log (<strong>{macroFoodSuggest.displayLabel}</strong>):{" "}
+                        </>
+                      )
+                    ) : (
+                      <>
+                        Typical serving (<strong>{macroFoodSuggest.displayLabel}</strong>):{" "}
+                      </>
+                    )}
+                    P {macroFoodSuggest.protein}g / C {macroFoodSuggest.carbs}g / F {macroFoodSuggest.fat}g /{" "}
+                    {macroFoodSuggest.calories} kcal
+                  </p>
+                  <button type="button" className="btn btn-sm btn-primary" onClick={() => applyMacroFill(macroFoodSuggest)}>
+                    Use these numbers
+                  </button>
+                </div>
+              ) : null}
+              <div className="health-macro-quick-presets" role="group" aria-label="Quick macro estimates">
+                <span className="health-subline health-macro-quick-presets-label">Quick fills (typical servings)</span>
+                <div className="health-macro-quick-presets-chips">
+                  {MACRO_GENERIC_PRESETS.map((p) => (
+                    <button key={p.label} type="button" className="btn btn-sm health-meal-prep-chip" onClick={() => applyMacroPreset(p)}>
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <label className="health-meal-prep-toggle quick-row">
                 <span className="label">Meal prep mode</span>
                 <span className="health-meal-prep-toggle-inner">
@@ -1085,6 +1163,55 @@ export function HealthPage({
             )}
           </div>
 
+          {macroMealPlanSuggestions.length ? (
+            <div className="health-macro-block surface-glass health-macro-meal-plans">
+              <div className="panel-title" style={{ marginBottom: 8 }}>
+                <span className="title">Suggested day plans</span>
+              </div>
+              <p className="health-subline" style={{ marginBottom: 12 }}>
+                Example full days scaled to your <strong>{targets.calories}</strong> kcal target. Macros are ballpark; adjust portions to line up with P/C/F if you like.
+              </p>
+              <div className="health-macro-meal-plan-list">
+                {macroMealPlanSuggestions.map((plan) => (
+                  <details key={plan.id} className="health-macro-meal-plan-card">
+                    <summary className="health-macro-meal-plan-summary">
+                      <span className="health-macro-meal-plan-summary-title">{plan.name}</span>
+                      <span className="health-macro-meal-plan-summary-meta">
+                        {plan.totals.calories} kcal · P{plan.totals.protein} C{plan.totals.carbs} F{plan.totals.fat}
+                      </span>
+                    </summary>
+                    <div className="health-macro-meal-plan-body">
+                      <p className="health-subline" style={{ marginTop: 0 }}>
+                        {plan.blurb}
+                      </p>
+                      <ul className="health-macro-meal-plan-meals">
+                        {plan.meals.map((m, idx) => (
+                          <li key={`${plan.id}-${idx}`}>
+                            <strong>{m.slot}</strong>
+                            <span className="health-macro-meal-plan-meal-macros">
+                              {" "}
+                              — P {m.protein}g · C {m.carbs}g · F {m.fat}g · {m.calories} kcal
+                            </span>
+                            <div className="health-subline health-macro-meal-plan-meal-lines">{m.lines.join(" · ")}</div>
+                          </li>
+                        ))}
+                      </ul>
+                      <p className="health-subline health-macro-meal-plan-vs">
+                        vs your targets: cal {plan.vsTargetsPct.calories ?? "—"}%
+                        {plan.vsTargetsPct.protein != null ? ` · P ${plan.vsTargetsPct.protein}%` : ""}
+                        {plan.vsTargetsPct.carbs != null ? ` · C ${plan.vsTargetsPct.carbs}%` : ""}
+                        {plan.vsTargetsPct.fat != null ? ` · F ${plan.vsTargetsPct.fat}%` : ""}
+                      </p>
+                      <button type="button" className="btn btn-sm btn-primary" onClick={() => logSuggestedPlanToMacroDay(plan)}>
+                        Log this plan on {macroDate}
+                      </button>
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           <div className={`health-macro-block surface-glass health-macro-calc-card ${macroCalcExpanded ? "health-macro-calc-card--open" : ""}`}>
             <div className="health-macro-calc-header">
               <button
@@ -1105,6 +1232,7 @@ export function HealthPage({
               {macroTargetsApplied && !macroCalcExpanded ? (
                 <p className="health-subline health-macro-calc-compact-meta">
                   Targets: {targets.calories} kcal · P{targets.proteinG} C{targets.carbsG} F{targets.fatG}
+                  {macroMealPlanSuggestions.length ? " · Suggested day plans below the tracker." : ""}
                 </p>
               ) : null}
             </div>

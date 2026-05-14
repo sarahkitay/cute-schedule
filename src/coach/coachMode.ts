@@ -22,10 +22,23 @@ export function inferCoachReasoningMode(userQuestion: string | null | undefined)
   if (/\b(week|weekly|last seven|7 days|seven days)\b/.test(q) && /\b(review|retro|look back)\b/.test(q)) return "weekly_review";
   if (/\b(last few days|past few days|recently|lately|this week|few days)\b/.test(q) && /\b(missing|lack|absent|haven't|have not|gone|where)\b/.test(q))
     return "missing_from_schedule";
-  if (/\b(last few|past few|recent|lately|yesterday|previous days)\b/.test(q)) return "missing_from_schedule";
   if (/\b(behind|on track|on pace|ahead|catch up)\b/.test(q)) return "schedule_check";
   if (/\b(monthly|objective|goal for the month|okr)\b/.test(q)) return "monthly_objective_alignment";
-  if (/\b(workout|gym|lift|program|training|strength|cardio|muscle|protein|macros)\b/.test(q)) return "health_programming";
+  // Training / body before loose "yesterday" routing so gym questions are not misclassified as schedule-audit.
+  if (
+    /\b(workout|gym|lift|lifting|program|training|strength|cardio|muscle|protein|macros|reps?|sets?|exercises?|routine|hypertrophy|bodybuilding|split|leg day|arm day|push day|pull day|upper body|lower body|full body|total body|core|abs|chest|back|shoulders?|biceps?|triceps?|glutes?|quads?|hamstrings?|calves|forearms?|delts|deadlift|squat|bench|row|press|pull-up|chin|machine|cable|dumbbell|barbell|kettlebell|mobility|stretch|warm[\s-]?up|pb|plates?|hiit|tabata|superset|dropset)\b/.test(
+      q
+    ) ||
+    /\b(arms?|legs?|pecs?|lats?|traps?)\b/.test(q)
+  ) {
+    return "health_programming";
+  }
+  if (
+    /\b(last few|past few|recent|lately|yesterday|previous days)\b/.test(q) &&
+    /\b(schedule|calendar|tasks?|planned|blocked|missing|forgot|didn't plan|did not plan)\b/.test(q)
+  ) {
+    return "missing_from_schedule";
+  }
   if (/\b(momentum|streak|slump|rut|stuck)\b/.test(q)) return "momentum_recovery";
   if (/\b(overwhelm|too much|can't cope|drowning|panic)\b/.test(q)) return "overwhelm_prevention";
   if (/\b(today|this afternoon|tonight|plan my day|rest of the day)\b/.test(q)) return "daily_planning";

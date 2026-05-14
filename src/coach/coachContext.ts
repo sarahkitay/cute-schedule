@@ -1,5 +1,5 @@
-import { listMergedTasksForDay } from "../groceryTaskCoachHelpers.js";
-import { PROGRAM_LIBRARY } from "../health/healthModel.js";
+import { listMergedTasksForDay } from "../groceryTaskCoachHelpers";
+import { PROGRAM_LIBRARY } from "../health/healthModel";
 import type { PatternShape, TaskLite } from "./intelligence";
 
 export type CoachTimeOfDayBand = "morning" | "midday" | "afternoon" | "evening" | "night";

@@ -13,6 +13,212 @@
  * }} opts
  * @returns {{ parsed: Record<string, unknown>; patched: boolean; usedDeterministicMessage: boolean }}
  */
+/**
+ * True when the user is clearly asking for a saveable workout program draft.
+ * Used by the API prompt (mandatory ADD_WORKOUT_PROGRAM) and by the validator fallback.
+ * @param {string | null | undefined} userQuestion
+ * @param {string | null | undefined} coachReasoningMode
+ */
+export function userWantsWorkoutProgramDraft(userQuestion, coachReasoningMode) {
+  const q = String(userQuestion || "").toLowerCase().trim();
+  if (!q) return false;
+  if (/\b(python|javascript|typescript|java|kotlin|swift|ruby|rails|npm|react|vue|angular|code|software|script|curriculum|syllabus)\b/.test(q)) {
+    return false;
+  }
+
+  const wantsW =
+    /\b(write|draft|create|build|give me|make me|design|plan|suggest|show me|generate|outline|map out|help me(?: with| to)?|come up with|put together|need a|want a|could you|can you|i need|i want|walk me through)\b/i.test(q) &&
+    /\b(program|workout|routine|exercises?|split|session|lifts?|training)\b/i.test(q);
+
+  const bodyFocus =
+    /\b(glute|glutes|leg day|legs|push day|pull day|push pull|upper body|lower body|full body|total body|core day|abs|chest day|back day|arm day|\barms?\b|biceps?|triceps?|forearm|shoulders?|delts|chest|pecs?|lats?|traps?|calves?|quads?|hamstrings?|adductors?|hiit|tabata|cardio|conditioning|mobility|warm[\s-]?up)\b/i.test(q);
+
+  const wantsF =
+    bodyFocus && /\b(workout|program|routine|session|split|exercises?|plan|day|training|lifts?|lift)\b/i.test(q);
+
+  const casualMoveList =
+    /\b(what (?:are|is)|good |best |favorite |favourite |go-to|goto|ideas for |examples? of )\b/i.test(q) &&
+    bodyFocus &&
+    /\b(exercises?|movements?|moves|drills|lifts?)\b/i.test(q);
+
+  const topicTitle =
+    /\b(arms?|biceps?|triceps?|legs?|glutes?|chest|back|shoulders?|core|abs|full body|upper|lower|push|pull|cardio|hiit)\b/i.test(q) &&
+    /\b(program|workout|routine|split|session)\b/i.test(q);
+
+  const asked = wantsW || wantsF || casualMoveList || topicTitle;
+  if (!asked) return false;
+
+  const mode = String(coachReasoningMode || "").trim();
+  if (mode === "health_programming") return true;
+  if (topicTitle) return true;
+  return /\b(workout|gym|training|lift|lifting|exercises?|muscles?|reps|sets|hypertrophy|leg day|arm day|push day|pull day|bodybuilding|macros|protein)\b/i.test(q);
+}
+
+function coachUserWantsProgramDraft(userQ, mode) {
+  return userWantsWorkoutProgramDraft(userQ, mode);
+}
+
+function countWorkoutProgramExerciseLines(s) {
+  if (!s || typeof s !== "object") return 0;
+  const ex = Array.isArray(s.exercises) ? s.exercises : [];
+  let n = ex.filter((x) => typeof x === "string" && x.trim().length > 3).length;
+  const wp = s.workoutProgram && typeof s.workoutProgram === "object" ? s.workoutProgram : null;
+  if (wp && Array.isArray(wp.exercises)) {
+    n = Math.max(n, wp.exercises.filter((x) => typeof x === "string" && x.trim().length > 3).length);
+  }
+  if (wp && Array.isArray(wp.exerciseLines)) {
+    n = Math.max(n, wp.exerciseLines.filter((x) => typeof x === "string" && x.trim().length > 3).length);
+  }
+  return n;
+}
+
+function hasAddWorkoutProgramWithBody(sug) {
+  return sug.some((s) => {
+    if (!s || typeof s !== "object") return false;
+    if (String(s.type || "").toUpperCase().replace(/-/g, "_") !== "ADD_WORKOUT_PROGRAM") return false;
+    return countWorkoutProgramExerciseLines(s) >= 4;
+  });
+}
+
+function stripWeakWorkoutPrograms(sug) {
+  return sug.filter((s) => {
+    if (!s || typeof s !== "object") return true;
+    if (String(s.type || "").toUpperCase().replace(/-/g, "_") !== "ADD_WORKOUT_PROGRAM") return true;
+    return countWorkoutProgramExerciseLines(s) >= 4;
+  });
+}
+
+function defaultAddWorkoutProgramForUserQuestion(userQ) {
+  const q = String(userQ || "").toLowerCase();
+  let name = "Coach session — full body";
+  let exercises = [
+    "Goblet squat warm-up 2×12 light",
+    "Dumbbell Romanian deadlift 3×8–10",
+    "Push-up or incline bench 3×8–12",
+    "One-arm row 3×8 each arm",
+    "Plank shoulder taps 3×8 each side",
+    "Farmer carry 2×30 steps",
+  ];
+  if (/\b(glute|glutes|hips|hip thrust)\b/.test(q)) {
+    name = "Glute-focused session";
+    exercises = [
+      "Banded glute bridges 3×15",
+      "Barbell or dumbbell hip thrust 4×8–10",
+      "Romanian deadlift 3×8–10",
+      "Bulgarian split squat 3×8 each leg",
+      "Cable pull-through 3×12",
+      "Side-lying clamshell 2×15 each side",
+    ];
+  } else if (/\barm|\barms\b|bicep|tricep|curl|extension|hammer|preacher|skull|skullcrusher/.test(q)) {
+    name = "Arm session — biceps + triceps";
+    exercises = [
+      "Cable or barbell curl 3×10–12",
+      "Incline dumbbell curl 3×10 each",
+      "Hammer curl 3×10–12",
+      "Rope pushdown 3×12–15",
+      "Overhead cable or DB extension 3×10–12",
+      "EZ-bar skull crusher 3×8–10",
+      "Wrist curl + reverse wrist curl 2×15 each",
+    ];
+  } else if (/\bpush\b|chest day|shoulder day|delts|\bohp\b|overhead press/.test(q)) {
+    name = "Push session — chest, shoulders, triceps";
+    exercises = [
+      "Incline DB or barbell press 4×6–10",
+      "Flat bench or push-up 3×8–12",
+      "Seated or standing overhead press 3×8–10",
+      "Lateral raise 3×12–15",
+      "Cable fly or pec deck 3×12–15",
+      "Rope pushdown 3×12–15",
+    ];
+  } else if (/\bpull\b|row day|lat|rear delt/.test(q)) {
+    name = "Pull session — back, biceps";
+    exercises = [
+      "Dead hang or assisted pull-up 4×6–8",
+      "Chest-supported row or one-arm row 3×8 each",
+      "Lat pulldown or straight-arm pulldown 3×10–12",
+      "Face pull or rear-delt fly 3×15–20",
+      "Hammer curl 3×10–12",
+      "Farmer carry 2×40 steps",
+    ];
+  } else if (/\bchest|pec/.test(q)) {
+    name = "Chest emphasis";
+    exercises = [
+      "Barbell or DB bench press 4×6–8",
+      "Incline press 3×8–10",
+      "Weighted dip or bench dip 3×8–12",
+      "Cable fly 3×12–15",
+      "Push-up mechanical drop set 2×AMRAP",
+    ];
+  } else if (/\bshoulder|delts|\bohp\b/.test(q)) {
+    name = "Shoulder session";
+    exercises = [
+      "Band pull-apart 2×20",
+      "Seated DB overhead press 4×6–10",
+      "Arnold press 3×8–10",
+      "Lateral raise 3×12–15",
+      "Rear-delt fly 3×12–15",
+      "Shrug 3×12–15",
+    ];
+  } else if (/\bcore|abs|oblique/.test(q)) {
+    name = "Core session";
+    exercises = [
+      "Dead bug 3×8 each side",
+      "Pallof press 3×10 each side",
+      "Side plank 3×30–45s each",
+      "Hanging knee raise or cable crunch 3×10–15",
+      "Farmer carry 2×40 steps",
+    ];
+  } else if (/\bhiit|tabata|conditioning|metcon/.test(q)) {
+    name = "HIIT / conditioning circuit";
+    exercises = [
+      "Bike or row warm-up 5 min easy",
+      "Kettlebell swing 5×15",
+      "Goblet squat 5×12",
+      "Push-up 5×10",
+      "Battle rope or high knees 5×30s on / 30s off",
+      "Walk 3 min easy cooldown",
+    ];
+  } else if (/\bfull body|total body/.test(q)) {
+    name = "Full-body strength";
+    exercises = [
+      "Goblet squat or leg press 3×10–12",
+      "Romanian deadlift 3×8–10",
+      "Bench or push-up 3×8–12",
+      "One-arm row 3×8 each",
+      "Half-kneeling landmine press 3×8 each",
+      "Plank 3×40s",
+    ];
+  } else if (/\bupper\b|\blat\b|\bpull-up|pulldown/.test(q)) {
+    name = "Upper-body session (pull emphasis)";
+    exercises = [
+      "Dead hang or assisted pull-up 4×6–8",
+      "Lat pulldown 3×10",
+      "One-arm dumbbell row 3×8 each",
+      "Face pulls 3×15",
+      "Hammer curl 3×10",
+      "Plank 2×45s",
+    ];
+  } else if (/\bleg|squat|quad|hamstring/.test(q)) {
+    name = "Leg strength session";
+    exercises = [
+      "Goblet squat 3×10",
+      "Leg press or back squat 4×6–8",
+      "Walking lunge 3×10 each leg",
+      "Leg curl 3×12",
+      "Leg extension 3×12",
+      "Standing calf raise 3×15",
+    ];
+  }
+  return {
+    type: "ADD_WORKOUT_PROGRAM",
+    name,
+    reason: "Starter split you can save under Health → My programs; tweak loads to match your gym or home setup.",
+    exercises,
+    requiresApproval: true,
+    confidence: 0.72,
+  };
+}
+
 export function validateCoachSpecificity(parsed, opts) {
   if (!parsed || typeof parsed !== "object") {
     return { parsed: parsed || {}, patched: false, usedDeterministicMessage: false };
@@ -71,6 +277,9 @@ export function validateCoachSpecificity(parsed, opts) {
     /\bstay consistent\b/gi,
     /\bfocus on what matters\b/gi,
     /\btry to stay consistent\b/gi,
+    /\bbased on your (?:schedule|calendar|day)\b/gi,
+    /\bgiven your (?:busy )?(?:schedule|day|calendar)\b/gi,
+    /\blooking at your schedule\b/gi,
   ];
 
   function stripBannedPhrases(text) {
@@ -157,7 +366,14 @@ export function validateCoachSpecificity(parsed, opts) {
   }
 
   function hasConcreteAction(textLower, sug) {
-    if (sug.some((s) => s && typeof s === "object" && String(s.type || "").toUpperCase() === "ADD_TASK")) return true;
+    if (
+      sug.some((s) => {
+        if (!s || typeof s !== "object") return false;
+        const t = String(s.type || "").toUpperCase().replace(/-/g, "_");
+        return t === "ADD_TASK" || t === "ADD_WORKOUT_PROGRAM";
+      })
+    )
+      return true;
     return /\b(\d+\s*(?:min|minutes)|add (?:a |an )?|block|schedule|slot|slice)\b/i.test(textLower);
   }
 
@@ -238,6 +454,13 @@ export function validateCoachSpecificity(parsed, opts) {
     }
   }
 
+  // 4b) User asked for a workout program draft; ensure a concrete ADD_WORKOUT_PROGRAM row exists
+  if (coachUserWantsProgramDraft(userQ, mode) && !hasAddWorkoutProgramWithBody(out.suggestions)) {
+    out.suggestions = stripWeakWorkoutPrograms(out.suggestions);
+    out.suggestions.push(defaultAddWorkoutProgramForUserQuestion(userQ));
+    patched = true;
+  }
+
   const combined = combinedText();
   const genericFail =
     mode === "missing_from_schedule" &&
@@ -261,14 +484,16 @@ export function validateCoachSpecificity(parsed, opts) {
   const PROGRAM_NOTE =
     "On the health side, you've used a built-in program recently, so the next useful upgrade may be choosing a goal and building a custom progression plan.";
 
+  const programDraftAsk = userWantsWorkoutProgramDraft(String(opts.userQuestion || ""), mode);
   const healthBlob = `${out.message} ${insight} ${highlights.join(" ")}`;
-  if (healthOpp && healthQuestionRelevant && !mentionsProgramUpgradeNote(healthBlob)) {
-    if (mode === "health_programming") {
-      if (!out.message.startsWith("On the health side, you've used a built-in program")) {
-        out.message = `${PROGRAM_NOTE} ${out.message.trim()}`.trim();
-        patched = true;
-      }
-    } else if (!out.message.includes("On the health side, you've used a built-in program recently")) {
+  if (
+    healthOpp &&
+    healthQuestionRelevant &&
+    !mentionsProgramUpgradeNote(healthBlob) &&
+    !hasAddWorkoutProgramWithBody(out.suggestions) &&
+    !programDraftAsk
+  ) {
+    if (mode !== "health_programming" && !out.message.includes("On the health side, you've used a built-in program recently")) {
       out.message = `${out.message.trim()} ${PROGRAM_NOTE}`.trim();
       patched = true;
     }

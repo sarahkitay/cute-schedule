@@ -148,9 +148,20 @@ export function normalizeRawSuggestion(
     .toUpperCase()
     .replace(/-/g, "_");
   if (rawTypeUpper === "ADD_WORKOUT_PROGRAM") {
-    const name = String(row.name || row.title || row.programName || "")
+    let name = String(row.name || row.title || row.programName || "")
       .trim()
       .slice(0, 100);
+    const nested =
+      row.workoutProgram && typeof row.workoutProgram === "object"
+        ? (row.workoutProgram as Record<string, unknown>)
+        : row.program && typeof row.program === "object"
+          ? (row.program as Record<string, unknown>)
+          : null;
+    if (nested && !name) {
+      name = String(nested.name || nested.title || "")
+        .trim()
+        .slice(0, 100);
+    }
     const lines: string[] = [];
     if (Array.isArray(row.exercises)) {
       for (const ex of row.exercises) {
@@ -172,7 +183,30 @@ export function normalizeRawSuggestion(
         if (t) lines.push(t.slice(0, 220));
       }
     }
-    if (!name || !lines.length) return null;
+    if (nested) {
+      if (Array.isArray(nested.exercises)) {
+        for (const ex of nested.exercises) {
+          if (typeof ex === "string") {
+            const t = ex.trim();
+            if (t) lines.push(t.slice(0, 220));
+          } else if (ex && typeof ex === "object") {
+            const b = normalizeExerciseBlock(ex as Record<string, unknown>);
+            if (b) {
+              const line = formatExerciseBlockLine(b);
+              if (line) lines.push(line.slice(0, 220));
+            }
+          }
+        }
+      }
+      if (Array.isArray(nested.exerciseLines)) {
+        for (const x of nested.exerciseLines) {
+          const t = String(x || "").trim();
+          if (t) lines.push(t.slice(0, 220));
+        }
+      }
+    }
+    const uniqLines = [...new Set(lines.map((x) => String(x || "").trim()).filter(Boolean))];
+    if (!name || !uniqLines.length) return null;
     const category = categories[0] || "Work";
     const start = normalizeTimeKey("09:00");
     const duration = 15;
@@ -196,7 +230,7 @@ export function normalizeRawSuggestion(
       source: COACH_SUGGESTION_SOURCE,
       hour: pickInsertionHourKey(start, todayHours),
       targetTaskId: null,
-      workoutProgram: { name, exerciseLines: lines },
+      workoutProgram: { name, exerciseLines: uniqLines },
     };
   }
 

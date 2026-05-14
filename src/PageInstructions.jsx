@@ -10,7 +10,7 @@ const INSTRUCTIONS = {
         <strong>Task notes:</strong> On Today, tap the small <strong>▸ / ▾</strong> arrow on a task row to open details; notes live there only. The <strong>⋯</strong> menu is for move, delete, time, lists, etc.
       </p>
       <p>
-        When you open Today, the schedule scrolls to your <strong>next incomplete</strong> task and highlights it. Habits, routines, and dock cards stay above the timeline.
+        When you open Today, the schedule scrolls to your <strong>next incomplete</strong> task and highlights it. Habits, routines, and dock cards stay above the timeline. To jump to another date, use the <strong>List</strong> tab and the calendar icon in the header.
       </p>
       <p>
         <strong>Today’s Capacity bars:</strong> Percentages reflect completes, moved to tomorrow, deletes, unchecking, and (if enabled) missed-at-day-end logs, plus your all-done streak and whether your last seven scheduled days were all finished.
@@ -19,13 +19,13 @@ const INSTRUCTIONS = {
   ),
   list: (
     <p>
-      Incomplete tasks for the selected day, sorted with heavier energy first. Use <strong>⋯</strong> for options; task notes are in that menu on List (there is no expand row here).
+      Incomplete tasks for the selected day, sorted with heavier energy first. Use <strong>⋯</strong> for options; task notes are in that menu on List (there is no expand row here). Open the <strong>calendar</strong> icon in the header to pick another day.
     </p>
   ),
   monthly: <p>Set month-level objectives; they stay out of your daily timeline until you work them into tasks.</p>,
   coach: (
     <>
-      <p>Suggestions need your <strong>Approve</strong> before anything is added. Workout <em>programs</em> from Coach save under Health → My programs when approved.</p>
+      <p>Suggestions need your <strong>Approve</strong> before anything is added. Workout <em>programs</em> from Coach save under Health → My programs when approved, then the app opens the Health tab so you can edit or schedule them.</p>
       <p>Structured modes (plan / unstuck / review) may return timebox or reorder actions; apply from the buttons shown.</p>
       <p>
         Optional <strong>Get to know you</strong> fields (expand on Coach) give the coach stable context; update anytime.
