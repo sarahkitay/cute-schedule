@@ -1,5 +1,5 @@
 import { COACH_SUGGESTION_SOURCE, type CoachEnergy, type CoachSuggestionType, type CoachSuggestionV2, type NormalizedCoachResult } from "./types";
-import { addMinutes, normalizeTimeKey, pickInsertionHourKey } from "./taskInsertion";
+import { addMinutes, normalizeTimeKey, pickInsertionHourKey, taskCountInHour } from "./taskInsertion";
 import { formatExerciseBlockLine, normalizeExerciseBlock } from "../health/healthModel";
 
 const ENERGIES: CoachEnergy[] = ["LIGHT", "MEDIUM", "HEAVY"];

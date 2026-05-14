@@ -282,3 +282,39 @@ test("empty coachReasoningMode falls back to general_coaching", () => {
   );
   assert.equal(parsed.message, "ok");
 });
+
+test("coach message promises leg program + block but omitted suggestions: adds program + workout ADD_TASK", () => {
+  const { parsed, patched } = validateCoachSpecificity(
+    {
+      message: "Let's add a workout block and a leg day program to your plan.",
+      insight: null,
+      highlights: [],
+      followUp: null,
+      suggestions: [],
+      ignoredMonthlies: [],
+      percentSummary: "",
+    },
+    {
+      coachContext: {
+        today: { isOnPace: true, overdueTasks: 0, completedTasks: 0 },
+        monthlyObjectives: { neglected: [] },
+        health: {},
+      },
+      coachReasoningMode: "health_programming",
+      localNowHHMM: "14:00",
+      realTodayKey: "2026-05-09",
+      categories: ["Personal", "Work"],
+      userQuestion: null,
+      conversation: [],
+    }
+  );
+  assert.equal(patched, true);
+  const wp = parsed.suggestions.find((s) => s.type === "ADD_WORKOUT_PROGRAM");
+  assert.ok(wp, "ADD_WORKOUT_PROGRAM patched in");
+  assert.ok(Array.isArray(wp.exercises) && wp.exercises.length >= 4);
+  const gymTask = parsed.suggestions.find(
+    (s) => s.type === "ADD_TASK" && /\b(leg day|gym|workout|strength)\b/i.test(`${s.title} ${s.reason}`)
+  );
+  assert.ok(gymTask, "workout-ish ADD_TASK patched in");
+  assert.ok(minutes(gymTask.start) > minutes("14:00"));
+});

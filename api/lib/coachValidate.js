@@ -10,6 +10,7 @@
  *   realTodayKey?: string;
  *   categories?: string[];
  *   userQuestion?: string | null;
+ *   conversation?: Array<{ role?: string; content?: string }> | null;
  * }} opts
  * @returns {{ parsed: Record<string, unknown>; patched: boolean; usedDeterministicMessage: boolean }}
  */
@@ -19,6 +20,26 @@
  * @param {string | null | undefined} userQuestion
  * @param {string | null | undefined} coachReasoningMode
  */
+/**
+ * Merge standalone `userQuestion` with the latest user turn in `conversation` so
+ * program-intent survives when the client sends the thread without duplicating the last line in `userQuestion`.
+ * @param {string | null | undefined} userQuestion
+ * @param {Array<{ role?: string; content?: string }> | null | undefined} conversation
+ */
+export function buildProgramDraftDetectionText(userQuestion, conversation) {
+  const q = String(userQuestion || "").trim();
+  if (!Array.isArray(conversation) || conversation.length === 0) return q;
+  for (let i = conversation.length - 1; i >= 0; i--) {
+    const row = conversation[i];
+    if (row && row.role === "user") {
+      const last = String(row.content || "").trim();
+      if (q && last && q !== last) return `${q}\n${last}`;
+      return last || q;
+    }
+  }
+  return q;
+}
+
 export function userWantsWorkoutProgramDraft(userQuestion, coachReasoningMode) {
   const q = String(userQuestion || "").toLowerCase().trim();
   if (!q) return false;
@@ -56,6 +77,31 @@ export function userWantsWorkoutProgramDraft(userQuestion, coachReasoningMode) {
 
 function coachUserWantsProgramDraft(userQ, mode) {
   return userWantsWorkoutProgramDraft(userQ, mode);
+}
+
+/** Model text promised a saveable program but may have omitted JSON suggestions. */
+function messagePromisesSavedProgram(message) {
+  const m = String(message || "").toLowerCase();
+  if (!m) return false;
+  const verb = /\b(add|adding|save|draft|build|create|put|log|slot|schedule|proposal|propose|we'll|we will|let's|let us)\b/.test(m);
+  const noun = /\b(workout program|leg day program|arm program|training program|gym program|program to your plan|structured .*program|program under health|my programs)\b/.test(m);
+  const lets = /\b(let's|let us)\b/.test(m) && /\badd\b/.test(m) && /\b(program|leg day|workout|training)\b/.test(m);
+  return (verb && noun) || lets;
+}
+
+function messagePromisesWorkoutBlock(message) {
+  const m = String(message || "").toLowerCase();
+  if (!m) return false;
+  return /\b(workout block|gym block|training block)\b/.test(m) && /\b(add|adding|let's|let us|schedule|slot|calendar|put|log)\b/.test(m);
+}
+
+function hasWorkoutishAddTask(sug) {
+  return sug.some((s) => {
+    if (!s || typeof s !== "object") return false;
+    if (String(s.type || "").toUpperCase() !== "ADD_TASK") return false;
+    const blob = `${s.title || ""} ${s.reason || ""} ${s.description || ""}`.toLowerCase();
+    return /\b(workout|gym|leg day|training|lift|strength|squat|deadlift|cardio|hiit|session)\b/.test(blob);
+  });
 }
 
 function countWorkoutProgramExerciseLines(s) {
@@ -233,6 +279,7 @@ export function validateCoachSpecificity(parsed, opts) {
   const realToday = String(opts.realTodayKey || "").trim();
   const cats = normalizeCategories(opts.categories);
   const userQ = String(opts.userQuestion || "").toLowerCase();
+  const programBlend = buildProgramDraftDetectionText(opts.userQuestion, opts.conversation).toLowerCase();
 
   const today = ctx?.today && typeof ctx.today === "object" ? ctx.today : null;
   const onPace = today?.isOnPace === true;
@@ -325,6 +372,35 @@ export function validateCoachSpecificity(parsed, opts) {
     if (cats.includes("Work")) return "Work";
     if (cats.includes("Personal")) return "Personal";
     return cats[0] || "Work";
+  }
+
+  function buildWorkoutBlockAddTask(startHHMM, blendLower) {
+    const b = String(blendLower || "");
+    let title = "Gym / strength — 45 min";
+    if (/\barm|bicep|tricep/.test(b)) title = "Arms — gym block (45 min)";
+    else if (/\bchest|pec/.test(b)) title = "Chest — gym block (45 min)";
+    else if (/\bback|pull|lat\b/.test(b)) title = "Back / pull — gym block (45 min)";
+    else if (/\bpush\b|shoulder|delts|\bohp\b/.test(b)) title = "Push / shoulders — gym block (45 min)";
+    else if (/\bleg|squat|quad|hamstring|glute|lower body|\brdl\b|deadlift/.test(b)) title = "Leg day — gym block (45 min)";
+    const cat = cats.includes("Personal") ? "Personal" : pickCategory();
+    return {
+      type: "ADD_TASK",
+      title,
+      description: "Warm up 5–10 min, then run your saved program or approve the coach draft below.",
+      reason: "Your coach reply mentioned adding a workout block; this is a concrete calendar slot you can approve.",
+      category: cat,
+      energyLevel: "HEAVY",
+      start: startHHMM,
+      end: null,
+      durationMinutes: 45,
+      recurring: false,
+      recurrencePattern: "none",
+      targetDayKey: realToday,
+      weekPlanLabel: "Today",
+      confidence: 0.78,
+      requiresApproval: true,
+      targetTaskId: null,
+    };
   }
 
   function buildNeglectedAddTask(startHHMM) {
@@ -455,9 +531,22 @@ export function validateCoachSpecificity(parsed, opts) {
   }
 
   // 4b) User asked for a workout program draft; ensure a concrete ADD_WORKOUT_PROGRAM row exists
-  if (coachUserWantsProgramDraft(userQ, mode) && !hasAddWorkoutProgramWithBody(out.suggestions)) {
+  if (coachUserWantsProgramDraft(programBlend, mode) && !hasAddWorkoutProgramWithBody(out.suggestions)) {
     out.suggestions = stripWeakWorkoutPrograms(out.suggestions);
-    out.suggestions.push(defaultAddWorkoutProgramForUserQuestion(userQ));
+    out.suggestions.push(defaultAddWorkoutProgramForUserQuestion(programBlend));
+    patched = true;
+  }
+
+  // 4c) Model promised a program or workout block in "message" but omitted suggestions — repair so Approve UI appears
+  const blendForDefaults = `${programBlend} ${String(out.message || "").toLowerCase().slice(0, 500)}`.trim();
+  if (messagePromisesSavedProgram(out.message) && !hasAddWorkoutProgramWithBody(out.suggestions)) {
+    out.suggestions = stripWeakWorkoutPrograms(out.suggestions);
+    out.suggestions.push(defaultAddWorkoutProgramForUserQuestion(blendForDefaults));
+    patched = true;
+  }
+  if (messagePromisesWorkoutBlock(out.message) && !hasWorkoutishAddTask(out.suggestions)) {
+    const startW = coerceStartStrictlyAfterLocalNow(nextQuarterHourStartAfterLocalNow(localNow), localNow);
+    out.suggestions.push(buildWorkoutBlockAddTask(startW, blendForDefaults));
     patched = true;
   }
 
@@ -484,7 +573,7 @@ export function validateCoachSpecificity(parsed, opts) {
   const PROGRAM_NOTE =
     "On the health side, you've used a built-in program recently, so the next useful upgrade may be choosing a goal and building a custom progression plan.";
 
-  const programDraftAsk = userWantsWorkoutProgramDraft(String(opts.userQuestion || ""), mode);
+  const programDraftAsk = userWantsWorkoutProgramDraft(programBlend, mode);
   const healthBlob = `${out.message} ${insight} ${highlights.join(" ")}`;
   if (
     healthOpp &&

@@ -1,6 +1,6 @@
 import { applyApiCors } from "./lib/cors.js";
 import { assertCoachRateLimit } from "./lib/coachRateLimit.js";
-import { userWantsWorkoutProgramDraft, validateCoachSpecificity } from "./lib/coachValidate.js";
+import { buildProgramDraftDetectionText, userWantsWorkoutProgramDraft, validateCoachSpecificity } from "./lib/coachValidate.js";
 import { clientSafeDetail, logServerError } from "./lib/safeJsonError.js";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -209,6 +209,8 @@ Suggestions (Coach V2): When a concrete move fits, return 0–6 items in "sugges
 
 Use ADD_TASK or BREAK for new calendar items. Use ADD_WORKOUT_PROGRAM when they ask you to write/build/draft a program, routine, or exercise list (e.g. glute day, leg day). Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply; requiresApproval is always true. Use [] only when nothing concrete fits.
 
+COMMITMENT_RULE: If "message" says you will add, schedule, save, or draft a workout block, gym block, or workout/leg day program (e.g. "let's add a leg day program"), you MUST include matching ADD_TASK and/or ADD_WORKOUT_PROGRAM rows in "suggestions" with requiresApproval true. Never promise those adds in prose while leaving "suggestions" empty or omitting the program row.
+
 Clock rule for new time slots: The client sends localNowHHMM (24h) and realTodayKey. When targetDayKey is null or equals realTodayKey (same true calendar day as "now"), every ADD_TASK and BREAK must use "start" strictly AFTER localNowHHMM (pick the next quarter-hour or half-hour boundary after it). Never propose an earlier clock time for that day. For ADD_TASK on that day, prefer hour blocks in today's schedule JSON that are not already stacked with unfinished tasks unless the user explicitly asked to double-book.
 
 Week / recurring planning: If the user asks to spread habits (e.g. art, dog walks) across the week, use weekAtAGlance + today's schedule to infer lighter blocks and propose multiple ADD_TASK rows on different targetDayKey values with realistic times. Prefer recurrencePattern weekly for habits they want a few times per week; daily for true every-day anchors. In "message", sound human: react to what they said (e.g. agreement, empathy, one concrete plan). Tie suggestions to their actual gaps; avoid generic filler.
@@ -299,7 +301,10 @@ Use these to detect recurring struggles, goals, constraints, or self-observation
       ? `\n\nREASONING_MODE: ${String(coachReasoningMode)} (weight your answer toward this lens; still return valid Coach V2 JSON).`
       : "";
 
-    const programDraftAsk = userWantsWorkoutProgramDraft(userQuestion, coachReasoningMode);
+    const programDraftAsk = userWantsWorkoutProgramDraft(
+      buildProgramDraftDetectionText(userQuestion, conversation),
+      coachReasoningMode
+    );
     const healthProgrammingHardRule = programDraftAsk
       ? `
 
@@ -564,6 +569,7 @@ Return JSON EXACTLY in this schema (Coach V2). When you propose a full workout t
         realTodayKey: todayKeyForClock,
         categories,
         userQuestion,
+        conversation: Array.isArray(conversation) ? conversation : [],
       }
     );
 
