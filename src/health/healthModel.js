@@ -674,6 +674,127 @@ export const PROGRAM_LIBRARY = [
   },
 ];
 
+/** Normalize coach / API copy: avoid em/en dashes in stored names and titles. */
+export function sanitizeCoachTypography(str) {
+  return String(str || "")
+    .replace(/\u2014/g, " - ")
+    .replace(/\u2013/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalExerciseFingerprintLine(block) {
+  const x = normalizeExerciseBlock(block);
+  if (!x) return "";
+  const blob = [x.name, x.setsReps, x.weightNote].filter(Boolean).join(" ");
+  return blob
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+/** Stable fingerprint for deduping coach saves vs My programs and built-in samples. */
+export function fingerprintExerciseBlocksForDedupe(exercises) {
+  if (!Array.isArray(exercises)) return "";
+  return exercises.map(canonicalExerciseFingerprintLine).filter(Boolean).join("|");
+}
+
+/**
+ * When a coach draft matches a built-in sample line-for-line, swap to these (must not match PROGRAM_LIBRARY).
+ * @type {Record<string, { name: string, lines: string[] }>}
+ */
+const COACH_ALTERNATES_FOR_BUILTIN = {
+  sample_leg: {
+    name: "Lower-body strength (coach draft)",
+    lines: [
+      "Front squat or safety bar squat 3x5-8",
+      "Pause squat (2 sec) or tempo back squat 3x4-6",
+      "Deficit Romanian deadlift or good morning 3x8-10",
+      "Single-leg leg press or high box step-up 3x10 each leg",
+      "Nordic hamstring curl (assisted) or slow eccentric RDL 3x5-8",
+      "Seated or single-leg calf raise 4x12-15 each",
+    ],
+  },
+  sample_full_body: {
+    name: "Full-body strength (coach draft)",
+    lines: [
+      "Trap bar deadlift or sumo deadlift 3x6-8",
+      "Safety bar squat or hack squat 3x8-10",
+      "Incline DB bench press 3x8-12",
+      "Chest-supported T-bar row 3x8-10",
+      "Half-kneeling single-arm cable press 3x8 each",
+      "Dead bug or ab wheel rollout 3x8-12",
+    ],
+  },
+  sample_upper: {
+    name: "Upper-body strength (coach draft)",
+    lines: [
+      "Neutral-grip pull-up or band-assisted 4x6-8",
+      "Meadows row or landmine row 3x8 each",
+      "Half-kneeling landmine press 3x8 each",
+      "Y-raise or prone trap raise 3x12-15",
+      "Incline spider curl 3x10-12",
+      "Cross-body cable triceps extension 3x12 each",
+    ],
+  },
+};
+
+/**
+ * Sanitize name, reuse an existing user program if identical, or rewrite drafts that mirror built-in samples.
+ * @param {unknown} health
+ * @param {unknown[]} exercises normalized exercise blocks
+ * @param {string} name
+ * @returns {{ exercises: ExerciseBlock[], name: string, reuseExistingId: string | null }}
+ */
+export function prepareCoachProgramForHealth(health, exercises, name) {
+  const h = normalizeHealth(health);
+  let blocks = (Array.isArray(exercises) ? exercises : [])
+    .map((e) => normalizeExerciseBlock(e))
+    .filter(Boolean);
+  let nm = sanitizeCoachTypography(name);
+  if (!blocks.length) {
+    return { exercises: blocks, name: nm, reuseExistingId: null };
+  }
+
+  const fp = fingerprintExerciseBlocksForDedupe(blocks);
+  const userList = h.programs || [];
+  const userHit = userList.find((p) => fingerprintExerciseBlocksForDedupe(p.exercises) === fp);
+  if (userHit?.id) {
+    return {
+      exercises: (userHit.exercises || []).map(normalizeExerciseBlock).filter(Boolean),
+      name: sanitizeCoachTypography(String(userHit.name || nm)),
+      reuseExistingId: String(userHit.id),
+    };
+  }
+
+  for (const lib of PROGRAM_LIBRARY) {
+    if (fingerprintExerciseBlocksForDedupe(lib.exercises) !== fp) continue;
+    const alt = COACH_ALTERNATES_FOR_BUILTIN[lib.id];
+    if (alt?.lines?.length) {
+      const nextBlocks = alt.lines
+        .map((line) => normalizeExerciseBlock({ name: String(line).trim() }))
+        .filter(Boolean);
+      if (fingerprintExerciseBlocksForDedupe(nextBlocks) !== fp) {
+        return { exercises: nextBlocks, name: sanitizeCoachTypography(alt.name), reuseExistingId: null };
+      }
+    }
+    const finisher = normalizeExerciseBlock({
+      name: "Easy conditioning: walk or bike 5-10 min",
+      setsReps: "",
+      weightNote: "",
+    });
+    const mutated = finisher ? [...blocks, finisher] : blocks;
+    return {
+      exercises: mutated.map(normalizeExerciseBlock).filter(Boolean),
+      name: sanitizeCoachTypography(`${nm} (coach)`),
+      reuseExistingId: null,
+    };
+  }
+
+  return { exercises: blocks, name: nm, reuseExistingId: null };
+}
+
 const GYM_WORD = /\b(gym|workouts?|exercises?|lifting|train(?:ing)?)\b/i;
 
 export function textHintsWorkoutTask(text) {

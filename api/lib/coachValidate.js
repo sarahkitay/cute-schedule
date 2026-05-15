@@ -140,7 +140,7 @@ function stripWeakWorkoutPrograms(sug) {
 
 function defaultAddWorkoutProgramForUserQuestion(userQ) {
   const q = String(userQ || "").toLowerCase();
-  let name = "Coach session — full body";
+  let name = "Coach session - full body";
   let reason =
     "Starter split you can save under Health → My programs; tweak loads to match your gym or home setup.";
   let exercises = [
@@ -162,7 +162,7 @@ function defaultAddWorkoutProgramForUserQuestion(userQ) {
       "Side-lying clamshell 2×15 each side",
     ];
   } else if (/\barm|\barms\b|bicep|tricep|curl|extension|hammer|preacher|skull|skullcrusher/.test(q)) {
-    name = "Arm session — biceps + triceps";
+    name = "Arm session - biceps + triceps";
     exercises = [
       "Cable or barbell curl 3×10–12",
       "Incline dumbbell curl 3×10 each",
@@ -173,7 +173,7 @@ function defaultAddWorkoutProgramForUserQuestion(userQ) {
       "Wrist curl + reverse wrist curl 2×15 each",
     ];
   } else if (/\bpush\b|chest day|shoulder day|delts|\bohp\b|overhead press/.test(q)) {
-    name = "Push session — chest, shoulders, triceps";
+    name = "Push session - chest, shoulders, triceps";
     exercises = [
       "Incline DB or barbell press 4×6–10",
       "Flat bench or push-up 3×8–12",
@@ -183,7 +183,7 @@ function defaultAddWorkoutProgramForUserQuestion(userQ) {
       "Rope pushdown 3×12–15",
     ];
   } else if (/\bpull\b|row day|lat|rear delt/.test(q)) {
-    name = "Pull session — back, biceps";
+    name = "Pull session - back, biceps";
     exercises = [
       "Dead hang or assisted pull-up 4×6–8",
       "Chest-supported row or one-arm row 3×8 each",
@@ -252,7 +252,7 @@ function defaultAddWorkoutProgramForUserQuestion(userQ) {
     ];
   } else if (/\bleg|squat|quad|hamstring/.test(q)) {
     /** Intentionally different from built-in `sample_leg` (Leg day) so coach fallbacks are not duplicates. */
-    name = "Lower-body strength B — coach draft";
+    name = "Lower-body strength B (coach draft)";
     reason =
       "Coach draft (not the built-in Leg day sample): different exercise choices; save under Health → My programs and tweak loads for your equipment.";
     exercises = [
@@ -385,12 +385,12 @@ export function validateCoachSpecificity(parsed, opts) {
 
   function buildWorkoutBlockAddTask(startHHMM, blendLower) {
     const b = String(blendLower || "");
-    let title = "Gym / strength — 45 min";
-    if (/\barm|bicep|tricep/.test(b)) title = "Arms — gym block (45 min)";
-    else if (/\bchest|pec/.test(b)) title = "Chest — gym block (45 min)";
-    else if (/\bback|pull|lat\b/.test(b)) title = "Back / pull — gym block (45 min)";
-    else if (/\bpush\b|shoulder|delts|\bohp\b/.test(b)) title = "Push / shoulders — gym block (45 min)";
-    else if (/\bleg|squat|quad|hamstring|glute|lower body|\brdl\b|deadlift/.test(b)) title = "Leg day — gym block (45 min)";
+    let title = "Gym / strength - 45 min";
+    if (/\barm|bicep|tricep/.test(b)) title = "Arms - gym block (45 min)";
+    else if (/\bchest|pec/.test(b)) title = "Chest - gym block (45 min)";
+    else if (/\bback|pull|lat\b/.test(b)) title = "Back / pull - gym block (45 min)";
+    else if (/\bpush\b|shoulder|delts|\bohp\b/.test(b)) title = "Push / shoulders - gym block (45 min)";
+    else if (/\bleg|squat|quad|hamstring|glute|lower body|\brdl\b|deadlift/.test(b)) title = "Leg day - gym block (45 min)";
     const cat = cats.includes("Personal") ? "Personal" : pickCategory();
     return {
       type: "ADD_TASK",
@@ -539,7 +539,7 @@ export function validateCoachSpecificity(parsed, opts) {
     }
   }
 
-  // 4b) Message repair: model promised program / block without JSON — run before user-intent (4c) so we
+  // 4b) Message repair: model promised program / block without JSON - run before user-intent (4c) so we
   // can emit one bundled ADD_TASK when both are promised (avoids orphan calendar block + separate program).
   const blendForDefaults = `${programBlend} ${String(out.message || "").toLowerCase().slice(0, 500)}`.trim();
   const wantsProgRepair = messagePromisesSavedProgram(out.message) && !hasAddWorkoutProgramWithBody(out.suggestions);
