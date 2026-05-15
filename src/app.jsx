@@ -6431,6 +6431,16 @@ export default function App() {
               )}
             </section>
 
+            {starred && routineSchedule.enabledNight !== false && routineAppliesToday(routineSchedule.night, new Date(tKey + "T12:00:00").getDay()) && (
+              <section className="panel scroll-reveal" style={{ marginBottom: 14 }}>
+                <BedtimeRoutine
+                  routine={appState.bedtimeRoutine}
+                  onToggle={toggleBedtime}
+                  allTasksDone={starred}
+                />
+              </section>
+            )}
+
             <section className="panel panel-hero daily-progress-card surface-glass scroll-reveal">
               <div className="panel-top">
                 <div className="panel-title">
@@ -6688,16 +6698,6 @@ export default function App() {
                     </div>
                   ) : null}
                 </div>
-              </section>
-            )}
-
-            {starred && routineSchedule.enabledNight !== false && routineAppliesToday(routineSchedule.night, new Date(tKey + "T12:00:00").getDay()) && (
-              <section className="panel scroll-reveal" style={{ marginTop: 14 }}>
-                <BedtimeRoutine 
-                  routine={appState.bedtimeRoutine} 
-                  onToggle={toggleBedtime}
-                  allTasksDone={starred}
-                />
               </section>
             )}
           </>
