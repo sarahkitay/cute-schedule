@@ -14,6 +14,22 @@ export function normalizeExerciseBlock(x: Record<string, unknown> | null | undef
 
 export function formatExerciseBlockLine(b: ExerciseBlock | null | undefined): string;
 
+export function sanitizeCoachTypography(str: string): string;
+
+export function fingerprintExerciseBlocksForDedupe(exercises: unknown[]): string;
+
+export function draftWorkoutProgramLinesFromCue(cueLower: string): {
+  name: string;
+  exerciseLines: string[];
+  reason?: string;
+};
+
+export function prepareCoachProgramForHealth(
+  health: unknown,
+  exercises: unknown[],
+  name: string
+): { exercises: ExerciseBlock[]; name: string; reuseExistingId: string | null };
+
 export type ProgramLibraryEntry = {
   id: string;
   name: string;

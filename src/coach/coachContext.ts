@@ -1,5 +1,10 @@
 import { listMergedTasksForDay } from "../groceryTaskCoachHelpers";
-import { PROGRAM_LIBRARY } from "../health/healthModel";
+import {
+  PROGRAM_LIBRARY,
+  fingerprintExerciseBlocksForDedupe,
+  formatExerciseBlockLine,
+  normalizeExerciseBlock,
+} from "../health/healthModel.js";
 import type { PatternShape, TaskLite } from "./intelligence";
 
 export type CoachTimeOfDayBand = "morning" | "midday" | "afternoon" | "evening" | "night";
@@ -57,6 +62,8 @@ export type CoachContext = {
   };
   health: {
     activePrograms: Array<{ id: string; name: string; exerciseCount: number }>;
+    /** Fingerprints of user-built saved programs so the model avoids duplicating lineups. */
+    workoutProgramGuard: Array<{ id: string; name: string; fingerprint: string; sampleLines: string[] }>;
     recentlyUsedPrebuiltPrograms: Array<{ id: string; name: string }>;
     suggestedProgramOpportunity?: string;
     profileGoal?: string | null;
@@ -331,6 +338,27 @@ export function buildCoachContext(input: BuildCoachContextInput): CoachContext {
       exerciseCount: (p.exercises as unknown[]).length,
     }));
 
+  const workoutProgramGuard = programs
+    .filter((p) => p && !libIds.has(String((p as { id?: string }).id || "")))
+    .map((p) => {
+      const ex = Array.isArray((p as { exercises?: unknown[] }).exercises) ? (p as { exercises: unknown[] }).exercises : [];
+      const blocks = ex
+        .map((e) => normalizeExerciseBlock(e as Record<string, unknown>))
+        .filter(Boolean) as ReturnType<typeof normalizeExerciseBlock>[];
+      const fingerprint = fingerprintExerciseBlocksForDedupe(blocks);
+      const sampleLines = blocks
+        .slice(0, 4)
+        .map((b) => formatExerciseBlockLine(b))
+        .filter(Boolean);
+      return {
+        id: String((p as { id?: string }).id || ""),
+        name: String((p as { name?: string }).name || "Program"),
+        fingerprint,
+        sampleLines,
+      };
+    })
+    .filter((row) => row.fingerprint.length > 0 && row.id.length > 0);
+
   const prebuiltUsed: Array<{ id: string; name: string }> = [];
   for (const p of programs) {
     const id = String(p.id || "");
@@ -414,6 +442,7 @@ export function buildCoachContext(input: BuildCoachContextInput): CoachContext {
     monthlyObjectives: { active: activeObjs, neglected: neglectedObjs },
     health: {
       activePrograms,
+      workoutProgramGuard,
       recentlyUsedPrebuiltPrograms: prebuiltUsed,
       suggestedProgramOpportunity,
       profileGoal,
@@ -458,6 +487,18 @@ export function formatCoachContextForApi(ctx: CoachContext): string {
     lines.push(`monthly_neglected: ${JSON.stringify(ctx.monthlyObjectives.neglected)}`);
   }
   if (ctx.health.activePrograms.length) lines.push(`health_programs: ${JSON.stringify(ctx.health.activePrograms)}`);
+  if (ctx.health.workoutProgramGuard?.length) {
+    lines.push(
+      `saved_program_uniqueness_guard: ${JSON.stringify(
+        ctx.health.workoutProgramGuard.map((g) => ({
+          id: g.id,
+          name: g.name,
+          fingerprint: g.fingerprint,
+          sample_lines: g.sampleLines,
+        }))
+      )}. Any new ADD_WORKOUT_PROGRAM or workoutProgram on ADD_TASK must use a DIFFERENT exercise fingerprint than these rows (new lifts; not a reorder or synonym swap of the same session). Read the user's specific training ask and health_training; do not clone their saved programs.`
+    );
+  }
   if (ctx.health.recentlyUsedPrebuiltPrograms.length)
     lines.push(`prebuilt_program_touchpoints: ${JSON.stringify(ctx.health.recentlyUsedPrebuiltPrograms)}`);
   if (ctx.health.suggestedProgramOpportunity) lines.push(`health_opportunity: ${ctx.health.suggestedProgramOpportunity}`);

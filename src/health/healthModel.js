@@ -795,6 +795,142 @@ export function prepareCoachProgramForHealth(health, exercises, name) {
   return { exercises: blocks, name: nm, reuseExistingId: null };
 }
 
+/**
+ * Deterministic coach draft from user cues (shared by API validator and client when a gym ADD_TASK lacks `workoutProgram`).
+ * @returns {{ name: string, exerciseLines: string[], reason?: string }}
+ */
+export function draftWorkoutProgramLinesFromCue(cueLower) {
+  const q = String(cueLower || "").toLowerCase();
+  let name = "Coach session - full body";
+  /** @type {string[] | undefined} */
+  let reason;
+  let exerciseLines = [
+    "Goblet squat warm-up 2x12 light",
+    "Dumbbell Romanian deadlift 3x8-10",
+    "Push-up or incline bench 3x8-12",
+    "One-arm row 3x8 each arm",
+    "Plank shoulder taps 3x8 each side",
+    "Farmer carry 2x30 steps",
+  ];
+  if (/\b(glute|glutes|hips|hip thrust)\b/.test(q)) {
+    name = "Glute-focused session";
+    exerciseLines = [
+      "Banded glute bridges 3x15",
+      "Barbell or dumbbell hip thrust 4x8-10",
+      "Romanian deadlift 3x8-10",
+      "Bulgarian split squat 3x8 each leg",
+      "Cable pull-through 3x12",
+      "Side-lying clamshell 2x15 each side",
+    ];
+  } else if (/\barm|\barms\b|bicep|tricep|curl|extension|hammer|preacher|skull|skullcrusher/.test(q)) {
+    name = "Arm session - biceps + triceps";
+    exerciseLines = [
+      "Cable or barbell curl 3x10-12",
+      "Incline dumbbell curl 3x10 each",
+      "Hammer curl 3x10-12",
+      "Rope pushdown 3x12-15",
+      "Overhead cable or DB extension 3x10-12",
+      "EZ-bar skull crusher 3x8-10",
+      "Wrist curl + reverse wrist curl 2x15 each",
+    ];
+  } else if (/\bpush\b|chest day|shoulder day|delts|\bohp\b|overhead press/.test(q)) {
+    name = "Push session - chest, shoulders, triceps";
+    exerciseLines = [
+      "Incline DB or barbell press 4x6-10",
+      "Flat bench or push-up 3x8-12",
+      "Seated or standing overhead press 3x8-10",
+      "Lateral raise 3x12-15",
+      "Cable fly or pec deck 3x12-15",
+      "Rope pushdown 3x12-15",
+    ];
+  } else if (/\bpull\b|row day|lat|rear delt/.test(q)) {
+    name = "Pull session - back, biceps";
+    exerciseLines = [
+      "Dead hang or assisted pull-up 4x6-8",
+      "Chest-supported row or one-arm row 3x8 each",
+      "Lat pulldown or straight-arm pulldown 3x10-12",
+      "Face pull or rear-delt fly 3x15-20",
+      "Hammer curl 3x10-12",
+      "Farmer carry 2x40 steps",
+    ];
+  } else if (/\bchest|pec/.test(q)) {
+    name = "Chest emphasis";
+    exerciseLines = [
+      "Barbell or DB bench press 4x6-8",
+      "Incline press 3x8-10",
+      "Weighted dip or bench dip 3x8-12",
+      "Cable fly 3x12-15",
+      "Push-up mechanical drop set 2xAMRAP",
+    ];
+  } else if (/\bshoulder|delts|\bohp\b/.test(q)) {
+    name = "Shoulder session";
+    exerciseLines = [
+      "Band pull-apart 2x20",
+      "Seated DB overhead press 4x6-10",
+      "Arnold press 3x8-10",
+      "Lateral raise 3x12-15",
+      "Rear-delt fly 3x12-15",
+      "Shrug 3x12-15",
+    ];
+  } else if (/\bcore|abs|oblique/.test(q)) {
+    name = "Core session";
+    exerciseLines = [
+      "Dead bug 3x8 each side",
+      "Pallof press 3x10 each side",
+      "Side plank 3x30-45s each",
+      "Hanging knee raise or cable crunch 3x10-15",
+      "Farmer carry 2x40 steps",
+    ];
+  } else if (/\bhiit|tabata|conditioning|metcon/.test(q)) {
+    name = "HIIT / conditioning circuit";
+    exerciseLines = [
+      "Bike or row warm-up 5 min easy",
+      "Kettlebell swing 5x15",
+      "Goblet squat 5x12",
+      "Push-up 5x10",
+      "Battle rope or high knees 5x30s on / 30s off",
+      "Walk 3 min easy cooldown",
+    ];
+  } else if (/\bfull body|total body/.test(q)) {
+    name = "Full-body strength";
+    exerciseLines = [
+      "Goblet squat or leg press 3x10-12",
+      "Romanian deadlift 3x8-10",
+      "Bench or push-up 3x8-12",
+      "One-arm row 3x8 each",
+      "Half-kneeling landmine press 3x8 each",
+      "Plank 3x40s",
+    ];
+  } else if (/\bupper\b|\blat\b|\bpull-up|pulldown/.test(q)) {
+    name = "Upper-body session (pull emphasis)";
+    exerciseLines = [
+      "Dead hang or assisted pull-up 4x6-8",
+      "Lat pulldown 3x10",
+      "One-arm dumbbell row 3x8 each",
+      "Face pulls 3x15",
+      "Hammer curl 3x10",
+      "Plank 2x45s",
+    ];
+  } else if (/\bleg|squat|quad|hamstring|glute|lower body|\brdl\b|deadlift/.test(q)) {
+    name = "Lower-body strength B (coach draft)";
+    reason =
+      "Coach draft (not the built-in Leg day sample): different exercise choices; save under Health - My programs and tweak loads for your equipment.";
+    exerciseLines = [
+      "Front squat or safety-bar squat 3x5-8",
+      "Pause squat (2s) or tempo back squat 3x4-6",
+      "Deficit Romanian deadlift or good morning 3x8-10",
+      "Single-leg leg press or high box step-up 3x10 each",
+      "Nordic hamstring curl (assisted) or slow RDL 3x5-8",
+      "Seated or single-leg calf raise 4x12-15 each",
+    ];
+  }
+  return {
+    name: sanitizeCoachTypography(name),
+    exerciseLines,
+    ...(reason ? { reason } : {}),
+  };
+}
+
 const GYM_WORD = /\b(gym|workouts?|exercises?|lifting|train(?:ing)?)\b/i;
 
 export function textHintsWorkoutTask(text) {

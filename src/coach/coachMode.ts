@@ -41,6 +41,14 @@ export function inferCoachReasoningMode(userQuestion: string | null | undefined)
   }
   if (/\b(momentum|streak|slump|rut|stuck)\b/.test(q)) return "momentum_recovery";
   if (/\b(overwhelm|too much|can't cope|drowning|panic)\b/.test(q)) return "overwhelm_prevention";
+
+  /** User listed several concrete to-dos (comma / and / semicolon) they want placed today. */
+  const multiItemCue =
+    (q.match(/\b(and|,|;)\b/g) || []).length >= 2 &&
+    q.length > 28 &&
+    /\b(i have to|i've to|i need to|need to|have to|must|today|this morning|this afternoon|tonight|schedule|plan|slot|fit in|get done|chores|errands|homework|calls?)\b/.test(q);
+  if (multiItemCue) return "daily_planning";
+
   if (/\b(today|this afternoon|tonight|plan my day|rest of the day)\b/.test(q)) return "daily_planning";
 
   return "general_coaching";

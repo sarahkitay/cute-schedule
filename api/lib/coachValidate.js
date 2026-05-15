@@ -14,12 +14,12 @@
  * }} opts
  * @returns {{ parsed: Record<string, unknown>; patched: boolean; usedDeterministicMessage: boolean }}
  */
-/**
- * True when the user is clearly asking for a saveable workout program draft.
- * Used by the API prompt (mandatory ADD_WORKOUT_PROGRAM) and by the validator fallback.
- * @param {string | null | undefined} userQuestion
- * @param {string | null | undefined} coachReasoningMode
- */
+import {
+  draftWorkoutProgramLinesFromCue,
+  fingerprintExerciseBlocksForDedupe,
+  normalizeExerciseBlock,
+} from "../../src/health/healthModel.js";
+
 /**
  * Merge standalone `userQuestion` with the latest user turn in `conversation` so
  * program-intent survives when the client sends the thread without duplicating the last line in `userQuestion`.
@@ -40,6 +40,7 @@ export function buildProgramDraftDetectionText(userQuestion, conversation) {
   return q;
 }
 
+/** True when the user is clearly asking for a saveable workout program draft (API + validator). */
 export function userWantsWorkoutProgramDraft(userQuestion, coachReasoningMode) {
   const q = String(userQuestion || "").toLowerCase().trim();
   if (!q) return false;
@@ -104,6 +105,90 @@ function hasWorkoutishAddTask(sug) {
   });
 }
 
+function addTaskRowLooksLikeWorkoutBlock(s) {
+  if (!s || typeof s !== "object") return false;
+  if (String(s.type || "").toUpperCase() !== "ADD_TASK") return false;
+  const blob = `${s.title || ""} ${s.reason || ""} ${s.description || ""}`.toLowerCase();
+  return /\b(workout|gym|leg day|training|lift|strength|squat|deadlift|cardio|hiit|session)\b/.test(blob);
+}
+
+/** @param {unknown[]} sug */
+function ensureWorkoutAddTasksEmbedProgram(sug, blend) {
+  if (!Array.isArray(sug)) return false;
+  let patched = false;
+  const b = String(blend || "").toLowerCase();
+  for (const s of sug) {
+    if (!addTaskRowLooksLikeWorkoutBlock(s) || hasAddWorkoutProgramWithBody([s])) continue;
+    const d = draftWorkoutProgramLinesFromCue(`${b} ${String(s.title || "").toLowerCase()}`);
+    s.workoutProgram = { name: d.name, exerciseLines: d.exerciseLines };
+    patched = true;
+  }
+  return patched;
+}
+
+function fingerprintFromSuggestionProgramPayload(s) {
+  if (!s || typeof s !== "object") return "";
+  const t = String(s.type || "").toUpperCase().replace(/-/g, "_");
+  const blocks = [];
+  if (t === "ADD_WORKOUT_PROGRAM") {
+    const ex = Array.isArray(s.exercises) ? s.exercises : [];
+    for (const x of ex) {
+      if (typeof x === "string") blocks.push(normalizeExerciseBlock({ name: x }));
+      else if (x && typeof x === "object") blocks.push(normalizeExerciseBlock(x));
+    }
+  } else if (t === "ADD_TASK") {
+    const wp = s.workoutProgram && typeof s.workoutProgram === "object" ? s.workoutProgram : null;
+    if (wp && Array.isArray(wp.exerciseLines)) {
+      for (const line of wp.exerciseLines) blocks.push(normalizeExerciseBlock({ name: String(line || "").trim() }));
+    }
+    if (wp && Array.isArray(wp.exercises)) {
+      for (const x of wp.exercises) {
+        if (typeof x === "string") blocks.push(normalizeExerciseBlock({ name: x }));
+        else if (x && typeof x === "object") blocks.push(normalizeExerciseBlock(x));
+      }
+    }
+  }
+  return fingerprintExerciseBlocksForDedupe(blocks.filter(Boolean));
+}
+
+/**
+ * If model copied an existing saved program, rewrite exercises (keeps approval flow).
+ * @param {unknown[]} suggestions
+ * @param {Array<{ fingerprint?: string }> | null | undefined} guard
+ * @param {string} blend
+ */
+function rewriteCollidingWorkoutPrograms(suggestions, guard, blend) {
+  if (!Array.isArray(suggestions) || !Array.isArray(guard) || guard.length === 0) return false;
+  const guardFps = new Set(guard.map((g) => (g && typeof g === "object" ? String(g.fingerprint || "") : "")).filter(Boolean));
+  if (guardFps.size === 0) return false;
+  let patched = false;
+  let salt = 0;
+  const b = String(blend || "").toLowerCase();
+  for (const s of suggestions) {
+    if (!s || typeof s !== "object") continue;
+    const t = String(s.type || "").toUpperCase().replace(/-/g, "_");
+    if (t !== "ADD_TASK" && t !== "ADD_WORKOUT_PROGRAM") continue;
+    let fp = fingerprintFromSuggestionProgramPayload(s);
+    if (!fp || !guardFps.has(fp)) continue;
+    while (salt < 14 && guardFps.has(fp)) {
+      salt += 1;
+      const d = draftWorkoutProgramLinesFromCue(`${b} coach variant ${salt}`);
+      if (t === "ADD_WORKOUT_PROGRAM") {
+        s.name = d.name;
+        s.exercises = d.exerciseLines;
+        if (s.workoutProgram && typeof s.workoutProgram === "object") {
+          s.workoutProgram = { name: d.name, exerciseLines: d.exerciseLines };
+        }
+      } else {
+        s.workoutProgram = { name: d.name, exerciseLines: d.exerciseLines };
+      }
+      fp = fingerprintFromSuggestionProgramPayload(s);
+    }
+    patched = true;
+  }
+  return patched;
+}
+
 function countWorkoutProgramExerciseLines(s) {
   if (!s || typeof s !== "object") return 0;
   const ex = Array.isArray(s.exercises) ? s.exercises : [];
@@ -139,136 +224,14 @@ function stripWeakWorkoutPrograms(sug) {
 }
 
 function defaultAddWorkoutProgramForUserQuestion(userQ) {
-  const q = String(userQ || "").toLowerCase();
-  let name = "Coach session - full body";
-  let reason =
+  const d = draftWorkoutProgramLinesFromCue(String(userQ || ""));
+  const defaultReason =
     "Starter split you can save under Health → My programs; tweak loads to match your gym or home setup.";
-  let exercises = [
-    "Goblet squat warm-up 2×12 light",
-    "Dumbbell Romanian deadlift 3×8–10",
-    "Push-up or incline bench 3×8–12",
-    "One-arm row 3×8 each arm",
-    "Plank shoulder taps 3×8 each side",
-    "Farmer carry 2×30 steps",
-  ];
-  if (/\b(glute|glutes|hips|hip thrust)\b/.test(q)) {
-    name = "Glute-focused session";
-    exercises = [
-      "Banded glute bridges 3×15",
-      "Barbell or dumbbell hip thrust 4×8–10",
-      "Romanian deadlift 3×8–10",
-      "Bulgarian split squat 3×8 each leg",
-      "Cable pull-through 3×12",
-      "Side-lying clamshell 2×15 each side",
-    ];
-  } else if (/\barm|\barms\b|bicep|tricep|curl|extension|hammer|preacher|skull|skullcrusher/.test(q)) {
-    name = "Arm session - biceps + triceps";
-    exercises = [
-      "Cable or barbell curl 3×10–12",
-      "Incline dumbbell curl 3×10 each",
-      "Hammer curl 3×10–12",
-      "Rope pushdown 3×12–15",
-      "Overhead cable or DB extension 3×10–12",
-      "EZ-bar skull crusher 3×8–10",
-      "Wrist curl + reverse wrist curl 2×15 each",
-    ];
-  } else if (/\bpush\b|chest day|shoulder day|delts|\bohp\b|overhead press/.test(q)) {
-    name = "Push session - chest, shoulders, triceps";
-    exercises = [
-      "Incline DB or barbell press 4×6–10",
-      "Flat bench or push-up 3×8–12",
-      "Seated or standing overhead press 3×8–10",
-      "Lateral raise 3×12–15",
-      "Cable fly or pec deck 3×12–15",
-      "Rope pushdown 3×12–15",
-    ];
-  } else if (/\bpull\b|row day|lat|rear delt/.test(q)) {
-    name = "Pull session - back, biceps";
-    exercises = [
-      "Dead hang or assisted pull-up 4×6–8",
-      "Chest-supported row or one-arm row 3×8 each",
-      "Lat pulldown or straight-arm pulldown 3×10–12",
-      "Face pull or rear-delt fly 3×15–20",
-      "Hammer curl 3×10–12",
-      "Farmer carry 2×40 steps",
-    ];
-  } else if (/\bchest|pec/.test(q)) {
-    name = "Chest emphasis";
-    exercises = [
-      "Barbell or DB bench press 4×6–8",
-      "Incline press 3×8–10",
-      "Weighted dip or bench dip 3×8–12",
-      "Cable fly 3×12–15",
-      "Push-up mechanical drop set 2×AMRAP",
-    ];
-  } else if (/\bshoulder|delts|\bohp\b/.test(q)) {
-    name = "Shoulder session";
-    exercises = [
-      "Band pull-apart 2×20",
-      "Seated DB overhead press 4×6–10",
-      "Arnold press 3×8–10",
-      "Lateral raise 3×12–15",
-      "Rear-delt fly 3×12–15",
-      "Shrug 3×12–15",
-    ];
-  } else if (/\bcore|abs|oblique/.test(q)) {
-    name = "Core session";
-    exercises = [
-      "Dead bug 3×8 each side",
-      "Pallof press 3×10 each side",
-      "Side plank 3×30–45s each",
-      "Hanging knee raise or cable crunch 3×10–15",
-      "Farmer carry 2×40 steps",
-    ];
-  } else if (/\bhiit|tabata|conditioning|metcon/.test(q)) {
-    name = "HIIT / conditioning circuit";
-    exercises = [
-      "Bike or row warm-up 5 min easy",
-      "Kettlebell swing 5×15",
-      "Goblet squat 5×12",
-      "Push-up 5×10",
-      "Battle rope or high knees 5×30s on / 30s off",
-      "Walk 3 min easy cooldown",
-    ];
-  } else if (/\bfull body|total body/.test(q)) {
-    name = "Full-body strength";
-    exercises = [
-      "Goblet squat or leg press 3×10–12",
-      "Romanian deadlift 3×8–10",
-      "Bench or push-up 3×8–12",
-      "One-arm row 3×8 each",
-      "Half-kneeling landmine press 3×8 each",
-      "Plank 3×40s",
-    ];
-  } else if (/\bupper\b|\blat\b|\bpull-up|pulldown/.test(q)) {
-    name = "Upper-body session (pull emphasis)";
-    exercises = [
-      "Dead hang or assisted pull-up 4×6–8",
-      "Lat pulldown 3×10",
-      "One-arm dumbbell row 3×8 each",
-      "Face pulls 3×15",
-      "Hammer curl 3×10",
-      "Plank 2×45s",
-    ];
-  } else if (/\bleg|squat|quad|hamstring/.test(q)) {
-    /** Intentionally different from built-in `sample_leg` (Leg day) so coach fallbacks are not duplicates. */
-    name = "Lower-body strength B (coach draft)";
-    reason =
-      "Coach draft (not the built-in Leg day sample): different exercise choices; save under Health → My programs and tweak loads for your equipment.";
-    exercises = [
-      "Front squat or safety-bar squat 3×5–8",
-      "Pause squat (2s) or tempo back squat 3×4–6",
-      "Deficit Romanian deadlift or good morning 3×8–10",
-      "Single-leg leg press or high box step-up 3×10 each",
-      "Nordic hamstring curl (assisted) or slow RDL 3×5–8",
-      "Seated or single-leg calf raise 4×12–15 each",
-    ];
-  }
   return {
     type: "ADD_WORKOUT_PROGRAM",
-    name,
-    reason,
-    exercises,
+    name: d.name,
+    reason: d.reason != null ? String(d.reason) : defaultReason,
+    exercises: d.exerciseLines,
     requiresApproval: true,
     confidence: 0.72,
   };
@@ -564,7 +527,15 @@ export function validateCoachSpecificity(parsed, opts) {
     patched = true;
   } else if (wantsBlockRepair && !hasAddWorkoutProgramWithBody(out.suggestions)) {
     const startW = coerceStartStrictlyAfterLocalNow(nextQuarterHourStartAfterLocalNow(localNow), localNow);
-    out.suggestions.push(buildWorkoutBlockAddTask(startW, blendForDefaults));
+    const prog = defaultAddWorkoutProgramForUserQuestion(blendForDefaults);
+    const row = buildWorkoutBlockAddTask(startW, blendForDefaults);
+    row.workoutProgram = { name: prog.name, exerciseLines: prog.exercises.map((x) => String(x)) };
+    row.title = `${prog.name} + calendar`;
+    row.description =
+      "One Approve: saves this program under Health → My programs and adds this workout block linked to it (taskType workout + program).";
+    row.reason =
+      "The coach message offered a gym block; this card saves a fresh program and links the calendar block so guided workouts resolve.";
+    out.suggestions.push(row);
     patched = true;
   }
 
@@ -612,6 +583,10 @@ export function validateCoachSpecificity(parsed, opts) {
       patched = true;
     }
   }
+
+  const healthCtx = ctx?.health && typeof ctx.health === "object" ? ctx.health : null;
+  if (ensureWorkoutAddTasksEmbedProgram(out.suggestions, blendForDefaults)) patched = true;
+  if (rewriteCollidingWorkoutPrograms(out.suggestions, healthCtx?.workoutProgramGuard, blendForDefaults)) patched = true;
 
   out.highlights = highlights;
   out.insight = insight.trim() ? insight.trim() : null;
