@@ -1,4 +1,4 @@
-import { COACH_SUGGESTION_SOURCE, type CoachEnergy, type CoachSuggestionType, type CoachSuggestionV2, type NormalizedCoachResult } from "./types";
+import { COACH_SUGGESTION_SOURCE, type CoachEnergy, type CoachSuggestionType, type CoachSuggestionV2, type CoachWorkoutProgramDraft, type NormalizedCoachResult } from "./types";
 import { addMinutes, normalizeTimeKey, pickInsertionHourKey, taskCountInHour } from "./taskInsertion";
 import { formatExerciseBlockLine, normalizeExerciseBlock } from "../health/healthModel";
 
@@ -262,6 +262,36 @@ export function normalizeRawSuggestion(
   const description = row.description != null ? String(row.description).slice(0, 400) : null;
   const targetTaskId = row.targetTaskId != null ? String(row.targetTaskId) : null;
 
+  let workoutProgram: CoachWorkoutProgramDraft | null = null;
+  const wpRaw = row.workoutProgram;
+  if (wpRaw && typeof wpRaw === "object") {
+    const wp = wpRaw as Record<string, unknown>;
+    const wpName = String(wp.name || "").trim().slice(0, 100);
+    const lineCandidates: string[] = [];
+    if (Array.isArray(wp.exerciseLines)) {
+      for (const x of wp.exerciseLines) {
+        const t = String(x || "").trim();
+        if (t) lineCandidates.push(t.slice(0, 220));
+      }
+    }
+    if (Array.isArray(wp.exercises)) {
+      for (const ex of wp.exercises) {
+        if (typeof ex === "string") {
+          const t = ex.trim();
+          if (t) lineCandidates.push(t.slice(0, 220));
+        } else if (ex && typeof ex === "object") {
+          const b = normalizeExerciseBlock(ex as Record<string, unknown>);
+          if (b) {
+            const line = formatExerciseBlockLine(b);
+            if (line) lineCandidates.push(line.slice(0, 220));
+          }
+        }
+      }
+    }
+    const uniqWp = [...new Set(lineCandidates.map((x) => String(x || "").trim()).filter(Boolean))];
+    if (wpName && uniqWp.length) workoutProgram = { name: wpName, exerciseLines: uniqWp };
+  }
+
   return {
     id: String(row.id || newId()),
     type,
@@ -282,6 +312,7 @@ export function normalizeRawSuggestion(
     source: COACH_SUGGESTION_SOURCE,
     hour,
     targetTaskId,
+    workoutProgram,
   };
 }
 

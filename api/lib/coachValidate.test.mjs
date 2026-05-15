@@ -309,12 +309,10 @@ test("coach message promises leg program + block but omitted suggestions: adds p
     }
   );
   assert.equal(patched, true);
-  const wp = parsed.suggestions.find((s) => s.type === "ADD_WORKOUT_PROGRAM");
-  assert.ok(wp, "ADD_WORKOUT_PROGRAM patched in");
-  assert.ok(Array.isArray(wp.exercises) && wp.exercises.length >= 4);
-  const gymTask = parsed.suggestions.find(
-    (s) => s.type === "ADD_TASK" && /\b(leg day|gym|workout|strength)\b/i.test(`${s.title} ${s.reason}`)
-  );
-  assert.ok(gymTask, "workout-ish ADD_TASK patched in");
-  assert.ok(minutes(gymTask.start) > minutes("14:00"));
+  assert.equal(parsed.suggestions.length, 1, "single bundled suggestion");
+  const row = parsed.suggestions[0];
+  assert.equal(row.type, "ADD_TASK");
+  assert.ok(row.workoutProgram && Array.isArray(row.workoutProgram.exerciseLines));
+  assert.ok(row.workoutProgram.exerciseLines.length >= 4);
+  assert.ok(minutes(row.start) > minutes("14:00"));
 });

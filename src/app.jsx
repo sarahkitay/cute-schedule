@@ -5102,8 +5102,14 @@ export default function App() {
         <div className="coach-v2-suggest-list">
           {suggestions.map((s) => {
             const isWorkoutProgram = s.type === "ADD_WORKOUT_PROGRAM";
-            const canAuto = isWorkoutProgram || s.type === "ADD_TASK" || s.type === "BREAK" || s.type === "SPLIT_TASK";
-            const whenLine = isWorkoutProgram ? "Workout program (saves to Health)" : coachSuggestionWhenLine(s.hour || s.start);
+            const isBundledWorkoutTask =
+              s.type === "ADD_TASK" && s.workoutProgram?.name && (s.workoutProgram?.exerciseLines || []).length > 0;
+            const canAuto = isWorkoutProgram || isBundledWorkoutTask || s.type === "ADD_TASK" || s.type === "BREAK" || s.type === "SPLIT_TASK";
+            const whenLine = isWorkoutProgram
+              ? "Workout program (saves to Health)"
+              : isBundledWorkoutTask
+                ? "Workout + program (choose below)"
+                : coachSuggestionWhenLine(s.hour || s.start);
             const planDayLine =
               s.weekPlanLabel ||
               (s.targetDayKey && s.targetDayKey !== tKey ? `Planned for ${s.targetDayKey}` : null);
@@ -5113,12 +5119,23 @@ export default function App() {
                   {whenLine}
                   {!isWorkoutProgram && planDayLine ? <span className="coach-v2-plan-day"> · {planDayLine}</span> : null}
                 </div>
-                {!isWorkoutProgram ? (
+                {!isWorkoutProgram && !isBundledWorkoutTask ? (
                   <div className="coach-v2-card-top">
                     <span className="coach-v2-meta">
                       <Pill label={s.category} />
                       <span className="coach-v2-energy">{s.energyLevel}</span>
                       <span className="coach-v2-time">{to12Hour(s.hour || s.start)}</span>
+                    </span>
+                  </div>
+                ) : isBundledWorkoutTask ? (
+                  <div className="coach-v2-card-top">
+                    <span className="coach-v2-meta">
+                      <Pill label={s.category} />
+                      <span className="coach-v2-energy">{s.energyLevel}</span>
+                      <span className="coach-v2-time">{to12Hour(s.hour || s.start)}</span>
+                      <span className="settings-hint" style={{ marginLeft: 8 }}>
+                        {(s.workoutProgram?.exerciseLines || []).length} moves → Health
+                      </span>
                     </span>
                   </div>
                 ) : (
@@ -5142,6 +5159,19 @@ export default function App() {
                     ) : null}
                   </ul>
                 ) : null}
+                {isBundledWorkoutTask && s.workoutProgram?.exerciseLines?.length ? (
+                  <ul className="settings-hint" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                    <li className="settings-hint" style={{ listStyle: "none", marginLeft: -18, marginBottom: 6 }}>
+                      <strong>{s.workoutProgram.name}</strong>
+                    </li>
+                    {s.workoutProgram.exerciseLines.slice(0, 6).map((line, i) => (
+                      <li key={i}>{line}</li>
+                    ))}
+                    {s.workoutProgram.exerciseLines.length > 6 ? (
+                      <li>+{s.workoutProgram.exerciseLines.length - 6} more</li>
+                    ) : null}
+                  </ul>
+                ) : null}
                 {s.description ? <p className="coach-v2-desc">{s.description}</p> : null}
                 <div className="coach-v2-why">
                   <div className="coach-v2-why-label">Why this fits</div>
@@ -5149,9 +5179,25 @@ export default function App() {
                 </div>
                 <div className="coach-v2-actions">
                   {canAuto ? (
-                    <button type="button" className="btn btn-primary" onClick={() => acceptCoachSuggestion(s)}>
-                      Approve
-                    </button>
+                    isBundledWorkoutTask ? (
+                      <>
+                        <button type="button" className="btn btn-primary" onClick={() => acceptCoachSuggestion(s)}>
+                          Save + calendar
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => acceptCoachSuggestion(s, { programOnly: true })}
+                          title="Save this program under Health → My programs without adding a calendar block"
+                        >
+                          Program only
+                        </button>
+                      </>
+                    ) : (
+                      <button type="button" className="btn btn-primary" onClick={() => acceptCoachSuggestion(s)}>
+                        Approve
+                      </button>
+                    )
                   ) : (
                     <button type="button" className="btn" disabled title="Reorder and timebox controls live in Details mode for now">
                       Not auto-applied
@@ -5215,6 +5261,89 @@ export default function App() {
       setCoachToast({ text: "Program saved under Health → My programs", detail: s.workoutProgram.name, kind: "ok" });
       setTab("health");
       setHealthProgramBuilderScroll((n) => n + 1);
+      return;
+    }
+    if (s.type === "ADD_TASK" && s.workoutProgram?.name && s.workoutProgram.exerciseLines?.length) {
+      const exercises = s.workoutProgram.exerciseLines
+        .map((line) => normalizeExerciseBlock({ name: String(line).trim() }))
+        .filter(Boolean);
+      if (!exercises.length) {
+        setCoachToast({ text: "That suggestion had no exercises we could save.", kind: "info" });
+        removeCoachSuggestionById(s.id);
+        return;
+      }
+      const ov0 = overrides && typeof overrides === "object" ? overrides : {};
+      if (ov0.programOnly === true) {
+        const id = `prog-${uid()}`;
+        const rec = normalizeProgramRecord({ id, name: s.workoutProgram.name, exercises });
+        if (!rec) return;
+        setHealth((prev) => {
+          const base = normalizeHealth(prev);
+          return { ...base, programs: [...(base.programs || []), rec] };
+        });
+        setCoachLearning((prev) =>
+          recordSuggestionAccepted(prev, {
+            type: "ADD_WORKOUT_PROGRAM",
+            category: customCategories[0] || "Work",
+            energyLevel: "MEDIUM",
+            edited: false,
+            titleLower: s.workoutProgram.name.toLowerCase(),
+          })
+        );
+        removeCoachSuggestionById(s.id);
+        setCoachToast({ text: "Program saved under Health → My programs", detail: s.workoutProgram.name, kind: "ok" });
+        setTab("health");
+        setHealthProgramBuilderScroll((n) => n + 1);
+        return;
+      }
+      const programId = `prog-${uid()}`;
+      const rec = normalizeProgramRecord({ id: programId, name: s.workoutProgram.name, exercises });
+      if (!rec) return;
+      setHealth((prev) => {
+        const base = normalizeHealth(prev);
+        return { ...base, programs: [...(base.programs || []), rec] };
+      });
+      const ov = overrides && typeof overrides === "object" ? overrides : {};
+      const hour = normalizeTimeKey(ov.hour || s.hour || s.start || "09:00");
+      const cat = customCategories.includes(ov.category || s.category)
+        ? ov.category || s.category
+        : customCategories[0] || "Work";
+      const labelBase = normalizeText(ov.title || s.title);
+      const label = labelBase || s.workoutProgram.name;
+      const edited = Boolean(overrides && (ov.title || ov.hour || ov.category));
+      const dayKey =
+        s.targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(s.targetDayKey).trim())
+          ? String(s.targetDayKey).trim()
+          : tKey;
+      let repeat = REPEAT_OPTIONS.NONE;
+      if (s.recurrencePattern === "weekly") repeat = REPEAT_OPTIONS.WEEKLY;
+      else if (s.recurrencePattern === "daily") repeat = REPEAT_OPTIONS.DAILY;
+      else if (s.recurrencePattern === "none") repeat = REPEAT_OPTIONS.NONE;
+      else if (s.recurring) repeat = REPEAT_OPTIONS.DAILY;
+      ensureHour(hour, dayKey);
+      addTask(hour, cat, label, repeat, null, {
+        energyLevel: s.energyLevel || "HEAVY",
+        coachSuggestionId: s.id,
+        source: COACH_SUGGESTION_SOURCE,
+        sourceSuggestionType: s.type,
+        taskType: "workout",
+        workoutProgramMode: "specific",
+        workoutProgramId: programId,
+        ...(dayKey !== tKey ? { targetDayKey: dayKey } : {}),
+        coachSuggestionEdited: edited,
+      });
+      setCoachLearning((prev) =>
+        recordSuggestionAccepted(prev, {
+          type: s.type,
+          category: cat,
+          energyLevel: s.energyLevel || "HEAVY",
+          edited,
+          titleLower: label.toLowerCase(),
+        })
+      );
+      removeCoachSuggestionById(s.id);
+      setCoachToast({ text: "Program saved and workout linked on your calendar", detail: rec.name, kind: "ok" });
+      setTab("list");
       return;
     }
     const ov = overrides && typeof overrides === "object" ? overrides : {};

@@ -121,8 +121,12 @@ function countWorkoutProgramExerciseLines(s) {
 function hasAddWorkoutProgramWithBody(sug) {
   return sug.some((s) => {
     if (!s || typeof s !== "object") return false;
-    if (String(s.type || "").toUpperCase().replace(/-/g, "_") !== "ADD_WORKOUT_PROGRAM") return false;
-    return countWorkoutProgramExerciseLines(s) >= 4;
+    const t = String(s.type || "").toUpperCase().replace(/-/g, "_");
+    if (t === "ADD_WORKOUT_PROGRAM") return countWorkoutProgramExerciseLines(s) >= 4;
+    if (t === "ADD_TASK" && s.workoutProgram && typeof s.workoutProgram === "object") {
+      return countWorkoutProgramExerciseLines(s) >= 4;
+    }
+    return false;
   });
 }
 
@@ -137,6 +141,8 @@ function stripWeakWorkoutPrograms(sug) {
 function defaultAddWorkoutProgramForUserQuestion(userQ) {
   const q = String(userQ || "").toLowerCase();
   let name = "Coach session — full body";
+  let reason =
+    "Starter split you can save under Health → My programs; tweak loads to match your gym or home setup.";
   let exercises = [
     "Goblet squat warm-up 2×12 light",
     "Dumbbell Romanian deadlift 3×8–10",
@@ -245,20 +251,23 @@ function defaultAddWorkoutProgramForUserQuestion(userQ) {
       "Plank 2×45s",
     ];
   } else if (/\bleg|squat|quad|hamstring/.test(q)) {
-    name = "Leg strength session";
+    /** Intentionally different from built-in `sample_leg` (Leg day) so coach fallbacks are not duplicates. */
+    name = "Lower-body strength B — coach draft";
+    reason =
+      "Coach draft (not the built-in Leg day sample): different exercise choices; save under Health → My programs and tweak loads for your equipment.";
     exercises = [
-      "Goblet squat 3×10",
-      "Leg press or back squat 4×6–8",
-      "Walking lunge 3×10 each leg",
-      "Leg curl 3×12",
-      "Leg extension 3×12",
-      "Standing calf raise 3×15",
+      "Front squat or safety-bar squat 3×5–8",
+      "Pause squat (2s) or tempo back squat 3×4–6",
+      "Deficit Romanian deadlift or good morning 3×8–10",
+      "Single-leg leg press or high box step-up 3×10 each",
+      "Nordic hamstring curl (assisted) or slow RDL 3×5–8",
+      "Seated or single-leg calf raise 4×12–15 each",
     ];
   }
   return {
     type: "ADD_WORKOUT_PROGRAM",
     name,
-    reason: "Starter split you can save under Health → My programs; tweak loads to match your gym or home setup.",
+    reason,
     exercises,
     requiresApproval: true,
     confidence: 0.72,
@@ -530,23 +539,39 @@ export function validateCoachSpecificity(parsed, opts) {
     }
   }
 
-  // 4b) User asked for a workout program draft; ensure a concrete ADD_WORKOUT_PROGRAM row exists
-  if (coachUserWantsProgramDraft(programBlend, mode) && !hasAddWorkoutProgramWithBody(out.suggestions)) {
-    out.suggestions = stripWeakWorkoutPrograms(out.suggestions);
-    out.suggestions.push(defaultAddWorkoutProgramForUserQuestion(programBlend));
-    patched = true;
-  }
-
-  // 4c) Model promised a program or workout block in "message" but omitted suggestions — repair so Approve UI appears
+  // 4b) Message repair: model promised program / block without JSON — run before user-intent (4c) so we
+  // can emit one bundled ADD_TASK when both are promised (avoids orphan calendar block + separate program).
   const blendForDefaults = `${programBlend} ${String(out.message || "").toLowerCase().slice(0, 500)}`.trim();
-  if (messagePromisesSavedProgram(out.message) && !hasAddWorkoutProgramWithBody(out.suggestions)) {
+  const wantsProgRepair = messagePromisesSavedProgram(out.message) && !hasAddWorkoutProgramWithBody(out.suggestions);
+  const wantsBlockRepair = messagePromisesWorkoutBlock(out.message) && !hasWorkoutishAddTask(out.suggestions);
+
+  if (wantsProgRepair && wantsBlockRepair) {
+    out.suggestions = stripWeakWorkoutPrograms(out.suggestions);
+    const prog = defaultAddWorkoutProgramForUserQuestion(blendForDefaults);
+    const startW = coerceStartStrictlyAfterLocalNow(nextQuarterHourStartAfterLocalNow(localNow), localNow);
+    const row = buildWorkoutBlockAddTask(startW, blendForDefaults);
+    row.workoutProgram = { name: prog.name, exerciseLines: prog.exercises.map((x) => String(x)) };
+    row.title = `${prog.name} + calendar`;
+    row.description =
+      "One Approve: saves this program under Health → My programs and adds this workout block linked to it (taskType workout + program).";
+    row.reason =
+      "The coach message offered both a program and a calendar block; this card does both so nothing is left unattached.";
+    out.suggestions.push(row);
+    patched = true;
+  } else if (wantsProgRepair) {
     out.suggestions = stripWeakWorkoutPrograms(out.suggestions);
     out.suggestions.push(defaultAddWorkoutProgramForUserQuestion(blendForDefaults));
     patched = true;
-  }
-  if (messagePromisesWorkoutBlock(out.message) && !hasWorkoutishAddTask(out.suggestions)) {
+  } else if (wantsBlockRepair && !hasAddWorkoutProgramWithBody(out.suggestions)) {
     const startW = coerceStartStrictlyAfterLocalNow(nextQuarterHourStartAfterLocalNow(localNow), localNow);
     out.suggestions.push(buildWorkoutBlockAddTask(startW, blendForDefaults));
+    patched = true;
+  }
+
+  // 4c) User asked for a workout program draft; ensure a concrete program row exists if still missing
+  if (coachUserWantsProgramDraft(programBlend, mode) && !hasAddWorkoutProgramWithBody(out.suggestions)) {
+    out.suggestions = stripWeakWorkoutPrograms(out.suggestions);
+    out.suggestions.push(defaultAddWorkoutProgramForUserQuestion(programBlend));
     patched = true;
   }
 
