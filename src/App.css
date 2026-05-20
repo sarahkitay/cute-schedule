@@ -6915,6 +6915,17 @@ html[data-theme="dark"] .health-exercise-row {
   margin-top: 12px;
 }
 
+.health-program-search-wrap {
+  position: relative;
+  margin-bottom: 10px;
+}
+.health-program-search-input {
+  width: 100%;
+}
+.health-program-reorder-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+}
 .health-program-cards {
   list-style: none;
   margin: 0;
@@ -6924,12 +6935,50 @@ html[data-theme="dark"] .health-exercise-row {
   gap: 14px;
 }
 .health-program-card {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
   padding: 0;
   border-radius: var(--radius-panel, 16px);
   border: 1px solid color-mix(in srgb, var(--theme-accent) 38%, rgba(60, 48, 44, 0.14));
   background: color-mix(in srgb, var(--surface-solid) 94%, var(--theme-primary) 6%);
   overflow: hidden;
   box-shadow: 0 4px 18px color-mix(in srgb, var(--text) 6%, transparent);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.health-program-card--drag-over {
+  border-color: color-mix(in srgb, var(--theme-accent) 65%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent) 22%, transparent);
+}
+.health-program-card--focused {
+  border-color: color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--theme-accent) 18%, transparent);
+}
+.health-program-drag-grip {
+  flex-shrink: 0;
+  width: 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: grab;
+  background: color-mix(in srgb, var(--theme-accent) 12%, transparent);
+  border-right: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+.health-program-drag-grip:active {
+  cursor: grabbing;
+}
+.health-program-drag-grip-line {
+  display: block;
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--text-soft) 70%, transparent);
+}
+.health-program-card-inner {
+  flex: 1;
+  min-width: 0;
 }
 .health-program-card--sample {
   border-style: dashed;

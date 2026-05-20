@@ -13,6 +13,8 @@ import {
   guidedSessionProgressKey,
   lbToKg,
   listSelectablePrograms,
+  listDisplayPrograms,
+  normalizeProgramDisplayOrder,
   mondayKeyForDayKey,
   normalizeExerciseBlock,
   normalizeHealth,
@@ -277,6 +279,12 @@ export function HealthPage({
   const [editingProgramId, setEditingProgramId] = useState(null);
   const [routineAddId, setRoutineAddId] = useState("");
   const [buildProgramOpen, setBuildProgramOpen] = useState(false);
+  const [programSearch, setProgramSearch] = useState("");
+  const [programSearchOpen, setProgramSearchOpen] = useState(false);
+  const [focusedProgramId, setFocusedProgramId] = useState("");
+  const [programDragOverId, setProgramDragOverId] = useState(null);
+  const programSearchRef = useRef(null);
+  const programDragSourceRef = useRef(null);
   const [mealType, setMealType] = useState("");
   const [mealFood, setMealFood] = useState("");
   const [mealFoodPickerOpen, setMealFoodPickerOpen] = useState(false);
@@ -369,15 +377,41 @@ export function HealthPage({
 
   const selectable = useMemo(() => listSelectablePrograms(h), [h]);
 
-  const displayPrograms = useMemo(() => {
-    const user = h.programs || [];
-    const userIds = new Set(user.map((p) => p.id));
-    const savedCopyName = (libName) => `${String(libName || "").trim()} (saved)`;
-    const hasSavedLibraryCopy = (lib) =>
-      user.some((p) => String(p.name || "").trim() === savedCopyName(lib.name));
-    const builtIns = PROGRAM_LIBRARY.filter((lib) => !userIds.has(lib.id) && !hasSavedLibraryCopy(lib));
-    return [...user, ...builtIns];
-  }, [h.programs]);
+  const displayPrograms = useMemo(() => listDisplayPrograms(h), [h]);
+
+  const programSearchMatches = useMemo(() => {
+    const q = programSearch.trim().toLowerCase();
+    if (!q) return [];
+    return displayPrograms.filter((p) => {
+      if (String(p.name || "").toLowerCase().includes(q)) return true;
+      return (p.exercises || []).some((ex) => String(ex.name || "").toLowerCase().includes(q));
+    });
+  }, [displayPrograms, programSearch]);
+
+  const visiblePrograms = useMemo(() => {
+    const q = programSearch.trim().toLowerCase();
+    if (!q) return displayPrograms;
+    return programSearchMatches;
+  }, [displayPrograms, programSearch, programSearchMatches]);
+
+  const programsCanReorder = !programSearch.trim();
+
+  useEffect(() => {
+    if (!programSearchOpen) return;
+    function onDocClick(e) {
+      if (programSearchRef.current && !programSearchRef.current.contains(e.target)) {
+        setProgramSearchOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [programSearchOpen]);
+
+  useEffect(() => {
+    if (focusedProgramId && !displayPrograms.some((p) => p.id === focusedProgramId)) {
+      setFocusedProgramId("");
+    }
+  }, [displayPrograms, focusedProgramId]);
 
   const macroWeekDays = useMemo(() => {
     const mon = mondayKeyForDayKey(macroDate);
@@ -500,7 +534,12 @@ export function HealthPage({
       if (!rec) return;
       setHealth((prev) => {
         const base = normalizeHealth(prev);
-        return { ...base, programs: [...(base.programs || []), rec] };
+        const programs = [...(base.programs || []), rec];
+        const order = normalizeProgramDisplayOrder(
+          [...(base.programDisplayOrder || []), rec.id],
+          listDisplayPrograms({ ...base, programs }).map((p) => p.id)
+        );
+        return { ...base, programs, programDisplayOrder: order };
       });
     }
     clearBuilder();
@@ -511,7 +550,8 @@ export function HealthPage({
       const base = normalizeHealth(prev);
       const programs = (base.programs || []).filter((p) => p.id !== id);
       const weekRoutineProgramIds = (base.weekRoutineProgramIds || []).filter((x) => x !== id);
-      return { ...base, programs, weekRoutineProgramIds };
+      const programDisplayOrder = (base.programDisplayOrder || []).filter((x) => x !== id);
+      return { ...base, programs, weekRoutineProgramIds, programDisplayOrder };
     });
     if (editingProgramId === id) clearBuilder();
   }
@@ -524,8 +564,41 @@ export function HealthPage({
     if (!rec) return;
     setHealth((prev) => {
       const base = normalizeHealth(prev);
-      return { ...base, programs: [...(base.programs || []), rec] };
+      const programs = [...(base.programs || []), rec];
+      const order = normalizeProgramDisplayOrder(
+        [...(base.programDisplayOrder || []), rec.id],
+        listDisplayPrograms({ ...base, programs }).map((p) => p.id)
+      );
+      return { ...base, programs, programDisplayOrder: order };
     });
+  }
+
+  function reorderProgramsOnDrop(targetId) {
+    const src = programDragSourceRef.current;
+    if (!src || src === targetId || !programsCanReorder) return;
+    setHealth((prev) => {
+      const base = normalizeHealth(prev);
+      const ids = listDisplayPrograms(base).map((p) => p.id);
+      const order = normalizeProgramDisplayOrder(base.programDisplayOrder, ids);
+      const from = order.indexOf(src);
+      const to = order.indexOf(targetId);
+      if (from < 0 || to < 0) return base;
+      const next = [...order];
+      next.splice(from, 1);
+      next.splice(to, 0, src);
+      return { ...base, programDisplayOrder: next };
+    });
+    programDragSourceRef.current = null;
+    setProgramDragOverId(null);
+  }
+
+  function selectProgramFromSearch(p) {
+    setFocusedProgramId(p.id);
+    setProgramSearch(p.name || "");
+    setProgramSearchOpen(false);
+    window.setTimeout(() => {
+      document.querySelector(`[data-health-program-id="${p.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 0);
   }
 
   function addProgramToRoutine(id) {
@@ -964,14 +1037,112 @@ export function HealthPage({
             <div className="panel-title" style={{ marginBottom: 8 }}>
               <span className="title">My programs</span>
             </div>
+            <div className="health-program-search-wrap" ref={programSearchRef}>
+              <input
+                className="input health-program-search-input"
+                type="search"
+                value={programSearch}
+                onChange={(e) => {
+                  setProgramSearch(e.target.value);
+                  setProgramSearchOpen(true);
+                }}
+                onFocus={() => setProgramSearchOpen(true)}
+                placeholder="Search programs by name or exercise"
+                autoComplete="off"
+                aria-autocomplete="list"
+                aria-expanded={programSearchOpen && programSearchMatches.length > 0}
+                aria-controls="health-program-search-list"
+              />
+              {programSearchOpen && programSearch.trim() && programSearchMatches.length > 0 ? (
+                <div id="health-program-search-list" className="health-macro-preset-dropdown" role="listbox" aria-label="Programs">
+                  {programSearchMatches.slice(0, 14).map((p) => {
+                    const moveCount = (p.exercises || []).length;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        role="option"
+                        className="health-macro-preset-dropdown-item"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectProgramFromSearch(p)}
+                      >
+                        <span className="health-macro-preset-dropdown-label">{p.name}</span>
+                        <span className="health-macro-preset-dropdown-macros">
+                          {moveCount} {moveCount === 1 ? "move" : "moves"}
+                          {PROGRAM_LIBRARY.some((lib) => lib.id === p.id) ? " · Sample" : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : programSearchOpen && programSearch.trim() && programSearchMatches.length === 0 ? (
+                <div className="health-macro-preset-dropdown">
+                  <div className="health-macro-preset-dropdown-empty">No programs match that search.</div>
+                </div>
+              ) : null}
+            </div>
+            <p className="settings-hint health-program-reorder-hint">
+              {programsCanReorder
+                ? "Drag the grip on each card to change list order."
+                : "Clear search to reorder programs."}
+            </p>
             <ul className="health-program-cards">
-              {displayPrograms.map((p) => {
+              {visiblePrograms.map((p) => {
                 const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
                 const moves = (p.exercises || []).map((ex) => normalizeExerciseBlock(ex)).filter(Boolean);
                 const previewMoves = moves.slice(0, 5);
                 const taskBody = moves.map((ex) => formatExerciseBlockLine(ex)).filter(Boolean).join("\n");
                 return (
-                  <li key={p.id} className={`health-program-card surface-glass${builtIn ? " health-program-card--sample" : ""}`}>
+                  <li
+                    key={p.id}
+                    data-health-program-id={p.id}
+                    className={[
+                      "health-program-card",
+                      "surface-glass",
+                      builtIn ? "health-program-card--sample" : "",
+                      focusedProgramId === p.id ? "health-program-card--focused" : "",
+                      programDragOverId === p.id ? "health-program-card--drag-over" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" ")}
+                    draggable={programsCanReorder}
+                    onDragStart={(e) => {
+                      if (!programsCanReorder) return;
+                      programDragSourceRef.current = p.id;
+                      e.dataTransfer.effectAllowed = "move";
+                      try {
+                        e.dataTransfer.setData("text/plain", p.id);
+                      } catch {
+                        /* ignore */
+                      }
+                    }}
+                    onDragEnd={() => {
+                      programDragSourceRef.current = null;
+                      setProgramDragOverId(null);
+                    }}
+                    onDragOver={(e) => {
+                      if (!programsCanReorder) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      setProgramDragOverId(p.id);
+                    }}
+                    onDragLeave={(e) => {
+                      if (!e.currentTarget.contains(e.relatedTarget)) setProgramDragOverId(null);
+                    }}
+                    onDrop={(e) => {
+                      if (!programsCanReorder) return;
+                      e.preventDefault();
+                      reorderProgramsOnDrop(p.id);
+                    }}
+                  >
+                    {programsCanReorder ? (
+                      <span className="health-program-drag-grip" aria-hidden title="Drag to reorder">
+                        <span className="health-program-drag-grip-line" />
+                        <span className="health-program-drag-grip-line" />
+                        <span className="health-program-drag-grip-line" />
+                      </span>
+                    ) : null}
+                    <div className="health-program-card-inner">
                     <div className="health-program-card-head">
                       <div className="health-program-card-title-wrap">
                         <h4 className="health-program-card-title">{p.name}</h4>
@@ -1043,6 +1214,7 @@ export function HealthPage({
                           </>
                         )}
                       </div>
+                    </div>
                     </div>
                   </li>
                 );

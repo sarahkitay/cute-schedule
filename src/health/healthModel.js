@@ -130,6 +130,8 @@ export function createDefaultHealth() {
     weekPlans: {},
     savedRoutines: [],
     programs: [],
+    /** User-facing order for Health → My programs (program ids). */
+    programDisplayOrder: [],
     weekRoutineProgramIds: [],
     weekRoutineCursor: 0,
     /** Legacy field; rotation is always sequential through `weekRoutineProgramIds` (see `resolveProgramForTask`). */
@@ -220,6 +222,38 @@ export function normalizeHealth(raw) {
         return raw.programs.map((p) => normalizeProgramRecord(p)).filter(Boolean);
       }
       return migrateSavedRoutinesToPrograms(raw.savedRoutines);
+    })(),
+    programDisplayOrder: (() => {
+      const progs =
+        Array.isArray(raw.programs) && raw.programs.length
+          ? raw.programs.map((p) => normalizeProgramRecord(p)).filter(Boolean)
+          : migrateSavedRoutinesToPrograms(raw.savedRoutines);
+      const userIds = new Set(progs.map((p) => p.id));
+      const savedCopyName = (libName) => `${String(libName || "").trim()} (saved)`;
+      const hasSavedLibraryCopy = (lib) =>
+        progs.some((p) => String(p.name || "").trim() === savedCopyName(lib.name));
+      const builtInIds = PROGRAM_LIBRARY.filter((lib) => !userIds.has(lib.id) && !hasSavedLibraryCopy(lib)).map(
+        (lib) => lib.id
+      );
+      const allIds = [...progs.map((p) => p.id), ...builtInIds];
+      const rawOrder = Array.isArray(raw.programDisplayOrder)
+        ? raw.programDisplayOrder.map((x) => String(x)).filter(Boolean)
+        : [];
+      const out = [];
+      const seen = new Set();
+      for (const id of rawOrder) {
+        if (allIds.includes(id) && !seen.has(id)) {
+          out.push(id);
+          seen.add(id);
+        }
+      }
+      for (const id of allIds) {
+        if (!seen.has(id)) {
+          out.push(id);
+          seen.add(id);
+        }
+      }
+      return out.slice(0, 80);
     })(),
     weekRoutineProgramIds: Array.isArray(raw.weekRoutineProgramIds)
       ? raw.weekRoutineProgramIds.map((x) => String(x)).filter(Boolean).slice(0, 21)
@@ -914,7 +948,7 @@ export function draftWorkoutProgramLinesFromCue(cueLower) {
   } else if (/\bleg|squat|quad|hamstring|glute|lower body|\brdl\b|deadlift/.test(q)) {
     name = "Lower-body strength B (coach draft)";
     reason =
-      "Coach draft (not the built-in Leg day sample): different exercise choices; save under Health - My programs and tweak loads for your equipment.";
+      "Coach draft (not the built-in Leg day sample): different exercise choices; save under Health → My programs and tweak loads for your equipment.";
     exerciseLines = [
       "Front squat or safety-bar squat 3x5-8",
       "Pause squat (2s) or tempo back squat 3x4-6",
@@ -943,6 +977,70 @@ export function getProgramById(health, id) {
   const u = (h.programs || []).find((p) => p.id === id);
   const raw = u || PROGRAM_LIBRARY.find((p) => p.id === id);
   return raw ? normalizeProgramRecord(raw) : null;
+}
+
+/** Programs shown on Health → My programs (user saves + unsaved built-in samples). */
+export function buildDisplayProgramList(health) {
+  const h = normalizeHealth(health);
+  const user = (h.programs || []).filter((p) => p && p.id);
+  const userIds = new Set(user.map((p) => p.id));
+  const savedCopyName = (libName) => `${String(libName || "").trim()} (saved)`;
+  const hasSavedLibraryCopy = (lib) =>
+    user.some((p) => String(p.name || "").trim() === savedCopyName(lib.name));
+  const builtIns = PROGRAM_LIBRARY.filter((lib) => !userIds.has(lib.id) && !hasSavedLibraryCopy(lib))
+    .map((p) => normalizeProgramRecord(p))
+    .filter(Boolean);
+  return [...user, ...builtIns];
+}
+
+export function sortProgramsByDisplayOrder(programs, orderIds) {
+  const list = Array.isArray(programs) ? programs : [];
+  if (!Array.isArray(orderIds) || !orderIds.length) return list;
+  const byId = new Map(list.map((p) => [p.id, p]));
+  const out = [];
+  const seen = new Set();
+  for (const id of orderIds) {
+    const p = byId.get(id);
+    if (p) {
+      out.push(p);
+      seen.add(id);
+    }
+  }
+  for (const p of list) {
+    if (!seen.has(p.id)) out.push(p);
+  }
+  return out;
+}
+
+export function normalizeProgramDisplayOrder(orderIds, programIds) {
+  const valid = new Set((programIds || []).map(String));
+  const out = [];
+  const seen = new Set();
+  if (Array.isArray(orderIds)) {
+    for (const id of orderIds) {
+      const s = String(id);
+      if (valid.has(s) && !seen.has(s)) {
+        out.push(s);
+        seen.add(s);
+      }
+    }
+  }
+  for (const id of valid) {
+    if (!seen.has(id)) {
+      out.push(id);
+      seen.add(id);
+    }
+  }
+  return out.slice(0, 80);
+}
+
+/** My programs list in saved display order. */
+export function listDisplayPrograms(health) {
+  const list = buildDisplayProgramList(health);
+  const h = normalizeHealth(health);
+  const ids = list.map((p) => p.id);
+  const order = normalizeProgramDisplayOrder(h.programDisplayOrder, ids);
+  return sortProgramsByDisplayOrder(list, order);
 }
 
 /** User programs first, then built-ins (for pickers). */
