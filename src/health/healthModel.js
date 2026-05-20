@@ -1076,7 +1076,7 @@ export function sumMacroDayTotals(dayEntry) {
   );
 }
 
-/** Lowercase, trim, collapse spaces — used to match repeated food descriptions in macro log. */
+/** Lowercase, trim, collapse spaces; used to match repeated food descriptions in macro log. */
 export function normalizeMacroFoodKey(raw) {
   return String(raw || "")
     .toLowerCase()
@@ -1125,7 +1125,7 @@ export function getMacroFoodHistoryLookup(macroLog) {
 
 /**
  * Rough single-serving estimates for quick fills (not medical advice).
- * Order matters: first matching preset wins — put specific phrases before broad ones
+ * Order matters: first matching preset wins; put specific phrases before broad ones
  * (e.g. "brown rice" before "rice", "almond milk" uses its own keys so plain "milk" stays dairy).
  */
 export const MACRO_GENERIC_PRESETS = [
@@ -1219,6 +1219,35 @@ export const MACRO_GENERIC_PRESETS = [
   { keys: ["beer"], label: "Beer (12 oz)", protein: 1, carbs: 13, fat: 0, calories: 150 },
   { keys: ["wine"], label: "Wine (5 oz)", protein: 0, carbs: 4, fat: 0, calories: 125 },
 ];
+
+/**
+ * Search quick-fill presets by label or keyword (for macro log picker).
+ * @param {string} queryRaw
+ * @param {number} [maxResults]
+ */
+export function filterMacroGenericPresets(queryRaw, maxResults = 30) {
+  const q = normalizeMacroFoodKey(queryRaw);
+  if (q.length < 1) return [];
+  const out = [];
+  for (const preset of MACRO_GENERIC_PRESETS) {
+    let match = normalizeMacroFoodKey(preset.label).includes(q);
+    if (!match) {
+      for (const kw of preset.keys) {
+        const nk = normalizeMacroFoodKey(kw);
+        if (!nk) continue;
+        if (nk.includes(q) || (q.length >= 3 && q.includes(nk))) {
+          match = true;
+          break;
+        }
+      }
+    }
+    if (match) {
+      out.push(preset);
+      if (out.length >= maxResults) break;
+    }
+  }
+  return out;
+}
 
 /**
  * Suggest macros from past logs (exact or similar food text) or generic presets.

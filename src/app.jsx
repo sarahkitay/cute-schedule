@@ -1010,7 +1010,7 @@ function computeDropdownPosition(rect, opts = {}) {
   let bottom;
   /** Flip above only when the max plausible height would not fit below (conservative). */
   if (topBelow + maxH > vh - pad) {
-    /** Anchor the panel’s bottom edge to `rect.top - gap` — do not assume height `maxH`
+    /** Anchor the panel’s bottom edge to `rect.top - gap`; do not assume height `maxH`
      *  (actual menu is shorter, so `rect.top - maxH` left a large gap above the task). */
     bottom = vh - rect.top + gap;
   } else {
@@ -9379,6 +9379,47 @@ export default function App() {
               </div>
               ) : (
               <>
+              <div className="settings-section settings-section-priority settings-theme-top">
+                <label className="label">Theme color</label>
+                <p className="settings-hint settings-priority-hint">Pick the palette for the whole app.</p>
+                <div className="theme-picker">
+                  {Object.entries(THEMES).map(([key, themeData]) => {
+                    const swatchInk = themeData.name === "Midnight" || themeData.name === "Mocha" ? "#fafafa" : "#333";
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        className={`theme-option ${theme.name === themeData.name ? "selected" : ""}`}
+                        onClick={() => setTheme(themeData)}
+                        style={{
+                          background: themeData.gradient,
+                          border: theme.name === themeData.name ? `3px solid ${swatchInk}` : "2px solid transparent",
+                        }}
+                        title={themeData.name}
+                        aria-label={themeData.name}
+                        aria-pressed={theme.name === themeData.name}
+                      >
+                        {theme.name === themeData.name && <CheckIcon style={{ color: swatchInk, width: 18, height: 18 }} />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="settings-section settings-section-priority settings-notifications-top">
+                <label className="label">Notifications center</label>
+                <p className="settings-hint settings-priority-hint">
+                  Task reminders, habit nudges, quiet hours, and push setup.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary settings-notifications-center-btn"
+                  onClick={() => setSettingsSubView("notifications")}
+                >
+                  Open notifications center
+                </button>
+              </div>
+
               <details className="settings-accordion" open>
                 <summary className="settings-accordion-summary">Customization</summary>
                 <div className="settings-accordion-panel">
@@ -10022,39 +10063,8 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="settings-section">
-                <label className="label">Theme Color</label>
-                <div className="theme-picker">
-                  {Object.entries(THEMES).map(([key, themeData]) => {
-                    const swatchInk = themeData.name === "Midnight" || themeData.name === "Mocha" ? "#fafafa" : "#333";
-                    return (
-                    <button
-                      key={key}
-                      className={`theme-option ${theme.name === themeData.name ? 'selected' : ''}`}
-                      onClick={() => setTheme(themeData)}
-                      style={{
-                        background: themeData.gradient,
-                        border: theme.name === themeData.name ? `3px solid ${swatchInk}` : '2px solid transparent'
-                      }}
-                      title={themeData.name}
-                    >
-                      {theme.name === themeData.name && <CheckIcon style={{ color: swatchInk, width: 18, height: 18 }} />}
-                    </button>
-                    );
-                  })}
-                </div>
-              </div>
                 </div>
               </details>
-
-              <div className="settings-section settings-nav-deep-link-card">
-                <label className="label">Notifications &amp; reminders</label>
-                <button type="button" className="btn btn-primary" onClick={() => setSettingsSubView("notifications")}>
-                  Open notifications &amp; reminders
-                </button>
-              </div>
-
-              
 
               <details className="settings-accordion">
                 <summary className="settings-accordion-summary">Guides &amp; tours</summary>
@@ -10101,9 +10111,6 @@ export default function App() {
                         {firebaseUser ? (
                           <>
                             <div className="settings-account-actions">
-                              <button type="button" className="btn btn-sm" disabled={authBusy} onClick={() => void handleAuthSignOut()}>
-                                Log out
-                              </button>
                               <button
                                 type="button"
                                 id="delete-account-entry"
@@ -10152,6 +10159,16 @@ export default function App() {
               </div>
 
               <div className="settings-modal-footer">
+                {isFirebaseEnabled() && firebaseUser ? (
+                  <button
+                    type="button"
+                    className="btn settings-logout-btn"
+                    disabled={authBusy}
+                    onClick={() => void handleAuthSignOut()}
+                  >
+                    {authBusy ? "Signing out…" : "Log out"}
+                  </button>
+                ) : null}
                 <div className="settings-privacy-footer">
                   <button
                     type="button"

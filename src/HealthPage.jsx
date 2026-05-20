@@ -17,7 +17,7 @@ import {
   normalizeExerciseBlock,
   normalizeHealth,
   normalizeProgramRecord,
-  MACRO_GENERIC_PRESETS,
+  filterMacroGenericPresets,
   findMacroSuggestionForInput,
   normalizeMacroDayEntry,
   suggestMealPlansForTargets,
@@ -30,6 +30,8 @@ function newId(prefix) {
   } catch {}
   return `${prefix}-${Date.now()}`;
 }
+
+const MEAL_TYPE_OPTIONS = ["Breakfast", "Lunch", "Dinner", "Snack", "Other"];
 
 function GuidedWorkoutOverlay({ session, health, setHealth, onClose, onMarkTaskDone }) {
   const h = useMemo(() => normalizeHealth(health), [health]);
@@ -275,8 +277,16 @@ export function HealthPage({
   const [editingProgramId, setEditingProgramId] = useState(null);
   const [routineAddId, setRoutineAddId] = useState("");
   const [buildProgramOpen, setBuildProgramOpen] = useState(false);
-  const [mealLabel, setMealLabel] = useState("");
+  const [mealType, setMealType] = useState("");
   const [mealFood, setMealFood] = useState("");
+  const [mealFoodPickerOpen, setMealFoodPickerOpen] = useState(false);
+  const [selectedFoodMatchId, setSelectedFoodMatchId] = useState(null);
+  const [macroManualEntry, setMacroManualEntry] = useState(false);
+  const mealFoodPickerRef = useRef(null);
+  const selectedFoodMatchIdRef = useRef(null);
+  useEffect(() => {
+    selectedFoodMatchIdRef.current = selectedFoodMatchId;
+  }, [selectedFoodMatchId]);
   const [mealPrepMode, setMealPrepMode] = useState(false);
   const [mealPrepDayKeys, setMealPrepDayKeys] = useState(() => []);
   const [mealProtein, setMealProtein] = useState("");
@@ -304,8 +314,11 @@ export function HealthPage({
   }, [healthTab, macroTargetsApplied]);
 
   useEffect(() => {
-    setMealLabel("");
+    setMealType("");
     setMealFood("");
+    setSelectedFoodMatchId(null);
+    setMacroManualEntry(false);
+    setMealFoodPickerOpen(false);
     setMealProtein("");
     setMealCarbs("");
     setMealFat("");
@@ -576,11 +589,59 @@ export function HealthPage({
   const targets = h.macroTargets;
   const macroDay = normalizeMacroDayEntry(h.macroLog[macroDate], macroDate);
   const macroTotals = sumMacroDayTotals(macroDay);
-  const macroFoodSuggest = useMemo(() => findMacroSuggestionForInput(h.macroLog, mealFood), [h.macroLog, mealFood]);
   const macroMealPlanSuggestions = useMemo(
     () => (targets?.calories ? suggestMealPlansForTargets(targets) : []),
     [targets]
   );
+
+  const foodAutocompleteItems = useMemo(() => {
+    const q = mealFood.trim();
+    if (q.length < 1) return [];
+    const items = [];
+    const suggest = findMacroSuggestionForInput(h.macroLog, q);
+    if (suggest) {
+      items.push({
+        id: `suggest-${suggest.displayLabel}`,
+        kind: "suggest",
+        label: suggest.displayLabel,
+        sublabel:
+          suggest.source === "history"
+            ? suggest.matchKind === "exact"
+              ? "From your log"
+              : "Similar to your log"
+            : "Typical serving",
+        macros: suggest,
+      });
+    }
+    for (const p of filterMacroGenericPresets(q, 16)) {
+      if (items.some((x) => x.label === p.label)) continue;
+      items.push({
+        id: `preset-${p.label}`,
+        kind: "preset",
+        label: p.label,
+        sublabel: "Quick fill",
+        macros: p,
+      });
+    }
+    return items;
+  }, [h.macroLog, mealFood]);
+
+  const hasFoodAutocomplete = foodAutocompleteItems.length > 0;
+  const showMacroFields =
+    selectedFoodMatchId != null ||
+    macroManualEntry ||
+    (mealFood.trim().length >= 2 && !hasFoodAutocomplete);
+
+  useEffect(() => {
+    if (!mealFoodPickerOpen) return;
+    function onDocClick(e) {
+      if (mealFoodPickerRef.current && !mealFoodPickerRef.current.contains(e.target)) {
+        setMealFoodPickerOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [mealFoodPickerOpen]);
 
   function applyMacroFill(s) {
     setMealProtein(String(Math.round(Number(s.protein) || 0)));
@@ -589,9 +650,37 @@ export function HealthPage({
     setMealCalories(String(Math.round(Number(s.calories) || 0)));
   }
 
-  function applyMacroPreset(preset) {
-    setMealFood(preset.label);
-    applyMacroFill(preset);
+  function selectFoodAutocompleteItem(item) {
+    if (!item?.macros) return;
+    applyMacroFill(item.macros);
+    setMealFood(item.label);
+    setSelectedFoodMatchId(item.id);
+    setMacroManualEntry(false);
+    setMealFoodPickerOpen(false);
+  }
+
+  function onMealFoodChange(next) {
+    setMealFood(next);
+    setSelectedFoodMatchId(null);
+    setMacroManualEntry(false);
+    setMealProtein("");
+    setMealCarbs("");
+    setMealFat("");
+    setMealCalories("");
+    if (next.trim().length > 0) setMealFoodPickerOpen(true);
+    else setMealFoodPickerOpen(false);
+  }
+
+  function onMealFoodBlur() {
+    window.setTimeout(() => {
+      setMealFoodPickerOpen(false);
+      if (selectedFoodMatchIdRef.current) return;
+      const q = mealFood.trim();
+      if (q.length < 2) return;
+      const suggest = findMacroSuggestionForInput(h.macroLog, q);
+      const presets = filterMacroGenericPresets(q, 1);
+      if (suggest || presets.length > 0) setMacroManualEntry(true);
+    }, 180);
   }
 
   function toggleMealPrepDay(dayKey) {
@@ -611,7 +700,7 @@ export function HealthPage({
     const calories = Math.round(Number(mealCalories) || 0);
     if (protein + carbs + fat + calories <= 0) return;
     const food = mealFood.trim();
-    const label = mealLabel.trim() || "Meal";
+    const label = mealType || "Meal";
     let days =
       mealPrepMode && mealPrepDayKeys.length > 0
         ? [...new Set(mealPrepDayKeys)].filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
@@ -641,8 +730,11 @@ export function HealthPage({
       }
       return { ...base, macroLog: ml };
     });
-    setMealLabel("");
+    setMealType("");
     setMealFood("");
+    setSelectedFoodMatchId(null);
+    setMacroManualEntry(false);
+    setMealFoodPickerOpen(false);
     setMealProtein("");
     setMealCarbs("");
     setMealFat("");
@@ -875,50 +967,82 @@ export function HealthPage({
             <ul className="health-program-cards">
               {displayPrograms.map((p) => {
                 const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
-                const taskBody = (p.exercises || [])
-                  .map((ex) => formatExerciseBlockLine(ex))
-                  .filter(Boolean)
-                  .join("\n");
+                const moves = (p.exercises || []).map((ex) => normalizeExerciseBlock(ex)).filter(Boolean);
+                const previewMoves = moves.slice(0, 5);
+                const taskBody = moves.map((ex) => formatExerciseBlockLine(ex)).filter(Boolean).join("\n");
                 return (
-                  <li key={p.id} className="health-program-card surface-glass">
+                  <li key={p.id} className={`health-program-card surface-glass${builtIn ? " health-program-card--sample" : ""}`}>
                     <div className="health-program-card-head">
-                      <strong>{p.name}</strong>
-                      <span className="health-subline">
-                        {(p.exercises || []).length} moves{builtIn ? " · built-in" : ""}
-                      </span>
+                      <div className="health-program-card-title-wrap">
+                        <h4 className="health-program-card-title">{p.name}</h4>
+                        <div className="health-program-card-badges">
+                          <span className="health-program-badge">
+                            {moves.length} {moves.length === 1 ? "move" : "moves"}
+                          </span>
+                          {builtIn ? <span className="health-program-badge health-program-badge--sample">Sample</span> : null}
+                        </div>
+                      </div>
+                      <DumbbellIcon className="health-program-card-icon" aria-hidden />
                     </div>
-                    <ul className="health-program-card-preview">
-                      {(p.exercises || []).slice(0, 5).map((ex, i) => (
-                        <li key={i}>{formatExerciseBlockLine(ex)}</li>
-                      ))}
-                      {(p.exercises || []).length > 5 ? <li className="health-subline">+{(p.exercises || []).length - 5} more</li> : null}
-                    </ul>
+                    {previewMoves.length > 0 ? (
+                      <ol className="health-program-card-moves">
+                        {previewMoves.map((ex, i) => (
+                          <li key={`${i}-${ex.name}`} className="health-program-move-row">
+                            <span className="health-program-move-num" aria-hidden>
+                              {i + 1}
+                            </span>
+                            <div className="health-program-move-body">
+                              <span className="health-program-move-name">{ex.name || "Exercise"}</span>
+                              {(ex.setsReps || ex.weightNote) && (
+                                <span className="health-program-move-meta">
+                                  {[ex.setsReps, ex.weightNote].filter(Boolean).join(" · ")}
+                                </span>
+                              )}
+                            </div>
+                          </li>
+                        ))}
+                        {moves.length > previewMoves.length ? (
+                          <li className="health-program-move-more">+{moves.length - previewMoves.length} more in this program</li>
+                        ) : null}
+                      </ol>
+                    ) : (
+                      <p className="settings-hint health-program-card-empty">No exercises yet. Edit to add moves.</p>
+                    )}
                     <div className="health-program-card-actions">
-                      {builtIn ? (
-                        <button type="button" className="btn btn-sm btn-primary" onClick={() => saveLibraryCopy(p)}>
-                          Save to my programs
+                      <div className="health-program-card-actions-primary">
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          disabled={!onPracticeProgram}
+                          onClick={() => onPracticeProgram?.(normalizeProgramRecord(p) || p)}
+                        >
+                          Practice here
                         </button>
-                      ) : (
-                        <button type="button" className="btn btn-sm btn-primary" onClick={() => startEditProgram(p.id)}>
-                          Edit
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          disabled={!onScheduleWorkoutTask}
+                          onClick={() => onScheduleWorkoutTask(`Workout · ${p.name}`, taskBody)}
+                        >
+                          Add to Today
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        className="btn btn-sm"
-                        disabled={!onScheduleWorkoutTask}
-                        onClick={() => onScheduleWorkoutTask(`Workout · ${p.name}`, taskBody)}
-                      >
-                        Add to Today as task
-                      </button>
-                      <button type="button" className="btn btn-sm" disabled={!onPracticeProgram} onClick={() => onPracticeProgram?.(normalizeProgramRecord(p) || p)}>
-                        Practice here
-                      </button>
-                      {builtIn ? null : (
-                        <button type="button" className="btn btn-sm btn-ghost" onClick={() => deleteProgram(p.id)}>
-                          Delete
-                        </button>
-                      )}
+                      </div>
+                      <div className="health-program-card-actions-secondary">
+                        {builtIn ? (
+                          <button type="button" className="btn btn-sm" onClick={() => saveLibraryCopy(p)}>
+                            Save copy
+                          </button>
+                        ) : (
+                          <>
+                            <button type="button" className="btn btn-sm" onClick={() => startEditProgram(p.id)}>
+                              Edit
+                            </button>
+                            <button type="button" className="btn btn-sm btn-ghost" onClick={() => deleteProgram(p.id)}>
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </li>
                 );
@@ -1024,61 +1148,68 @@ export function HealthPage({
               </div>
             ) : null}
             <div className="health-meal-log-section">
-              <label className="quick-row">
-                <span className="label">Meal name (optional)</span>
-                <input
-                  className="input"
-                  value={mealLabel}
-                  onChange={(e) => setMealLabel(e.target.value)}
-                  placeholder="Breakfast, snack…"
-                />
-              </label>
-              <label className="quick-row">
-                <span className="label">What you ate (optional)</span>
-                <input
-                  className="input"
-                  value={mealFood}
-                  onChange={(e) => setMealFood(e.target.value)}
-                  placeholder="e.g. protein bowl, scrambled eggs"
-                  autoComplete="off"
-                />
-              </label>
-              {macroFoodSuggest ? (
-                <div className="health-macro-food-suggest" role="region" aria-label="Suggested macros">
-                  <p className="health-subline health-macro-food-suggest-line">
-                    {macroFoodSuggest.source === "history" ? (
-                      macroFoodSuggest.matchKind === "exact" ? (
-                        <>
-                          Last time you logged <strong>{macroFoodSuggest.displayLabel}</strong>:{" "}
-                        </>
-                      ) : (
-                        <>
-                          Similar to your log (<strong>{macroFoodSuggest.displayLabel}</strong>):{" "}
-                        </>
-                      )
-                    ) : (
-                      <>
-                        Typical serving (<strong>{macroFoodSuggest.displayLabel}</strong>):{" "}
-                      </>
-                    )}
-                    P {macroFoodSuggest.protein}g / C {macroFoodSuggest.carbs}g / F {macroFoodSuggest.fat}g /{" "}
-                    {macroFoodSuggest.calories} kcal
-                  </p>
-                  <button type="button" className="btn btn-sm btn-primary" onClick={() => applyMacroFill(macroFoodSuggest)}>
-                    Use these numbers
-                  </button>
-                </div>
-              ) : null}
-              <div className="health-macro-quick-presets" role="group" aria-label="Quick macro estimates">
-                <span className="health-subline health-macro-quick-presets-label">Quick fills (typical servings)</span>
-                <div className="health-macro-quick-presets-chips">
-                  {MACRO_GENERIC_PRESETS.map((p) => (
-                    <button key={p.label} type="button" className="btn btn-sm health-meal-prep-chip" onClick={() => applyMacroPreset(p)}>
-                      {p.label}
+              <div className="health-meal-type-field">
+                <span className="label" id="health-meal-type-label">
+                  Meal
+                </span>
+                <div className="health-meal-type-picker" role="group" aria-labelledby="health-meal-type-label">
+                  {MEAL_TYPE_OPTIONS.map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className={`health-meal-type-btn ${mealType === type ? "is-selected" : ""}`}
+                      aria-pressed={mealType === type}
+                      onClick={() => setMealType(type)}
+                    >
+                      {type}
                     </button>
                   ))}
                 </div>
               </div>
+              <label className="quick-row health-meal-food-field">
+                <span className="label">What you ate</span>
+                <div className="health-meal-food-input-wrap" ref={mealFoodPickerRef}>
+                  <input
+                    className="input"
+                    value={mealFood}
+                    onChange={(e) => onMealFoodChange(e.target.value)}
+                    onFocus={() => {
+                      if (mealFood.trim().length > 0) setMealFoodPickerOpen(true);
+                    }}
+                    onBlur={onMealFoodBlur}
+                    placeholder="e.g. chicken, oatmeal, protein bar"
+                    autoComplete="off"
+                    aria-autocomplete="list"
+                    aria-expanded={mealFoodPickerOpen && hasFoodAutocomplete}
+                    aria-controls="health-meal-food-autocomplete"
+                  />
+                  {mealFoodPickerOpen && hasFoodAutocomplete ? (
+                    <div id="health-meal-food-autocomplete" className="health-macro-preset-dropdown" role="listbox" aria-label="Matching foods">
+                      {foodAutocompleteItems.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selectedFoodMatchId === item.id}
+                          className={`health-macro-preset-dropdown-item ${selectedFoodMatchId === item.id ? "is-selected" : ""}`}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => selectFoodAutocompleteItem(item)}
+                        >
+                          <span className="health-macro-preset-dropdown-label">{item.label}</span>
+                          <span className="health-macro-preset-dropdown-macros">
+                            <span className="health-meal-food-match-tag">{item.sublabel}</span>
+                            {" · "}
+                            P {item.macros.protein}g · C {item.macros.carbs}g · F {item.macros.fat}g · {item.macros.calories} kcal
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              </label>
+              {hasFoodAutocomplete && !selectedFoodMatchId && !showMacroFields ? (
+                <p className="settings-hint health-meal-food-hint">Pick a match above, or tap away to enter macros manually.</p>
+              ) : null}
               <label className="health-meal-prep-toggle quick-row">
                 <span className="label">Meal prep mode</span>
                 <span className="health-meal-prep-toggle-inner">
@@ -1109,31 +1240,38 @@ export function HealthPage({
                   </div>
                 </div>
               ) : null}
-              <div className="health-calc-grid" style={{ marginTop: 8 }}>
-                {["protein", "carbs", "fat", "calories"].map((field) => (
-                  <label key={field} className="quick-row">
-                    <span className="label">{field === "calories" ? "Calories" : `${field} (g)`}</span>
-                    <input
-                      className="input"
-                      type="number"
-                      min={0}
-                      value={field === "protein" ? mealProtein : field === "carbs" ? mealCarbs : field === "fat" ? mealFat : mealCalories}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (field === "protein") setMealProtein(v);
-                        else if (field === "carbs") setMealCarbs(v);
-                        else if (field === "fat") setMealFat(v);
-                        else setMealCalories(v);
-                      }}
-                    />
-                  </label>
-                ))}
-              </div>
-              <div className="health-meal-save-row">
-                <button type="button" className="btn btn-primary" onClick={saveMealEntry}>
-                  Save meal
-                </button>
-              </div>
+              {showMacroFields ? (
+                <>
+                  <div className="health-calc-grid" style={{ marginTop: 8 }}>
+                    {["protein", "carbs", "fat", "calories"].map((field) => (
+                      <label key={field} className="quick-row">
+                        <span className="label">{field === "calories" ? "Calories" : `${field} (g)`}</span>
+                        <input
+                          className="input"
+                          type="number"
+                          min={0}
+                          value={
+                            field === "protein" ? mealProtein : field === "carbs" ? mealCarbs : field === "fat" ? mealFat : mealCalories
+                          }
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            setMacroManualEntry(true);
+                            if (field === "protein") setMealProtein(v);
+                            else if (field === "carbs") setMealCarbs(v);
+                            else if (field === "fat") setMealFat(v);
+                            else setMealCalories(v);
+                          }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <div className="health-meal-save-row">
+                    <button type="button" className="btn btn-primary" onClick={saveMealEntry}>
+                      Save meal
+                    </button>
+                  </div>
+                </>
+              ) : null}
             </div>
             {macroDay.meals?.length ? (
               <ul className="health-meal-list">
@@ -1190,14 +1328,14 @@ export function HealthPage({
                             <strong>{m.slot}</strong>
                             <span className="health-macro-meal-plan-meal-macros">
                               {" "}
-                              — P {m.protein}g · C {m.carbs}g · F {m.fat}g · {m.calories} kcal
+                              P {m.protein}g · C {m.carbs}g · F {m.fat}g · {m.calories} kcal
                             </span>
                             <div className="health-subline health-macro-meal-plan-meal-lines">{m.lines.join(" · ")}</div>
                           </li>
                         ))}
                       </ul>
                       <p className="health-subline health-macro-meal-plan-vs">
-                        vs your targets: cal {plan.vsTargetsPct.calories ?? "—"}%
+                        vs your targets: cal {plan.vsTargetsPct.calories ?? "n/a"}%
                         {plan.vsTargetsPct.protein != null ? ` · P ${plan.vsTargetsPct.protein}%` : ""}
                         {plan.vsTargetsPct.carbs != null ? ` · C ${plan.vsTargetsPct.carbs}%` : ""}
                         {plan.vsTargetsPct.fat != null ? ` · F ${plan.vsTargetsPct.fat}%` : ""}
