@@ -6048,44 +6048,42 @@ export default function App() {
         <header className="top top-plain">
           <div className="top-inner">
             <div className="top-left">
-              <span className="brand-name">PROYOU</span>
-              <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
-                {tab === "today"
-                  ? formatWeekday(tKey)
-                  : tab === "list"
-                  ? "List"
-                  : tab === "monthly"
-                  ? "Monthly Objectives"
-                  : tab === "notes"
-                  ? "Notes"
-                  : tab === "finance"
-                  ? "Finance"
-                  : tab === "health"
-                  ? "Health"
-                  : tab === "insights"
-                  ? "Insights"
-                  : tab === "medications"
-                  ? "Medications"
-                  : tab === "timers"
-                  ? "Timers"
-                  : "Pattern insights"}
-              </h1>
-              {(tab !== "today" && tab !== "list") && (
-                <span className="sub header-date header-date-visible">
-                  {tab === "monthly"
-                    ? "Objectives"
-                    : tab === "finance"
-                    ? "Income, spending & savings"
-                    : tab === "health"
-                    ? "Training, macros & weight"
-                    : tab === "insights"
-                    ? "Patterns & self-understanding"
-                    : tab === "medications"
-                    ? "Track & remember"
-                    : tab === "timers"
-                    ? "Focus & routine timers"
-                    : "Insights"}
-                </span>
+              {tab === "today" ? (
+                <>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 2 }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 12, background: "linear-gradient(135deg, #F0B4C4 0%, #D4708A 100%)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, fontStyle: "italic", boxShadow: "0 3px 10px rgba(212, 112, 138, 0.3)" }}>Rv</div>
+                    <div>
+                      <span className="brand-name">PROYOU</span>
+                      <h1 className="h1 h1-banner-date" style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
+                        Good {getTimeOfDay() === "morning" ? "morning" : getTimeOfDay() === "evening" ? "evening" : "afternoon"}, {profile.name || "there"}
+                      </h1>
+                      <span style={{ fontSize: 13, color: "var(--py-ink-tertiary)", fontWeight: 400 }}>Let&apos;s make today meaningful.</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className="brand-name">PROYOU</span>
+                  <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
+                    {tab === "list"
+                      ? "List"
+                      : tab === "monthly"
+                      ? "Monthly Objectives"
+                      : tab === "notes"
+                      ? "Notes"
+                      : tab === "finance"
+                      ? "Finance"
+                      : tab === "health"
+                      ? "Health"
+                      : tab === "insights"
+                      ? "Insights"
+                      : tab === "medications"
+                      ? "Medications"
+                      : tab === "timers"
+                      ? "Timers"
+                      : "Coach"}
+                  </h1>
+                </>
               )}
             </div>
 
@@ -6129,26 +6127,58 @@ export default function App() {
           </div>
         </header>
 
-        {/* Bottom navigation: frosted dock, active-tab pill */}
+        {/* Bottom navigation: iOS-native floating dock with center brand action */}
         <nav className="bottom-nav surface-dock" aria-label="Main">
-          {mainDockItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`bottom-nav-item ${tab === item.id ? "active" : ""}`}
-                onClick={() => {
-                  setTab(item.id);
-                  if (item.id === "today") setShowMonthCalendar(false);
-                }}
-                aria-current={tab === item.id ? "page" : undefined}
-              >
-                <Icon style={{ width: 22, height: 22 }} />
-                {item.label}
-              </button>
-            );
-          })}
+          {(() => {
+            const navItems = [
+              { id: "today", label: "Home", icon: NavIcons, iconName: "home" },
+              { id: "list", label: "Plan", icon: NavIcons, iconName: "plan" },
+              { id: "__center__", label: "Coach", icon: null },
+              { id: "insights", label: "Insights", icon: NavIcons, iconName: "insights" },
+              { id: "you", label: "You", icon: NavIcons, iconName: "user" },
+            ];
+            return navItems.map((item) => {
+              if (item.id === "__center__") {
+                return (
+                  <button
+                    key="center"
+                    type="button"
+                    className="bottom-nav-item"
+                    style={{
+                      width: 52, height: 52, marginTop: -18, borderRadius: "50%",
+                      background: "linear-gradient(135deg, #F0B4C4 0%, #D4708A 100%)",
+                      border: "3px solid rgba(255,255,255,0.9)",
+                      boxShadow: "0 4px 16px rgba(212, 112, 138, 0.35)",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      color: "#fff", fontWeight: 700, fontSize: 13, fontStyle: "italic",
+                      padding: 0, minWidth: 52,
+                    }}
+                    onClick={() => setTab("coach")}
+                    aria-label="Coach"
+                  >
+                    <span style={{ fontSize: 15, fontWeight: 700, fontStyle: "italic" }}>Rv</span>
+                  </button>
+                );
+              }
+              const tabId = item.id === "you" ? "today" : item.id;
+              const isSettingsTab = item.id === "you";
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`bottom-nav-item ${tab === tabId && !isSettingsTab ? "active" : ""}`}
+                  onClick={() => {
+                    if (isSettingsTab) { setSettingsSubView("main"); setShowSettings(true); }
+                    else { setTab(tabId); if (tabId === "today") setShowMonthCalendar(false); }
+                  }}
+                  aria-current={tab === tabId && !isSettingsTab ? "page" : undefined}
+                >
+                  <NavIcons name={item.iconName} size={22} />
+                  {item.label}
+                </button>
+              );
+            });
+          })()}
         </nav>
 
         {/* Sprint countdown bar */}
