@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactDOM, { flushSync } from "react-dom";
 import { 
-  StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
-  SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
-  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, MenuIcon,
+  StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, CoachIcon, MoonIcon, NotesIcon, CelebrateIcon, WindDownIcon,
+  SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon, TodayIcon, MonthlyIcon,
+  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, HealthIcon, ListIcon, MenuIcon,
   CheckIcon, FinanceIcon, BulletIcon
 } from "./Icons";
 import { Capacitor } from "@capacitor/core";
@@ -2106,12 +2106,12 @@ const DOCK_NAV_SETTINGS_ROWS = [
 ];
 
 const DOCK_EDITOR_ICON_BY_ID = {
-  list: MenuIcon,
-  monthly: CalendarIcon,
-  coach: SparkleIcon,
-  notes: MoonIcon,
+  list: ListIcon,
+  monthly: MonthlyIcon,
+  coach: CoachIcon,
+  notes: NotesIcon,
   finance: FinanceIcon,
-  health: DumbbellIcon,
+  health: HealthIcon,
 };
 
 const DOCK_FALLBACK_COPY = {
@@ -5875,13 +5875,13 @@ export default function App() {
     const nv = normalizeNavVisibility(profile.navVisibility);
     const order = normalizeDockOrder(profile.dockOrder);
     const dockMeta = {
-      today: { id: "today", label: "Today", headerLabel: "Today", icon: CalendarIcon },
-      list: { id: "list", label: "List", headerLabel: "List", icon: MenuIcon },
-      monthly: { id: "monthly", label: "Monthly", headerLabel: "Monthly", icon: CalendarIcon },
-      coach: { id: "coach", label: "Coach", headerLabel: "Pattern insights", icon: SparkleIcon },
-      notes: { id: "notes", label: "Notes", headerLabel: "Notes", icon: MoonIcon },
+      today: { id: "today", label: "Today", headerLabel: "Today", icon: TodayIcon },
+      list: { id: "list", label: "List", headerLabel: "List", icon: ListIcon },
+      monthly: { id: "monthly", label: "Monthly", headerLabel: "Monthly", icon: MonthlyIcon },
+      coach: { id: "coach", label: "Coach", headerLabel: "Pattern insights", icon: CoachIcon },
+      notes: { id: "notes", label: "Notes", headerLabel: "Notes", icon: NotesIcon },
       finance: { id: "finance", label: "Finance", headerLabel: "Finance", icon: FinanceIcon },
-      health: { id: "health", label: "Health", headerLabel: "Health", icon: DumbbellIcon },
+      health: { id: "health", label: "Health", headerLabel: "Health", icon: HealthIcon },
     };
     const items = [dockMeta.today];
     for (const oid of order) {
@@ -6078,7 +6078,7 @@ export default function App() {
                 }}
                 aria-current={tab === item.id ? "page" : undefined}
               >
-                <Icon style={{ width: 22, height: 22 }} />
+                <Icon aria-hidden />
                 {item.label}
               </button>
             );

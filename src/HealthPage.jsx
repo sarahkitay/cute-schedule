@@ -279,11 +279,11 @@ export function HealthPage({
   const [editingProgramId, setEditingProgramId] = useState(null);
   const [routineAddId, setRoutineAddId] = useState("");
   const [buildProgramOpen, setBuildProgramOpen] = useState(false);
-  const [programSearch, setProgramSearch] = useState("");
-  const [programSearchOpen, setProgramSearchOpen] = useState(false);
-  const [focusedProgramId, setFocusedProgramId] = useState("");
+  const [selectedProgramId, setSelectedProgramId] = useState("");
+  const [programPickerOpen, setProgramPickerOpen] = useState(false);
+  const [programPickerSearch, setProgramPickerSearch] = useState("");
   const [programDragOverId, setProgramDragOverId] = useState(null);
-  const programSearchRef = useRef(null);
+  const programPickerRef = useRef(null);
   const programDragSourceRef = useRef(null);
   const [mealType, setMealType] = useState("");
   const [mealFood, setMealFood] = useState("");
@@ -379,39 +379,40 @@ export function HealthPage({
 
   const displayPrograms = useMemo(() => listDisplayPrograms(h), [h]);
 
-  const programSearchMatches = useMemo(() => {
-    const q = programSearch.trim().toLowerCase();
-    if (!q) return [];
+  const programPickerOptions = useMemo(() => {
+    const q = programPickerSearch.trim().toLowerCase();
+    if (!q) return displayPrograms;
     return displayPrograms.filter((p) => {
       if (String(p.name || "").toLowerCase().includes(q)) return true;
       return (p.exercises || []).some((ex) => String(ex.name || "").toLowerCase().includes(q));
     });
-  }, [displayPrograms, programSearch]);
+  }, [displayPrograms, programPickerSearch]);
 
-  const visiblePrograms = useMemo(() => {
-    const q = programSearch.trim().toLowerCase();
-    if (!q) return displayPrograms;
-    return programSearchMatches;
-  }, [displayPrograms, programSearch, programSearchMatches]);
-
-  const programsCanReorder = !programSearch.trim();
+  const selectedProgram = useMemo(
+    () => displayPrograms.find((p) => p.id === selectedProgramId) || null,
+    [displayPrograms, selectedProgramId]
+  );
 
   useEffect(() => {
-    if (!programSearchOpen) return;
+    if (!programPickerOpen) return;
     function onDocClick(e) {
-      if (programSearchRef.current && !programSearchRef.current.contains(e.target)) {
-        setProgramSearchOpen(false);
+      if (programPickerRef.current && !programPickerRef.current.contains(e.target)) {
+        setProgramPickerOpen(false);
       }
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
-  }, [programSearchOpen]);
+  }, [programPickerOpen]);
 
   useEffect(() => {
-    if (focusedProgramId && !displayPrograms.some((p) => p.id === focusedProgramId)) {
-      setFocusedProgramId("");
+    if (!displayPrograms.length) {
+      setSelectedProgramId("");
+      return;
     }
-  }, [displayPrograms, focusedProgramId]);
+    if (!displayPrograms.some((p) => p.id === selectedProgramId)) {
+      setSelectedProgramId(displayPrograms[0].id);
+    }
+  }, [displayPrograms, selectedProgramId]);
 
   const macroWeekDays = useMemo(() => {
     const mon = mondayKeyForDayKey(macroDate);
@@ -575,7 +576,7 @@ export function HealthPage({
 
   function reorderProgramsOnDrop(targetId) {
     const src = programDragSourceRef.current;
-    if (!src || src === targetId || !programsCanReorder) return;
+    if (!src || src === targetId) return;
     setHealth((prev) => {
       const base = normalizeHealth(prev);
       const ids = listDisplayPrograms(base).map((p) => p.id);
@@ -592,13 +593,10 @@ export function HealthPage({
     setProgramDragOverId(null);
   }
 
-  function selectProgramFromSearch(p) {
-    setFocusedProgramId(p.id);
-    setProgramSearch(p.name || "");
-    setProgramSearchOpen(false);
-    window.setTimeout(() => {
-      document.querySelector(`[data-health-program-id="${p.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 0);
+  function selectProgram(p) {
+    setSelectedProgramId(p.id);
+    setProgramPickerSearch("");
+    setProgramPickerOpen(false);
   }
 
   function addProgramToRoutine(id) {
@@ -1033,193 +1031,224 @@ export function HealthPage({
             </div>
           </details>
 
-          <div className="health-saved-routines" style={{ marginTop: 22 }}>
-            <div className="panel-title" style={{ marginBottom: 8 }}>
+          <div className="health-saved-routines health-program-picker-panel surface-glass" style={{ marginTop: 22 }}>
+            <div className="panel-title health-program-picker-heading">
               <span className="title">My programs</span>
             </div>
-            <div className="health-program-search-wrap" ref={programSearchRef}>
-              <input
-                className="input health-program-search-input"
-                type="search"
-                value={programSearch}
-                onChange={(e) => {
-                  setProgramSearch(e.target.value);
-                  setProgramSearchOpen(true);
-                }}
-                onFocus={() => setProgramSearchOpen(true)}
-                placeholder="Search programs by name or exercise"
-                autoComplete="off"
-                aria-autocomplete="list"
-                aria-expanded={programSearchOpen && programSearchMatches.length > 0}
-                aria-controls="health-program-search-list"
-              />
-              {programSearchOpen && programSearch.trim() && programSearchMatches.length > 0 ? (
-                <div id="health-program-search-list" className="health-macro-preset-dropdown" role="listbox" aria-label="Programs">
-                  {programSearchMatches.slice(0, 14).map((p) => {
-                    const moveCount = (p.exercises || []).length;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        role="option"
-                        className="health-macro-preset-dropdown-item"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => selectProgramFromSearch(p)}
-                      >
-                        <span className="health-macro-preset-dropdown-label">{p.name}</span>
-                        <span className="health-macro-preset-dropdown-macros">
-                          {moveCount} {moveCount === 1 ? "move" : "moves"}
-                          {PROGRAM_LIBRARY.some((lib) => lib.id === p.id) ? " · Sample" : ""}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : programSearchOpen && programSearch.trim() && programSearchMatches.length === 0 ? (
-                <div className="health-macro-preset-dropdown">
-                  <div className="health-macro-preset-dropdown-empty">No programs match that search.</div>
-                </div>
-              ) : null}
-            </div>
-            <p className="settings-hint health-program-reorder-hint">
-              {programsCanReorder
-                ? "Drag the grip on each card to change list order."
-                : "Clear search to reorder programs."}
-            </p>
-            <ul className="health-program-cards">
-              {visiblePrograms.map((p) => {
-                const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
-                const moves = (p.exercises || []).map((ex) => normalizeExerciseBlock(ex)).filter(Boolean);
-                const previewMoves = moves.slice(0, 5);
-                const taskBody = moves.map((ex) => formatExerciseBlockLine(ex)).filter(Boolean).join("\n");
-                return (
-                  <li
-                    key={p.id}
-                    data-health-program-id={p.id}
+            {displayPrograms.length === 0 ? (
+              <p className="settings-hint">No programs yet. Build one above or save a sample.</p>
+            ) : (
+              <>
+                <div className="health-program-picker" ref={programPickerRef}>
+                  <button
+                    type="button"
                     className={[
-                      "health-program-card",
-                      "surface-glass",
-                      builtIn ? "health-program-card--sample" : "",
-                      focusedProgramId === p.id ? "health-program-card--focused" : "",
-                      programDragOverId === p.id ? "health-program-card--drag-over" : "",
+                      "health-program-picker-trigger",
+                      programPickerOpen ? "health-program-picker-trigger--open" : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
-                    draggable={programsCanReorder}
-                    onDragStart={(e) => {
-                      if (!programsCanReorder) return;
-                      programDragSourceRef.current = p.id;
-                      e.dataTransfer.effectAllowed = "move";
-                      try {
-                        e.dataTransfer.setData("text/plain", p.id);
-                      } catch {
-                        /* ignore */
-                      }
-                    }}
-                    onDragEnd={() => {
-                      programDragSourceRef.current = null;
-                      setProgramDragOverId(null);
-                    }}
-                    onDragOver={(e) => {
-                      if (!programsCanReorder) return;
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = "move";
-                      setProgramDragOverId(p.id);
-                    }}
-                    onDragLeave={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget)) setProgramDragOverId(null);
-                    }}
-                    onDrop={(e) => {
-                      if (!programsCanReorder) return;
-                      e.preventDefault();
-                      reorderProgramsOnDrop(p.id);
-                    }}
+                    aria-haspopup="listbox"
+                    aria-expanded={programPickerOpen}
+                    aria-controls="health-program-picker-menu"
+                    onClick={() => setProgramPickerOpen((o) => !o)}
                   >
-                    {programsCanReorder ? (
-                      <span className="health-program-drag-grip" aria-hidden title="Drag to reorder">
-                        <span className="health-program-drag-grip-line" />
-                        <span className="health-program-drag-grip-line" />
-                        <span className="health-program-drag-grip-line" />
-                      </span>
-                    ) : null}
-                    <div className="health-program-card-inner">
-                    <div className="health-program-card-head">
-                      <div className="health-program-card-title-wrap">
-                        <h4 className="health-program-card-title">{p.name}</h4>
-                        <div className="health-program-card-badges">
-                          <span className="health-program-badge">
-                            {moves.length} {moves.length === 1 ? "move" : "moves"}
-                          </span>
-                          {builtIn ? <span className="health-program-badge health-program-badge--sample">Sample</span> : null}
+                    <span className="health-program-picker-trigger-label">
+                      {selectedProgram ? selectedProgram.name : "Choose a program"}
+                    </span>
+                    <span className="health-program-picker-chevron" aria-hidden />
+                  </button>
+                  {programPickerOpen ? (
+                    <div id="health-program-picker-menu" className="health-program-picker-menu" role="listbox" aria-label="My programs">
+                      <input
+                        className="input health-program-picker-search"
+                        type="search"
+                        value={programPickerSearch}
+                        onChange={(e) => setProgramPickerSearch(e.target.value)}
+                        placeholder="Search by name or exercise"
+                        autoComplete="off"
+                        aria-label="Search programs"
+                        onMouseDown={(e) => e.stopPropagation()}
+                      />
+                      {programPickerOptions.length > 0 ? (
+                        <ul className="health-program-picker-options">
+                          {programPickerOptions.map((p) => {
+                            const moveCount = (p.exercises || []).length;
+                            const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
+                            const active = p.id === selectedProgramId;
+                            return (
+                              <li key={p.id}>
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={active}
+                                  className={[
+                                    "health-program-picker-option",
+                                    active ? "health-program-picker-option--active" : "",
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" ")}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={() => selectProgram(p)}
+                                >
+                                  <span className="health-program-picker-option-name">{p.name}</span>
+                                  <span className="health-program-picker-option-meta">
+                                    {moveCount} {moveCount === 1 ? "move" : "moves"}
+                                    {builtIn ? " · Sample" : ""}
+                                  </span>
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      ) : (
+                        <p className="health-program-picker-empty">No programs match that search.</p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                {selectedProgram ? (() => {
+                  const p = selectedProgram;
+                  const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
+                  const moves = (p.exercises || []).map((ex) => normalizeExerciseBlock(ex)).filter(Boolean);
+                  const previewMoves = moves.slice(0, 5);
+                  const taskBody = moves.map((ex) => formatExerciseBlockLine(ex)).filter(Boolean).join("\n");
+                  return (
+                    <article className="health-program-detail surface-glass">
+                      <div className="health-program-card-head">
+                        <div className="health-program-card-title-wrap">
+                          <h4 className="health-program-card-title">{p.name}</h4>
+                          <div className="health-program-card-badges">
+                            <span className="health-program-badge">
+                              {moves.length} {moves.length === 1 ? "move" : "moves"}
+                            </span>
+                            {builtIn ? <span className="health-program-badge health-program-badge--sample">Sample</span> : null}
+                          </div>
+                        </div>
+                        <DumbbellIcon className="health-program-card-icon" aria-hidden />
+                      </div>
+                      {previewMoves.length > 0 ? (
+                        <ol className="health-program-card-moves">
+                          {previewMoves.map((ex, i) => (
+                            <li key={`${i}-${ex.name}`} className="health-program-move-row">
+                              <span className="health-program-move-num" aria-hidden>
+                                {i + 1}
+                              </span>
+                              <div className="health-program-move-body">
+                                <span className="health-program-move-name">{ex.name || "Exercise"}</span>
+                                {(ex.setsReps || ex.weightNote) && (
+                                  <span className="health-program-move-meta">
+                                    {[ex.setsReps, ex.weightNote].filter(Boolean).join(" · ")}
+                                  </span>
+                                )}
+                              </div>
+                            </li>
+                          ))}
+                          {moves.length > previewMoves.length ? (
+                            <li className="health-program-move-more">+{moves.length - previewMoves.length} more in this program</li>
+                          ) : null}
+                        </ol>
+                      ) : (
+                        <p className="settings-hint health-program-card-empty">No exercises yet. Edit to add moves.</p>
+                      )}
+                      <div className="health-program-card-actions">
+                        <div className="health-program-card-actions-primary">
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-primary"
+                            disabled={!onPracticeProgram}
+                            onClick={() => onPracticeProgram?.(normalizeProgramRecord(p) || p)}
+                          >
+                            Practice here
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={!onScheduleWorkoutTask}
+                            onClick={() => onScheduleWorkoutTask(`Workout · ${p.name}`, taskBody)}
+                          >
+                            Add to Today
+                          </button>
+                        </div>
+                        <div className="health-program-card-actions-secondary">
+                          {builtIn ? (
+                            <button type="button" className="btn btn-sm" onClick={() => saveLibraryCopy(p)}>
+                              Save copy
+                            </button>
+                          ) : (
+                            <>
+                              <button type="button" className="btn btn-sm" onClick={() => startEditProgram(p.id)}>
+                                Edit
+                              </button>
+                              <button type="button" className="btn btn-sm btn-ghost" onClick={() => deleteProgram(p.id)}>
+                                Delete
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
-                      <DumbbellIcon className="health-program-card-icon" aria-hidden />
-                    </div>
-                    {previewMoves.length > 0 ? (
-                      <ol className="health-program-card-moves">
-                        {previewMoves.map((ex, i) => (
-                          <li key={`${i}-${ex.name}`} className="health-program-move-row">
-                            <span className="health-program-move-num" aria-hidden>
-                              {i + 1}
+                    </article>
+                  );
+                })() : null}
+
+                {displayPrograms.length > 1 ? (
+                  <details className="health-program-reorder-details">
+                    <summary className="health-program-reorder-summary">Change list order</summary>
+                    <ul className="health-program-reorder-list">
+                      {displayPrograms.map((p) => {
+                        const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
+                        return (
+                          <li
+                            key={p.id}
+                            className={[
+                              "health-program-reorder-row",
+                              programDragOverId === p.id ? "health-program-reorder-row--drag-over" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            draggable
+                            onDragStart={(e) => {
+                              programDragSourceRef.current = p.id;
+                              e.dataTransfer.effectAllowed = "move";
+                              try {
+                                e.dataTransfer.setData("text/plain", p.id);
+                              } catch {
+                                /* ignore */
+                              }
+                            }}
+                            onDragEnd={() => {
+                              programDragSourceRef.current = null;
+                              setProgramDragOverId(null);
+                            }}
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
+                              setProgramDragOverId(p.id);
+                            }}
+                            onDragLeave={(e) => {
+                              if (!e.currentTarget.contains(e.relatedTarget)) setProgramDragOverId(null);
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              reorderProgramsOnDrop(p.id);
+                            }}
+                          >
+                            <span className="health-program-drag-grip" aria-hidden>
+                              <span className="health-program-drag-grip-line" />
+                              <span className="health-program-drag-grip-line" />
+                              <span className="health-program-drag-grip-line" />
                             </span>
-                            <div className="health-program-move-body">
-                              <span className="health-program-move-name">{ex.name || "Exercise"}</span>
-                              {(ex.setsReps || ex.weightNote) && (
-                                <span className="health-program-move-meta">
-                                  {[ex.setsReps, ex.weightNote].filter(Boolean).join(" · ")}
-                                </span>
-                              )}
-                            </div>
+                            <span className="health-program-reorder-name">{p.name}</span>
+                            {builtIn ? <span className="health-program-badge health-program-badge--sample">Sample</span> : null}
                           </li>
-                        ))}
-                        {moves.length > previewMoves.length ? (
-                          <li className="health-program-move-more">+{moves.length - previewMoves.length} more in this program</li>
-                        ) : null}
-                      </ol>
-                    ) : (
-                      <p className="settings-hint health-program-card-empty">No exercises yet. Edit to add moves.</p>
-                    )}
-                    <div className="health-program-card-actions">
-                      <div className="health-program-card-actions-primary">
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary"
-                          disabled={!onPracticeProgram}
-                          onClick={() => onPracticeProgram?.(normalizeProgramRecord(p) || p)}
-                        >
-                          Practice here
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          disabled={!onScheduleWorkoutTask}
-                          onClick={() => onScheduleWorkoutTask(`Workout · ${p.name}`, taskBody)}
-                        >
-                          Add to Today
-                        </button>
-                      </div>
-                      <div className="health-program-card-actions-secondary">
-                        {builtIn ? (
-                          <button type="button" className="btn btn-sm" onClick={() => saveLibraryCopy(p)}>
-                            Save copy
-                          </button>
-                        ) : (
-                          <>
-                            <button type="button" className="btn btn-sm" onClick={() => startEditProgram(p.id)}>
-                              Edit
-                            </button>
-                            <button type="button" className="btn btn-sm btn-ghost" onClick={() => deleteProgram(p.id)}>
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+                        );
+                      })}
+                    </ul>
+                  </details>
+                ) : null}
+              </>
+            )}
           </div>
 
           <div className="panel-title health-week-program-title" style={{ marginTop: 22 }}>
