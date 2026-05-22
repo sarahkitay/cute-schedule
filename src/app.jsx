@@ -6127,15 +6127,15 @@ export default function App() {
           </div>
         </header>
 
-        {/* Bottom navigation: iOS-native floating dock with center brand action */}
+        {/* Bottom navigation: iOS-native floating dock with filled icons + center brand */}
         <nav className="bottom-nav surface-dock" aria-label="Main">
           {(() => {
             const navItems = [
-              { id: "today", label: "Home", icon: NavIcons, iconName: "home" },
-              { id: "list", label: "Plan", icon: NavIcons, iconName: "plan" },
-              { id: "__center__", label: "Coach", icon: null },
-              { id: "insights", label: "Insights", icon: NavIcons, iconName: "insights" },
-              { id: "you", label: "You", icon: NavIcons, iconName: "user" },
+              { id: "today", label: "Home", iconName: "home" },
+              { id: "list", label: "Plan", iconName: "plan" },
+              { id: "__center__", label: "Coach" },
+              { id: "insights", label: "Insights", iconName: "insights" },
+              { id: "you", label: "You", iconName: "user" },
             ];
             return navItems.map((item) => {
               if (item.id === "__center__") {
@@ -6145,35 +6145,38 @@ export default function App() {
                     type="button"
                     className="bottom-nav-item"
                     style={{
-                      width: 52, height: 52, marginTop: -18, borderRadius: "50%",
-                      background: "linear-gradient(135deg, #F0B4C4 0%, #D4708A 100%)",
-                      border: "3px solid rgba(255,255,255,0.9)",
-                      boxShadow: "0 4px 16px rgba(212, 112, 138, 0.35)",
+                      width: 54, height: 54, marginTop: -22, marginBottom: 4,
+                      borderRadius: "50%",
+                      background: "linear-gradient(140deg, #F4B8CA 0%, #D4708A 100%)",
+                      border: "3.5px solid rgba(255,255,255,0.92)",
+                      boxShadow: "0 6px 20px rgba(212, 112, 138, 0.4), 0 2px 8px rgba(0,0,0,0.06)",
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      color: "#fff", fontWeight: 700, fontSize: 13, fontStyle: "italic",
-                      padding: 0, minWidth: 52,
+                      color: "#fff", fontWeight: 700, fontSize: 15, fontStyle: "italic",
+                      padding: 0, minWidth: 54, gap: 0,
                     }}
                     onClick={() => setTab("coach")}
                     aria-label="Coach"
+                    aria-current={tab === "coach" ? "page" : undefined}
                   >
-                    <span style={{ fontSize: 15, fontWeight: 700, fontStyle: "italic" }}>Rv</span>
+                    Rv
                   </button>
                 );
               }
-              const tabId = item.id === "you" ? "today" : item.id;
+              const tabId = item.id === "you" ? "settings" : item.id;
+              const isActive = item.id === "you" ? false : tab === item.id;
               const isSettingsTab = item.id === "you";
               return (
                 <button
                   key={item.id}
                   type="button"
-                  className={`bottom-nav-item ${tab === tabId && !isSettingsTab ? "active" : ""}`}
+                  className={`bottom-nav-item ${isActive ? "active" : ""}`}
                   onClick={() => {
                     if (isSettingsTab) { setSettingsSubView("main"); setShowSettings(true); }
-                    else { setTab(tabId); if (tabId === "today") setShowMonthCalendar(false); }
+                    else { setTab(item.id); if (item.id === "today") setShowMonthCalendar(false); }
                   }}
-                  aria-current={tab === tabId && !isSettingsTab ? "page" : undefined}
+                  aria-current={isActive ? "page" : undefined}
                 >
-                  <NavIcons name={item.iconName} size={22} />
+                  <NavIcons name={item.iconName} size={24} />
                   {item.label}
                 </button>
               );

@@ -793,13 +793,11 @@
    Match reference: soft glass, generous spacing
    ═══════════════════════════════════════════════ */
 
-/* Override app background */
-.app-bg {
-  background: linear-gradient(165deg, #FFF9F7 0%, #FFEFEB 35%, #FFE6E1 65%, #FFF0EC 100%) !important;
-}
+/* Keep original rich gradient background — do NOT override .app-bg */
+/* The original SVG texture + radial glow background gives the warm, dimensional feel */
 .app-bg-texture {
-  opacity: 0.15 !important;
-  mix-blend-mode: soft-light;
+  opacity: 0.4 !important;
+  filter: blur(1px) brightness(1.02) !important;
 }
 
 /* Shell override */
@@ -853,53 +851,58 @@
   display: none !important;
 }
 
-/* ─── Bottom Nav: iOS-native floating dock ─── */
+/* ─── Bottom Nav: iOS-native floating dock with filled icons ─── */
 .app .bottom-nav.surface-dock {
   position: fixed !important;
   bottom: 0 !important;
   left: 0 !important;
   right: 0 !important;
   display: flex !important;
-  align-items: center !important;
+  align-items: flex-end !important;
   justify-content: space-around !important;
-  padding: 8px 16px !important;
-  padding-bottom: max(12px, env(safe-area-inset-bottom)) !important;
-  background: rgba(255, 252, 250, 0.88) !important;
-  backdrop-filter: blur(40px) !important;
-  -webkit-backdrop-filter: blur(40px) !important;
+  padding: 10px 12px !important;
+  padding-bottom: max(14px, env(safe-area-inset-bottom)) !important;
+  background: rgba(255, 250, 248, 0.92) !important;
+  backdrop-filter: blur(40px) saturate(1.6) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(1.6) !important;
   border-radius: 0 !important;
   border: none !important;
-  border-top: 1px solid rgba(0, 0, 0, 0.03) !important;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.04) !important;
+  border-top: none !important;
+  box-shadow: 0 -2px 24px rgba(0, 0, 0, 0.04) !important;
   z-index: 100 !important;
 }
 .app .bottom-nav-item {
   display: flex !important;
   flex-direction: column !important;
   align-items: center !important;
-  gap: 3px !important;
-  padding: 6px 12px !important;
+  gap: 4px !important;
+  padding: 6px 10px !important;
   font-size: 10px !important;
-  font-weight: 500 !important;
-  color: var(--py-ink-muted) !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px !important;
+  color: rgba(180, 160, 170, 0.8) !important;
   background: transparent !important;
   border: none !important;
-  border-radius: 12px !important;
+  border-radius: 16px !important;
   cursor: pointer !important;
-  transition: all 180ms ease !important;
-  min-width: 52px !important;
+  transition: all 200ms cubic-bezier(0.34, 1.2, 0.64, 1) !important;
+  min-width: 56px !important;
 }
 .app .bottom-nav-item svg {
-  width: 22px !important;
-  height: 22px !important;
-  transition: all 180ms ease !important;
+  width: 24px !important;
+  height: 24px !important;
+  transition: all 200ms cubic-bezier(0.34, 1.2, 0.64, 1) !important;
+  fill: currentColor !important;
+  stroke: none !important;
+  opacity: 0.5 !important;
 }
 .app .bottom-nav-item.active {
-  color: var(--py-accent-deep) !important;
-  background: rgba(232, 169, 183, 0.12) !important;
+  color: #D4607A !important;
 }
 .app .bottom-nav-item.active svg {
-  filter: drop-shadow(0 1px 3px rgba(232, 169, 183, 0.4)) !important;
+  opacity: 1 !important;
+  filter: drop-shadow(0 2px 6px rgba(212, 96, 122, 0.35)) !important;
+  transform: scale(1.05) !important;
 }
 
 /* ─── Quick Add Stack: match reference segmented + input ─── */
