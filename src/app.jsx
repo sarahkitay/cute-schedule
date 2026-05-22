@@ -1849,8 +1849,8 @@ function MorningRoutine({ routine, onToggle }) {
   const allDone = (routine || []).length > 0 && (routine || []).every((r) => r.done);
   const doneCount = (routine || []).filter(r => r.done).length;
   const routineIcons = {
-    "wake up": "suniconnobubble.png",
-    "stretch": "suniconnobubble.png",
+    "wake up": "sunIcon.png",
+    "stretch": "sunIcon.png",
     "drink": "watericon.png",
     "water": "watericon.png",
     "eat": "forkandknife.png",
@@ -1862,7 +1862,7 @@ function MorningRoutine({ routine, onToggle }) {
     for (const [key, img] of Object.entries(routineIcons)) {
       if (lower.includes(key)) return img;
     }
-    return "suniconnobubble.png";
+    return "sunIcon.png";
   }
   return (
     <div className="bedtime morning-routine" style={{ padding: 0 }}>
@@ -6155,13 +6155,14 @@ export default function App() {
             if (item.id === "__center__") {
               return (
                 <button key="center" type="button" onClick={() => setTab("coach")} aria-label="Coach" style={{
-                  width: 58, height: 58, marginTop: -24, marginBottom: 2, borderRadius: "50%",
-                  background: "radial-gradient(circle at 40% 35%, rgba(255,220,230,0.9), rgba(244,180,200,0.6))",
-                  border: "3px solid rgba(255,255,255,0.85)", padding: 0,
-                  boxShadow: "0 6px 24px rgba(212,112,138,0.35), 0 2px 6px rgba(0,0,0,0.05), inset 0 1px 2px rgba(255,255,255,0.8)",
+                  width: 68, height: 68, marginTop: -30, marginBottom: 0, borderRadius: "50%",
+                  background: "radial-gradient(circle at 40% 30%, rgba(255,225,235,0.95), rgba(248,190,210,0.7), rgba(240,170,195,0.5))",
+                  border: "3.5px solid rgba(255,255,255,0.9)", padding: 0,
+                  boxShadow: "0 8px 28px rgba(212,112,138,0.4), 0 3px 8px rgba(0,0,0,0.06), inset 0 2px 4px rgba(255,255,255,0.8)",
                   display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                  transition: "all 200ms ease",
                 }}>
-                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt="ProYou" style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "contain" }} />
+                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt="ProYou" style={{ width: 46, height: 46, borderRadius: "50%", objectFit: "contain" }} />
                 </button>
               );
             }
