@@ -1848,30 +1848,45 @@ function HourCard({
 function MorningRoutine({ routine, onToggle }) {
   const allDone = (routine || []).length > 0 && (routine || []).every((r) => r.done);
   const doneCount = (routine || []).filter(r => r.done).length;
+  const routineIcons = {
+    "wake up": "suniconnobubble.jpeg",
+    "stretch": "suniconnobubble.jpeg",
+    "drink": "watericon.jpg",
+    "water": "watericon.jpg",
+    "eat": "forkandknife.jpg",
+    "breakfast": "forkandknife.jpg",
+    "food": "forkandknife.jpg",
+  };
+  function getRoutineIcon(text) {
+    const lower = (text || "").toLowerCase();
+    for (const [key, img] of Object.entries(routineIcons)) {
+      if (lower.includes(key)) return img;
+    }
+    return "suniconnobubble.jpeg";
+  }
   return (
-    <div className="bedtime morning-routine">
-      <div className="bedtime-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+    <div className="bedtime morning-routine" style={{ padding: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <div>
-          <h3 className="bedtime-title" style={{ fontSize: 17, fontWeight: 600 }}>
-            Morning routine
-          </h3>
-          <p className="bedtime-subtitle" style={{ fontSize: 13, opacity: 0.6 }}>Start your day right</p>
+          <h3 style={{ fontSize: 17, fontWeight: 600, color: "var(--py-ink)", margin: 0 }}>Morning routine</h3>
+          <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)", margin: "2px 0 0" }}>Start your day right</p>
         </div>
         <span style={{ fontSize: 13, color: "var(--py-ink-tertiary)", fontWeight: 500 }}>{doneCount}/{(routine || []).length} steps</span>
       </div>
-      <ul className="bedtime-list" style={{ marginTop: 12 }}>
-        {(routine || []).map((item) => (
-          <li key={item.id} className={item.done ? "bedtime-item bedtime-done" : "bedtime-item"} style={{ display: "flex", alignItems: "center", padding: "10px 0", borderBottom: "1px solid rgba(0,0,0,0.03)" }}>
-            <label className="check" style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
-              <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} style={{ width: 20, height: 20, borderRadius: 6, accentColor: "#D4708A" }} />
-              <span className={`item-text ${item.done ? "item-text-done" : ""}`} style={{ fontSize: 15 }}>{item.text}</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+        {(routine || []).map((item, idx) => (
+          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: idx < (routine || []).length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} style={{ width: 18, height: 18, borderRadius: 5, accentColor: "#D4708A", cursor: "pointer" }} />
+              <span style={{ fontSize: 15, fontWeight: 400, color: item.done ? "var(--py-ink-muted)" : "var(--py-ink)", textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
             </label>
-          </li>
+            <img src={`${import.meta.env.BASE_URL}${getRoutineIcon(item.text)}`} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "cover", opacity: 0.85 }} />
+          </div>
         ))}
-      </ul>
+      </div>
       {allDone && (
-        <div className="bedtime-message" style={{ marginTop: 12, textAlign: "center" }}>
-          <p className="bedtime-congrats" style={{ fontSize: 14, color: "var(--py-accent-deep)" }}>Good start to your day.</p>
+        <div style={{ marginTop: 14, textAlign: "center", padding: "10px 0" }}>
+          <p style={{ fontSize: 14, color: "var(--py-accent-deep)", fontWeight: 500, margin: 0 }}>Good start to your day ✨</p>
         </div>
       )}
     </div>
@@ -6052,7 +6067,7 @@ export default function App() {
               {tab === "today" ? (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 2 }}>
-                    <div style={{ width: 38, height: 38, borderRadius: 12, background: "linear-gradient(135deg, #F0B4C4 0%, #D4708A 100%)", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 14, fontStyle: "italic", boxShadow: "0 3px 10px rgba(212, 112, 138, 0.3)" }}>Rv</div>
+                    <img src={`${import.meta.env.BASE_URL}pyiconnobubble.jpg`} alt="ProYou" style={{ width: 42, height: 42, borderRadius: 14, objectFit: "cover", boxShadow: "0 3px 12px rgba(212, 112, 138, 0.2)" }} />
                     <div>
                       <span className="brand-name">PROYOU</span>
                       <h1 className="h1 h1-banner-date" style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
@@ -6128,74 +6143,48 @@ export default function App() {
           </div>
         </header>
 
-        {/* Bottom navigation: iOS-native floating dock with filled icons + center brand */}
-        <nav className="bottom-nav surface-dock" aria-label="Main">
-          {(() => {
-            const navItems = [
-              { id: "today", label: "Home", iconName: "home" },
-              { id: "list", label: "Plan", iconName: "plan" },
-              { id: "__center__", label: "Coach" },
-              { id: "insights", label: "Insights", iconName: "insights" },
-              { id: "you", label: "You", iconName: "user" },
-            ];
-            return navItems.map((item) => {
-              if (item.id === "__center__") {
-                return (
-                  <button
-                    key="center"
-                    type="button"
-                    className="bottom-nav-item"
-                    style={{
-                      width: 54, height: 54, marginTop: -22, marginBottom: 4,
-                      borderRadius: "50%",
-                      background: "linear-gradient(140deg, #F4B8CA 0%, #D4708A 100%)",
-                      border: "3.5px solid rgba(255,255,255,0.92)",
-                      boxShadow: "0 6px 20px rgba(212, 112, 138, 0.4), 0 2px 8px rgba(0,0,0,0.06)",
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      color: "#fff", fontWeight: 700, fontSize: 15, fontStyle: "italic",
-                      padding: 0, minWidth: 54, gap: 0,
-                    }}
-                    onClick={() => setTab("coach")}
-                    aria-label="Coach"
-                    aria-current={tab === "coach" ? "page" : undefined}
-                  >
-                    Rv
-                  </button>
-                );
-              }
-              const tabId = item.id === "you" ? "settings" : item.id;
-              const isActive = item.id === "you" ? false : tab === item.id;
-              const isSettingsTab = item.id === "you";
+        {/* Bottom navigation: iOS glass dock with 3D icon images */}
+        <nav className="bottom-nav surface-dock" aria-label="Main" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-around", padding: "8px 10px", paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
+          {[
+            { id: "today", label: "Home", img: "homeicon.jpeg" },
+            { id: "list", label: "Plan", img: "planIcon.png" },
+            { id: "__center__", label: "", img: "PYIcon.png" },
+            { id: "insights", label: "Insights", img: "InsightsIcon.png" },
+            { id: "you", label: "You", img: "YouIcon.png" },
+          ].map((item) => {
+            if (item.id === "__center__") {
               return (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={`bottom-nav-item ${isActive ? "active" : ""}`}
-                  onClick={() => {
-                    if (isSettingsTab) { setSettingsSubView("main"); setShowSettings(true); }
-                    else { setTab(item.id); if (item.id === "today") setShowMonthCalendar(false); }
-                  }}
-                  aria-current={isActive ? "page" : undefined}
-                  style={{ color: isActive ? "#D4607A" : "rgba(180,160,170,0.75)" }}
-                >
-                  <span style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 44, height: 44, borderRadius: 15,
-                    background: isActive ? "rgba(255, 215, 228, 0.85)" : "rgba(255, 235, 240, 0.65)",
-                    border: isActive ? "1px solid rgba(232,169,183,0.3)" : "1px solid rgba(255,255,255,0.5)",
-                    boxShadow: isActive
-                      ? "0 4px 14px rgba(212,96,122,0.25), inset 0 1px 2px rgba(255,255,255,0.7)"
-                      : "0 2px 8px rgba(0,0,0,0.04), inset 0 1px 2px rgba(255,255,255,0.6)",
-                    transition: "all 200ms ease",
-                    transform: isActive ? "scale(1.1)" : "scale(1)",
-                  }}>
-                    <NavIcons name={item.iconName} size={22} />
-                  </span>
-                  {item.label}
+                <button key="center" type="button" onClick={() => setTab("coach")} aria-label="Coach" style={{
+                  width: 58, height: 58, marginTop: -24, marginBottom: 2, borderRadius: "50%",
+                  background: "radial-gradient(circle at 40% 35%, rgba(255,220,230,0.9), rgba(244,180,200,0.6))",
+                  border: "3px solid rgba(255,255,255,0.85)", padding: 0,
+                  boxShadow: "0 6px 24px rgba(212,112,138,0.35), 0 2px 6px rgba(0,0,0,0.05), inset 0 1px 2px rgba(255,255,255,0.8)",
+                  display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                }}>
+                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt="ProYou" style={{ width: 38, height: 38, borderRadius: "50%", objectFit: "cover" }} />
                 </button>
               );
-            });
-          })()}
+            }
+            const isActive = item.id === "you" ? false : tab === item.id;
+            const isSettings = item.id === "you";
+            return (
+              <button key={item.id} type="button" onClick={() => { if (isSettings) { setSettingsSubView("main"); setShowSettings(true); } else { setTab(item.id); if (item.id === "today") setShowMonthCalendar(false); }}} aria-current={isActive ? "page" : undefined} style={{
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                background: "none", border: "none", cursor: "pointer", padding: "4px 8px", minWidth: 56,
+              }}>
+                <span style={{
+                  width: 46, height: 46, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
+                  background: isActive ? "rgba(255,218,230,0.7)" : "rgba(255,240,244,0.45)",
+                  border: `1px solid ${isActive ? "rgba(232,169,183,0.25)" : "rgba(255,255,255,0.6)"}`,
+                  boxShadow: isActive ? "0 4px 16px rgba(212,96,122,0.2), inset 0 1px 2px rgba(255,255,255,0.7)" : "0 2px 8px rgba(0,0,0,0.03), inset 0 1px 1px rgba(255,255,255,0.5)",
+                  transition: "all 200ms ease", transform: isActive ? "scale(1.06)" : "scale(1)",
+                }}>
+                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt={item.label} style={{ width: 30, height: 30, borderRadius: 8, objectFit: "cover" }} />
+                </span>
+                <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? "#D4607A" : "rgba(160,140,150,0.8)", letterSpacing: 0.2 }}>{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
 
         {/* Sprint countdown bar */}
@@ -6438,25 +6427,31 @@ export default function App() {
             {tab === "today" && (
               <div className="py-card-grid scroll-reveal" style={{ marginBottom: 16 }}>
                 <div className="py-glass-card" style={{ padding: 18 }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 6 }}>Today&apos;s Focus</div>
-                  <div style={{ fontSize: 13, color: "var(--py-ink-secondary)", marginBottom: 12 }}>{prog.total} task{prog.total !== 1 ? "s" : ""} planned</div>
-                  <div style={{ height: 8, borderRadius: 999, background: "rgba(0,0,0,0.04)", overflow: "hidden", marginBottom: 8 }}>
-                    <div style={{ height: "100%", borderRadius: 999, background: "linear-gradient(90deg, var(--py-accent), var(--py-accent-deep))", width: `${prog.pct}%`, transition: "width 400ms ease" }} />
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "var(--py-ink)", marginBottom: 4 }}>Today&apos;s Focus</div>
+                  <div style={{ fontSize: 13, color: "var(--py-ink-secondary)", marginBottom: 14 }}>{prog.total} task{prog.total !== 1 ? "s" : ""} planned</div>
+                  <div style={{ position: "relative", height: 10, borderRadius: 999, background: "rgba(200,190,195,0.15)", marginBottom: 10 }}>
+                    <div style={{ position: "absolute", left: 0, top: 0, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #c8bfd4, #a8a0b8)", width: `${Math.max(prog.pct, 8)}%`, transition: "width 500ms ease", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }} />
+                    <div style={{ position: "absolute", left: `${Math.max(prog.pct, 5)}%`, top: "50%", transform: "translate(-50%, -50%)", width: 22, height: 22, borderRadius: "50%", background: "linear-gradient(135deg, #d0c8e0, #a898b8)", border: "2px solid #fff", boxShadow: "0 2px 6px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>🌙</div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: "var(--py-accent-deep)" }}>Small steps, big change.</span>
-                    <span style={{ fontSize: 16, fontWeight: 700 }}>{prog.pct}%</span>
+                    <span style={{ fontSize: 12, color: "var(--py-accent-deep)", display: "flex", alignItems: "center", gap: 4 }}>❤️ Small steps, big change.</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: "var(--py-ink)" }}>{prog.pct}%</span>
                   </div>
                 </div>
                 <div className="py-glass-card" style={{ padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontSize: 18 }}>🔥</span> Streak
+                    <img src={`${import.meta.env.BASE_URL}fireicon.jpg`} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: "cover" }} /> Streak
                   </div>
-                  <div style={{ fontSize: 34, fontWeight: 700, color: "var(--py-ink)", lineHeight: 1 }}>
-                    {computeCalendarCompletionStreak(appState, realTodayKey)}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <img src={`${import.meta.env.BASE_URL}fireicon.jpg`} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover" }} />
+                    <div>
+                      <div style={{ fontSize: 34, fontWeight: 700, color: "var(--py-ink)", lineHeight: 1 }}>
+                        {computeCalendarCompletionStreak(appState, realTodayKey)}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>days</div>
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)", marginTop: 2 }}>days</div>
-                  <div style={{ fontSize: 12, color: "var(--py-accent-deep)", fontWeight: 500, marginTop: 6 }}>Keep it going!</div>
+                  <div style={{ fontSize: 12, color: "var(--py-accent-deep)", fontWeight: 500, marginTop: 8 }}>Keep it going!</div>
                 </div>
               </div>
             )}
@@ -6472,9 +6467,7 @@ export default function App() {
                     const v = (habitTracker.log[realTodayKey] || {})[h.id];
                     return (
                       <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "rgba(255,255,255,0.5)", borderRadius: 16, border: "1px solid rgba(0,0,0,0.03)" }}>
-                        <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, rgba(200,184,232,0.3), rgba(180,160,220,0.15))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-                          {h.direction === "break" ? "🚫" : "💧"}
-                        </div>
+                        <img src={`${import.meta.env.BASE_URL}watericon.jpg`} alt="" style={{ width: 42, height: 42, borderRadius: 12, objectFit: "cover" }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{h.label}</div>
                         </div>
