@@ -62,7 +62,7 @@ const INSTRUCTIONS = {
   health: (
     <>
       <p>
-        <strong>Programs:</strong> Open <em>Build a program</em> to add exercises and save to My programs. Under <strong>Weekly routine order</strong>, list programs top-to-bottom: that order is the rotation. When a gym task uses <strong>Auto</strong> or <strong>Next in weekly routine</strong>,{" "}
+        <strong>Programs:</strong> Open <em>Build a program</em> to add exercises and save to My programs. Use the <strong>My programs</strong> dropdown to pick one program at a time (search inside the menu). Open <strong>Change list order</strong> to drag rows by the grip and set the order they appear in the dropdown. Under <strong>Weekly routine order</strong>, list programs top-to-bottom: that order is the rotation. When a gym task uses <strong>Auto</strong> or <strong>Next in weekly routine</strong>,{" "}
         <strong>Begin workout</strong> picks the current slot, then advances to the next (wrapping after the last). Coach can suggest a program; approve in the Coach tab and it appears here.
       </p>
       <p>
