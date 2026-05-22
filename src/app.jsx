@@ -1849,20 +1849,20 @@ function MorningRoutine({ routine, onToggle }) {
   const allDone = (routine || []).length > 0 && (routine || []).every((r) => r.done);
   const doneCount = (routine || []).filter(r => r.done).length;
   const routineIcons = {
-    "wake up": "suniconnobubble.jpeg",
-    "stretch": "suniconnobubble.jpeg",
-    "drink": "watericon.jpg",
-    "water": "watericon.jpg",
-    "eat": "forkandknife.jpg",
-    "breakfast": "forkandknife.jpg",
-    "food": "forkandknife.jpg",
+    "wake up": "suniconnobubble.png",
+    "stretch": "suniconnobubble.png",
+    "drink": "watericon.png",
+    "water": "watericon.png",
+    "eat": "forkandknife.png",
+    "breakfast": "forkandknife.png",
+    "food": "forkandknife.png",
   };
   function getRoutineIcon(text) {
     const lower = (text || "").toLowerCase();
     for (const [key, img] of Object.entries(routineIcons)) {
       if (lower.includes(key)) return img;
     }
-    return "suniconnobubble.jpeg";
+    return "suniconnobubble.png";
   }
   return (
     <div className="bedtime morning-routine" style={{ padding: 0 }}>
@@ -1880,7 +1880,7 @@ function MorningRoutine({ routine, onToggle }) {
               <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} style={{ width: 18, height: 18, borderRadius: 5, accentColor: "#D4708A", cursor: "pointer" }} />
               <span style={{ fontSize: 15, fontWeight: 400, color: item.done ? "var(--py-ink-muted)" : "var(--py-ink)", textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
             </label>
-            <img src={`${import.meta.env.BASE_URL}${getRoutineIcon(item.text)}`} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "cover", mixBlendMode: "multiply" }} />
+            <img src={`${import.meta.env.BASE_URL}${getRoutineIcon(item.text)}`} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "cover" }} />
           </div>
         ))}
       </div>
@@ -6067,7 +6067,7 @@ export default function App() {
               {tab === "today" ? (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 2 }}>
-                    <img src={`${import.meta.env.BASE_URL}pyiconnobubble.jpg`} alt="ProYou" style={{ width: 42, height: 42, borderRadius: 14, objectFit: "cover", boxShadow: "0 3px 12px rgba(212, 112, 138, 0.2)", mixBlendMode: "multiply" }} />
+                    <img src={`${import.meta.env.BASE_URL}pyiconnobubble.png`} alt="ProYou" style={{ width: 42, height: 42, borderRadius: 14, objectFit: "cover", boxShadow: "0 3px 12px rgba(212, 112, 138, 0.2)" }} />
                     <div>
                       <span className="brand-name">PROYOU</span>
                       <h1 className="h1 h1-banner-date" style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
@@ -6146,7 +6146,7 @@ export default function App() {
         {/* Bottom navigation: iOS glass dock with 3D icon images */}
         <nav className="bottom-nav surface-dock" aria-label="Main" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-around", padding: "8px 10px", paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
           {[
-            { id: "today", label: "Home", img: "homeicon.jpeg" },
+            { id: "today", label: "Home", img: "homeicon.png" },
             { id: "list", label: "Plan", img: "planIcon.png" },
             { id: "__center__", label: "", img: "PYIcon.png" },
             { id: "insights", label: "Insights", img: "InsightsIcon.png" },
@@ -6179,7 +6179,7 @@ export default function App() {
                   boxShadow: isActive ? "0 4px 16px rgba(212,96,122,0.2), inset 0 1px 2px rgba(255,255,255,0.7)" : "0 2px 8px rgba(0,0,0,0.03), inset 0 1px 1px rgba(255,255,255,0.5)",
                   transition: "all 200ms ease", transform: isActive ? "scale(1.06)" : "scale(1)",
                 }}>
-                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt={item.label} style={{ width: 30, height: 30, borderRadius: 8, objectFit: "cover", mixBlendMode: item.img.endsWith(".png") ? "normal" : "multiply" }} />
+                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt={item.label} style={{ width: 30, height: 30, borderRadius: 8, objectFit: "cover",  }} />
                 </span>
                 <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? "#D4607A" : "rgba(160,140,150,0.8)", letterSpacing: 0.2 }}>{item.label}</span>
               </button>
@@ -6440,10 +6440,10 @@ export default function App() {
                 </div>
                 <div className="py-glass-card" style={{ padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                    <img src={`${import.meta.env.BASE_URL}fireicon.jpg`} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: "cover", mixBlendMode: "multiply" }} /> Streak
+                    <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: "cover" }} /> Streak
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <img src={`${import.meta.env.BASE_URL}fireicon.jpg`} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover", mixBlendMode: "multiply" }} />
+                    <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover" }} />
                     <div>
                       <div style={{ fontSize: 34, fontWeight: 700, color: "var(--py-ink)", lineHeight: 1 }}>
                         {computeCalendarCompletionStreak(appState, realTodayKey)}
@@ -6467,7 +6467,7 @@ export default function App() {
                     const v = (habitTracker.log[realTodayKey] || {})[h.id];
                     return (
                       <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "rgba(255,255,255,0.5)", borderRadius: 16, border: "1px solid rgba(0,0,0,0.03)" }}>
-                        <img src={`${import.meta.env.BASE_URL}watericon.jpg`} alt="" style={{ width: 42, height: 42, borderRadius: 12, objectFit: "cover", mixBlendMode: "multiply" }} />
+                        <img src={`${import.meta.env.BASE_URL}watericon.png`} alt="" style={{ width: 42, height: 42, borderRadius: 12, objectFit: "cover" }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{h.label}</div>
                         </div>
