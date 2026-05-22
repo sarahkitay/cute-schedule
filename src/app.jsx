@@ -32,10 +32,25 @@ import {
 import cloudStorage from "./cloudStorage";
 import { THEMES } from "./themes";
 import { OnboardingFlow } from "./OnboardingFlow";
+import { OnboardingV2 } from "./components/OnboardingV2";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
 import { HealthPage } from "./HealthPage";
 import { PageInstructions } from "./PageInstructions";
 import { WorkoutProgramPickerModal } from "./WorkoutProgramPickerModal";
+import { FloatingNav } from "./components/FloatingNav";
+import { GlassCard } from "./components/GlassCard";
+import { PillButton } from "./components/PillButton";
+import { SegmentedControl } from "./components/SegmentedControl";
+import { SoftInput } from "./components/SoftInput";
+import { CoachSuggestionCard } from "./components/CoachSuggestionCard";
+import { InsightCard } from "./components/InsightCard";
+import { InsightsPage } from "./components/InsightsPage";
+import { MedicationsPage } from "./components/MedicationsPage";
+import { TimersPage } from "./components/TimersPage";
+import { NavIcons } from "./components/NavIcons";
+import { MODULE_REGISTRY, MODULE_IDS, DEFAULT_NAV_ORDER, DEFAULT_ENABLED_MODULES, getNavModules } from "./modules/registry";
+import { loadMedicationsFromDisk, saveMedicationsToDisk, defaultMedicationsState } from "./modules/medications";
+import { loadTimersFromDisk, saveTimersToDisk, defaultTimersState, loadAlarmsFromDisk, saveAlarmsToDisk, defaultAlarmsState } from "./modules/timers";
 import {
   bumpWeekRoutineCursor,
   formatHealthForCoach,
@@ -2213,6 +2228,35 @@ export default function App() {
   const [workoutProgramPicker, setWorkoutProgramPicker] = useState(null);
   const [healthProgramBuilderScroll, setHealthProgramBuilderScroll] = useState(0);
   const [guidedWorkoutSession, setGuidedWorkoutSession] = useState(null);
+
+  // New modules: medications, timers, alarms
+  const [medicationsState, setMedicationsState] = useState(() => loadMedicationsFromDisk());
+  const [timersState, setTimersState] = useState(() => loadTimersFromDisk());
+  const [alarmsState, setAlarmsState] = useState(() => loadAlarmsFromDisk());
+  const [enabledModules, setEnabledModules] = useState(() => {
+    try {
+      const raw = localStorage.getItem("cute_schedule_enabled_modules_v1");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return DEFAULT_ENABLED_MODULES;
+  });
+  const [navOrder, setNavOrder] = useState(() => {
+    try {
+      const raw = localStorage.getItem("cute_schedule_nav_order_v1");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return DEFAULT_NAV_ORDER;
+  });
+  const [coachingTone, setCoachingTone] = useState(() => {
+    try { return localStorage.getItem("cute_schedule_coaching_tone_v1") || "gentle"; } catch { return "gentle"; }
+  });
+
+  useEffect(() => { saveMedicationsToDisk(medicationsState); }, [medicationsState]);
+  useEffect(() => { saveTimersToDisk(timersState); }, [timersState]);
+  useEffect(() => { saveAlarmsToDisk(alarmsState); }, [alarmsState]);
+  useEffect(() => { try { localStorage.setItem("cute_schedule_enabled_modules_v1", JSON.stringify(enabledModules)); } catch {} }, [enabledModules]);
+  useEffect(() => { try { localStorage.setItem("cute_schedule_nav_order_v1", JSON.stringify(navOrder)); } catch {} }, [navOrder]);
+  useEffect(() => { try { localStorage.setItem("cute_schedule_coaching_tone_v1", coachingTone); } catch {} }, [coachingTone]);
 
   // Editable bedtime routine template (persisted)
   const [routineTemplate, setRoutineTemplate] = useState(() => {
@@ -5875,13 +5919,18 @@ export default function App() {
     const nv = normalizeNavVisibility(profile.navVisibility);
     const order = normalizeDockOrder(profile.dockOrder);
     const dockMeta = {
-      today: { id: "today", label: "Today", headerLabel: "Today", icon: CalendarIcon },
+      today: { id: "today", label: "Home", headerLabel: "Today", icon: CalendarIcon },
+      plan: { id: "today", label: "Plan", headerLabel: "Plan", icon: CalendarIcon },
       list: { id: "list", label: "List", headerLabel: "List", icon: MenuIcon },
       monthly: { id: "monthly", label: "Monthly", headerLabel: "Monthly", icon: CalendarIcon },
-      coach: { id: "coach", label: "Coach", headerLabel: "Pattern insights", icon: SparkleIcon },
+      coach: { id: "coach", label: "Coach", headerLabel: "Coach", icon: SparkleIcon },
       notes: { id: "notes", label: "Notes", headerLabel: "Notes", icon: MoonIcon },
       finance: { id: "finance", label: "Finance", headerLabel: "Finance", icon: FinanceIcon },
       health: { id: "health", label: "Health", headerLabel: "Health", icon: DumbbellIcon },
+      insights: { id: "insights", label: "Insights", headerLabel: "Insights", icon: SparkleIcon },
+      medications: { id: "medications", label: "Meds", headerLabel: "Medications", icon: SparkleIcon },
+      timers: { id: "timers", label: "Timers", headerLabel: "Timers", icon: SparkleIcon },
+      you: { id: "you", label: "You", headerLabel: "Profile", icon: SparkleIcon },
     };
     const items = [dockMeta.today];
     for (const oid of order) {
@@ -5889,6 +5938,11 @@ export default function App() {
     }
     return items;
   }, [profile.navVisibility, profile.dockOrder]);
+
+  // V2 navigation modules for the new FloatingNav component
+  const navModules = useMemo(() => getNavModules(navOrder, enabledModules), [navOrder, enabledModules]);
+  const centerActionModule = useMemo(() => navModules.find((m) => m.centerAction), [navModules]);
+  const sideNavModules = useMemo(() => navModules.filter((m) => !m.centerAction), [navModules]);
 
   const todayHiddenDockTabs = useMemo(() => {
     const nv = normalizeNavVisibility(profile.navVisibility);
@@ -6008,6 +6062,12 @@ export default function App() {
                   ? "Finance"
                   : tab === "health"
                   ? "Health"
+                  : tab === "insights"
+                  ? "Insights"
+                  : tab === "medications"
+                  ? "Medications"
+                  : tab === "timers"
+                  ? "Timers"
                   : "Pattern insights"}
               </h1>
               {(tab !== "today" && tab !== "list") && (
@@ -6018,6 +6078,12 @@ export default function App() {
                     ? "Income, spending & savings"
                     : tab === "health"
                     ? "Training, macros & weight"
+                    : tab === "insights"
+                    ? "Patterns & self-understanding"
+                    : tab === "medications"
+                    ? "Track & remember"
+                    : tab === "timers"
+                    ? "Focus & routine timers"
                     : "Insights"}
                 </span>
               )}
@@ -8189,6 +8255,76 @@ export default function App() {
                 ) : null}
               </>
             )}
+          </section>
+        ) : null}
+
+        {tab === "insights" ? (
+          <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <InsightsPage
+              data={{
+                completionHistory: (() => {
+                  const history = [];
+                  const today = new Date(realTodayKey + "T12:00:00");
+                  for (let i = 13; i >= 0; i--) {
+                    const d = new Date(today);
+                    d.setDate(d.getDate() - i);
+                    const dk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+                    const dayData = appState?.days?.[dk];
+                    if (!dayData) continue;
+                    let total = 0, completed = 0;
+                    const hours = dayData.hours || {};
+                    for (const hk of Object.keys(hours)) {
+                      for (const cat of Object.keys(hours[hk])) {
+                        const tasks = hours[hk][cat];
+                        if (!Array.isArray(tasks)) continue;
+                        total += tasks.length;
+                        completed += tasks.filter(t => t.done).length;
+                      }
+                    }
+                    if (total > 0) history.push({ date: dk, total, completed });
+                  }
+                  return history;
+                })(),
+                taskCompletions: [],
+                routineLog: {},
+                capacityLog: [],
+                tasks: (() => {
+                  const dayData = appState?.days?.[realTodayKey];
+                  if (!dayData) return [];
+                  const tasks = [];
+                  const hours = dayData.hours || {};
+                  for (const hk of Object.keys(hours)) {
+                    for (const cat of Object.keys(hours[hk])) {
+                      const list = hours[hk][cat];
+                      if (!Array.isArray(list)) continue;
+                      tasks.push(...list);
+                    }
+                  }
+                  return tasks;
+                })(),
+                streak: computeCalendarCompletionStreak(appState, realTodayKey),
+              }}
+            />
+          </section>
+        ) : null}
+
+        {tab === "medications" ? (
+          <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <MedicationsPage
+              medications={medicationsState.medications}
+              log={medicationsState.log}
+              dayKey={realTodayKey}
+              onUpdate={setMedicationsState}
+            />
+          </section>
+        ) : null}
+
+        {tab === "timers" ? (
+          <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <TimersPage
+              timersState={timersState}
+              onUpdate={setTimersState}
+            />
           </section>
         ) : null}
 
@@ -10374,31 +10510,16 @@ export default function App() {
         )}
 
         {onboardingActive && !authWaiting && !showLoginGate && (
-          <OnboardingFlow
-            step={onboardingStep}
-            setStep={setOnboardingStep}
-            onExitComplete={finishOnboardingWizard}
-            onExitSkipAll={() => finishOnboardingWizard(null)}
-            onFinishSetup={finishOnboardingWizard}
-            firebaseOn={firebaseOn}
+          <OnboardingV2
             profile={profile}
             setProfile={setProfile}
-            theme={theme}
-            setTheme={setTheme}
-            themesMap={THEMES}
-            habitTracker={habitTracker}
-            setHabitTracker={setHabitTracker}
-            routineTemplate={routineTemplate}
-            setRoutineTemplate={setRoutineTemplate}
-            morningRoutineTemplate={morningRoutineTemplate}
-            setMorningRoutineTemplate={setMorningRoutineTemplate}
-            routineSchedule={routineSchedule}
-            setRoutineSchedule={setRoutineSchedule}
-            customCategories={customCategories}
-            setCustomCategories={setCustomCategories}
-            suggestedCategories={DEFAULT_CATEGORIES}
-            fallbackMorningTemplate={MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }))}
-            fallbackNightTemplate={BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }))}
+            onComplete={(prefs) => {
+              setProfile((p) => ({ ...p, name: prefs.name || p.name }));
+              if (prefs.enabledModules) setEnabledModules(prefs.enabledModules);
+              if (prefs.navOrder) setNavOrder(prefs.navOrder);
+              if (prefs.coachingTone) setCoachingTone(prefs.coachingTone);
+              finishOnboardingWizard(null);
+            }}
           />
         )}
 
