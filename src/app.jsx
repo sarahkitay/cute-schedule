@@ -1887,7 +1887,7 @@ function MorningRoutine({ routine, onToggle }) {
       </div>
       {allDone && (
         <div style={{ marginTop: 14, textAlign: "center", padding: "10px 0" }}>
-          <p style={{ fontSize: 14, color: "var(--py-accent-deep)", fontWeight: 500, margin: 0 }}>Good start to your day ✨</p>
+          <p style={{ fontSize: 14, color: "var(--py-accent-deep)", fontWeight: 500, margin: 0 }}>Good start to your day.</p>
         </div>
       )}
     </div>
@@ -6184,7 +6184,7 @@ export default function App() {
                   boxShadow: isActive ? "0 4px 16px rgba(212,96,122,0.2), inset 0 1px 2px rgba(255,255,255,0.7)" : "0 2px 8px rgba(0,0,0,0.03), inset 0 1px 1px rgba(255,255,255,0.5)",
                   transition: "all 200ms ease", transform: isActive ? "scale(1.06)" : "scale(1)",
                 }}>
-                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt={item.label} style={{ width: item.id === "insights" ? 36 : 30, height: item.id === "insights" ? 36 : 30, borderRadius: 8, objectFit: "contain" }} />
+                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt={item.label} style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain" }} />
                 </span>
                 <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? "#D4607A" : "rgba(160,140,150,0.8)", letterSpacing: 0.2 }}>{item.label}</span>
               </button>
@@ -6436,10 +6436,10 @@ export default function App() {
                   <div style={{ fontSize: 13, color: "var(--py-ink-secondary)", marginBottom: 14 }}>{prog.total} task{prog.total !== 1 ? "s" : ""} planned</div>
                   <div style={{ position: "relative", height: 10, borderRadius: 999, background: "rgba(200,190,195,0.15)", marginBottom: 10 }}>
                     <div style={{ position: "absolute", left: 0, top: 0, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #c8bfd4, #a8a0b8)", width: `${Math.max(prog.pct, 8)}%`, transition: "width 500ms ease", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }} />
-                    <div style={{ position: "absolute", left: `${Math.max(prog.pct, 5)}%`, top: "50%", transform: "translate(-50%, -50%)", width: 22, height: 22, borderRadius: "50%", background: "linear-gradient(135deg, #d0c8e0, #a898b8)", border: "2px solid #fff", boxShadow: "0 2px 6px rgba(0,0,0,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10 }}>🌙</div>
+                    <div style={{ position: "absolute", left: `${Math.max(prog.pct, 5)}%`, top: "50%", transform: "translate(-50%, -50%)", width: 20, height: 20, borderRadius: "50%", background: "linear-gradient(135deg, #d0c8e0, #a898b8)", border: "2px solid #fff", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }} />
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: "var(--py-accent-deep)", display: "flex", alignItems: "center", gap: 4 }}>❤️ Small steps, big change.</span>
+                    <span style={{ fontSize: 12, color: "var(--py-accent-deep)" }}>Small steps, big change.</span>
                     <span style={{ fontSize: 18, fontWeight: 700, color: "var(--py-ink)" }}>{prog.pct}%</span>
                   </div>
                 </div>

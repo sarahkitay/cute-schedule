@@ -61,7 +61,7 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
       {/* Safety disclaimer */}
       <GlassCard compact>
         <p style={{ fontSize: "var(--py-text-caption)", color: "var(--py-ink-muted)", margin: 0, textAlign: "center" }}>
-          ⚕️ This is not medical advice. Always confirm medication instructions with your clinician.
+          This is not medical advice. Always confirm medication instructions with your clinician.
         </p>
       </GlassCard>
 
@@ -132,7 +132,7 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
         const status = getMedicationStatus(log, med.id, dayKey);
         return (
           <div key={med.id} className="py-med-item">
-            <div className="py-med-item__icon">💊</div>
+            <div className="py-med-item__icon" style={{ background: "linear-gradient(135deg, rgba(200,180,230,0.3), rgba(180,160,210,0.15))" }}></div>
             <div className="py-med-item__info">
               <div className="py-med-item__name">{med.name}</div>
               <div className="py-med-item__dose">

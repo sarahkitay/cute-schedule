@@ -123,7 +123,7 @@ export function YouPage({
             return (
               <div key={mod.id} onClick={() => toggleNavModule(mod.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: inNav ? "rgba(255,218,230,0.5)" : "rgba(255,255,255,0.5)", border: `1px solid ${inNav ? "rgba(232,169,183,0.3)" : "rgba(0,0,0,0.04)"}`, borderRadius: 18, cursor: "pointer", transition: "all 200ms ease" }}>
                 {mod.img && <img src={`${import.meta.env.BASE_URL}${mod.img}`} alt="" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "contain" }} />}
-                {!mod.img && <span style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(232,169,183,0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>📋</span>}
+                {!mod.img && <span style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, rgba(232,169,183,0.15), rgba(200,180,220,0.1))" }} />}
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{mod.label}</div>
                   <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{mod.desc}</div>
@@ -145,7 +145,7 @@ export function YouPage({
       <div className="py-glass-card" style={{ padding: 20, textAlign: "center" }}>
         <img src={`${import.meta.env.BASE_URL}pyiconnobubble.png`} alt="ProYou" style={{ width: 56, height: 56, borderRadius: 18, objectFit: "cover", margin: "0 auto 10px", display: "block" }} />
         <div style={{ fontSize: 20, fontWeight: 600, color: "var(--py-ink)" }}>{profile.name || "Your Name"}</div>
-        {profile.birthday && <div style={{ fontSize: 13, color: "var(--py-ink-tertiary)", marginTop: 2 }}>🎂 {profile.birthday}</div>}
+        {profile.birthday && <div style={{ fontSize: 13, color: "var(--py-ink-tertiary)", marginTop: 2 }}>{profile.birthday}</div>}
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
           <input value={profile.name || ""} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} placeholder="Your name" className="py-input" style={{ maxWidth: 180, textAlign: "center", fontSize: 14 }} />
         </div>
@@ -154,22 +154,22 @@ export function YouPage({
       {/* Quick actions grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <button type="button" onClick={() => setSection("habits")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <div style={{ fontSize: 22, marginBottom: 6 }}>🔄</div>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, rgba(232,169,183,0.2), rgba(200,160,220,0.15))", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Habits</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{(habitTracker.habits || []).length} active</div>
         </button>
         <button type="button" onClick={() => setSection("routine")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <div style={{ fontSize: 22, marginBottom: 6 }}>☀️</div>
+          <img src={`${import.meta.env.BASE_URL}sunIcon.png`} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Routines</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{morningRoutineTemplate.length} morning steps</div>
         </button>
         <button type="button" onClick={() => setSection("nav")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <div style={{ fontSize: 22, marginBottom: 6 }}>🧭</div>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, rgba(180,200,230,0.25), rgba(160,180,220,0.15))", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Navigation</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>Customize your nav bar</div>
         </button>
         <button type="button" onClick={onOpenSettings} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <div style={{ fontSize: 22, marginBottom: 6 }}>⚙️</div>
+          <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, rgba(200,190,210,0.25), rgba(180,170,195,0.15))", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Settings</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>Theme, data, account</div>
         </button>
@@ -182,7 +182,7 @@ export function YouPage({
           {allModules.map(mod => (
             <button key={mod.id} type="button" onClick={() => onNavigateModule(mod.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "rgba(255,255,255,0.55)", backdropFilter: "blur(16px)", border: "1px solid rgba(0,0,0,0.04)", borderRadius: 18, cursor: "pointer", textAlign: "left", boxShadow: "0 2px 10px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.5)" }}>
               {mod.img && <img src={`${import.meta.env.BASE_URL}${mod.img}`} alt="" style={{ width: 40, height: 40, borderRadius: 12, objectFit: "contain" }} />}
-              {!mod.img && <span style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(232,169,183,0.12)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>📋</span>}
+              {!mod.img && <span style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, rgba(232,169,183,0.12), rgba(200,180,220,0.08))" }} />}
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{mod.label}</div>
                 <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{mod.desc}</div>

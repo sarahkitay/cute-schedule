@@ -10,17 +10,12 @@ import {
   computeOverduePressure,
 } from "../modules/insights";
 
-function StatCard({ label, value, sub, emoji, color }) {
+function StatCard({ label, value, sub, color }) {
   return (
     <div style={{ padding: 18, background: "rgba(255,255,255,0.6)", backdropFilter: "blur(16px)", border: "1px solid rgba(0,0,0,0.04)", borderRadius: 22, boxShadow: "0 3px 14px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.6)" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: color || "var(--py-accent-deep)", textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
-          <div style={{ fontSize: 30, fontWeight: 700, color: "var(--py-ink)", marginTop: 4, lineHeight: 1 }}>{value}</div>
-          {sub && <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)", marginTop: 4 }}>{sub}</div>}
-        </div>
-        {emoji && <span style={{ fontSize: 28 }}>{emoji}</span>}
-      </div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: color || "var(--py-accent-deep)", textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ fontSize: 30, fontWeight: 700, color: "var(--py-ink)", marginTop: 6, lineHeight: 1 }}>{value}</div>
+      {sub && <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)", marginTop: 6 }}>{sub}</div>}
     </div>
   );
 }
@@ -61,10 +56,10 @@ export function InsightsPage({ data }) {
 
       {/* Stats grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <StatCard label="Completion" value={`${avgRate}%`} sub={`${completedTasks}/${totalTasks} tasks`} emoji={avgRate >= 80 ? "🎯" : "📊"} />
-        <StatCard label="Streak" value={`${data.streak || 0}`} sub={data.streak > 0 ? "days in a row" : "Start today"} emoji="🔥" />
-        {momentum && <StatCard label="Momentum" value={`${momentum.score}%`} sub={`${momentum.label} · ${momentum.trend}`} emoji={momentum.score >= 80 ? "🚀" : "📈"} />}
-        {overdue && <StatCard label="Overdue" value={overdue.count} sub={overdue.severity + " pressure"} emoji="⏰" color={overdue.severity === "high" ? "#B85555" : undefined} />}
+        <StatCard label="Completion" value={`${avgRate}%`} sub={`${completedTasks}/${totalTasks} tasks`} />
+        <StatCard label="Streak" value={`${data.streak || 0}`} sub={data.streak > 0 ? "days in a row" : "Start today"} />
+        {momentum && <StatCard label="Momentum" value={`${momentum.score}%`} sub={`${momentum.label} · ${momentum.trend}`} />}
+        {overdue && <StatCard label="Overdue" value={overdue.count} sub={overdue.severity + " pressure"} color={overdue.severity === "high" ? "#B85555" : undefined} />}
       </div>
 
       {/* Pattern insights */}

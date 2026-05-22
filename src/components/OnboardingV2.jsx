@@ -5,17 +5,17 @@ import { NavIcons } from "./NavIcons";
 import { MODULE_REGISTRY, DEFAULT_ENABLED_MODULES, DEFAULT_NAV_ORDER } from "../modules/registry";
 
 const USE_CASES = [
-  { id: "adhd", label: "ADHD support", emoji: "🧠" },
-  { id: "productivity", label: "Productivity", emoji: "⚡" },
-  { id: "fitness", label: "Fitness", emoji: "💪" },
-  { id: "finances", label: "Finances", emoji: "💰" },
-  { id: "routines", label: "Routines", emoji: "🔄" },
-  { id: "medication", label: "Medication", emoji: "💊" },
-  { id: "sleep", label: "Sleep", emoji: "🌙" },
-  { id: "burnout", label: "Burnout recovery", emoji: "🌿" },
-  { id: "school", label: "School", emoji: "📚" },
-  { id: "business", label: "Business", emoji: "📈" },
-  { id: "emotional", label: "Emotional regulation", emoji: "🫧" },
+  { id: "adhd", label: "ADHD support" },
+  { id: "productivity", label: "Productivity" },
+  { id: "fitness", label: "Fitness" },
+  { id: "finances", label: "Finances" },
+  { id: "routines", label: "Routines" },
+  { id: "medication", label: "Medication" },
+  { id: "sleep", label: "Sleep" },
+  { id: "burnout", label: "Burnout recovery" },
+  { id: "school", label: "School" },
+  { id: "business", label: "Business" },
+  { id: "emotional", label: "Emotional regulation" },
 ];
 
 const COACHING_TONES = [
@@ -147,7 +147,7 @@ export function OnboardingV2({ onComplete, profile, setProfile }) {
                   className={`py-pill-btn ${useCases.includes(uc.id) ? "py-pill-btn--primary" : "py-pill-btn--secondary"}`}
                   style={{ fontSize: "var(--py-text-subhead)" }}
                 >
-                  <span>{uc.emoji}</span> {uc.label}
+                  {uc.label}
                 </button>
               ))}
             </div>
