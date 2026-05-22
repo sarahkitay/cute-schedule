@@ -1847,29 +1847,31 @@ function HourCard({
 
 function MorningRoutine({ routine, onToggle }) {
   const allDone = (routine || []).length > 0 && (routine || []).every((r) => r.done);
+  const doneCount = (routine || []).filter(r => r.done).length;
   return (
     <div className="bedtime morning-routine">
-      <div className="bedtime-header">
-        <h3 className="bedtime-title">
-          <SparkleIcon style={{ display: "inline-block", marginRight: "8px", verticalAlign: "middle" }} />
-          Morning routine
-        </h3>
-        <p className="bedtime-subtitle">Start your day</p>
+      <div className="bedtime-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h3 className="bedtime-title" style={{ fontSize: 17, fontWeight: 600 }}>
+            Morning routine
+          </h3>
+          <p className="bedtime-subtitle" style={{ fontSize: 13, opacity: 0.6 }}>Start your day right</p>
+        </div>
+        <span style={{ fontSize: 13, color: "var(--py-ink-tertiary)", fontWeight: 500 }}>{doneCount}/{(routine || []).length} steps</span>
       </div>
-      <ul className="bedtime-list">
+      <ul className="bedtime-list" style={{ marginTop: 12 }}>
         {(routine || []).map((item) => (
-          <li key={item.id} className={item.done ? "bedtime-item bedtime-done" : "bedtime-item"}>
-            <label className="check">
-              <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} />
-              <span className="checkmark" />
-              <span className={`item-text ${item.done ? "item-text-done" : ""}`}>{item.text}</span>
+          <li key={item.id} className={item.done ? "bedtime-item bedtime-done" : "bedtime-item"} style={{ display: "flex", alignItems: "center", padding: "10px 0", borderBottom: "1px solid rgba(0,0,0,0.03)" }}>
+            <label className="check" style={{ display: "flex", alignItems: "center", gap: 12, flex: 1 }}>
+              <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} style={{ width: 20, height: 20, borderRadius: 6, accentColor: "#D4708A" }} />
+              <span className={`item-text ${item.done ? "item-text-done" : ""}`} style={{ fontSize: 15 }}>{item.text}</span>
             </label>
           </li>
         ))}
       </ul>
       {allDone && (
-        <div className="bedtime-message">
-          <p className="bedtime-congrats">Good start to your day.</p>
+        <div className="bedtime-message" style={{ marginTop: 12, textAlign: "center" }}>
+          <p className="bedtime-congrats" style={{ fontSize: 14, color: "var(--py-accent-deep)" }}>Good start to your day.</p>
         </div>
       )}
     </div>
@@ -1886,8 +1888,7 @@ function BedtimeRoutine({ routine, onToggle, allTasksDone }) {
   return (
     <div className="bedtime">
       <div className="bedtime-header">
-        <h3 className="bedtime-title">
-          <WindDownIcon style={{ display: 'inline-block', marginRight: '8px', verticalAlign: 'middle' }} />
+        <h3 className="bedtime-title" style={{ fontSize: 17, fontWeight: 600 }}>
           Wind Down Time
         </h3>
         <p className="bedtime-subtitle">10:00 PM - 11:00 PM bedtime routine</p>
@@ -6175,8 +6176,21 @@ export default function App() {
                     else { setTab(item.id); if (item.id === "today") setShowMonthCalendar(false); }
                   }}
                   aria-current={isActive ? "page" : undefined}
+                  style={{ color: isActive ? "#D4607A" : "rgba(180,160,170,0.75)" }}
                 >
-                  <NavIcons name={item.iconName} size={24} />
+                  <span style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 44, height: 44, borderRadius: 15,
+                    background: isActive ? "rgba(255, 215, 228, 0.85)" : "rgba(255, 235, 240, 0.65)",
+                    border: isActive ? "1px solid rgba(232,169,183,0.3)" : "1px solid rgba(255,255,255,0.5)",
+                    boxShadow: isActive
+                      ? "0 4px 14px rgba(212,96,122,0.25), inset 0 1px 2px rgba(255,255,255,0.7)"
+                      : "0 2px 8px rgba(0,0,0,0.04), inset 0 1px 2px rgba(255,255,255,0.6)",
+                    transition: "all 200ms ease",
+                    transform: isActive ? "scale(1.1)" : "scale(1)",
+                  }}>
+                    <NavIcons name={item.iconName} size={22} />
+                  </span>
                   {item.label}
                 </button>
               );
@@ -6420,58 +6434,71 @@ export default function App() {
               )}
             </div>
 
-            {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
-              <section className="panel habit-daily-card surface-glass scroll-reveal" style={{ marginBottom: 14 }}>
-                <div className="panel-title">
-                  <span className="title">Habits · today</span>
+            {/* Today's Focus + Streak cards — side by side */}
+            {tab === "today" && (
+              <div className="py-card-grid scroll-reveal" style={{ marginBottom: 16 }}>
+                <div className="py-glass-card" style={{ padding: 18 }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 6 }}>Today&apos;s Focus</div>
+                  <div style={{ fontSize: 13, color: "var(--py-ink-secondary)", marginBottom: 12 }}>{prog.total} task{prog.total !== 1 ? "s" : ""} planned</div>
+                  <div style={{ height: 8, borderRadius: 999, background: "rgba(0,0,0,0.04)", overflow: "hidden", marginBottom: 8 }}>
+                    <div style={{ height: "100%", borderRadius: 999, background: "linear-gradient(90deg, var(--py-accent), var(--py-accent-deep))", width: `${prog.pct}%`, transition: "width 400ms ease" }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: "var(--py-accent-deep)" }}>Small steps, big change.</span>
+                    <span style={{ fontSize: 16, fontWeight: 700 }}>{prog.pct}%</span>
+                  </div>
                 </div>
-                <ul className="list habit-checkin-list">
+                <div className="py-glass-card" style={{ padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontSize: 18 }}>🔥</span> Streak
+                  </div>
+                  <div style={{ fontSize: 34, fontWeight: 700, color: "var(--py-ink)", lineHeight: 1 }}>
+                    {computeCalendarCompletionStreak(appState, realTodayKey)}
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)", marginTop: 2 }}>days</div>
+                  <div style={{ fontSize: 12, color: "var(--py-accent-deep)", fontWeight: 500, marginTop: 6 }}>Keep it going!</div>
+                </div>
+              </div>
+            )}
+
+            {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
+              <section className="panel habit-daily-card surface-glass scroll-reveal" style={{ marginBottom: 14, padding: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: "var(--py-ink)" }}>Habits · today</span>
+                  <button type="button" style={{ fontSize: 12, fontWeight: 500, color: "var(--py-ink-tertiary)", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>View all ›</button>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {(habitTracker.habits || []).map((h) => {
                     const v = (habitTracker.log[realTodayKey] || {})[h.id];
                     return (
-                      <li key={h.id} className="habit-checkin-row">
-                        <div className="habit-checkin-label">
-                          <span className="habit-checkin-name">{h.label}</span>
-                          <span className={`habit-direction-tag ${h.direction === "break" ? "is-break" : "is-build"}`}>
-                            {h.direction === "break" ? "Break" : "Build"}
-                          </span>
+                      <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", background: "rgba(255,255,255,0.5)", borderRadius: 16, border: "1px solid rgba(0,0,0,0.03)" }}>
+                        <div style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, rgba(200,184,232,0.3), rgba(180,160,220,0.15))", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+                          {h.direction === "break" ? "🚫" : "💧"}
                         </div>
-                        <div className="habit-checkin-actions">
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{h.label}</div>
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, padding: "3px 8px", borderRadius: 999, background: h.direction === "break" ? "rgba(212,107,107,0.1)" : "rgba(232,169,183,0.15)", color: h.direction === "break" ? "#B85555" : "var(--py-accent-deep)" }}>
+                          {h.direction === "break" ? "Break" : "Build"}
+                        </span>
+                        <div style={{ display: "flex", gap: 6 }}>
                           <button
                             type="button"
-                            className={`btn btn-sm ${v === "yes" ? "btn-primary" : ""}`}
-                            onClick={() =>
-                              setHabitTracker((prev) => ({
-                                ...prev,
-                                log: {
-                                  ...prev.log,
-                                  [realTodayKey]: { ...(prev.log[realTodayKey] || {}), [h.id]: "yes" },
-                                },
-                              }))
-                            }
-                          >
-                            {h.direction === "break" ? "Avoided" : "Did it"}
-                          </button>
+                            onClick={() => setHabitTracker((prev) => ({ ...prev, log: { ...prev.log, [realTodayKey]: { ...(prev.log[realTodayKey] || {}), [h.id]: "yes" } } }))}
+                            style={{ width: 30, height: 30, borderRadius: "50%", border: "none", background: v === "yes" ? "var(--py-accent)" : "linear-gradient(135deg, #F0B4C4, #E8A0B4)", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, boxShadow: "0 2px 8px rgba(232,169,183,0.3)" }}
+                            aria-label="Done"
+                          >✓</button>
                           <button
                             type="button"
-                            className={`btn btn-sm ${v === "no" ? "btn-primary" : ""}`}
-                            onClick={() =>
-                              setHabitTracker((prev) => ({
-                                ...prev,
-                                log: {
-                                  ...prev.log,
-                                  [realTodayKey]: { ...(prev.log[realTodayKey] || {}), [h.id]: "no" },
-                                },
-                              }))
-                            }
-                          >
-                            {h.direction === "break" ? "Slip" : "Not today"}
-                          </button>
+                            onClick={() => setHabitTracker((prev) => ({ ...prev, log: { ...prev.log, [realTodayKey]: { ...(prev.log[realTodayKey] || {}), [h.id]: "no" } } }))}
+                            style={{ width: 30, height: 30, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.06)", background: v === "no" ? "rgba(180,160,170,0.2)" : "rgba(255,255,255,0.7)", color: "var(--py-ink-muted)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12 }}
+                            aria-label="Skip"
+                          >✕</button>
                         </div>
-                      </li>
+                      </div>
                     );
                   })}
-                </ul>
+                </div>
               </section>
             )}
 
@@ -6545,9 +6572,6 @@ export default function App() {
                 <div className="panel-title">
                   <div className="panel-title-row">
                     <span className="title">Daily Progress</span>
-                    <span className={starred ? (starPulse ? "star star-pulse" : "star") : "star star-dim"}>
-                      {starred ? <StarIcon filled style={{ display: 'inline-block' }} /> : <StarEmptyIcon style={{ display: 'inline-block' }} />}
-                    </span>
                   </div>
                   <div className="meta daily-progress-copy">
                     {prog.pct === 0 && prog.total === 0 ? (
