@@ -1,7 +1,4 @@
 import React, { useMemo } from "react";
-import { GlassCard } from "./GlassCard";
-import { InsightCard } from "./InsightCard";
-import { NavIcons } from "./NavIcons";
 import {
   computeMomentumScore,
   detectDrift,
@@ -13,6 +10,30 @@ import {
   computeOverduePressure,
 } from "../modules/insights";
 
+function StatCard({ label, value, sub, emoji, color }) {
+  return (
+    <div style={{ padding: 18, background: "rgba(255,255,255,0.6)", backdropFilter: "blur(16px)", border: "1px solid rgba(0,0,0,0.04)", borderRadius: 22, boxShadow: "0 3px 14px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.6)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: color || "var(--py-accent-deep)", textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</div>
+          <div style={{ fontSize: 30, fontWeight: 700, color: "var(--py-ink)", marginTop: 4, lineHeight: 1 }}>{value}</div>
+          {sub && <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)", marginTop: 4 }}>{sub}</div>}
+        </div>
+        {emoji && <span style={{ fontSize: 28 }}>{emoji}</span>}
+      </div>
+    </div>
+  );
+}
+
+function InsightRow({ title, text, accent }) {
+  return (
+    <div style={{ padding: "14px 16px", background: accent ? "rgba(255,225,235,0.4)" : "rgba(255,255,255,0.5)", border: `1px solid ${accent ? "rgba(232,169,183,0.2)" : "rgba(0,0,0,0.04)"}`, borderRadius: 18, boxShadow: "0 2px 8px rgba(0,0,0,0.02), inset 0 1px 0 rgba(255,255,255,0.5)" }}>
+      <div style={{ fontSize: 14, fontWeight: 600, color: "var(--py-ink)", marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 13, color: "var(--py-ink-secondary)", lineHeight: 1.45 }}>{text}</div>
+    </div>
+  );
+}
+
 export function InsightsPage({ data }) {
   const momentum = useMemo(() => computeMomentumScore(data.completionHistory), [data.completionHistory]);
   const drift = useMemo(() => detectDrift(data.completionHistory), [data.completionHistory]);
@@ -23,117 +44,51 @@ export function InsightsPage({ data }) {
   const streak = useMemo(() => computeStreakMomentum(data.streak), [data.streak]);
   const overdue = useMemo(() => computeOverduePressure(data.tasks), [data.tasks]);
 
-  const hasInsights = momentum || drift || peak || trend || routine || capacity || streak || overdue;
+  const totalTasks = (data.completionHistory || []).reduce((a, d) => a + (d.total || 0), 0);
+  const completedTasks = (data.completionHistory || []).reduce((a, d) => a + (d.completed || 0), 0);
+  const avgRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
   return (
-    <div className="py-flex-col py-gap-5">
-      <div className="py-section-header">
-        <h2 className="py-section-header__title">Insights</h2>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+        <img src={`${import.meta.env.BASE_URL}InsightsIcon.png`} alt="" style={{ width: 32, height: 32, borderRadius: 10, objectFit: "contain" }} />
+        <div>
+          <h2 style={{ fontSize: 22, fontWeight: 600, color: "var(--py-ink)", margin: 0 }}>Insights</h2>
+          <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)", margin: 0 }}>Your patterns & averages</p>
+        </div>
       </div>
 
-      {!hasInsights && (
-        <GlassCard>
-          <div className="py-text-center" style={{ padding: "var(--py-space-7) 0" }}>
-            <NavIcons name="insights" size={40} />
-            <p style={{ marginTop: "var(--py-space-4)", color: "var(--py-ink-secondary)", fontSize: "var(--py-text-body)" }}>
-              ProYou is learning your patterns.<br />
-              Use the app for a few days and insights will appear here.
-            </p>
-          </div>
-        </GlassCard>
-      )}
+      {/* Stats grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <StatCard label="Completion" value={`${avgRate}%`} sub={`${completedTasks}/${totalTasks} tasks`} emoji={avgRate >= 80 ? "🎯" : "📊"} />
+        <StatCard label="Streak" value={`${data.streak || 0}`} sub={data.streak > 0 ? "days in a row" : "Start today"} emoji="🔥" />
+        {momentum && <StatCard label="Momentum" value={`${momentum.score}%`} sub={`${momentum.label} · ${momentum.trend}`} emoji={momentum.score >= 80 ? "🚀" : "📈"} />}
+        {overdue && <StatCard label="Overdue" value={overdue.count} sub={overdue.severity + " pressure"} emoji="⏰" color={overdue.severity === "high" ? "#B85555" : undefined} />}
+      </div>
 
-      {momentum && (
-        <GlassCard featured={momentum.score >= 80}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: "var(--py-text-caption)", fontWeight: 600, color: "var(--py-accent-deep)", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                Momentum
-              </div>
-              <div style={{ fontSize: 32, fontWeight: 700, color: "var(--py-ink)", marginTop: 4 }}>
-                {momentum.score}%
-              </div>
-              <div style={{ fontSize: "var(--py-text-caption)", color: "var(--py-ink-tertiary)", marginTop: 2 }}>
-                {momentum.label} · {momentum.trend}
-              </div>
+      {/* Pattern insights */}
+      <div>
+        <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--py-ink)", marginBottom: 12 }}>What ProYou noticed</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {drift?.detected && <InsightRow title="Drift detected" text={drift.message} accent />}
+          {peak && <InsightRow title="Peak time" text={`You complete most tasks around ${peak.label} (${peak.period}).`} />}
+          {trend && <InsightRow title="Trend" text={trend.message} />}
+          {routine && <InsightRow title="Routine consistency" text={routine.message} />}
+          {capacity && <InsightRow title="Energy patterns" text={capacity.message} />}
+          {streak && <InsightRow title="Streak momentum" text={streak.message} />}
+          {!drift && !peak && !trend && !routine && !capacity && !streak && (
+            <div style={{ padding: 28, textAlign: "center", background: "rgba(255,255,255,0.5)", borderRadius: 22, border: "1px solid rgba(0,0,0,0.04)" }}>
+              <img src={`${import.meta.env.BASE_URL}InsightsIcon.png`} alt="" style={{ width: 48, height: 48, opacity: 0.5, margin: "0 auto 12px", display: "block", objectFit: "contain" }} />
+              <p style={{ fontSize: 14, color: "var(--py-ink-secondary)", margin: 0 }}>ProYou is learning your patterns.<br />Use the app for a few days and insights will appear here.</p>
             </div>
-            <div style={{ fontSize: 40, opacity: 0.8 }}>
-              {momentum.score >= 80 ? "🔥" : momentum.score >= 50 ? "📈" : "🌱"}
-            </div>
-          </div>
-        </GlassCard>
-      )}
+          )}
+        </div>
+      </div>
 
-      {streak && (
-        <GlassCard>
-          <div className="py-streak">
-            <div className="py-streak__flame">🔥</div>
-            <div>
-              <div className="py-streak__count">{streak.days}</div>
-              <div className="py-streak__label">{streak.label} streak</div>
-            </div>
-          </div>
-          <p style={{ fontSize: "var(--py-text-caption)", color: "var(--py-ink-secondary)", margin: "var(--py-space-2) 0 0 var(--py-space-4)" }}>
-            {streak.message}
-          </p>
-        </GlassCard>
-      )}
-
-      {drift?.detected && (
-        <InsightCard
-          icon="insights"
-          title="Drift detected"
-          text={drift.message}
-          accent
-        />
-      )}
-
-      {peak && (
-        <InsightCard
-          icon="timer"
-          title="Peak completion time"
-          text={`You complete most tasks around ${peak.label} (${peak.period}). Based on your recent entries, scheduling important work here might help.`}
-        />
-      )}
-
-      {trend && (
-        <InsightCard
-          icon={trend.direction === "improving" ? "check" : "insights"}
-          title="Completion trend"
-          text={trend.message}
-        />
-      )}
-
-      {routine && (
-        <InsightCard
-          icon="repeat"
-          title="Routine consistency"
-          text={routine.message}
-        />
-      )}
-
-      {capacity && (
-        <InsightCard
-          icon="health"
-          title="Energy patterns"
-          text={capacity.message}
-        />
-      )}
-
-      {overdue && (
-        <InsightCard
-          icon="list"
-          title="Overdue pressure"
-          text={overdue.message}
-          accent={overdue.severity === "high"}
-        />
-      )}
-
-      <GlassCard compact>
-        <p style={{ fontSize: "var(--py-text-caption)", color: "var(--py-ink-muted)", textAlign: "center", margin: 0 }}>
-          Insights are based on your recent activity. They update as ProYou learns your patterns.
-        </p>
-      </GlassCard>
+      <div style={{ padding: 12, textAlign: "center" }}>
+        <p style={{ fontSize: 12, color: "var(--py-ink-muted)", margin: 0 }}>Based on your recent activity · Updates as ProYou learns</p>
+      </div>
     </div>
   );
 }

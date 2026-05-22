@@ -51,6 +51,7 @@ import { NavIcons } from "./components/NavIcons";
 import { MODULE_REGISTRY, MODULE_IDS, DEFAULT_NAV_ORDER, DEFAULT_ENABLED_MODULES, getNavModules } from "./modules/registry";
 import { loadMedicationsFromDisk, saveMedicationsToDisk, defaultMedicationsState } from "./modules/medications";
 import { loadTimersFromDisk, saveTimersToDisk, defaultTimersState, loadAlarmsFromDisk, saveAlarmsToDisk, defaultAlarmsState } from "./modules/timers";
+import { YouPage } from "./components/YouPage";
 import {
   bumpWeekRoutineCursor,
   formatHealthForCoach,
@@ -5971,6 +5972,8 @@ export default function App() {
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
 
   useEffect(() => {
+    const alwaysAllowed = ["today", "insights", "you", "coach", "list", "medications", "timers", "health", "finance", "notes", "monthly"];
+    if (alwaysAllowed.includes(tab)) return;
     const nv = normalizeNavVisibility(profile.navVisibility);
     if (nv[tab] === true) return;
     const order = ["today", ...normalizeDockOrder(profile.dockOrder)];
@@ -6097,6 +6100,8 @@ export default function App() {
                       ? "Medications"
                       : tab === "timers"
                       ? "Timers"
+                      : tab === "you"
+                      ? "You"
                       : "Coach"}
                   </h1>
                 </>
@@ -6166,10 +6171,9 @@ export default function App() {
                 </button>
               );
             }
-            const isActive = item.id === "you" ? false : tab === item.id;
-            const isSettings = item.id === "you";
+            const isActive = tab === item.id;
             return (
-              <button key={item.id} type="button" onClick={() => { if (isSettings) { setSettingsSubView("main"); setShowSettings(true); } else { setTab(item.id); if (item.id === "today") setShowMonthCalendar(false); }}} aria-current={isActive ? "page" : undefined} style={{
+              <button key={item.id} type="button" onClick={() => { setTab(item.id); if (item.id === "today") setShowMonthCalendar(false); }} aria-current={isActive ? "page" : undefined} style={{
                 display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
                 background: "none", border: "none", cursor: "pointer", padding: "4px 8px", minWidth: 56,
               }}>
@@ -6180,7 +6184,7 @@ export default function App() {
                   boxShadow: isActive ? "0 4px 16px rgba(212,96,122,0.2), inset 0 1px 2px rgba(255,255,255,0.7)" : "0 2px 8px rgba(0,0,0,0.03), inset 0 1px 1px rgba(255,255,255,0.5)",
                   transition: "all 200ms ease", transform: isActive ? "scale(1.06)" : "scale(1)",
                 }}>
-                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt={item.label} style={{ width: 30, height: 30, borderRadius: 8, objectFit: "cover",  }} />
+                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt={item.label} style={{ width: item.id === "insights" ? 36 : 30, height: item.id === "insights" ? 36 : 30, borderRadius: 8, objectFit: "contain" }} />
                 </span>
                 <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? "#D4607A" : "rgba(160,140,150,0.8)", letterSpacing: 0.2 }}>{item.label}</span>
               </button>
@@ -8375,6 +8379,29 @@ export default function App() {
             <TimersPage
               timersState={timersState}
               onUpdate={setTimersState}
+            />
+          </section>
+        ) : null}
+
+        {tab === "you" ? (
+          <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <YouPage
+              profile={profile}
+              setProfile={setProfile}
+              habitTracker={habitTracker}
+              setHabitTracker={setHabitTracker}
+              morningRoutineTemplate={morningRoutineTemplate}
+              setMorningRoutineTemplate={setMorningRoutineTemplate}
+              routineTemplate={routineTemplate}
+              setRoutineTemplate={setRoutineTemplate}
+              onOpenSettings={() => { setSettingsSubView("main"); setShowSettings(true); }}
+              enabledModules={enabledModules}
+              setEnabledModules={setEnabledModules}
+              navOrder={navOrder}
+              setNavOrder={setNavOrder}
+              coachingTone={coachingTone}
+              setCoachingTone={setCoachingTone}
+              onNavigateModule={(id) => setTab(id)}
             />
           </section>
         ) : null}
