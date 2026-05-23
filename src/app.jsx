@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactDOM, { flushSync } from "react-dom";
 import { 
-  StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, CoachIcon, MoonIcon, NotesIcon, CelebrateIcon, WindDownIcon,
-  SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon, TodayIcon, MonthlyIcon,
-  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, HealthIcon, ListIcon, MenuIcon,
+  StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
+  SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
+  LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, MenuIcon,
   CheckIcon, FinanceIcon, BulletIcon
 } from "./Icons";
 import { Capacitor } from "@capacitor/core";
@@ -32,12 +32,28 @@ import {
 import cloudStorage from "./cloudStorage";
 import { THEMES } from "./themes";
 import { OnboardingFlow } from "./OnboardingFlow";
+import { OnboardingV2 } from "./components/OnboardingV2";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
 import { HealthPage } from "./HealthPage";
 import { PageInstructions } from "./PageInstructions";
 import { HabitIconPicker, HabitIconBadge } from "./HabitIconPicker";
 import { DEFAULT_HABIT_ICON, normalizeHabitIcon, suggestHabitIconFromLabel } from "./habitIcons";
 import { WorkoutProgramPickerModal } from "./WorkoutProgramPickerModal";
+import { FloatingNav } from "./components/FloatingNav";
+import { GlassCard } from "./components/GlassCard";
+import { PillButton } from "./components/PillButton";
+import { SegmentedControl } from "./components/SegmentedControl";
+import { SoftInput } from "./components/SoftInput";
+import { CoachSuggestionCard } from "./components/CoachSuggestionCard";
+import { InsightCard } from "./components/InsightCard";
+import { InsightsPage } from "./components/InsightsPage";
+import { MedicationsPage } from "./components/MedicationsPage";
+import { TimersPage } from "./components/TimersPage";
+import { NavIcons } from "./components/NavIcons";
+import { MODULE_REGISTRY, MODULE_IDS, DEFAULT_NAV_ORDER, DEFAULT_ENABLED_MODULES, getNavModules } from "./modules/registry";
+import { loadMedicationsFromDisk, saveMedicationsToDisk, defaultMedicationsState } from "./modules/medications";
+import { loadTimersFromDisk, saveTimersToDisk, defaultTimersState, loadAlarmsFromDisk, saveAlarmsToDisk, defaultAlarmsState } from "./modules/timers";
+import { YouPage } from "./components/YouPage";
 import {
   bumpWeekRoutineCursor,
   formatHealthForCoach,
@@ -1835,29 +1851,46 @@ function HourCard({
 
 function MorningRoutine({ routine, onToggle }) {
   const allDone = (routine || []).length > 0 && (routine || []).every((r) => r.done);
+  const doneCount = (routine || []).filter(r => r.done).length;
+  const routineIcons = {
+    "wake up": "sunIcon.png",
+    "stretch": "sunIcon.png",
+    "drink": "watericon.png",
+    "water": "watericon.png",
+    "eat": "forkandknife.png",
+    "breakfast": "forkandknife.png",
+    "food": "forkandknife.png",
+  };
+  function getRoutineIcon(text) {
+    const lower = (text || "").toLowerCase();
+    for (const [key, img] of Object.entries(routineIcons)) {
+      if (lower.includes(key)) return img;
+    }
+    return "sunIcon.png";
+  }
   return (
-    <div className="bedtime morning-routine">
-      <div className="bedtime-header">
-        <h3 className="bedtime-title">
-          <SparkleIcon style={{ display: "inline-block", marginRight: "8px", verticalAlign: "middle" }} />
-          Morning routine
-        </h3>
-        <p className="bedtime-subtitle">Start your day</p>
+    <div className="bedtime morning-routine" style={{ padding: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div>
+          <h3 style={{ fontSize: 17, fontWeight: 600, color: "var(--py-ink)", margin: 0 }}>Morning routine</h3>
+          <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)", margin: "2px 0 0" }}>Start your day right</p>
+        </div>
+        <span style={{ fontSize: 13, color: "var(--py-ink-tertiary)", fontWeight: 500 }}>{doneCount}/{(routine || []).length} steps</span>
       </div>
-      <ul className="bedtime-list">
-        {(routine || []).map((item) => (
-          <li key={item.id} className={item.done ? "bedtime-item bedtime-done" : "bedtime-item"}>
-            <label className="check">
-              <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} />
-              <span className="checkmark" />
-              <span className={`item-text ${item.done ? "item-text-done" : ""}`}>{item.text}</span>
+      <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+        {(routine || []).map((item, idx) => (
+          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: idx < (routine || []).length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, cursor: "pointer" }}>
+              <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} style={{ width: 18, height: 18, borderRadius: 5, accentColor: "#D4708A", cursor: "pointer" }} />
+              <span style={{ fontSize: 15, fontWeight: 400, color: item.done ? "var(--py-ink-muted)" : "var(--py-ink)", textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
             </label>
-          </li>
+            <img src={`${import.meta.env.BASE_URL}${getRoutineIcon(item.text)}`} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "cover" }} />
+          </div>
         ))}
-      </ul>
+      </div>
       {allDone && (
-        <div className="bedtime-message">
-          <p className="bedtime-congrats">Good start to your day.</p>
+        <div style={{ marginTop: 14, textAlign: "center", padding: "10px 0" }}>
+          <p style={{ fontSize: 14, color: "var(--py-accent-deep)", fontWeight: 500, margin: 0 }}>Good start to your day.</p>
         </div>
       )}
     </div>
@@ -1874,8 +1907,7 @@ function BedtimeRoutine({ routine, onToggle, allTasksDone }) {
   return (
     <div className="bedtime">
       <div className="bedtime-header">
-        <h3 className="bedtime-title">
-          <WindDownIcon style={{ display: 'inline-block', marginRight: '8px', verticalAlign: 'middle' }} />
+        <h3 className="bedtime-title" style={{ fontSize: 17, fontWeight: 600 }}>
           Wind Down Time
         </h3>
         <p className="bedtime-subtitle">10:00 PM - 11:00 PM bedtime routine</p>
@@ -2108,11 +2140,12 @@ const DOCK_NAV_SETTINGS_ROWS = [
 ];
 
 const DOCK_EDITOR_ICON_BY_ID = {
-  plan: MonthlyIcon,
-  coach: CoachIcon,
-  notes: NotesIcon,
+  list: MenuIcon,
+  monthly: CalendarIcon,
+  coach: SparkleIcon,
+  notes: MoonIcon,
   finance: FinanceIcon,
-  health: HealthIcon,
+  health: DumbbellIcon,
 };
 
 const DOCK_FALLBACK_COPY = {
@@ -2215,6 +2248,35 @@ export default function App() {
   const [workoutProgramPicker, setWorkoutProgramPicker] = useState(null);
   const [healthProgramBuilderScroll, setHealthProgramBuilderScroll] = useState(0);
   const [guidedWorkoutSession, setGuidedWorkoutSession] = useState(null);
+
+  // New modules: medications, timers, alarms
+  const [medicationsState, setMedicationsState] = useState(() => loadMedicationsFromDisk());
+  const [timersState, setTimersState] = useState(() => loadTimersFromDisk());
+  const [alarmsState, setAlarmsState] = useState(() => loadAlarmsFromDisk());
+  const [enabledModules, setEnabledModules] = useState(() => {
+    try {
+      const raw = localStorage.getItem("cute_schedule_enabled_modules_v1");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return DEFAULT_ENABLED_MODULES;
+  });
+  const [navOrder, setNavOrder] = useState(() => {
+    try {
+      const raw = localStorage.getItem("cute_schedule_nav_order_v1");
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return DEFAULT_NAV_ORDER;
+  });
+  const [coachingTone, setCoachingTone] = useState(() => {
+    try { return localStorage.getItem("cute_schedule_coaching_tone_v1") || "gentle"; } catch { return "gentle"; }
+  });
+
+  useEffect(() => { saveMedicationsToDisk(medicationsState); }, [medicationsState]);
+  useEffect(() => { saveTimersToDisk(timersState); }, [timersState]);
+  useEffect(() => { saveAlarmsToDisk(alarmsState); }, [alarmsState]);
+  useEffect(() => { try { localStorage.setItem("cute_schedule_enabled_modules_v1", JSON.stringify(enabledModules)); } catch {} }, [enabledModules]);
+  useEffect(() => { try { localStorage.setItem("cute_schedule_nav_order_v1", JSON.stringify(navOrder)); } catch {} }, [navOrder]);
+  useEffect(() => { try { localStorage.setItem("cute_schedule_coaching_tone_v1", coachingTone); } catch {} }, [coachingTone]);
 
   // Editable bedtime routine template (persisted)
   const [routineTemplate, setRoutineTemplate] = useState(() => {
@@ -5951,12 +6013,18 @@ export default function App() {
     const nv = normalizeNavVisibility(profile.navVisibility);
     const order = normalizeDockOrder(profile.dockOrder);
     const dockMeta = {
-      today: { id: "today", label: "Today", headerLabel: "Today", icon: TodayIcon },
-      plan: { id: "plan", label: "Plan", headerLabel: "Plan", icon: MonthlyIcon },
-      coach: { id: "coach", label: "Coach", headerLabel: "Pattern insights", icon: CoachIcon },
-      notes: { id: "notes", label: "Notes", headerLabel: "Notes", icon: NotesIcon },
+      today: { id: "today", label: "Home", headerLabel: "Today", icon: CalendarIcon },
+      plan: { id: "today", label: "Plan", headerLabel: "Plan", icon: CalendarIcon },
+      list: { id: "list", label: "List", headerLabel: "List", icon: MenuIcon },
+      monthly: { id: "monthly", label: "Monthly", headerLabel: "Monthly", icon: CalendarIcon },
+      coach: { id: "coach", label: "Coach", headerLabel: "Coach", icon: SparkleIcon },
+      notes: { id: "notes", label: "Notes", headerLabel: "Notes", icon: MoonIcon },
       finance: { id: "finance", label: "Finance", headerLabel: "Finance", icon: FinanceIcon },
-      health: { id: "health", label: "Health", headerLabel: "Health", icon: HealthIcon },
+      health: { id: "health", label: "Health", headerLabel: "Health", icon: DumbbellIcon },
+      insights: { id: "insights", label: "Insights", headerLabel: "Insights", icon: SparkleIcon },
+      medications: { id: "medications", label: "Meds", headerLabel: "Medications", icon: SparkleIcon },
+      timers: { id: "timers", label: "Timers", headerLabel: "Timers", icon: SparkleIcon },
+      you: { id: "you", label: "You", headerLabel: "Profile", icon: SparkleIcon },
     };
     const items = [dockMeta.today];
     for (const oid of order) {
@@ -5964,6 +6032,11 @@ export default function App() {
     }
     return items;
   }, [profile.navVisibility, profile.dockOrder]);
+
+  // V2 navigation modules for the new FloatingNav component
+  const navModules = useMemo(() => getNavModules(navOrder, enabledModules), [navOrder, enabledModules]);
+  const centerActionModule = useMemo(() => navModules.find((m) => m.centerAction), [navModules]);
+  const sideNavModules = useMemo(() => navModules.filter((m) => !m.centerAction), [navModules]);
 
   const todayHiddenDockTabs = useMemo(() => {
     const nv = normalizeNavVisibility(profile.navVisibility);
@@ -5999,6 +6072,8 @@ export default function App() {
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
 
   useEffect(() => {
+    const alwaysAllowed = ["today", "insights", "you", "coach", "list", "medications", "timers", "health", "finance", "notes", "monthly"];
+    if (alwaysAllowed.includes(tab)) return;
     if (tab === "list" || tab === "monthly") setTab("plan");
   }, [tab]);
 
@@ -6096,13 +6171,46 @@ export default function App() {
             <header className="top top-plain">
               <div className="top-inner">
                 <div className="top-left">
-                  <span className="brand-name">PROYOU</span>
-                  <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
-                    {headerTitle}
-                  </h1>
-                  {headerSubtitle ? (
-                    <span className="sub header-date header-date-visible">{headerSubtitle}</span>
-                  ) : null}
+                  {tab === "today" ? (
+                    <div className="top-left-greeting" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 2 }}>
+                      <img
+                        src={`${import.meta.env.BASE_URL}pyiconnobubble.png`}
+                        alt=""
+                        style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: 14,
+                          objectFit: "cover",
+                          boxShadow: "0 3px 12px rgba(212, 112, 138, 0.2)",
+                        }}
+                      />
+                      <div>
+                        <span className="brand-name">PROYOU</span>
+                        <h1 className="h1 h1-banner-date" style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
+                          Good{" "}
+                          {getTimeOfDay() === "morning"
+                            ? "morning"
+                            : getTimeOfDay() === "evening"
+                              ? "evening"
+                              : "afternoon"}
+                          , {profile.name || "there"}
+                        </h1>
+                        <span className="greeting-tagline" style={{ fontSize: 13, fontWeight: 400 }}>
+                          Let&apos;s make today meaningful.
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="brand-name">PROYOU</span>
+                      <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
+                        {headerTitle}
+                      </h1>
+                      {headerSubtitle ? (
+                        <span className="sub header-date header-date-visible">{headerSubtitle}</span>
+                      ) : null}
+                    </>
+                  )}
                 </div>
 
                 <div className="tabs" aria-hidden="true">
@@ -6407,6 +6515,39 @@ export default function App() {
               )}
             </div>
 
+            {/* Today's Focus + Streak cards — side by side */}
+            {tab === "today" && (
+              <div className="py-card-grid scroll-reveal" style={{ marginBottom: 16 }}>
+                <div className="py-glass-card" style={{ padding: 18 }}>
+                  <div style={{ fontSize: 16, fontWeight: 600, color: "var(--py-ink)", marginBottom: 4 }}>Today&apos;s Focus</div>
+                  <div style={{ fontSize: 13, color: "var(--py-ink-secondary)", marginBottom: 14 }}>{prog.total} task{prog.total !== 1 ? "s" : ""} planned</div>
+                  <div style={{ position: "relative", height: 10, borderRadius: 999, background: "rgba(200,190,195,0.15)", marginBottom: 10 }}>
+                    <div style={{ position: "absolute", left: 0, top: 0, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #c8bfd4, #a8a0b8)", width: `${Math.max(prog.pct, 8)}%`, transition: "width 500ms ease", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }} />
+                    <div style={{ position: "absolute", left: `${Math.max(prog.pct, 5)}%`, top: "50%", transform: "translate(-50%, -50%)", width: 20, height: 20, borderRadius: "50%", background: "linear-gradient(135deg, #d0c8e0, #a898b8)", border: "2px solid #fff", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }} />
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 12, color: "var(--py-accent-deep)" }}>Small steps, big change.</span>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: "var(--py-ink)" }}>{prog.pct}%</span>
+                  </div>
+                </div>
+                <div className="py-glass-card" style={{ padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                    <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: "cover" }} /> Streak
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover" }} />
+                    <div>
+                      <div style={{ fontSize: 34, fontWeight: 700, color: "var(--py-ink)", lineHeight: 1 }}>
+                        {computeCalendarCompletionStreak(appState, realTodayKey)}
+                      </div>
+                      <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>days</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--py-accent-deep)", fontWeight: 500, marginTop: 8 }}>Keep it going!</div>
+                </div>
+              </div>
+            )}
+
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
               <section className="panel habit-daily-card surface-glass scroll-reveal" style={{ marginBottom: 14 }}>
                 <div className="panel-title">
@@ -6533,9 +6674,6 @@ export default function App() {
                 <div className="panel-title">
                   <div className="panel-title-row">
                     <span className="title">Daily Progress</span>
-                    <span className={starred ? (starPulse ? "star star-pulse" : "star") : "star star-dim"}>
-                      {starred ? <StarIcon filled style={{ display: 'inline-block' }} /> : <StarEmptyIcon style={{ display: 'inline-block' }} />}
-                    </span>
                   </div>
                   <div className="meta daily-progress-copy">
                     {prog.pct === 0 && prog.total === 0 ? (
@@ -6572,8 +6710,35 @@ export default function App() {
               )}
             </section>
 
+            {/* Modules not in nav — accessible from bottom of Home */}
+            {tab === "today" && (() => {
+              const navImgMap = { today: "homeicon.png", list: "planIcon.png", insights: "InsightsIcon.png", you: "YouIcon.png", coach: "PYIcon.png", health: "fitness.png", medications: "meds.png", finance: "finance.png", notes: "notes.png", timers: "timer.png", monthly: "monthly.png" };
+              const navLabelMap = { today: "Home", list: "Plan", insights: "Insights", you: "You", coach: "Coach", health: "Fitness", medications: "Meds", finance: "Finance", notes: "Notes", timers: "Timers", monthly: "Goals" };
+              const inNav = navOrder.filter(id => enabledModules.includes(id) || id === "today" || id === "you");
+              const notInNav = Object.keys(navImgMap).filter(id => !inNav.includes(id) && id !== "today" && id !== "you");
+              if (notInNav.length === 0) return null;
+              return (
+                <div className="scroll-reveal" style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--py-ink-secondary)", marginBottom: 10 }}>More</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {notInNav.map(id => (
+                      <button key={id} type="button" onClick={() => setTab(id)} style={{
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                        padding: "12px 10px", minWidth: 72, background: "rgba(255,255,255,0.5)",
+                        border: "1px solid rgba(0,0,0,0.03)", borderRadius: 18, cursor: "pointer",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.02), inset 0 1px 0 rgba(255,255,255,0.5)",
+                      }}>
+                        <img src={`${import.meta.env.BASE_URL}${navImgMap[id]}`} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: "contain" }} />
+                        <span style={{ fontSize: 11, fontWeight: 500, color: "var(--py-ink-secondary)" }}>{navLabelMap[id]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && todayHiddenDockTabs.length > 0 && (
-              <div className="today-dock-fallback-stack scroll-reveal">
+              <div className="today-dock-fallback-stack scroll-reveal" style={{ display: "none" }}>
                 {todayHiddenDockTabs.map((dockId) => {
                   const cfg = DOCK_FALLBACK_COPY[dockId];
                   if (!cfg) return null;
@@ -8329,6 +8494,99 @@ export default function App() {
                 ) : null}
               </>
             )}
+          </section>
+        ) : null}
+
+        {tab === "insights" ? (
+          <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <InsightsPage
+              data={{
+                completionHistory: (() => {
+                  const history = [];
+                  const today = new Date(realTodayKey + "T12:00:00");
+                  for (let i = 13; i >= 0; i--) {
+                    const d = new Date(today);
+                    d.setDate(d.getDate() - i);
+                    const dk = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+                    const dayData = appState?.days?.[dk];
+                    if (!dayData) continue;
+                    let total = 0, completed = 0;
+                    const hours = dayData.hours || {};
+                    for (const hk of Object.keys(hours)) {
+                      for (const cat of Object.keys(hours[hk])) {
+                        const tasks = hours[hk][cat];
+                        if (!Array.isArray(tasks)) continue;
+                        total += tasks.length;
+                        completed += tasks.filter(t => t.done).length;
+                      }
+                    }
+                    if (total > 0) history.push({ date: dk, total, completed });
+                  }
+                  return history;
+                })(),
+                taskCompletions: [],
+                routineLog: {},
+                capacityLog: [],
+                tasks: (() => {
+                  const dayData = appState?.days?.[realTodayKey];
+                  if (!dayData) return [];
+                  const tasks = [];
+                  const hours = dayData.hours || {};
+                  for (const hk of Object.keys(hours)) {
+                    for (const cat of Object.keys(hours[hk])) {
+                      const list = hours[hk][cat];
+                      if (!Array.isArray(list)) continue;
+                      tasks.push(...list);
+                    }
+                  }
+                  return tasks;
+                })(),
+                streak: computeCalendarCompletionStreak(appState, realTodayKey),
+              }}
+            />
+          </section>
+        ) : null}
+
+        {tab === "medications" ? (
+          <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <MedicationsPage
+              medications={medicationsState.medications}
+              log={medicationsState.log}
+              dayKey={realTodayKey}
+              onUpdate={setMedicationsState}
+            />
+          </section>
+        ) : null}
+
+        {tab === "timers" ? (
+          <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <TimersPage
+              timersState={timersState}
+              onUpdate={setTimersState}
+            />
+          </section>
+        ) : null}
+
+        {tab === "you" ? (
+          <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <YouPage
+              profile={profile}
+              setProfile={setProfile}
+              habitTracker={habitTracker}
+              setHabitTracker={setHabitTracker}
+              morningRoutineTemplate={morningRoutineTemplate}
+              setMorningRoutineTemplate={setMorningRoutineTemplate}
+              routineTemplate={routineTemplate}
+              setRoutineTemplate={setRoutineTemplate}
+              onOpenSettings={() => { setSettingsSubView("main"); setShowSettings(true); }}
+              enabledModules={enabledModules}
+              setEnabledModules={setEnabledModules}
+              navOrder={navOrder}
+              setNavOrder={setNavOrder}
+              coachingTone={coachingTone}
+              setCoachingTone={setCoachingTone}
+              onNavigateModule={(id) => setTab(id)}
+            />
           </section>
         ) : null}
 
@@ -10543,31 +10801,16 @@ export default function App() {
         )}
 
         {onboardingActive && !authWaiting && !showLoginGate && (
-          <OnboardingFlow
-            step={onboardingStep}
-            setStep={setOnboardingStep}
-            onExitComplete={finishOnboardingWizard}
-            onExitSkipAll={() => finishOnboardingWizard(null)}
-            onFinishSetup={finishOnboardingWizard}
-            firebaseOn={firebaseOn}
+          <OnboardingV2
             profile={profile}
             setProfile={setProfile}
-            theme={theme}
-            setTheme={setTheme}
-            themesMap={THEMES}
-            habitTracker={habitTracker}
-            setHabitTracker={setHabitTracker}
-            routineTemplate={routineTemplate}
-            setRoutineTemplate={setRoutineTemplate}
-            morningRoutineTemplate={morningRoutineTemplate}
-            setMorningRoutineTemplate={setMorningRoutineTemplate}
-            routineSchedule={routineSchedule}
-            setRoutineSchedule={setRoutineSchedule}
-            customCategories={customCategories}
-            setCustomCategories={setCustomCategories}
-            suggestedCategories={DEFAULT_CATEGORIES}
-            fallbackMorningTemplate={MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }))}
-            fallbackNightTemplate={BEDTIME_ROUTINE.map((r) => ({ id: r.id, text: r.text }))}
+            onComplete={(prefs) => {
+              setProfile((p) => ({ ...p, name: prefs.name || p.name }));
+              if (prefs.enabledModules) setEnabledModules(prefs.enabledModules);
+              if (prefs.navOrder) setNavOrder(prefs.navOrder);
+              if (prefs.coachingTone) setCoachingTone(prefs.coachingTone);
+              finishOnboardingWizard(null);
+            }}
           />
         )}
 

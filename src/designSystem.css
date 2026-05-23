@@ -1,0 +1,2000 @@
+/**
+ * ProYou Design System v2 - iOS-native glassmorphism
+ * Adaptive personal operating system aesthetic
+ */
+
+:root {
+  /* ─── Color Palette ─── */
+  --py-bg-start: #FFF8F6;
+  --py-bg-mid: #FFF0ED;
+  --py-bg-end: #FFE8E4;
+  --py-surface: rgba(255, 255, 255, 0.72);
+  --py-surface-elevated: rgba(255, 255, 255, 0.88);
+  --py-surface-featured: rgba(255, 240, 244, 0.75);
+  --py-surface-inset: rgba(255, 245, 248, 0.5);
+  --py-accent: #E8A9B7;
+  --py-accent-deep: #D4708A;
+  --py-accent-soft: rgba(232, 169, 183, 0.18);
+  --py-accent-glow: rgba(232, 169, 183, 0.35);
+  --py-lavender: #C9B8E8;
+  --py-peach: #F5C6AA;
+  --py-mint: #A8DBC5;
+  --py-ink: #2D2A32;
+  --py-ink-secondary: #5C5660;
+  --py-ink-tertiary: #8A8490;
+  --py-ink-muted: #B0AAB5;
+  --py-border: rgba(0, 0, 0, 0.04);
+  --py-border-accent: rgba(232, 169, 183, 0.3);
+  --py-success: #5CB88A;
+  --py-warning: #E8B86A;
+  --py-error: #D46B6B;
+
+  /* ─── Typography ─── */
+  --py-font-display: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif;
+  --py-font-body: -apple-system, 'SF Pro Text', 'Inter', system-ui, sans-serif;
+  --py-font-mono: 'SF Mono', 'JetBrains Mono', monospace;
+  --py-text-hero: 32px;
+  --py-text-title: 24px;
+  --py-text-headline: 18px;
+  --py-text-body: 16px;
+  --py-text-subhead: 14px;
+  --py-text-caption: 12px;
+  --py-text-micro: 11px;
+  --py-weight-light: 300;
+  --py-weight-regular: 400;
+  --py-weight-medium: 500;
+  --py-weight-semibold: 600;
+  --py-weight-bold: 700;
+
+  /* ─── Spacing (8pt grid) ─── */
+  --py-space-1: 4px;
+  --py-space-2: 8px;
+  --py-space-3: 12px;
+  --py-space-4: 16px;
+  --py-space-5: 20px;
+  --py-space-6: 28px;
+  --py-space-7: 36px;
+  --py-space-8: 44px;
+  --py-space-9: 56px;
+
+  /* ─── Radius ─── */
+  --py-radius-sm: 12px;
+  --py-radius-md: 18px;
+  --py-radius-lg: 24px;
+  --py-radius-xl: 28px;
+  --py-radius-pill: 999px;
+
+  /* ─── Elevation & Effects ─── */
+  --py-blur-sm: 12px;
+  --py-blur-md: 20px;
+  --py-blur-lg: 40px;
+  --py-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --py-shadow-md: 0 4px 16px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
+  --py-shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  --py-shadow-glow: 0 4px 20px var(--py-accent-glow);
+  --py-shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.03);
+  --py-shadow-inset-top: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+  /* ─── Motion ─── */
+  --py-motion-fast: 180ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --py-motion-base: 240ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --py-motion-slow: 360ms cubic-bezier(0.25, 0.1, 0.25, 1);
+  --py-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --py-ease-out: cubic-bezier(0, 0, 0.2, 1);
+
+  /* ─── Z-Index ─── */
+  --py-z-base: 1;
+  --py-z-elevated: 10;
+  --py-z-nav: 100;
+  --py-z-modal: 1000;
+  --py-z-toast: 2000;
+}
+
+/* ─── Glass Card ─── */
+.py-glass-card {
+  background: var(--py-surface);
+  backdrop-filter: blur(var(--py-blur-md));
+  -webkit-backdrop-filter: blur(var(--py-blur-md));
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-lg);
+  box-shadow: var(--py-shadow-md), var(--py-shadow-inset-top);
+  padding: var(--py-space-5);
+  transition: transform var(--py-motion-fast), box-shadow var(--py-motion-base);
+}
+.py-glass-card:hover {
+  box-shadow: var(--py-shadow-lg), var(--py-shadow-inset-top);
+}
+
+.py-glass-card--featured {
+  background: var(--py-surface-featured);
+  border-color: var(--py-border-accent);
+}
+
+.py-glass-card--compact {
+  padding: var(--py-space-3) var(--py-space-4);
+}
+
+.py-glass-card--flush {
+  padding: 0;
+}
+
+/* ─── Pill Button ─── */
+.py-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--py-space-2);
+  padding: var(--py-space-3) var(--py-space-5);
+  font-family: var(--py-font-body);
+  font-size: var(--py-text-subhead);
+  font-weight: var(--py-weight-semibold);
+  border-radius: var(--py-radius-pill);
+  border: none;
+  cursor: pointer;
+  transition: all var(--py-motion-fast);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.py-pill-btn:active {
+  transform: scale(0.96);
+}
+
+.py-pill-btn--primary {
+  background: linear-gradient(135deg, var(--py-accent) 0%, var(--py-accent-deep) 100%);
+  color: #fff;
+  box-shadow: var(--py-shadow-glow);
+}
+.py-pill-btn--primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px var(--py-accent-glow);
+}
+
+.py-pill-btn--secondary {
+  background: var(--py-surface-elevated);
+  color: var(--py-ink);
+  border: 1px solid var(--py-border);
+  box-shadow: var(--py-shadow-sm);
+}
+
+.py-pill-btn--ghost {
+  background: transparent;
+  color: var(--py-ink-secondary);
+}
+.py-pill-btn--ghost:hover {
+  background: var(--py-accent-soft);
+  color: var(--py-accent-deep);
+}
+
+.py-pill-btn--sm {
+  padding: var(--py-space-2) var(--py-space-3);
+  font-size: var(--py-text-caption);
+}
+
+.py-pill-btn--lg {
+  padding: var(--py-space-4) var(--py-space-6);
+  font-size: var(--py-text-body);
+}
+
+.py-pill-btn--icon {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.py-pill-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* ─── Segmented Control ─── */
+.py-segmented {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--py-surface-inset);
+  backdrop-filter: blur(var(--py-blur-sm));
+  -webkit-backdrop-filter: blur(var(--py-blur-sm));
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-pill);
+  gap: 2px;
+}
+.py-segmented__item {
+  padding: var(--py-space-2) var(--py-space-4);
+  font-family: var(--py-font-body);
+  font-size: var(--py-text-subhead);
+  font-weight: var(--py-weight-medium);
+  color: var(--py-ink-tertiary);
+  background: transparent;
+  border: none;
+  border-radius: var(--py-radius-pill);
+  cursor: pointer;
+  transition: all var(--py-motion-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.py-segmented__item:hover {
+  color: var(--py-ink-secondary);
+}
+.py-segmented__item--active {
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--py-accent-deep);
+  font-weight: var(--py-weight-semibold);
+  box-shadow: var(--py-shadow-sm), var(--py-shadow-inset-top);
+}
+
+/* ─── Soft Input ─── */
+.py-input {
+  width: 100%;
+  padding: var(--py-space-3) var(--py-space-4);
+  font-family: var(--py-font-body);
+  font-size: var(--py-text-body);
+  color: var(--py-ink);
+  background: var(--py-surface-inset);
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-md);
+  outline: none;
+  transition: all var(--py-motion-fast);
+  box-shadow: var(--py-shadow-inset);
+}
+.py-input::placeholder {
+  color: var(--py-ink-muted);
+}
+.py-input:focus {
+  border-color: var(--py-accent);
+  box-shadow: 0 0 0 3px var(--py-accent-soft), var(--py-shadow-inset);
+}
+
+.py-input-group {
+  display: flex;
+  align-items: center;
+  gap: var(--py-space-2);
+  padding: var(--py-space-2) var(--py-space-3);
+  background: var(--py-surface-elevated);
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-lg);
+  box-shadow: var(--py-shadow-sm), var(--py-shadow-inset-top);
+  transition: all var(--py-motion-fast);
+}
+.py-input-group:focus-within {
+  border-color: var(--py-accent);
+  box-shadow: 0 0 0 3px var(--py-accent-soft), var(--py-shadow-sm);
+}
+.py-input-group input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  font-family: var(--py-font-body);
+  font-size: var(--py-text-body);
+  color: var(--py-ink);
+  outline: none;
+  padding: var(--py-space-2) 0;
+}
+.py-input-group input::placeholder {
+  color: var(--py-ink-muted);
+}
+
+/* ─── Floating Nav ─── */
+.py-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: var(--py-space-2) var(--py-space-3);
+  padding-bottom: max(var(--py-space-3), env(safe-area-inset-bottom));
+  background: rgba(255, 252, 250, 0.85);
+  backdrop-filter: blur(var(--py-blur-lg));
+  -webkit-backdrop-filter: blur(var(--py-blur-lg));
+  border-top: 1px solid rgba(0, 0, 0, 0.03);
+  z-index: var(--py-z-nav);
+}
+
+.py-nav__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--py-space-2) var(--py-space-3);
+  font-family: var(--py-font-body);
+  font-size: var(--py-text-micro);
+  font-weight: var(--py-weight-medium);
+  color: var(--py-ink-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--py-radius-md);
+  cursor: pointer;
+  transition: all var(--py-motion-fast);
+  -webkit-tap-highlight-color: transparent;
+  min-width: 52px;
+}
+.py-nav__item:hover {
+  color: var(--py-ink-secondary);
+}
+.py-nav__item--active {
+  color: var(--py-accent-deep);
+  background: var(--py-accent-soft);
+}
+.py-nav__item--active svg {
+  filter: drop-shadow(0 1px 3px var(--py-accent-glow));
+}
+
+.py-nav__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-top: -20px;
+  background: linear-gradient(135deg, var(--py-accent) 0%, var(--py-accent-deep) 100%);
+  border-radius: 50%;
+  box-shadow: var(--py-shadow-glow), 0 4px 12px rgba(0, 0, 0, 0.1);
+  color: #fff;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  transition: all var(--py-motion-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.py-nav__center:active {
+  transform: scale(0.92);
+}
+.py-nav__center svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* ─── Insight Card ─── */
+.py-insight-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--py-space-3);
+  padding: var(--py-space-4);
+  background: var(--py-surface);
+  backdrop-filter: blur(var(--py-blur-md));
+  -webkit-backdrop-filter: blur(var(--py-blur-md));
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-md);
+  box-shadow: var(--py-shadow-sm);
+}
+.py-insight-card__icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--py-accent-soft);
+  border-radius: var(--py-radius-sm);
+}
+.py-insight-card__body {
+  flex: 1;
+  min-width: 0;
+}
+.py-insight-card__title {
+  font-size: var(--py-text-subhead);
+  font-weight: var(--py-weight-semibold);
+  color: var(--py-ink);
+  margin: 0 0 var(--py-space-1);
+}
+.py-insight-card__text {
+  font-size: var(--py-text-caption);
+  color: var(--py-ink-secondary);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* ─── Coach Suggestion Card ─── */
+.py-suggestion-card {
+  padding: var(--py-space-5);
+  background: var(--py-surface-featured);
+  backdrop-filter: blur(var(--py-blur-md));
+  -webkit-backdrop-filter: blur(var(--py-blur-md));
+  border: 1px solid var(--py-border-accent);
+  border-radius: var(--py-radius-lg);
+  box-shadow: var(--py-shadow-md), var(--py-shadow-inset-top);
+}
+.py-suggestion-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--py-space-2);
+  margin-bottom: var(--py-space-3);
+}
+.py-suggestion-card__badge {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--py-accent) 0%, var(--py-accent-deep) 100%);
+  border-radius: 50%;
+  color: #fff;
+}
+.py-suggestion-card__label {
+  font-size: var(--py-text-caption);
+  font-weight: var(--py-weight-semibold);
+  color: var(--py-accent-deep);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.py-suggestion-card__content {
+  font-size: var(--py-text-body);
+  color: var(--py-ink);
+  line-height: 1.5;
+  margin-bottom: var(--py-space-4);
+}
+.py-suggestion-card__reason {
+  font-size: var(--py-text-caption);
+  color: var(--py-ink-tertiary);
+  font-style: italic;
+  margin-bottom: var(--py-space-4);
+}
+.py-suggestion-card__actions {
+  display: flex;
+  gap: var(--py-space-2);
+  flex-wrap: wrap;
+}
+
+/* ─── Module Toggle ─── */
+.py-module-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--py-space-3);
+  padding: var(--py-space-3) var(--py-space-4);
+  background: var(--py-surface);
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-md);
+  cursor: pointer;
+  transition: all var(--py-motion-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.py-module-toggle:hover {
+  background: var(--py-surface-elevated);
+}
+.py-module-toggle--active {
+  border-color: var(--py-border-accent);
+  background: var(--py-surface-featured);
+}
+.py-module-toggle__icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--py-radius-sm);
+  background: var(--py-accent-soft);
+}
+.py-module-toggle__label {
+  flex: 1;
+  font-size: var(--py-text-body);
+  font-weight: var(--py-weight-medium);
+  color: var(--py-ink);
+}
+.py-module-toggle__switch {
+  width: 44px;
+  height: 26px;
+  border-radius: 13px;
+  background: var(--py-ink-muted);
+  position: relative;
+  transition: background var(--py-motion-fast);
+  border: none;
+  cursor: pointer;
+}
+.py-module-toggle__switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: transform var(--py-motion-fast) var(--py-spring);
+}
+.py-module-toggle--active .py-module-toggle__switch {
+  background: var(--py-accent);
+}
+.py-module-toggle--active .py-module-toggle__switch::after {
+  transform: translateX(18px);
+}
+
+/* ─── Progress Ring ─── */
+.py-progress-ring {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.py-progress-ring__value {
+  font-size: var(--py-text-caption);
+  font-weight: var(--py-weight-bold);
+  color: var(--py-ink);
+}
+
+/* ─── Capacity Selector ─── */
+.py-capacity {
+  display: flex;
+  gap: var(--py-space-2);
+}
+.py-capacity__option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--py-space-1);
+  padding: var(--py-space-3) var(--py-space-2);
+  background: var(--py-surface);
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-md);
+  cursor: pointer;
+  transition: all var(--py-motion-fast);
+  font-family: var(--py-font-body);
+  font-size: var(--py-text-caption);
+  color: var(--py-ink-secondary);
+  -webkit-tap-highlight-color: transparent;
+}
+.py-capacity__option:hover {
+  border-color: var(--py-border-accent);
+}
+.py-capacity__option--active {
+  background: var(--py-surface-featured);
+  border-color: var(--py-accent);
+  color: var(--py-accent-deep);
+  box-shadow: var(--py-shadow-glow);
+}
+.py-capacity__emoji {
+  font-size: 20px;
+}
+
+/* ─── Streak Badge ─── */
+.py-streak {
+  display: flex;
+  align-items: center;
+  gap: var(--py-space-3);
+  padding: var(--py-space-4);
+}
+.py-streak__flame {
+  font-size: 36px;
+  filter: drop-shadow(0 2px 6px rgba(255, 120, 50, 0.3));
+}
+.py-streak__count {
+  font-size: 28px;
+  font-weight: var(--py-weight-bold);
+  color: var(--py-ink);
+  line-height: 1;
+}
+.py-streak__label {
+  font-size: var(--py-text-caption);
+  color: var(--py-accent-deep);
+  font-weight: var(--py-weight-medium);
+}
+
+/* ─── Habit Row ─── */
+.py-habit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--py-space-3);
+  padding: var(--py-space-3) var(--py-space-4);
+  border-radius: var(--py-radius-md);
+  transition: background var(--py-motion-fast);
+}
+.py-habit-row:hover {
+  background: rgba(255, 248, 245, 0.6);
+}
+.py-habit-row__icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--py-radius-sm);
+  background: var(--py-accent-soft);
+  font-size: 18px;
+}
+.py-habit-row__label {
+  flex: 1;
+  font-size: var(--py-text-body);
+  font-weight: var(--py-weight-medium);
+  color: var(--py-ink);
+}
+.py-habit-row__badge {
+  padding: 2px 8px;
+  font-size: var(--py-text-micro);
+  font-weight: var(--py-weight-semibold);
+  background: var(--py-accent-soft);
+  color: var(--py-accent-deep);
+  border-radius: var(--py-radius-pill);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.py-habit-row__actions {
+  display: flex;
+  gap: var(--py-space-2);
+}
+.py-habit-row__action {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  transition: all var(--py-motion-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+.py-habit-row__action--check {
+  background: var(--py-accent);
+  color: #fff;
+  box-shadow: 0 2px 8px var(--py-accent-glow);
+}
+.py-habit-row__action--skip {
+  background: var(--py-surface);
+  color: var(--py-ink-muted);
+  border: 1px solid var(--py-border);
+}
+
+/* ─── Section Header ─── */
+.py-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--py-space-3);
+}
+.py-section-header__title {
+  font-family: var(--py-font-display);
+  font-size: var(--py-text-headline);
+  font-weight: var(--py-weight-semibold);
+  color: var(--py-ink);
+  margin: 0;
+}
+.py-section-header__action {
+  font-size: var(--py-text-caption);
+  font-weight: var(--py-weight-medium);
+  color: var(--py-ink-tertiary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--py-space-1);
+}
+
+/* ─── Toast ─── */
+.py-toast {
+  position: fixed;
+  top: max(var(--py-space-5), env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%) translateY(-100%);
+  padding: var(--py-space-3) var(--py-space-5);
+  background: var(--py-surface-elevated);
+  backdrop-filter: blur(var(--py-blur-lg));
+  -webkit-backdrop-filter: blur(var(--py-blur-lg));
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-pill);
+  box-shadow: var(--py-shadow-lg);
+  font-family: var(--py-font-body);
+  font-size: var(--py-text-subhead);
+  font-weight: var(--py-weight-medium);
+  color: var(--py-ink);
+  z-index: var(--py-z-toast);
+  opacity: 0;
+  transition: all var(--py-motion-base) var(--py-ease-out);
+  pointer-events: none;
+}
+.py-toast--visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* ─── Modal Overlay ─── */
+.py-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: var(--py-z-modal);
+  padding: var(--py-space-4);
+  animation: py-fade-in var(--py-motion-base) var(--py-ease-out);
+}
+.py-modal {
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--py-surface-elevated);
+  backdrop-filter: blur(var(--py-blur-lg));
+  -webkit-backdrop-filter: blur(var(--py-blur-lg));
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-xl) var(--py-radius-xl) 0 0;
+  box-shadow: var(--py-shadow-lg);
+  padding: var(--py-space-6);
+  animation: py-slide-up var(--py-motion-base) var(--py-spring);
+}
+.py-modal--center {
+  align-self: center;
+  border-radius: var(--py-radius-xl);
+}
+
+/* ─── Onboarding ─── */
+.py-onboarding {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(160deg, var(--py-bg-start) 0%, var(--py-bg-mid) 50%, var(--py-bg-end) 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--py-space-6);
+  z-index: var(--py-z-modal);
+  overflow-y: auto;
+}
+.py-onboarding__card {
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+}
+.py-onboarding__brand {
+  font-family: var(--py-font-display);
+  font-size: var(--py-text-hero);
+  font-weight: var(--py-weight-bold);
+  color: var(--py-accent-deep);
+  margin-bottom: var(--py-space-2);
+  letter-spacing: -0.5px;
+}
+.py-onboarding__subtitle {
+  font-size: var(--py-text-body);
+  color: var(--py-ink-secondary);
+  margin-bottom: var(--py-space-7);
+  line-height: 1.5;
+}
+.py-onboarding__progress {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  margin-top: var(--py-space-7);
+}
+.py-onboarding__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--py-ink-muted);
+  transition: all var(--py-motion-fast);
+}
+.py-onboarding__dot--active {
+  background: var(--py-accent);
+  width: 20px;
+  border-radius: 3px;
+}
+.py-onboarding__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--py-space-3);
+  margin-top: var(--py-space-6);
+  width: 100%;
+}
+
+/* ─── App Background ─── */
+.py-app-bg {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: linear-gradient(160deg, var(--py-bg-start) 0%, var(--py-bg-mid) 50%, var(--py-bg-end) 100%);
+  position: relative;
+}
+
+/* ═══════════════════════════════════════════════
+   FULL APP RESTYLE — iOS Native Override
+   Match reference: soft glass, generous spacing
+   ═══════════════════════════════════════════════ */
+
+/* Greeting tagline: responds to dark mode */
+.app .greeting-tagline {
+  color: var(--py-ink-tertiary);
+}
+html[data-theme="dark"] .app .greeting-tagline {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* Keep original rich gradient background — do NOT override .app-bg */
+/* The original SVG texture + radial glow background gives the warm, dimensional feel */
+.app-bg-texture {
+  opacity: 0.4 !important;
+  filter: blur(1px) brightness(1.02) !important;
+}
+
+/* Shell override */
+.app .shell {
+  padding-bottom: 88px;
+}
+
+/* Header: match reference greeting style */
+.app .top.top-plain {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: max(16px, env(safe-area-inset-top)) 20px 8px !important;
+}
+.app .top-inner {
+  flex-direction: row;
+  align-items: center;
+}
+.app .top-left .brand-name {
+  font-size: 11px !important;
+  letter-spacing: 2px !important;
+  color: var(--py-ink-tertiary) !important;
+  font-weight: 500 !important;
+  text-transform: uppercase !important;
+}
+.app .top-left .h1.h1-banner-date {
+  font-family: var(--py-font-display) !important;
+  font-size: 26px !important;
+  font-weight: 600 !important;
+  color: var(--py-ink) !important;
+  margin-top: 2px !important;
+}
+
+/* Settings button: glass circle */
+.app .btn-icon {
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 50% !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+}
+
+/* Hide legacy header tabs row */
+.app .tabs[aria-hidden="true"] {
+  display: none !important;
+}
+
+/* ─── Bottom Nav: iOS-native floating dock with filled icons ─── */
+.app .bottom-nav.surface-dock {
+  position: fixed !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  display: flex !important;
+  align-items: flex-end !important;
+  justify-content: space-around !important;
+  padding: 10px 12px !important;
+  padding-bottom: max(14px, env(safe-area-inset-bottom)) !important;
+  background: rgba(255, 250, 248, 0.92) !important;
+  backdrop-filter: blur(40px) saturate(1.6) !important;
+  -webkit-backdrop-filter: blur(40px) saturate(1.6) !important;
+  border-radius: 0 !important;
+  border: none !important;
+  border-top: none !important;
+  box-shadow: 0 -2px 24px rgba(0, 0, 0, 0.04) !important;
+  z-index: 100 !important;
+}
+.app .bottom-nav-item {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  gap: 4px !important;
+  padding: 6px 10px !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.2px !important;
+  color: rgba(180, 160, 170, 0.8) !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 16px !important;
+  cursor: pointer !important;
+  transition: all 200ms cubic-bezier(0.34, 1.2, 0.64, 1) !important;
+  min-width: 56px !important;
+}
+.app .bottom-nav.surface-dock .bottom-nav-item svg,
+.app .bottom-nav .bottom-nav-item svg {
+  width: 24px !important;
+  height: 24px !important;
+  padding: 9px !important;
+  box-sizing: content-box !important;
+  transition: all 200ms cubic-bezier(0.34, 1.2, 0.64, 1) !important;
+  fill: currentColor !important;
+  stroke: none !important;
+  opacity: 0.5 !important;
+  background: rgba(255, 238, 242, 0.5) !important;
+  border-radius: 16px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .bottom-nav .bottom-nav-item.active {
+  color: #D4607A !important;
+}
+.app .bottom-nav .bottom-nav-item.active svg {
+  opacity: 1 !important;
+  background: rgba(255, 225, 235, 0.75) !important;
+  box-shadow: 0 3px 14px rgba(212, 96, 122, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+  transform: scale(1.1) !important;
+}
+
+/* ─── Quick Add Stack: match reference segmented + input ─── */
+.app .quick-add-stack {
+  padding: 0 !important;
+  margin-bottom: 20px !important;
+}
+.app .quick-add-top-bar {
+  margin-bottom: 12px !important;
+}
+.app .quick-add-entry-mode {
+  display: inline-flex !important;
+  padding: 4px !important;
+  background: rgba(255, 238, 242, 0.7) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 999px !important;
+  gap: 3px !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.7) !important;
+  width: 100% !important;
+  justify-content: center !important;
+}
+.app .quick-add-entry-mode-btn {
+  padding: 10px 32px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  color: var(--py-ink-tertiary) !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 999px !important;
+  cursor: pointer !important;
+  transition: all 220ms cubic-bezier(0.34, 1.2, 0.64, 1) !important;
+  flex: 1 !important;
+  text-align: center !important;
+}
+.app .quick-add-entry-mode-btn[aria-selected="true"] {
+  background: linear-gradient(140deg, #F4B8CA 0%, #E89AAE 50%, #D4708A 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 6px 18px rgba(212, 112, 138, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
+  transform: scale(1.02) !important;
+}
+
+/* Task input field: soft glass with + button */
+.app .input-group {
+  background: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.7) !important;
+  border-radius: 22px !important;
+  padding: 6px 6px 6px 18px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), inset 0 1px 2px rgba(255, 255, 255, 0.8) !important;
+}
+.app .input-group .input {
+  font-size: 15px !important;
+  color: var(--py-ink) !important;
+}
+.app .input-group .input::placeholder {
+  color: var(--py-ink-muted) !important;
+  font-size: 14px !important;
+}
+/* The add button: prominent pink circle with + */
+.app .input-group .btn-primary,
+.app .quick-add-stack .btn-primary,
+.app .quick-add-bar .btn-primary {
+  width: 42px !important;
+  height: 42px !important;
+  min-width: 42px !important;
+  padding: 0 !important;
+  border-radius: 50% !important;
+  background: linear-gradient(140deg, #F4B8CA 0%, #E89AAE 50%, #D4708A 100%) !important;
+  box-shadow: 0 6px 18px rgba(212, 112, 138, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 22px !important;
+  color: #fff !important;
+  font-weight: 300 !important;
+  transition: all 200ms ease !important;
+}
+.app .input-group .btn-primary:active,
+.app .quick-add-stack .btn-primary:active {
+  transform: scale(0.92) !important;
+}
+
+/* ─── Sitewide spacing audit ─── */
+.app .shell-main {
+  padding: 0 20px !important;
+  gap: 20px !important;
+  padding-bottom: 24px !important;
+}
+.app .shell-main > section,
+.app .shell-main > div {
+  margin-bottom: 0 !important;
+}
+.app .empty-big {
+  padding: 32px 0 60px !important;
+  text-align: center !important;
+}
+.app .daily-progress-card {
+  margin-top: 8px !important;
+}
+.app .timeline-wrap {
+  margin-bottom: 16px !important;
+}
+.app .panel,
+.app section.panel {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+  padding: 20px !important;
+}
+.app .surface-glass {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 24px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+}
+
+/* ─── Hour cards / task items: soft rounded ─── */
+.app .hour-card {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 18px !important;
+  margin-bottom: 12px !important;
+  padding: 14px 16px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03) !important;
+}
+
+/* ─── Morning routine section: match reference ─── */
+.app .routine-block,
+.app .morning-routine-block,
+.app .morning-routine {
+  background: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 24px !important;
+  padding: 20px !important;
+  margin-top: 8px !important;
+  margin-bottom: 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+html[data-theme="dark"] .app .morning-routine,
+html[data-theme="dark"] .app .routine-block {
+  background: rgba(30, 28, 35, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Routine items: clean rows */
+.app .routine-item,
+.app .morning-routine-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px 0 !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.03) !important;
+}
+.app .routine-item:last-child,
+.app .morning-routine-item:last-child {
+  border-bottom: none !important;
+}
+
+/* ─── Habit rows: match reference layout ─── */
+.app .habit-card,
+.app .habit-row-item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 12px 16px !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 18px !important;
+  margin-bottom: 8px !important;
+}
+
+/* ─── Progress bars: soft rounded ─── */
+.app .progress-wrap {
+  background: rgba(0, 0, 0, 0.04) !important;
+  border-radius: 999px !important;
+  height: 8px !important;
+  overflow: hidden !important;
+}
+.app .progress-fill {
+  background: linear-gradient(90deg, var(--py-accent) 0%, var(--py-accent-deep) 100%) !important;
+  border-radius: 999px !important;
+  height: 100% !important;
+  transition: width 400ms ease !important;
+}
+
+/* ─── Coach section styling ─── */
+.app .pattern-insights-section,
+.app .coach-section {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border-radius: 24px !important;
+}
+
+/* ─── Finance/Notes panels ─── */
+.app .finance-panel,
+.app .notes-section {
+  border-radius: 24px !important;
+}
+
+/* ─── Modals: iOS sheet style ─── */
+.app .modal-overlay {
+  background: rgba(0, 0, 0, 0.25) !important;
+  backdrop-filter: blur(8px) !important;
+}
+.app .settings-modal {
+  background: rgba(255, 252, 250, 0.97) !important;
+  border-radius: 28px 28px 0 0 !important;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ─── List / Notes / Coach pages: glass styling ─── */
+.app .timeline-wrap,
+.app .list-section,
+.app .notes-section {
+  border-radius: 24px !important;
+}
+.app .list-section .list-row,
+.app .notes-section .note-row {
+  padding: 14px 16px !important;
+  margin-bottom: 8px !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .list-section .list-row:hover,
+.app .notes-section .note-row:hover {
+  background: rgba(255, 245, 248, 0.6) !important;
+}
+.app .notes-section .note-card,
+.app .notes-section .note-item {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 18px !important;
+  padding: 16px !important;
+  margin-bottom: 10px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .coach-section,
+.app .pattern-insights-section {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.app .pattern-insights-section .panel-top {
+  margin-bottom: 16px !important;
+}
+.app .pattern-insights-section .panel-top .title {
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+.app .coach-v2-card,
+.app .coach-v2-suggest-list > div {
+  background: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 22px !important;
+  padding: 20px !important;
+  margin-bottom: 14px !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.7) !important;
+}
+.app .coach-v2-eyebrow {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--py-accent-deep) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.4px !important;
+  margin-bottom: 8px !important;
+}
+.app .coach-v2-desc,
+.app .coach-v2-reason {
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: var(--py-ink-secondary) !important;
+}
+.app .coach-v2-why {
+  background: rgba(255, 240, 244, 0.4) !important;
+  border-radius: 16px !important;
+  padding: 14px 16px !important;
+  margin: 12px 0 !important;
+  border: 1px solid rgba(232, 169, 183, 0.12) !important;
+}
+.app .coach-v2-why-label {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  color: var(--py-accent-deep) !important;
+  margin-bottom: 4px !important;
+}
+.app .coach-conversation {
+  gap: 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
+}
+.app .coach-msg,
+.app .coach-bubble,
+.app .coach-message-wrap {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 22px !important;
+  padding: 18px 20px !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.6) !important;
+}
+.app .coach-mode-selector,
+.app .coach-mode-tabs {
+  display: flex !important;
+  gap: 8px !important;
+  margin-bottom: 16px !important;
+  flex-wrap: wrap !important;
+}
+.app .coach-mode-selector button,
+.app .coach-mode-tabs button,
+.app .coach-mode-btn {
+  padding: 10px 18px !important;
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  color: var(--py-ink-secondary) !important;
+  cursor: pointer !important;
+  transition: all 200ms ease !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .coach-mode-selector button.active,
+.app .coach-mode-selector button[aria-selected="true"],
+.app .coach-mode-tabs button.active,
+.app .coach-mode-btn.active {
+  background: linear-gradient(135deg, var(--theme-primary, #F4B8CA), var(--theme-secondary, #D4708A)) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 14px rgba(212, 112, 138, 0.25) !important;
+}
+.app .coach-input-wrap,
+.app .coach-input-bar,
+.app .coach-input {
+  background: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.7) !important;
+  padding: 6px 6px 6px 18px !important;
+}
+.app .coach-input-wrap .btn-primary,
+.app .coach-send-btn {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.app .coach-toast {
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  padding: 14px 18px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* Coach page additional styling */
+.app .pattern-insights-section .coach-mode-header,
+.app .pattern-insights-section .coach-header-section {
+  margin-bottom: 20px !important;
+}
+.app .coach-v2-card-top {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  margin-bottom: 8px !important;
+}
+.app .coach-v2-btn-row,
+.app .coach-v2-card .btn {
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 10px 18px !important;
+  transition: all 200ms ease !important;
+}
+.app .coach-v2-btn-row .btn-primary,
+.app .coach-v2-card .btn-primary {
+  background: linear-gradient(135deg, var(--theme-primary, #F4B8CA), var(--theme-secondary, #D4708A)) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 14px rgba(212, 112, 138, 0.25) !important;
+}
+.app .coach-v2-btn-row .btn-ghost,
+.app .coach-v2-card .btn-ghost {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+}
+.app .coach-v2-add-all {
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, var(--theme-primary, #F4B8CA), var(--theme-secondary, #D4708A)) !important;
+  color: #fff !important;
+  padding: 12px 22px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 14px rgba(212, 112, 138, 0.2) !important;
+}
+.app .coach-loading,
+.app .coach-loading-wrap {
+  padding: 40px 0 !important;
+  text-align: center !important;
+}
+.app .coach-cooldown-bar {
+  background: rgba(255, 240, 244, 0.5) !important;
+  border-radius: 999px !important;
+  padding: 10px 18px !important;
+  font-size: 13px !important;
+}
+
+/* Notes in dark mode */
+html[data-theme="dark"] .app .notes-section textarea,
+html[data-theme="dark"] .app .notes-section .note-textarea {
+  background: rgba(35, 32, 42, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .notes-section .note-card,
+html[data-theme="dark"] .app .notes-section .note-row,
+html[data-theme="dark"] .app .note-item {
+  background: rgba(30, 28, 35, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+html[data-theme="dark"] .app .notes-section .health-segment-toggle,
+html[data-theme="dark"] .app .notes-segment-toggle {
+  background: rgba(40, 36, 48, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+html[data-theme="dark"] .app .notes-section .health-segment-btn {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+html[data-theme="dark"] .app .notes-search-input {
+  background: rgba(35, 32, 42, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+
+/* List page task rows */
+.app .list-task-row,
+.app .task-list-item {
+  padding: 12px 16px !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 16px !important;
+  margin-bottom: 8px !important;
+}
+
+/* ─── Notes page: iOS glass restyle ─── */
+.app .notes-section {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.app .notes-section .panel-top {
+  margin-bottom: 14px !important;
+}
+.app .notes-section .panel-top .title {
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+.app .notes-segment-toggle,
+.app .notes-section .health-segment-toggle {
+  display: inline-flex !important;
+  padding: 4px !important;
+  background: rgba(255, 238, 242, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 999px !important;
+  margin-bottom: 12px !important;
+  gap: 2px !important;
+}
+.app .notes-section .health-segment-btn {
+  padding: 9px 20px !important;
+  border-radius: 999px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--py-ink-tertiary) !important;
+  cursor: pointer !important;
+  transition: all 200ms ease !important;
+}
+.app .notes-section .health-segment-btn--on,
+.app .notes-section .health-segment-btn[aria-selected="true"] {
+  background: linear-gradient(135deg, var(--theme-primary, #F4B8CA), var(--theme-secondary, #D4708A)) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(212, 112, 138, 0.25) !important;
+}
+.app .notes-scope-hint {
+  font-size: 12px !important;
+  color: var(--py-ink-muted) !important;
+  margin-bottom: 14px !important;
+}
+.app .notes-section .note-add-form,
+.app .notes-section form {
+  margin-bottom: 16px !important;
+}
+.app .notes-section textarea,
+.app .notes-section .note-textarea {
+  background: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 18px !important;
+  padding: 14px 16px !important;
+  font-size: 15px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+  resize: vertical !important;
+}
+.app .notes-section textarea:focus {
+  border-color: var(--theme-accent, rgba(232, 169, 183, 0.5)) !important;
+  box-shadow: 0 0 0 3px rgba(232, 169, 183, 0.1), 0 2px 10px rgba(0, 0, 0, 0.02) !important;
+}
+.app .notes-section .note-card,
+.app .notes-section .note-row,
+.app .note-item {
+  background: rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 20px !important;
+  padding: 16px 18px !important;
+  margin-bottom: 10px !important;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .notes-section .note-subject-tag,
+.app .notes-section select {
+  padding: 8px 14px !important;
+  border-radius: 999px !important;
+  background: rgba(255, 240, 244, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+.app .notes-section .note-actions button {
+  border-radius: 999px !important;
+  padding: 6px 14px !important;
+}
+.app .notes-search-input {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 999px !important;
+  padding: 10px 16px !important;
+  font-size: 14px !important;
+}
+
+/* Theme accent awareness: use CSS variables for accent-dependent elements */
+.app .btn-primary,
+.app .quick-add-entry-mode-btn[aria-selected="true"],
+.app .quick-add-bar .btn-primary,
+.app .input-group .btn-primary {
+  background: linear-gradient(140deg, var(--theme-primary, #F4B8CA) 0%, var(--theme-secondary, #D4708A) 100%) !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--theme-accent, #D4708A) 30%, transparent) !important;
+}
+.app .bottom-nav .bottom-nav-item.active,
+.app .bottom-nav button[aria-current="page"] span {
+  color: var(--theme-accent, #D4607A) !important;
+}
+.app .progress-fill {
+  background: linear-gradient(90deg, var(--theme-primary, #E8A9B7), var(--theme-secondary, #D4708A)) !important;
+}
+
+/* ─── Buttons: pill style ─── */
+.app .btn {
+  border-radius: 999px !important;
+  font-weight: 500 !important;
+  transition: all 180ms ease !important;
+}
+.app .btn-primary {
+  background: linear-gradient(135deg, #E8A9B7 0%, #D4708A 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  border-radius: 999px !important;
+  box-shadow: 0 4px 16px rgba(232, 169, 183, 0.3) !important;
+}
+.app .btn-primary:hover:not(:disabled) {
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 20px rgba(232, 169, 183, 0.4) !important;
+}
+
+/* ─── Toast: rounded glass ─── */
+.app .coach-toast,
+.app .toast {
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: blur(20px) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+}
+
+/* ─── Typography refinement ─── */
+.app {
+  font-family: -apple-system, 'SF Pro Text', 'Inter', system-ui, sans-serif !important;
+  -webkit-font-smoothing: antialiased !important;
+}
+.app h1, .app h2, .app h3 {
+  font-family: -apple-system, 'SF Pro Display', 'Inter', system-ui, sans-serif !important;
+}
+
+/* ─── Scroll reveal: subtle fade ─── */
+.app .scroll-reveal {
+  animation: py-scale-in 300ms var(--py-ease-out) both !important;
+}
+
+/* ─── Capacity selector: soft pills ─── */
+.app .capacity-selector,
+.app .capacity-select {
+  display: flex !important;
+  gap: 8px !important;
+}
+.app .capacity-selector button,
+.app .capacity-pill {
+  padding: 8px 14px !important;
+  border-radius: 999px !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  font-size: 13px !important;
+  cursor: pointer !important;
+  transition: all 180ms ease !important;
+}
+.app .capacity-selector button.active,
+.app .capacity-pill.active {
+  background: rgba(232, 169, 183, 0.15) !important;
+  border-color: var(--py-accent) !important;
+  color: var(--py-accent-deep) !important;
+  box-shadow: 0 2px 8px rgba(232, 169, 183, 0.2) !important;
+}
+
+/* ─── Layout Shell ─── */
+.py-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding-bottom: 80px;
+}
+.py-shell__header {
+  position: sticky;
+  top: 0;
+  z-index: var(--py-z-elevated);
+  padding: max(var(--py-space-4), env(safe-area-inset-top)) var(--py-space-5) var(--py-space-3);
+  background: rgba(255, 248, 246, 0.8);
+  backdrop-filter: blur(var(--py-blur-lg));
+  -webkit-backdrop-filter: blur(var(--py-blur-lg));
+}
+.py-shell__greeting {
+  display: flex;
+  align-items: center;
+  gap: var(--py-space-3);
+}
+.py-shell__brand {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--py-accent) 0%, var(--py-accent-deep) 100%);
+  border-radius: var(--py-radius-sm);
+  color: #fff;
+  font-weight: var(--py-weight-bold);
+  font-size: 14px;
+}
+.py-shell__name {
+  font-family: var(--py-font-display);
+  font-size: var(--py-text-title);
+  font-weight: var(--py-weight-semibold);
+  color: var(--py-ink);
+}
+.py-shell__tagline {
+  font-size: var(--py-text-subhead);
+  color: var(--py-ink-tertiary);
+  margin-top: 2px;
+}
+.py-shell__main {
+  flex: 1;
+  padding: 0 var(--py-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--py-space-5);
+}
+
+/* ─── Animations ─── */
+@keyframes py-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes py-slide-up {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes py-scale-in {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes py-check-pop {
+  0% { transform: scale(0); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1); }
+}
+
+/* ─── Focus Card Grid ─── */
+.py-card-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--py-space-4);
+}
+
+/* ─── Medication Item ─── */
+.py-med-item {
+  display: flex;
+  align-items: center;
+  gap: var(--py-space-3);
+  padding: var(--py-space-3) var(--py-space-4);
+  background: var(--py-surface);
+  border: 1px solid var(--py-border);
+  border-radius: var(--py-radius-md);
+}
+.py-med-item__icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--py-lavender);
+  border-radius: var(--py-radius-sm);
+  font-size: 16px;
+  opacity: 0.85;
+}
+.py-med-item__info {
+  flex: 1;
+}
+.py-med-item__name {
+  font-size: var(--py-text-body);
+  font-weight: var(--py-weight-medium);
+  color: var(--py-ink);
+}
+.py-med-item__dose {
+  font-size: var(--py-text-caption);
+  color: var(--py-ink-tertiary);
+}
+.py-med-item__actions {
+  display: flex;
+  gap: var(--py-space-2);
+}
+
+/* ─── Timer Display ─── */
+.py-timer {
+  text-align: center;
+  padding: var(--py-space-7);
+}
+.py-timer__display {
+  font-family: var(--py-font-mono);
+  font-size: 48px;
+  font-weight: var(--py-weight-light);
+  color: var(--py-ink);
+  letter-spacing: -1px;
+}
+.py-timer__label {
+  font-size: var(--py-text-subhead);
+  color: var(--py-ink-tertiary);
+  margin-top: var(--py-space-2);
+}
+.py-timer__controls {
+  display: flex;
+  justify-content: center;
+  gap: var(--py-space-4);
+  margin-top: var(--py-space-6);
+}
+
+/* ═══════════════════════════════════════════════
+   DARK MODE: Midnight / Mocha themes
+   ═══════════════════════════════════════════════ */
+html[data-theme="dark"] .app .top-left .brand-name {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+html[data-theme="dark"] .app .top-left .h1.h1-banner-date,
+html[data-theme="dark"] .app .top-left h1 {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .top-left span[style*="color"] {
+  color: rgba(255, 255, 255, 0.55) !important;
+}
+html[data-theme="dark"] .app .shell-main .title,
+html[data-theme="dark"] .app .panel-title .title,
+html[data-theme="dark"] .app h2,
+html[data-theme="dark"] .app h3 {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .py-glass-card,
+html[data-theme="dark"] .app .panel,
+html[data-theme="dark"] .app section.panel,
+html[data-theme="dark"] .app .surface-glass {
+  background: rgba(30, 28, 35, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+}
+html[data-theme="dark"] .app .bottom-nav.surface-dock {
+  background: rgba(24, 22, 28, 0.92) !important;
+  border-top-color: rgba(255, 255, 255, 0.04) !important;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3) !important;
+}
+html[data-theme="dark"] .app .bottom-nav button span[style] {
+  background: rgba(40, 36, 48, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+html[data-theme="dark"] .app .bottom-nav button[aria-current="page"] span[style] {
+  background: rgba(60, 40, 55, 0.8) !important;
+  border-color: rgba(200, 140, 170, 0.2) !important;
+  box-shadow: 0 4px 16px rgba(200, 140, 170, 0.15) !important;
+}
+
+/* Dark mode: icon filters — dark, masculine, desaturated */
+html[data-theme="dark"] .app .bottom-nav img,
+html[data-theme="dark"] .app img[src*="icon"],
+html[data-theme="dark"] .app img[src*="Icon"],
+html[data-theme="dark"] .app img[src*="fire"],
+html[data-theme="dark"] .app img[src*="water"],
+html[data-theme="dark"] .app img[src*="sun"],
+html[data-theme="dark"] .app img[src*="fork"],
+html[data-theme="dark"] .app img[src*="PY"],
+html[data-theme="dark"] .app img[src*="fitness"],
+html[data-theme="dark"] .app img[src*="meds"],
+html[data-theme="dark"] .app img[src*="finance"],
+html[data-theme="dark"] .app img[src*="notes"],
+html[data-theme="dark"] .app img[src*="timer"],
+html[data-theme="dark"] .app img[src*="monthly"],
+html[data-theme="dark"] .app img[src*="task"],
+html[data-theme="dark"] .app img[src*="habit"],
+html[data-theme="dark"] .app img[src*="nav"],
+html[data-theme="dark"] .app img[src*="settings"] {
+  filter: brightness(0.7) saturate(0.5) contrast(1.1) !important;
+}
+
+/* Dark mode text colors */
+html[data-theme="dark"] .app {
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+html[data-theme="dark"] .app .list-row-title,
+html[data-theme="dark"] .app .item-text,
+html[data-theme="dark"] .app .habit-checkin-name,
+html[data-theme="dark"] .app .bedtime-title {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .list-row-time,
+html[data-theme="dark"] .app .meta,
+html[data-theme="dark"] .app .sub,
+html[data-theme="dark"] .app .bedtime-subtitle {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+html[data-theme="dark"] .app .input-group,
+html[data-theme="dark"] .app .py-input,
+html[data-theme="dark"] .app .quick-add-entry-mode {
+  background: rgba(40, 36, 48, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .input-group .input,
+html[data-theme="dark"] .app .py-input {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .input-group .input::placeholder,
+html[data-theme="dark"] .app .py-input::placeholder {
+  color: rgba(255, 255, 255, 0.35) !important;
+}
+html[data-theme="dark"] .app .hour-card {
+  background: rgba(35, 32, 42, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.04) !important;
+}
+html[data-theme="dark"] .app .coach-v2-card,
+html[data-theme="dark"] .app .coach-msg,
+html[data-theme="dark"] .app .coach-bubble {
+  background: rgba(35, 32, 42, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+html[data-theme="dark"] .app .coach-v2-why {
+  background: rgba(60, 40, 55, 0.4) !important;
+  border-color: rgba(200, 140, 170, 0.12) !important;
+}
+html[data-theme="dark"] .app .coach-mode-selector button,
+html[data-theme="dark"] .app .coach-mode-btn {
+  background: rgba(40, 36, 48, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+html[data-theme="dark"] .app .progress-wrap {
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* Center PY button in dark mode */
+html[data-theme="dark"] .app .bottom-nav button[aria-label="Coach"] {
+  background: radial-gradient(circle at 40% 30%, rgba(80, 50, 65, 0.95), rgba(50, 30, 40, 0.8)) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4), 0 3px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* COMPREHENSIVE: no black text in dark mode */
+html[data-theme="dark"] .app span,
+html[data-theme="dark"] .app p,
+html[data-theme="dark"] .app div,
+html[data-theme="dark"] .app label,
+html[data-theme="dark"] .app li {
+  color: inherit;
+}
+html[data-theme="dark"] .app [style*="color: var(--py-ink)"],
+html[data-theme="dark"] .app [style*="color:var(--py-ink)"] {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .panel-title .title,
+html[data-theme="dark"] .app .panel-top .title,
+html[data-theme="dark"] .app .empty-title,
+html[data-theme="dark"] .app .list-page-title,
+html[data-theme="dark"] .app .coach-v2-card-top,
+html[data-theme="dark"] .app .coach-v2-title {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .list-page-count,
+html[data-theme="dark"] .app .state-empty,
+html[data-theme="dark"] .app .empty,
+html[data-theme="dark"] .app .settings-hint,
+html[data-theme="dark"] .app .pct {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+html[data-theme="dark"] .app .daily-progress-copy,
+html[data-theme="dark"] .app .label,
+html[data-theme="dark"] .app select,
+html[data-theme="dark"] .app option {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+html[data-theme="dark"] .app .bottom-nav span[style] {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+html[data-theme="dark"] .app .bottom-nav button[aria-current="page"] span:last-child {
+  color: rgba(200, 160, 180, 0.9) !important;
+}
+html[data-theme="dark"] .app .btn {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+html[data-theme="dark"] .app .btn-primary {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .check .item-text,
+html[data-theme="dark"] .app .checkmark + span {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+html[data-theme="dark"] .app .item-text-done {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Notes page dark mode */
+html[data-theme="dark"] .app .notes-section,
+html[data-theme="dark"] .app .notes-section .note-card,
+html[data-theme="dark"] .app .notes-section textarea {
+  background: rgba(30, 28, 35, 0.6) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+html[data-theme="dark"] .app .notes-section .note-subject,
+html[data-theme="dark"] .app .notes-section .note-date {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE: iPad, Mac, larger screens
+   ═══════════════════════════════════════════════ */
+
+/* Tablet (iPad) */
+@media (min-width: 768px) {
+  .app .shell-main {
+    max-width: 600px !important;
+    margin: 0 auto !important;
+    padding: 0 28px !important;
+  }
+  .app .top.top-plain {
+    max-width: 640px !important;
+    margin: 0 auto !important;
+    padding-left: 28px !important;
+    padding-right: 28px !important;
+  }
+  .app .bottom-nav.surface-dock {
+    max-width: 520px !important;
+    margin: 0 auto !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    border-radius: 24px 24px 0 0 !important;
+    bottom: 0 !important;
+    right: auto !important;
+  }
+  .py-card-grid {
+    gap: 16px !important;
+  }
+  .app .panel,
+  .app section.panel {
+    padding: 24px !important;
+  }
+  .app .quick-add-entry-mode-btn {
+    padding: 12px 36px !important;
+    font-size: 16px !important;
+  }
+}
+
+/* Desktop (Mac / large iPad) */
+@media (min-width: 1024px) {
+  .app .shell-main {
+    max-width: 680px !important;
+    padding: 0 36px !important;
+  }
+  .app .top.top-plain {
+    max-width: 720px !important;
+    padding-left: 36px !important;
+    padding-right: 36px !important;
+  }
+  .app .bottom-nav.surface-dock {
+    max-width: 560px !important;
+    border-radius: 28px 28px 0 0 !important;
+    padding: 10px 16px !important;
+  }
+  .py-card-grid {
+    gap: 20px !important;
+  }
+  .app .panel,
+  .app section.panel {
+    padding: 28px !important;
+    border-radius: 28px !important;
+  }
+  .app .surface-glass {
+    border-radius: 28px !important;
+  }
+  .app .hour-card {
+    border-radius: 22px !important;
+    padding: 16px 20px !important;
+  }
+}
+
+/* Large desktop */
+@media (min-width: 1440px) {
+  .app .shell-main {
+    max-width: 720px !important;
+  }
+  .app .top.top-plain {
+    max-width: 760px !important;
+  }
+  .app .bottom-nav.surface-dock {
+    max-width: 600px !important;
+    border-radius: 32px 32px 0 0 !important;
+  }
+}
+
+/* ─── Utility ─── */
+.py-text-muted { color: var(--py-ink-muted); }
+.py-text-secondary { color: var(--py-ink-secondary); }
+.py-text-accent { color: var(--py-accent-deep); }
+.py-text-center { text-align: center; }
+.py-flex { display: flex; }
+.py-flex-col { display: flex; flex-direction: column; }
+.py-items-center { align-items: center; }
+.py-justify-between { justify-content: space-between; }
+.py-gap-2 { gap: var(--py-space-2); }
+.py-gap-3 { gap: var(--py-space-3); }
+.py-gap-4 { gap: var(--py-space-4); }
+.py-gap-5 { gap: var(--py-space-5); }
+.py-mt-3 { margin-top: var(--py-space-3); }
+.py-mt-4 { margin-top: var(--py-space-4); }
+.py-mt-5 { margin-top: var(--py-space-5); }
+.py-mb-3 { margin-bottom: var(--py-space-3); }
+.py-mb-4 { margin-bottom: var(--py-space-4); }
+.py-w-full { width: 100%; }
