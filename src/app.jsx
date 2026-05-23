@@ -39,7 +39,17 @@ import { PageInstructions } from "./PageInstructions";
 import { HabitIconPicker, HabitIconBadge } from "./HabitIconPicker";
 import { DEFAULT_HABIT_ICON, normalizeHabitIcon, suggestHabitIconFromLabel } from "./habitIcons";
 import { WorkoutProgramPickerModal } from "./WorkoutProgramPickerModal";
-import { FloatingNav } from "./components/FloatingNav";
+import { DockNavIcon } from "./DockNavIcon";
+import { getDockNavAsset } from "./dockNavAssets";
+import { HomeModuleTray } from "./HomeModuleTray";
+import {
+  buildMainDockItems,
+  normalizeEnabledModules,
+  normalizeNavOrder,
+  syncNavVisibilityFromModules,
+  DEFAULT_ENABLED_MODULES as APP_DEFAULT_ENABLED_MODULES,
+  DEFAULT_NAV_ORDER as APP_DEFAULT_NAV_ORDER,
+} from "./appNavModel";
 import { GlassCard } from "./components/GlassCard";
 import { PillButton } from "./components/PillButton";
 import { SegmentedControl } from "./components/SegmentedControl";
@@ -2256,16 +2266,16 @@ export default function App() {
   const [enabledModules, setEnabledModules] = useState(() => {
     try {
       const raw = localStorage.getItem("cute_schedule_enabled_modules_v1");
-      if (raw) return JSON.parse(raw);
+      if (raw) return normalizeEnabledModules(JSON.parse(raw));
     } catch {}
-    return DEFAULT_ENABLED_MODULES;
+    return [...APP_DEFAULT_ENABLED_MODULES];
   });
   const [navOrder, setNavOrder] = useState(() => {
     try {
       const raw = localStorage.getItem("cute_schedule_nav_order_v1");
-      if (raw) return JSON.parse(raw);
+      if (raw) return normalizeNavOrder(JSON.parse(raw), APP_DEFAULT_ENABLED_MODULES);
     } catch {}
-    return DEFAULT_NAV_ORDER;
+    return [...APP_DEFAULT_NAV_ORDER];
   });
   const [coachingTone, setCoachingTone] = useState(() => {
     try { return localStorage.getItem("cute_schedule_coaching_tone_v1") || "gentle"; } catch { return "gentle"; }
@@ -2277,6 +2287,17 @@ export default function App() {
   useEffect(() => { try { localStorage.setItem("cute_schedule_enabled_modules_v1", JSON.stringify(enabledModules)); } catch {} }, [enabledModules]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_nav_order_v1", JSON.stringify(navOrder)); } catch {} }, [navOrder]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_coaching_tone_v1", coachingTone); } catch {} }, [coachingTone]);
+
+  const applyNavPreferences = useCallback((nextOrder, nextEnabled) => {
+    const enabled = normalizeEnabledModules(nextEnabled);
+    const order = normalizeNavOrder(nextOrder, enabled);
+    setEnabledModules(enabled);
+    setNavOrder(order);
+    setProfile((p) => ({
+      ...p,
+      navVisibility: syncNavVisibilityFromModules(enabled, order, normalizeNavVisibility(p.navVisibility)),
+    }));
+  }, []);
 
   // Editable bedtime routine template (persisted)
   const [routineTemplate, setRoutineTemplate] = useState(() => {
@@ -6010,28 +6031,13 @@ export default function App() {
   );
 
   const mainDockItems = useMemo(() => {
-    const nv = normalizeNavVisibility(profile.navVisibility);
-    const order = normalizeDockOrder(profile.dockOrder);
-    const dockMeta = {
-      today: { id: "today", label: "Home", headerLabel: "Today", icon: CalendarIcon },
-      plan: { id: "today", label: "Plan", headerLabel: "Plan", icon: CalendarIcon },
-      list: { id: "list", label: "List", headerLabel: "List", icon: MenuIcon },
-      monthly: { id: "monthly", label: "Monthly", headerLabel: "Monthly", icon: CalendarIcon },
-      coach: { id: "coach", label: "Coach", headerLabel: "Coach", icon: SparkleIcon },
-      notes: { id: "notes", label: "Notes", headerLabel: "Notes", icon: MoonIcon },
-      finance: { id: "finance", label: "Finance", headerLabel: "Finance", icon: FinanceIcon },
-      health: { id: "health", label: "Health", headerLabel: "Health", icon: DumbbellIcon },
-      insights: { id: "insights", label: "Insights", headerLabel: "Insights", icon: SparkleIcon },
-      medications: { id: "medications", label: "Meds", headerLabel: "Medications", icon: SparkleIcon },
-      timers: { id: "timers", label: "Timers", headerLabel: "Timers", icon: SparkleIcon },
-      you: { id: "you", label: "You", headerLabel: "Profile", icon: SparkleIcon },
-    };
-    const items = [dockMeta.today];
-    for (const oid of order) {
-      if (nv[oid] === true && dockMeta[oid]) items.push(dockMeta[oid]);
-    }
-    return items;
-  }, [profile.navVisibility, profile.dockOrder]);
+    return buildMainDockItems({
+      navOrder,
+      enabledModules,
+      navVisibility: profile.navVisibility,
+      dockOrder: profile.dockOrder,
+    });
+  }, [navOrder, enabledModules, profile.navVisibility, profile.dockOrder]);
 
   // V2 navigation modules for the new FloatingNav component
   const navModules = useMemo(() => getNavModules(navOrder, enabledModules), [navOrder, enabledModules]);
@@ -6047,21 +6053,31 @@ export default function App() {
   const headerTitle = useMemo(() => {
     if (tab === "today") return formatWeekday(tKey);
     if (tab === "plan") return "Plan";
+    if (tab === "monthly") return "Goals";
     if (tab === "notes") return "Notes";
     if (tab === "finance") return "Finance";
     if (tab === "health") return "Health";
+    if (tab === "you") return "You";
+    if (tab === "medications") return "Meds";
+    if (tab === "timers") return "Timers";
+    if (tab === "coach") return "Coach";
     return "Pattern insights";
   }, [tab, tKey]);
 
   const headerSubtitle = useMemo(() => {
     if (tab === "plan") {
       return isSameDayKey(tKey, realTodayKey)
-        ? "Monthly objectives · today's list"
-        : `Monthly objectives · ${formatWeekday(tKey)}`;
+        ? "Today's task list"
+        : `${formatWeekday(tKey)} task list`;
     }
+    if (tab === "monthly") return "Monthly objectives & progress";
+    if (tab === "you") return "Profile, habits & routines";
+    if (tab === "medications") return "Tracking & reminders";
     if (tab !== "today" && tab !== "plan") {
       if (tab === "finance") return "Income, spending & savings";
       if (tab === "health") return "Training, macros & weight";
+      if (tab === "coach") return "Schedule, fitness & finance coaching";
+      if (tab === "timers") return "Focus & routine timers";
       return "Insights";
     }
     return null;
@@ -6072,18 +6088,17 @@ export default function App() {
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
 
   useEffect(() => {
-    const alwaysAllowed = ["today", "insights", "you", "coach", "list", "medications", "timers", "health", "finance", "notes", "monthly"];
-    if (alwaysAllowed.includes(tab)) return;
-    if (tab === "list" || tab === "monthly") setTab("plan");
+    if (tab === "list") setTab("plan");
+    else if (tab === "insights") setTab("coach");
   }, [tab]);
 
   useEffect(() => {
-    const nv = normalizeNavVisibility(profile.navVisibility);
-    if (nv[tab] === true) return;
-    const order = ["today", ...normalizeDockOrder(profile.dockOrder)];
-    const next = order.find((id) => nv[id] === true) || "today";
-    if (next !== tab) setTab(next);
-  }, [tab, profile.navVisibility, profile.dockOrder]);
+    const dockTabs = new Set(mainDockItems.map((item) => item.id));
+    const coreTabs = ["plan", "health", "coach", "notes", "finance"];
+    if (!coreTabs.includes(tab)) return;
+    if (dockTabs.has(tab)) return;
+    setTab(mainDockItems[0]?.id || "today");
+  }, [tab, mainDockItems]);
 
   useLayoutEffect(() => {
     if (authWaiting || showLoginGate) return;
@@ -6256,11 +6271,16 @@ export default function App() {
               </div>
             </header>
 
-            {/* Bottom navigation: frosted dock, active-tab pill */}
-            <nav className="bottom-nav surface-dock" aria-label="Main">
-              {mainDockItems.map((item) => {
-                const Icon = item.icon;
-                return (
+            {/* Bottom navigation: PNG dock icons */}
+            <nav className="bottom-nav surface-dock bottom-nav--png" aria-label="Main">
+              {(() => {
+                const coachItem = mainDockItems.find((item) => item.centerAction);
+                const sideItems = coachItem ? mainDockItems.filter((item) => !item.centerAction) : mainDockItems;
+                const centerSplit = coachItem ? Math.ceil(sideItems.length / 2) : sideItems.length;
+                const beforeCenter = sideItems.slice(0, centerSplit);
+                const afterCenter = sideItems.slice(centerSplit);
+
+                const renderDockButton = (item) => (
                   <button
                     key={item.id}
                     type="button"
@@ -6271,11 +6291,30 @@ export default function App() {
                     }}
                     aria-current={tab === item.id ? "page" : undefined}
                   >
-                    <Icon aria-hidden />
-                    {item.label}
+                    <DockNavIcon tabId={item.moduleId || item.id} active={tab === item.id} />
+                    <span className="bottom-nav-label">{item.label}</span>
                   </button>
                 );
-              })}
+
+                return (
+                  <>
+                    {beforeCenter.map(renderDockButton)}
+                    {coachItem ? (
+                      <button
+                        key={coachItem.id}
+                        type="button"
+                        className={`bottom-nav-item bottom-nav-item--center ${tab === coachItem.id ? "active" : ""}`}
+                        onClick={() => setTab(coachItem.id)}
+                        aria-current={tab === coachItem.id ? "page" : undefined}
+                      >
+                        <DockNavIcon tabId={coachItem.moduleId || coachItem.id} active={tab === coachItem.id} variant="center" />
+                        <span className="bottom-nav-label">{coachItem.label}</span>
+                      </button>
+                    ) : null}
+                    {afterCenter.map(renderDockButton)}
+                  </>
+                );
+              })()}
             </nav>
 
             {/* Sprint countdown bar */}
@@ -6710,32 +6749,15 @@ export default function App() {
               )}
             </section>
 
-            {/* Modules not in nav — accessible from bottom of Home */}
-            {tab === "today" && (() => {
-              const navImgMap = { today: "homeicon.png", list: "planIcon.png", insights: "InsightsIcon.png", you: "YouIcon.png", coach: "PYIcon.png", health: "fitness.png", medications: "meds.png", finance: "finance.png", notes: "notes.png", timers: "timer.png", monthly: "monthly.png" };
-              const navLabelMap = { today: "Home", list: "Plan", insights: "Insights", you: "You", coach: "Coach", health: "Fitness", medications: "Meds", finance: "Finance", notes: "Notes", timers: "Timers", monthly: "Goals" };
-              const inNav = navOrder.filter(id => enabledModules.includes(id) || id === "today" || id === "you");
-              const notInNav = Object.keys(navImgMap).filter(id => !inNav.includes(id) && id !== "today" && id !== "you");
-              if (notInNav.length === 0) return null;
-              return (
-                <div className="scroll-reveal" style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--py-ink-secondary)", marginBottom: 10 }}>More</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                    {notInNav.map(id => (
-                      <button key={id} type="button" onClick={() => setTab(id)} style={{
-                        display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                        padding: "12px 10px", minWidth: 72, background: "rgba(255,255,255,0.5)",
-                        border: "1px solid rgba(0,0,0,0.03)", borderRadius: 18, cursor: "pointer",
-                        boxShadow: "0 2px 8px rgba(0,0,0,0.02), inset 0 1px 0 rgba(255,255,255,0.5)",
-                      }}>
-                        <img src={`${import.meta.env.BASE_URL}${navImgMap[id]}`} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: "contain" }} />
-                        <span style={{ fontSize: 11, fontWeight: 500, color: "var(--py-ink-secondary)" }}>{navLabelMap[id]}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })()}
+            {tab === "today" ? (
+              <HomeModuleTray
+                navOrder={navOrder}
+                enabledModules={enabledModules}
+                onNavOrderChange={(order) => applyNavPreferences(order, enabledModules)}
+                onEnabledModulesChange={(enabled) => applyNavPreferences(navOrder, enabled)}
+                onOpenModule={(moduleTab) => setTab(moduleTab)}
+              />
+            ) : null}
 
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && todayHiddenDockTabs.length > 0 && (
               <div className="today-dock-fallback-stack scroll-reveal" style={{ display: "none" }}>
@@ -6955,77 +6977,6 @@ export default function App() {
           </>
         ) : tab === "plan" ? (
           <section className="panel plan-page scroll-reveal">
-            <div className="plan-section plan-section-monthly monthly-objectives-section">
-              <div className="panel-top">
-                <div className="panel-title">
-                  <div className="title">Monthly objectives</div>
-                </div>
-              </div>
-
-              <form className="monthly-add monthly-add-bar" onSubmit={addMonthly}>
-                <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" aria-label="New objective" />
-                <button className="btn btn-primary monthly-add-submit" type="submit">Add</button>
-              </form>
-
-              {appState.monthly.length === 0 ? (
-                <div className="empty">Add your first monthly objective.</div>
-              ) : (
-                <ul className="list list-page-list monthly-objectives-list">
-                  {appState.monthly.map((m) => (
-                    <li
-                      key={m.id}
-                      className={["list-row", "monthly-list-row", m.done ? "monthly-list-row-done" : ""].filter(Boolean).join(" ")}
-                    >
-                      {editingMonthlyId === m.id ? (
-                        <div className="monthly-edit-row list-row-edit-row">
-                          <input
-                            className="input"
-                            value={editingMonthlyText}
-                            onChange={(e) => setEditingMonthlyText(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") editMonthly(m.id, editingMonthlyText); if (e.key === "Escape") { setEditingMonthlyId(null); setEditingMonthlyText(""); } }}
-                            autoFocus
-                          />
-                          <div className="list-row-edit-actions">
-                            <button type="button" className="btn btn-sm btn-primary" onClick={() => editMonthly(m.id, editingMonthlyText)}>Save</button>
-                            <button type="button" className="btn btn-sm" onClick={() => { setEditingMonthlyId(null); setEditingMonthlyText(""); }}>Cancel</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="list-row-body monthly-list-row-body">
-                          <label className="list-row-main check monthly-list-check" onClick={(e) => e.stopPropagation()}>
-                            <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
-                            <span className="checkmark" />
-                            <span className={`list-row-title ${m.done ? "item-text-done" : ""}`}>{m.text}</span>
-                          </label>
-                          <div className="list-row-actions">
-                            <button
-                              type="button"
-                              className="icon-btn list-row-action list-row-more"
-                              title="Objective options"
-                              aria-label="Objective options"
-                              data-list-menu-trigger
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const anchorEl = e.currentTarget;
-                                if (!anchorEl) return;
-                                const rect = anchorEl.getBoundingClientRect();
-                                dismissTaskDropdownOnly();
-                                setSecondaryListMenu((prev) =>
-                                  prev?.kind === "monthly" && prev.id === m.id ? null : { kind: "monthly", id: m.id, rect }
-                                );
-                              }}
-                            >
-                              <MenuIcon style={{ width: 18, height: 18 }} />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
             <div className="plan-section plan-section-list list-page">
             <div className="list-page-header">
               <h2 className="list-page-title">{isSameDayKey(tKey, realTodayKey) ? "Today's list" : formatWeekday(tKey)}</h2>
@@ -7127,6 +7078,81 @@ export default function App() {
                 })}
               </ul>
             )}
+            </div>
+
+          </section>
+        ) : tab === "monthly" ? (
+          <section className="panel monthly-page scroll-reveal">
+            <div className="plan-section plan-section-monthly monthly-objectives-section">
+              <div className="panel-top monthly-page-header">
+                <div className="panel-title">
+                  <img src={`${import.meta.env.BASE_URL}monthly.png`} alt="" className="monthly-page-icon" width={40} height={40} />
+                  <div className="title">Monthly objectives</div>
+                </div>
+              </div>
+              <form className="monthly-add monthly-add-bar" onSubmit={addMonthly}>
+                <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" aria-label="New objective" />
+                <button className="btn btn-primary monthly-add-submit" type="submit">Add</button>
+              </form>
+
+              {appState.monthly.length === 0 ? (
+                <div className="empty">Add your first monthly objective.</div>
+              ) : (
+                <ul className="list list-page-list monthly-objectives-list">
+                  {appState.monthly.map((m) => (
+                    <li
+                      key={m.id}
+                      className={["list-row", "monthly-list-row", m.done ? "monthly-list-row-done" : ""].filter(Boolean).join(" ")}
+                    >
+                      {editingMonthlyId === m.id ? (
+                        <div className="monthly-edit-row list-row-edit-row">
+                          <input
+                            className="input"
+                            value={editingMonthlyText}
+                            onChange={(e) => setEditingMonthlyText(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") editMonthly(m.id, editingMonthlyText); if (e.key === "Escape") { setEditingMonthlyId(null); setEditingMonthlyText(""); } }}
+                            autoFocus
+                          />
+                          <div className="list-row-edit-actions">
+                            <button type="button" className="btn btn-sm btn-primary" onClick={() => editMonthly(m.id, editingMonthlyText)}>Save</button>
+                            <button type="button" className="btn btn-sm" onClick={() => { setEditingMonthlyId(null); setEditingMonthlyText(""); }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="list-row-body monthly-list-row-body">
+                          <label className="list-row-main check monthly-list-check" onClick={(e) => e.stopPropagation()}>
+                            <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
+                            <span className="checkmark" />
+                            <span className={`list-row-title ${m.done ? "item-text-done" : ""}`}>{m.text}</span>
+                          </label>
+                          <div className="list-row-actions">
+                            <button
+                              type="button"
+                              className="icon-btn list-row-action list-row-more"
+                              title="Objective options"
+                              aria-label="Objective options"
+                              data-list-menu-trigger
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const anchorEl = e.currentTarget;
+                                if (!anchorEl) return;
+                                const rect = anchorEl.getBoundingClientRect();
+                                dismissTaskDropdownOnly();
+                                setSecondaryListMenu((prev) =>
+                                  prev?.kind === "monthly" && prev.id === m.id ? null : { kind: "monthly", id: m.id, rect }
+                                );
+                              }}
+                            >
+                              <MenuIcon style={{ width: 18, height: 18 }} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            
             </div>
           </section>
         ) : tab === "coach" ? (
@@ -8580,9 +8606,8 @@ export default function App() {
               setRoutineTemplate={setRoutineTemplate}
               onOpenSettings={() => { setSettingsSubView("main"); setShowSettings(true); }}
               enabledModules={enabledModules}
-              setEnabledModules={setEnabledModules}
               navOrder={navOrder}
-              setNavOrder={setNavOrder}
+              onNavPreferencesChange={applyNavPreferences}
               coachingTone={coachingTone}
               setCoachingTone={setCoachingTone}
               onNavigateModule={(id) => setTab(id)}

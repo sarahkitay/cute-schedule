@@ -30,7 +30,7 @@ export function normalizeNavVisibility(raw) {
 /** Bottom dock order for every tab except Today (Today is always first). */
 export const DOCK_ORDERABLE_IDS = Object.freeze(["plan", "health", "coach", "notes", "finance"]);
 
-const DOCK_ORDER_ALIASES = Object.freeze({ list: "plan", monthly: "plan" });
+const DOCK_ORDER_ALIASES = Object.freeze({ list: "plan" });
 
 export function normalizeDockOrder(raw) {
   const defaults = [...DOCK_ORDERABLE_IDS];

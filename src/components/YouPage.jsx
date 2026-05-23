@@ -1,4 +1,13 @@
 import React, { useState } from "react";
+import { DockNavIcon } from "../DockNavIcon";
+import { getDockNavAsset } from "../dockNavAssets";
+import {
+  APP_MODULE_CATALOG,
+  addModuleToNav,
+  removeModuleFromNav,
+  isModuleInNav,
+  resolveTabId,
+} from "../appNavModel";
 
 export function YouPage({
   profile, setProfile,
@@ -6,8 +15,9 @@ export function YouPage({
   morningRoutineTemplate, setMorningRoutineTemplate,
   routineTemplate, setRoutineTemplate,
   onOpenSettings,
-  enabledModules, setEnabledModules,
-  navOrder, setNavOrder,
+  enabledModules,
+  navOrder,
+  onNavPreferencesChange,
   coachingTone, setCoachingTone,
   onNavigateModule,
 }) {
@@ -17,30 +27,36 @@ export function YouPage({
   const [newRoutineLine, setNewRoutineLine] = useState("");
   const [nightRoutineLine, setNightRoutineLine] = useState("");
 
-  const allModules = [
-    { id: "today", label: "Home", desc: "Your daily command center", img: "homeicon.png" },
-    { id: "list", label: "Plan", desc: "Today's tasks & monthly goals", img: "planIcon.png" },
-    { id: "insights", label: "Insights", desc: "Patterns & averages", img: "InsightsIcon.png" },
-    { id: "you", label: "You", desc: "Profile & settings", img: "YouIcon.png" },
-    { id: "health", label: "Fitness", desc: "Workouts, macros & programs", img: "fitness.png" },
-    { id: "medications", label: "Medications", desc: "Tracking & reminders", img: "meds.png" },
-    { id: "finance", label: "Finance", desc: "Income, spending & patterns", img: "finance.png" },
-    { id: "notes", label: "Notes", desc: "Thoughts, journal, ideas", img: "notes.png" },
-    { id: "timers", label: "Timers", desc: "Focus & routine timers", img: "timer.png" },
-    { id: "monthly", label: "Monthly Goals", desc: "Objectives & tracking", img: "monthly.png" },
-  ];
-
-  const navSlots = ["today", "list", "coach", "insights", "you"];
+  const allModules = APP_MODULE_CATALOG.filter((m) => m.id !== "today").map((mod) => {
+    const asset = getDockNavAsset(mod.id);
+    return {
+      id: mod.id,
+      tab: mod.tab,
+      label: asset.label,
+      desc: {
+        plan: "Today's task list",
+        monthly: "Objectives & tracking",
+        coach: "Schedule, fitness & finance coaching",
+        you: "Profile & settings",
+        health: "Workouts, macros & programs",
+        medications: "Tracking & reminders",
+        finance: "Income, spending & patterns",
+        notes: "Thoughts, journal, ideas",
+        timers: "Focus & routine timers",
+      }[mod.id] || asset.label,
+      img: getDockNavAsset(mod.id).image,
+    };
+  });
 
   function toggleNavModule(id) {
-    setNavOrder(prev => {
-      if (prev.includes(id)) return prev.filter(x => x !== id);
-      return [...prev.slice(0, prev.indexOf("you")), id, ...prev.slice(prev.indexOf("you"))].filter((v, i, a) => a.indexOf(v) === i);
-    });
-    setEnabledModules(prev => {
-      if (prev.includes(id)) return prev.filter(x => x !== id);
-      return [...prev, id];
-    });
+    const inNav = isModuleInNav(id, navOrder, enabledModules);
+    if (inNav) {
+      const { navOrder: nextOrder } = removeModuleFromNav(id, navOrder, enabledModules);
+      onNavPreferencesChange(nextOrder, enabledModules);
+      return;
+    }
+    const { navOrder: nextOrder, enabledModules: nextEnabled } = addModuleToNav(id, navOrder, enabledModules);
+    onNavPreferencesChange(nextOrder, nextEnabled);
   }
 
   function addHabit() {
@@ -153,11 +169,10 @@ export function YouPage({
         <p style={{ fontSize: 12, color: "var(--py-ink-muted)" }}>Anything not in the nav is accessible from the bottom of the Home page.</p>
         <div className="py-flex-col py-gap-2">
           {allModules.map(mod => {
-            const inNav = enabledModules.includes(mod.id);
+            const inNav = isModuleInNav(mod.id, navOrder, enabledModules);
             return (
               <div key={mod.id} onClick={() => toggleNavModule(mod.id)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: inNav ? "rgba(255,218,230,0.5)" : "rgba(255,255,255,0.5)", border: `1px solid ${inNav ? "rgba(232,169,183,0.3)" : "rgba(0,0,0,0.04)"}`, borderRadius: 18, cursor: "pointer", transition: "all 200ms ease" }}>
-                {mod.img && <img src={`${import.meta.env.BASE_URL}${mod.img}`} alt="" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "contain" }} />}
-                {!mod.img && <span style={{ width: 36, height: 36, borderRadius: 10, background: "linear-gradient(135deg, rgba(232,169,183,0.15), rgba(200,180,220,0.1))" }} />}
+                <DockNavIcon tabId={mod.id} active={inNav} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{mod.label}</div>
                   <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{mod.desc}</div>
@@ -214,9 +229,8 @@ export function YouPage({
         <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--py-ink)", marginBottom: 12 }}>All Modules</h3>
         <div className="py-flex-col py-gap-3">
           {allModules.map(mod => (
-            <button key={mod.id} type="button" onClick={() => onNavigateModule(mod.id)} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "rgba(255,255,255,0.55)", backdropFilter: "blur(16px)", border: "1px solid rgba(0,0,0,0.04)", borderRadius: 18, cursor: "pointer", textAlign: "left", boxShadow: "0 2px 10px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.5)" }}>
-              {mod.img && <img src={`${import.meta.env.BASE_URL}${mod.img}`} alt="" style={{ width: 40, height: 40, borderRadius: 12, objectFit: "contain" }} />}
-              {!mod.img && <span style={{ width: 40, height: 40, borderRadius: 12, background: "linear-gradient(135deg, rgba(232,169,183,0.12), rgba(200,180,220,0.08))" }} />}
+            <button key={mod.id} type="button" onClick={() => onNavigateModule(resolveTabId(mod.id))} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "rgba(255,255,255,0.55)", backdropFilter: "blur(16px)", border: "1px solid rgba(0,0,0,0.04)", borderRadius: 18, cursor: "pointer", textAlign: "left", boxShadow: "0 2px 10px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.5)" }}>
+              <DockNavIcon tabId={mod.id} active={false} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{mod.label}</div>
                 <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{mod.desc}</div>

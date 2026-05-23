@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { GlassCard } from "./GlassCard";
 import { PillButton } from "./PillButton";
 import { NavIcons } from "./NavIcons";
+import { DockNavIcon } from "../DockNavIcon";
 import { TextInput } from "./SoftInput";
 import { getMedicationStatus, logMedicationAction, getMedicationAdherence } from "../modules/medications";
 
@@ -52,7 +53,10 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
   return (
     <div className="py-flex-col py-gap-5">
       <div className="py-section-header">
-        <h2 className="py-section-header__title">Medications</h2>
+        <div className="py-section-header__title-row">
+          <DockNavIcon tabId="medications" active />
+          <h2 className="py-section-header__title">Medications</h2>
+        </div>
         <PillButton variant="secondary" size="sm" onClick={() => setShowAdd(!showAdd)}>
           <NavIcons name="plus" size={14} /> Add
         </PillButton>
