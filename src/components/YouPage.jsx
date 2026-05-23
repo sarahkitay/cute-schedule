@@ -20,7 +20,6 @@ export function YouPage({
   const allModules = [
     { id: "today", label: "Home", desc: "Your daily command center", img: "homeicon.png" },
     { id: "list", label: "Plan", desc: "Today's tasks & monthly goals", img: "planIcon.png" },
-    { id: "coach", label: "Coach", desc: "AI personal coaching", img: "PYIcon.png" },
     { id: "insights", label: "Insights", desc: "Patterns & averages", img: "InsightsIcon.png" },
     { id: "you", label: "You", desc: "Profile & settings", img: "YouIcon.png" },
     { id: "health", label: "Fitness", desc: "Workouts, macros & programs", img: "fitness.png" },

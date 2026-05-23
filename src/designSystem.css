@@ -1055,13 +1055,21 @@ html[data-theme="dark"] .app .greeting-tagline {
 
 /* ─── Morning routine section: match reference ─── */
 .app .routine-block,
-.app .morning-routine-block {
+.app .morning-routine-block,
+.app .morning-routine {
   background: rgba(255, 255, 255, 0.6) !important;
   backdrop-filter: blur(16px) !important;
   border: 1px solid rgba(0, 0, 0, 0.04) !important;
   border-radius: 24px !important;
   padding: 20px !important;
+  margin-top: 8px !important;
+  margin-bottom: 8px !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+html[data-theme="dark"] .app .morning-routine,
+html[data-theme="dark"] .app .routine-block {
+  background: rgba(30, 28, 35, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
 }
 
 /* Routine items: clean rows */
@@ -1287,6 +1295,83 @@ html[data-theme="dark"] .app .greeting-tagline {
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
 }
 
+/* Coach page additional styling */
+.app .pattern-insights-section .coach-mode-header,
+.app .pattern-insights-section .coach-header-section {
+  margin-bottom: 20px !important;
+}
+.app .coach-v2-card-top {
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  line-height: 1.4 !important;
+  margin-bottom: 8px !important;
+}
+.app .coach-v2-btn-row,
+.app .coach-v2-card .btn {
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  padding: 10px 18px !important;
+  transition: all 200ms ease !important;
+}
+.app .coach-v2-btn-row .btn-primary,
+.app .coach-v2-card .btn-primary {
+  background: linear-gradient(135deg, var(--theme-primary, #F4B8CA), var(--theme-secondary, #D4708A)) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 14px rgba(212, 112, 138, 0.25) !important;
+}
+.app .coach-v2-btn-row .btn-ghost,
+.app .coach-v2-card .btn-ghost {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+}
+.app .coach-v2-add-all {
+  border-radius: 999px !important;
+  background: linear-gradient(135deg, var(--theme-primary, #F4B8CA), var(--theme-secondary, #D4708A)) !important;
+  color: #fff !important;
+  padding: 12px 22px !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 14px rgba(212, 112, 138, 0.2) !important;
+}
+.app .coach-loading,
+.app .coach-loading-wrap {
+  padding: 40px 0 !important;
+  text-align: center !important;
+}
+.app .coach-cooldown-bar {
+  background: rgba(255, 240, 244, 0.5) !important;
+  border-radius: 999px !important;
+  padding: 10px 18px !important;
+  font-size: 13px !important;
+}
+
+/* Notes in dark mode */
+html[data-theme="dark"] .app .notes-section textarea,
+html[data-theme="dark"] .app .notes-section .note-textarea {
+  background: rgba(35, 32, 42, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .notes-section .note-card,
+html[data-theme="dark"] .app .notes-section .note-row,
+html[data-theme="dark"] .app .note-item {
+  background: rgba(30, 28, 35, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+html[data-theme="dark"] .app .notes-section .health-segment-toggle,
+html[data-theme="dark"] .app .notes-segment-toggle {
+  background: rgba(40, 36, 48, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+html[data-theme="dark"] .app .notes-section .health-segment-btn {
+  color: rgba(255, 255, 255, 0.6) !important;
+}
+html[data-theme="dark"] .app .notes-search-input {
+  background: rgba(35, 32, 42, 0.7) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  color: #fff !important;
+}
+
 /* List page task rows */
 .app .list-task-row,
 .app .task-list-item {
@@ -1295,6 +1380,103 @@ html[data-theme="dark"] .app .greeting-tagline {
   border: 1px solid rgba(0, 0, 0, 0.03) !important;
   border-radius: 16px !important;
   margin-bottom: 8px !important;
+}
+
+/* ─── Notes page: iOS glass restyle ─── */
+.app .notes-section {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.app .notes-section .panel-top {
+  margin-bottom: 14px !important;
+}
+.app .notes-section .panel-top .title {
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+.app .notes-segment-toggle,
+.app .notes-section .health-segment-toggle {
+  display: inline-flex !important;
+  padding: 4px !important;
+  background: rgba(255, 238, 242, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 999px !important;
+  margin-bottom: 12px !important;
+  gap: 2px !important;
+}
+.app .notes-section .health-segment-btn {
+  padding: 9px 20px !important;
+  border-radius: 999px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--py-ink-tertiary) !important;
+  cursor: pointer !important;
+  transition: all 200ms ease !important;
+}
+.app .notes-section .health-segment-btn--on,
+.app .notes-section .health-segment-btn[aria-selected="true"] {
+  background: linear-gradient(135deg, var(--theme-primary, #F4B8CA), var(--theme-secondary, #D4708A)) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(212, 112, 138, 0.25) !important;
+}
+.app .notes-scope-hint {
+  font-size: 12px !important;
+  color: var(--py-ink-muted) !important;
+  margin-bottom: 14px !important;
+}
+.app .notes-section .note-add-form,
+.app .notes-section form {
+  margin-bottom: 16px !important;
+}
+.app .notes-section textarea,
+.app .notes-section .note-textarea {
+  background: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 18px !important;
+  padding: 14px 16px !important;
+  font-size: 15px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+  resize: vertical !important;
+}
+.app .notes-section textarea:focus {
+  border-color: var(--theme-accent, rgba(232, 169, 183, 0.5)) !important;
+  box-shadow: 0 0 0 3px rgba(232, 169, 183, 0.1), 0 2px 10px rgba(0, 0, 0, 0.02) !important;
+}
+.app .notes-section .note-card,
+.app .notes-section .note-row,
+.app .note-item {
+  background: rgba(255, 255, 255, 0.55) !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 20px !important;
+  padding: 16px 18px !important;
+  margin-bottom: 10px !important;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .notes-section .note-subject-tag,
+.app .notes-section select {
+  padding: 8px 14px !important;
+  border-radius: 999px !important;
+  background: rgba(255, 240, 244, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+.app .notes-section .note-actions button {
+  border-radius: 999px !important;
+  padding: 6px 14px !important;
+}
+.app .notes-search-input {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 999px !important;
+  padding: 10px 16px !important;
+  font-size: 14px !important;
 }
 
 /* Theme accent awareness: use CSS variables for accent-dependent elements */
@@ -1643,6 +1825,72 @@ html[data-theme="dark"] .app .bottom-nav button[aria-label="Coach"] {
   background: radial-gradient(circle at 40% 30%, rgba(80, 50, 65, 0.95), rgba(50, 30, 40, 0.8)) !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4), 0 3px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+/* COMPREHENSIVE: no black text in dark mode */
+html[data-theme="dark"] .app span,
+html[data-theme="dark"] .app p,
+html[data-theme="dark"] .app div,
+html[data-theme="dark"] .app label,
+html[data-theme="dark"] .app li {
+  color: inherit;
+}
+html[data-theme="dark"] .app [style*="color: var(--py-ink)"],
+html[data-theme="dark"] .app [style*="color:var(--py-ink)"] {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .panel-title .title,
+html[data-theme="dark"] .app .panel-top .title,
+html[data-theme="dark"] .app .empty-title,
+html[data-theme="dark"] .app .list-page-title,
+html[data-theme="dark"] .app .coach-v2-card-top,
+html[data-theme="dark"] .app .coach-v2-title {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .list-page-count,
+html[data-theme="dark"] .app .state-empty,
+html[data-theme="dark"] .app .empty,
+html[data-theme="dark"] .app .settings-hint,
+html[data-theme="dark"] .app .pct {
+  color: rgba(255, 255, 255, 0.7) !important;
+}
+html[data-theme="dark"] .app .daily-progress-copy,
+html[data-theme="dark"] .app .label,
+html[data-theme="dark"] .app select,
+html[data-theme="dark"] .app option {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+html[data-theme="dark"] .app .bottom-nav span[style] {
+  color: rgba(255, 255, 255, 0.5) !important;
+}
+html[data-theme="dark"] .app .bottom-nav button[aria-current="page"] span:last-child {
+  color: rgba(200, 160, 180, 0.9) !important;
+}
+html[data-theme="dark"] .app .btn {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+html[data-theme="dark"] .app .btn-primary {
+  color: #fff !important;
+}
+html[data-theme="dark"] .app .check .item-text,
+html[data-theme="dark"] .app .checkmark + span {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+html[data-theme="dark"] .app .item-text-done {
+  color: rgba(255, 255, 255, 0.4) !important;
+}
+
+/* Notes page dark mode */
+html[data-theme="dark"] .app .notes-section,
+html[data-theme="dark"] .app .notes-section .note-card,
+html[data-theme="dark"] .app .notes-section textarea {
+  background: rgba(30, 28, 35, 0.6) !important;
+  color: #fff !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+html[data-theme="dark"] .app .notes-section .note-subject,
+html[data-theme="dark"] .app .notes-section .note-date {
+  color: rgba(255, 255, 255, 0.5) !important;
 }
 
 /* ═══════════════════════════════════════════════
