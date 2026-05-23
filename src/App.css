@@ -3775,9 +3775,24 @@ textarea.input {
 .today-section {
   margin-top: var(--space-5);
 }
+.today-section--habits {
+  margin-top: var(--space-6, 1.75rem);
+  margin-bottom: var(--space-4, 1rem);
+}
 .today-section--routine {
   margin-top: var(--space-6);
   margin-bottom: var(--space-2);
+}
+.home-meds-card .home-meds-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.home-meds-row {
+  margin: 0;
 }
 .today-section--timeline {
   margin-top: var(--space-7, 2rem);
@@ -4767,7 +4782,6 @@ textarea.input {
     inset 0 2px 6px rgba(255, 255, 255, 0.9);
 }
 .bottom-nav--png .bottom-nav-item--center .dock-nav-icon-img {
-  transform: scale(1.08);
   filter: drop-shadow(0 2px 4px rgba(180, 80, 110, 0.2));
 }
 @keyframes py-nav-pulse {
@@ -4801,18 +4815,19 @@ textarea.input {
   box-shadow: 0 4px 14px rgba(212, 96, 122, 0.18), inset 0 1px 2px rgba(255, 255, 255, 0.7);
   transform: scale(1.05);
 }
-.dock-nav-icon-wrap--insights .dock-nav-icon-img {
-  transform: scale(1.12);
-}
 .dock-nav-icon-img {
   display: block;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
+  width: calc(var(--dock-icon-size, 40px) * var(--dock-icon-scale, 1));
+  height: calc(var(--dock-icon-size, 40px) * var(--dock-icon-scale, 1));
   object-fit: contain;
+  object-position: center;
   pointer-events: none;
   user-select: none;
+  flex-shrink: 0;
+}
+.dock-nav-icon-wrap--center .dock-nav-icon-img {
+  width: calc(var(--dock-icon-size, 64px) * var(--dock-icon-scale, 1));
+  height: calc(var(--dock-icon-size, 64px) * var(--dock-icon-scale, 1));
 }
 
 .home-module-tray {

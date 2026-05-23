@@ -14,6 +14,7 @@ export function YouPage({
   habitTracker, setHabitTracker,
   morningRoutineTemplate, setMorningRoutineTemplate,
   routineTemplate, setRoutineTemplate,
+  routineSchedule, setRoutineSchedule,
   onOpenSettings,
   enabledModules,
   navOrder,
@@ -127,7 +128,17 @@ export function YouPage({
 
         {/* Morning */}
         <div className="py-glass-card" style={{ padding: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 12 }}>Morning Routine</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Morning Routine</div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--py-ink-secondary)", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={routineSchedule?.enabledMorning !== false}
+                onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))}
+              />
+              Show on Today
+            </label>
+          </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <input value={newRoutineLine} onChange={e => setNewRoutineLine(e.target.value)} placeholder="Add morning step..." className="py-input" style={{ flex: 1 }} onKeyDown={e => e.key === "Enter" && addMorningItem()} />
             <button type="button" onClick={addMorningItem} style={{ padding: "8px 16px", borderRadius: 999, background: "linear-gradient(135deg, #F0B4C4, #D4708A)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Add</button>
@@ -135,7 +146,13 @@ export function YouPage({
           {morningRoutineTemplate.map((r, i) => (
             <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < morningRoutineTemplate.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
               <span style={{ fontSize: 13, color: "var(--py-ink-muted)", width: 20 }}>{i + 1}.</span>
-              <span style={{ flex: 1, fontSize: 15 }}>{r.text}</span>
+              <input
+                className="py-input"
+                value={r.text}
+                onChange={(e) => setMorningRoutineTemplate((prev) => prev.map((x, idx) => idx === i ? { ...x, text: e.target.value } : x))}
+                aria-label={`Morning step ${i + 1}`}
+                style={{ flex: 1, fontSize: 15 }}
+              />
               <button type="button" onClick={() => removeMorningItem(r.id)} style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.06)", background: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>x</button>
             </div>
           ))}
@@ -143,7 +160,17 @@ export function YouPage({
 
         {/* Night */}
         <div className="py-glass-card" style={{ padding: 16 }}>
-          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 12 }}>Night Routine</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Night Routine</div>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--py-ink-secondary)", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={routineSchedule?.enabledNight !== false}
+                onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledNight: e.target.checked }))}
+              />
+              Show on Today
+            </label>
+          </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <input value={nightRoutineLine} onChange={e => setNightRoutineLine(e.target.value)} placeholder="Add night step..." className="py-input" style={{ flex: 1 }} onKeyDown={e => { if (e.key === "Enter") { addNightItem(); }}} />
             <button type="button" onClick={addNightItem} style={{ padding: "8px 16px", borderRadius: 999, background: "linear-gradient(135deg, #9B8EC4, #7B6BA8)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Add</button>
@@ -151,7 +178,13 @@ export function YouPage({
           {routineTemplate.map((r, i) => (
             <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < routineTemplate.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
               <span style={{ fontSize: 13, color: "var(--py-ink-muted)", width: 20 }}>{i + 1}.</span>
-              <span style={{ flex: 1, fontSize: 15 }}>{r.text}</span>
+              <input
+                className="py-input"
+                value={r.text}
+                onChange={(e) => setRoutineTemplate((prev) => prev.map((x, idx) => idx === i ? { ...x, text: e.target.value } : x))}
+                aria-label={`Night step ${i + 1}`}
+                style={{ flex: 1, fontSize: 15 }}
+              />
               <button type="button" onClick={() => removeNightItem(r.id)} style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.06)", background: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>x</button>
             </div>
           ))}

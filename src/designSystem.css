@@ -552,23 +552,36 @@
 .py-streak {
   display: flex;
   align-items: center;
-  gap: var(--py-space-3);
-  padding: var(--py-space-4);
+  justify-content: center;
+  gap: var(--py-space-2);
+  padding: 0;
+}
+.py-streak-card .py-streak {
+  margin-bottom: 0;
+}
+.py-streak__flame-img {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 .py-streak__flame {
   font-size: 36px;
   filter: drop-shadow(0 2px 6px rgba(255, 120, 50, 0.3));
 }
 .py-streak__count {
-  font-size: 28px;
+  font-size: 34px;
   font-weight: var(--py-weight-bold);
   color: var(--py-ink);
   line-height: 1;
 }
 .py-streak__label {
   font-size: var(--py-text-caption);
-  color: var(--py-accent-deep);
+  color: var(--py-ink-tertiary);
   font-weight: var(--py-weight-medium);
+  align-self: flex-end;
+  padding-bottom: 4px;
 }
 
 /* ─── Habit Row ─── */

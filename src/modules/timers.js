@@ -72,6 +72,8 @@ export const ALARM_MODES = {
   ACTION_REQUIRED: "action_required",
 };
 
+export { ALARM_SOUND_IDS, BUILTIN_ALARM_SOUNDS } from "../alarmSounds";
+
 export function defaultAlarmsState() {
   return { alarms: [] };
 }
@@ -104,6 +106,8 @@ export function createAlarm(options = {}) {
     linkedTaskId: options.linkedTaskId || null,
     linkedRoutineId: options.linkedRoutineId || null,
     sound: options.sound || "default",
+    customSoundId: options.customSoundId || null,
+    customSoundName: options.customSoundName || null,
     mathDifficulty: options.mathDifficulty || "easy",
     requiredAction: options.requiredAction || null,
     createdAt: Date.now(),

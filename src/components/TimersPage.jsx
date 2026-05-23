@@ -11,6 +11,14 @@ import {
   getNextAlarmTime,
 } from "../modules/timers";
 import { requestAlarmPermissions } from "../alarmScheduler";
+import {
+  ALARM_SOUND_IDS,
+  BUILTIN_ALARM_SOUNDS,
+  saveCustomAlarmSound,
+  previewAlarmSound,
+  stopAlarmSoundPlayback,
+  getAlarmSoundLabel,
+} from "../alarmSounds";
 
 const PRESETS = [
   { label: "5 min", ms: 5 * 60 * 1000 },
@@ -44,6 +52,12 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
   const [newAlarmLabel, setNewAlarmLabel] = useState("Morning alarm");
   const [newAlarmMode, setNewAlarmMode] = useState(ALARM_MODES.STANDARD);
   const [newAlarmDays, setNewAlarmDays] = useState([1, 2, 3, 4, 5]);
+  const [newAlarmSound, setNewAlarmSound] = useState(ALARM_SOUND_IDS.DEFAULT);
+  const [newAlarmCustomSoundId, setNewAlarmCustomSoundId] = useState(null);
+  const [newAlarmCustomSoundName, setNewAlarmCustomSoundName] = useState("");
+  const [soundImportError, setSoundImportError] = useState("");
+  const [soundImporting, setSoundImporting] = useState(false);
+  const musicInputRef = useRef(null);
 
   const alarms = alarmsState?.alarms || [];
   const history = timersState?.history || [];
@@ -57,6 +71,8 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
   useEffect(() => {
     if (section === "alarms") requestAlarmPermissions();
   }, [section]);
+
+  useEffect(() => () => stopAlarmSoundPlayback(), []);
 
   const startTimer = useCallback(() => {
     startTimeRef.current = Date.now();
@@ -114,14 +130,51 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
   function addAlarm(e) {
     e.preventDefault();
     if (!newAlarmTime) return;
+    if (newAlarmSound === ALARM_SOUND_IDS.CUSTOM && !newAlarmCustomSoundId) {
+      setSoundImportError("Choose a song or audio clip from your device first.");
+      return;
+    }
     const alarm = createAlarm({
       time: newAlarmTime,
       label: newAlarmLabel.trim() || "Morning alarm",
       mode: newAlarmMode,
       days: newAlarmDays.length ? newAlarmDays : [0, 1, 2, 3, 4, 5, 6],
+      sound: newAlarmSound,
+      customSoundId: newAlarmSound === ALARM_SOUND_IDS.CUSTOM ? newAlarmCustomSoundId : null,
+      customSoundName: newAlarmSound === ALARM_SOUND_IDS.CUSTOM ? newAlarmCustomSoundName : null,
     });
     onUpdateAlarms?.((prev) => ({ ...prev, alarms: [...(prev?.alarms || []), alarm] }));
     setShowAddAlarm(false);
+    setSoundImportError("");
+  }
+
+  async function handleMusicFile(file) {
+    if (!file) return;
+    setSoundImportError("");
+    if (!file.type.startsWith("audio/") && !/\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(file.name)) {
+      setSoundImportError("Please pick an audio file (MP3, M4A, WAV, etc.).");
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setSoundImportError("File is too large — try a shorter clip under 15 MB.");
+      return;
+    }
+    setSoundImporting(true);
+    try {
+      const id = `custom_${Date.now().toString(36)}`;
+      await saveCustomAlarmSound(id, file.name.replace(/\.[^.]+$/, ""), file);
+      setNewAlarmSound(ALARM_SOUND_IDS.CUSTOM);
+      setNewAlarmCustomSoundId(id);
+      setNewAlarmCustomSoundName(file.name.replace(/\.[^.]+$/, ""));
+    } catch {
+      setSoundImportError("Could not save that file. Try a different clip.");
+    } finally {
+      setSoundImporting(false);
+    }
+  }
+
+  function previewSound(soundId, customId = null) {
+    previewAlarmSound(soundId, customId);
   }
 
   function toggleAlarmEnabled(id) {
@@ -199,8 +252,8 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
         <>
           <GlassCard compact className="timers-info-card">
             <p className="timers-info-text">
-              Alarms ring with sound while PROYOU is open. On iPhone, the native app delivers reliable morning alarms even when the app is closed.
-              Add a wake-up challenge to make snoozing harder.
+              Pick a built-in sound or import your own music. Custom tracks play while PROYOU is open;
+              the iPhone app uses the system alarm sound when the app is in the background.
             </p>
           </GlassCard>
 
@@ -236,6 +289,78 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
                       </button>
                     ))}
                   </div>
+                </div>
+                <div className="timers-field">
+                  <span className="timers-field-label">Alarm sound</span>
+                  <div className="timers-sound-grid">
+                    {BUILTIN_ALARM_SOUNDS.filter((s) => s.id !== ALARM_SOUND_IDS.CUSTOM).map((opt) => (
+                      <div key={opt.id} className={`timers-sound-option${newAlarmSound === opt.id ? " is-selected" : ""}`}>
+                        <button
+                          type="button"
+                          className="timers-sound-option-main"
+                          onClick={() => {
+                            setNewAlarmSound(opt.id);
+                            setSoundImportError("");
+                          }}
+                        >
+                          <span className="timers-alarm-mode-label">{opt.label}</span>
+                          <span className="timers-alarm-mode-desc">{opt.desc}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="timers-sound-preview-btn"
+                          aria-label={`Preview ${opt.label}`}
+                          onClick={() => previewSound(opt.id)}
+                        >
+                          ▶
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={`timers-sound-custom${newAlarmSound === ALARM_SOUND_IDS.CUSTOM ? " is-selected" : ""}`}>
+                    <button
+                      type="button"
+                      className="timers-sound-custom-main"
+                      onClick={() => setNewAlarmSound(ALARM_SOUND_IDS.CUSTOM)}
+                    >
+                      <span className="timers-alarm-mode-label">Your music</span>
+                      <span className="timers-alarm-mode-desc">
+                        {newAlarmCustomSoundName || "Import MP3, M4A, or other audio from your device"}
+                      </span>
+                    </button>
+                    <div className="timers-sound-custom-actions">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={soundImporting}
+                        onClick={() => musicInputRef.current?.click()}
+                      >
+                        {soundImporting ? "Saving…" : newAlarmCustomSoundName ? "Change file" : "Choose file"}
+                      </button>
+                      {newAlarmCustomSoundId ? (
+                        <button
+                          type="button"
+                          className="timers-sound-preview-btn"
+                          aria-label="Preview your music"
+                          onClick={() => previewSound(ALARM_SOUND_IDS.CUSTOM, newAlarmCustomSoundId)}
+                        >
+                          ▶
+                        </button>
+                      ) : null}
+                    </div>
+                    <input
+                      ref={musicInputRef}
+                      type="file"
+                      accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac"
+                      className="timers-sound-file-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) handleMusicFile(file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
+                  {soundImportError ? <p className="timers-sound-error">{soundImportError}</p> : null}
                 </div>
                 <div className="timers-field">
                   <span className="timers-field-label">Repeat</span>
@@ -278,6 +403,7 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
                       <div className="timers-alarm-meta">
                         <span className="timers-alarm-label">{alarm.label}</span>
                         <span className="timers-alarm-mode">{modeMeta?.label || "Standard"}</span>
+                        <span className="timers-alarm-sound">{getAlarmSoundLabel(alarm)}</span>
                         {next ? (
                           <span className="timers-alarm-next">
                             Next: {next.toLocaleDateString(undefined, { weekday: "short" })} {next.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}

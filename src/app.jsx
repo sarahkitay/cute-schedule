@@ -64,7 +64,13 @@ import { startAlarmWatcher, stopAlarmSound, requestAlarmPermissions } from "./al
 import { resyncIosAlarmNotifications } from "./nativeAlarmNotifications";
 import { NavIcons } from "./components/NavIcons";
 import { MODULE_REGISTRY, MODULE_IDS, DEFAULT_NAV_ORDER, DEFAULT_ENABLED_MODULES, getNavModules } from "./modules/registry";
-import { loadMedicationsFromDisk, saveMedicationsToDisk, defaultMedicationsState } from "./modules/medications";
+import {
+  loadMedicationsFromDisk,
+  saveMedicationsToDisk,
+  defaultMedicationsState,
+  getMedicationStatus,
+  logMedicationAction,
+} from "./modules/medications";
 import { loadTimersFromDisk, saveTimersToDisk, defaultTimersState, loadAlarmsFromDisk, saveAlarmsToDisk, defaultAlarmsState } from "./modules/timers";
 import { YouPage } from "./components/YouPage";
 import {
@@ -1648,7 +1654,7 @@ function HourCard({
                     </span>
                   </label>
 
-                  <div className="item-actions" style={{ position: 'relative' }}>
+                  <div className="item-actions">
                   {mode === "details" && (
                     <>
                       <button
@@ -1712,35 +1718,41 @@ function HourCard({
                       Begin workout
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    title="Task options"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const dropdownKey = `${hourKey}-${t.category}-${t.id}`;
-                      if (taskDropdown === dropdownKey) {
-                        onOpenDropdown(null, null);
-                      } else {
-                        onOpenDropdown(dropdownKey, e.currentTarget.getBoundingClientRect());
-                      }
-                    }}
-                    data-task-menu-trigger
-                    data-task-dropdown-key={`${hourKey}-${t.category}-${t.id}`}
-                  >
-                    <MenuIcon />
-                  </button>
+                  <div className="item-actions-trailing">
                     <button
                       type="button"
-                      className="icon-btn item-expand-btn"
-                      title={expanded ? "Collapse" : "Notes & details"}
+                      className={`item-action-btn item-action-btn--menu${taskDropdown === `${hourKey}-${t.category}-${t.id}` ? " is-active" : ""}`}
+                      title="Task options"
+                      aria-label="Task options"
+                      aria-expanded={taskDropdown === `${hourKey}-${t.category}-${t.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const dropdownKey = `${hourKey}-${t.category}-${t.id}`;
+                        if (taskDropdown === dropdownKey) {
+                          onOpenDropdown(null, null);
+                        } else {
+                          onOpenDropdown(dropdownKey, e.currentTarget.getBoundingClientRect());
+                        }
+                      }}
+                      data-task-menu-trigger
+                      data-task-dropdown-key={`${hourKey}-${t.category}-${t.id}`}
+                    >
+                      <MenuIcon style={{ width: 18, height: 18 }} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`item-action-btn item-action-btn--expand${expanded ? " is-active is-open" : ""}`}
+                      title={expanded ? "Collapse details" : "Notes & details"}
+                      aria-label={expanded ? "Collapse details" : "Expand details"}
+                      aria-expanded={expanded}
                       onClick={(e) => {
                         e.stopPropagation();
                         onExpandTask(expanded ? null : itemKey);
                       }}
                     >
-                      {expanded ? "▾" : "▸"}
+                      <span className="item-action-chevron" aria-hidden>{expanded ? "▾" : "▸"}</span>
                     </button>
+                  </div>
                   </div>
                 </div>
                 {expanded && (
@@ -2532,6 +2544,26 @@ export default function App() {
     });
   }, [routineTemplate]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // When morning routine template changes, merge into today's per-day routine (preserve done flags)
+  useEffect(() => {
+    const template = morningRoutineTemplate.length
+      ? morningRoutineTemplate
+      : MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+    setAppState((prev) => {
+      const day = prev.days?.[realTodayKey];
+      if (!day) return prev;
+      const stored = day.morningRoutine || [];
+      const merged = template.map((r) => {
+        const existing = stored.find((x) => x.id === r.id);
+        return { ...r, done: existing ? existing.done : false };
+      });
+      return {
+        ...prev,
+        days: { ...prev.days, [realTodayKey]: { ...day, morningRoutine: merged } },
+      };
+    });
+  }, [morningRoutineTemplate, realTodayKey]);
+
   const [noteSearch, setNoteSearch] = useState("");
   const [notesScope, setNotesScope] = useState(() => {
     try {
@@ -2666,6 +2698,14 @@ export default function App() {
       return { ...t, done: s ? s.done : false };
     });
   }, [tKey, appState.days, morningRoutineTemplate]);
+
+  const pendingMedsToday = useMemo(() => {
+    const active = (medicationsState.medications || []).filter((m) => !m.archived);
+    return active.filter((med) => {
+      const status = getMedicationStatus(medicationsState.log, med.id, realTodayKey);
+      return status?.action !== "taken";
+    });
+  }, [medicationsState, realTodayKey]);
 
   // Build reminder list for server push (so reminders fire when app is closed)
   const pushRemindersList = useMemo(() => {
@@ -4695,6 +4735,13 @@ export default function App() {
     }));
   }
 
+  function markMedicationTakenFromHome(medId) {
+    setMedicationsState((prev) => ({
+      ...prev,
+      log: logMedicationAction(prev.log, medId, realTodayKey, "taken"),
+    }));
+  }
+
   // Notes functions
   const [newNote, setNewNote] = useState("");
   const [editingNoteId, setEditingNoteId] = useState(null);
@@ -6590,17 +6637,11 @@ export default function App() {
                   </div>
                 </div>
                 <div className="py-glass-card" style={{ padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-                    <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" style={{ width: 20, height: 20, borderRadius: 4, objectFit: "cover" }} /> Streak
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" style={{ width: 44, height: 44, borderRadius: 10, objectFit: "cover" }} />
-                    <div>
-                      <div style={{ fontSize: 34, fontWeight: 700, color: "var(--py-ink)", lineHeight: 1 }}>
-                        {computeCalendarCompletionStreak(appState, realTodayKey)}
-                      </div>
-                      <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>days</div>
-                    </div>
+                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 8 }}>Streak</div>
+                  <div className="py-streak">
+                    <span className="py-streak__count">{computeCalendarCompletionStreak(appState, realTodayKey)}</span>
+                    <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" className="py-streak__flame-img" />
+                    <span className="py-streak__label">days</span>
                   </div>
                   <div style={{ fontSize: 12, color: "var(--py-accent-deep)", fontWeight: 500, marginTop: 8 }}>Keep it going!</div>
                 </div>
@@ -6608,7 +6649,7 @@ export default function App() {
             )}
 
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
-              <section className="panel habit-daily-card surface-glass scroll-reveal" style={{ marginBottom: 14 }}>
+              <section className="panel habit-daily-card surface-glass scroll-reveal today-section--habits">
                 <div className="panel-title">
                   <span className="title">Habits · today</span>
                 </div>
@@ -6659,6 +6700,39 @@ export default function App() {
                       </li>
                     );
                   })}
+                </ul>
+              </section>
+            )}
+
+            {tab === "today" && isSameDayKey(tKey, realTodayKey) && pendingMedsToday.length > 0 && (
+              <section className="panel home-meds-card surface-glass scroll-reveal today-section--habits">
+                <div className="panel-title">
+                  <span className="title">Meds · today</span>
+                </div>
+                <ul className="list home-meds-list">
+                  {pendingMedsToday.map((med) => (
+                    <li key={med.id} className="py-med-item home-meds-row">
+                      <img src={`${import.meta.env.BASE_URL}meds.png`} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "contain" }} />
+                      <div className="py-med-item__info">
+                        <div className="py-med-item__name">{med.name}</div>
+                        {(med.dose || med.schedule?.length > 0) && (
+                          <div className="py-med-item__dose">
+                            {med.dose && `${med.dose}`}
+                            {med.dose && med.schedule?.length > 0 ? " · " : ""}
+                            {med.schedule?.join(", ")}
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className="py-habit-row__action py-habit-row__action--check"
+                        onClick={() => markMedicationTakenFromHome(med.id)}
+                        aria-label={`Mark ${med.name} taken`}
+                      >
+                        <NavIcons name="check" size={14} />
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               </section>
             )}
@@ -8632,6 +8706,8 @@ export default function App() {
               setMorningRoutineTemplate={setMorningRoutineTemplate}
               routineTemplate={routineTemplate}
               setRoutineTemplate={setRoutineTemplate}
+              routineSchedule={routineSchedule}
+              setRoutineSchedule={setRoutineSchedule}
               onOpenSettings={() => { setSettingsSubView("main"); setShowSettings(true); }}
               enabledModules={enabledModules}
               navOrder={navOrder}
@@ -8666,7 +8742,7 @@ export default function App() {
             /** Edit time: native `input[type=time]` is wide on iOS; width must match computeDropdown margins (vw - 32). */
             const panelWidth = isEditing
               ? Math.max(240, Math.min(400, vwForPanel - 32))
-              : Math.max(220, Math.min(300, vwForPanel - 24));
+              : Math.max(260, Math.min(320, vwForPanel - 24));
             const taskNodeForMenu = findTaskInAppState(appState, tKey, hourKey, category, id);
             const showOptionalRepeatBtn =
               taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.NONE;
@@ -8693,7 +8769,12 @@ export default function App() {
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="task-dropdown">
+                <div className={`task-dropdown${isEditing ? " task-dropdown--edit-time" : ""}`}>
+                  {!isEditing ? (
+                    <div className="task-dropdown-header">
+                      <span className="task-dropdown-header-title">Task options</span>
+                    </div>
+                  ) : null}
                   {isEditing ? (
                     <div className="dropdown-edit-time">
                       <label className="dropdown-edit-time-label">New time</label>

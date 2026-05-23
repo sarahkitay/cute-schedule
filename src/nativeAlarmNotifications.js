@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { getNextAlarmTime } from "./modules/timers";
+import { iosNotificationSoundForAlarm } from "./alarmSounds";
 
 export function localNotificationIdForAlarm(alarmId, dayOffset = 0) {
   let h = dayOffset * 997;
@@ -56,7 +57,7 @@ export async function resyncIosAlarmNotifications(alarms) {
           title: alarm.label || "Morning alarm",
           body: "Tap to open PROYOU and complete your wake-up challenge.",
           schedule: { at },
-          sound: "default",
+          sound: iosNotificationSoundForAlarm(alarm),
           extra: {
             proyouSource: "alarm",
             alarmId: String(alarm.id),
