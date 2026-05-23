@@ -6153,8 +6153,8 @@ export default function App() {
           {(() => {
             const imgMap = { today: "homeicon.png", list: "planIcon.png", plan: "planIcon.png", insights: "InsightsIcon.png", you: "YouIcon.png", coach: "PYIcon.png", health: "fitness.png", medications: "meds.png", finance: "finance.png", notes: "notes.png", timers: "timer.png", monthly: "monthly.png" };
             const labelMap = { today: "Home", list: "Plan", plan: "Plan", insights: "Insights", you: "You", coach: "Coach", health: "Fitness", medications: "Meds", finance: "Finance", notes: "Notes", timers: "Timers", monthly: "Goals" };
-            const userNav = navOrder.filter(id => enabledModules.includes(id) || id === "today" || id === "you");
-            const finalNav = userNav.length >= 3 ? userNav : ["today", "list", "insights", "you"];
+            const userNav = navOrder.filter(id => enabledModules.includes(id));
+            const finalNav = userNav.length >= 2 ? userNav : ["today", "list", "insights", "you"];
             const centerIdx = Math.floor(finalNav.length / 2);
             const withCenter = [...finalNav.slice(0, centerIdx), "__center__", ...finalNav.slice(centerIdx)];
             const iconSize = withCenter.length > 7 ? 32 : withCenter.length > 6 ? 36 : withCenter.length > 5 ? 38 : 40;
@@ -6611,8 +6611,35 @@ export default function App() {
               )}
             </section>
 
+            {/* Modules not in nav — accessible from bottom of Home */}
+            {tab === "today" && (() => {
+              const navImgMap = { today: "homeicon.png", list: "planIcon.png", insights: "InsightsIcon.png", you: "YouIcon.png", coach: "PYIcon.png", health: "fitness.png", medications: "meds.png", finance: "finance.png", notes: "notes.png", timers: "timer.png", monthly: "monthly.png" };
+              const navLabelMap = { today: "Home", list: "Plan", insights: "Insights", you: "You", coach: "Coach", health: "Fitness", medications: "Meds", finance: "Finance", notes: "Notes", timers: "Timers", monthly: "Goals" };
+              const inNav = navOrder.filter(id => enabledModules.includes(id) || id === "today" || id === "you");
+              const notInNav = Object.keys(navImgMap).filter(id => !inNav.includes(id) && id !== "today" && id !== "you");
+              if (notInNav.length === 0) return null;
+              return (
+                <div className="scroll-reveal" style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "var(--py-ink-secondary)", marginBottom: 10 }}>More</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    {notInNav.map(id => (
+                      <button key={id} type="button" onClick={() => setTab(id)} style={{
+                        display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                        padding: "12px 10px", minWidth: 72, background: "rgba(255,255,255,0.5)",
+                        border: "1px solid rgba(0,0,0,0.03)", borderRadius: 18, cursor: "pointer",
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.02), inset 0 1px 0 rgba(255,255,255,0.5)",
+                      }}>
+                        <img src={`${import.meta.env.BASE_URL}${navImgMap[id]}`} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: "contain" }} />
+                        <span style={{ fontSize: 11, fontWeight: 500, color: "var(--py-ink-secondary)" }}>{navLabelMap[id]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && todayHiddenDockTabs.length > 0 && (
-              <div className="today-dock-fallback-stack scroll-reveal">
+              <div className="today-dock-fallback-stack scroll-reveal" style={{ display: "none" }}>
                 {todayHiddenDockTabs.map((dockId) => {
                   const cfg = DOCK_FALLBACK_COPY[dockId];
                   if (!cfg) return null;

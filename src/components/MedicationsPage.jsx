@@ -132,7 +132,7 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
         const status = getMedicationStatus(log, med.id, dayKey);
         return (
           <div key={med.id} className="py-med-item">
-            <div className="py-med-item__icon" style={{ background: "linear-gradient(135deg, rgba(200,180,230,0.3), rgba(180,160,210,0.15))" }}></div>
+            <img src={`${import.meta.env.BASE_URL}meds.png`} alt="" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "contain" }} />
             <div className="py-med-item__info">
               <div className="py-med-item__name">{med.name}</div>
               <div className="py-med-item__dose">

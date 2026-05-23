@@ -18,13 +18,17 @@ export function YouPage({
   const [nightRoutineLine, setNightRoutineLine] = useState("");
 
   const allModules = [
+    { id: "today", label: "Home", desc: "Your daily command center", img: "homeicon.png" },
+    { id: "list", label: "Plan", desc: "Today's tasks & monthly goals", img: "planIcon.png" },
+    { id: "coach", label: "Coach", desc: "AI personal coaching", img: "PYIcon.png" },
+    { id: "insights", label: "Insights", desc: "Patterns & averages", img: "InsightsIcon.png" },
+    { id: "you", label: "You", desc: "Profile & settings", img: "YouIcon.png" },
     { id: "health", label: "Fitness", desc: "Workouts, macros & programs", img: "fitness.png" },
     { id: "medications", label: "Medications", desc: "Tracking & reminders", img: "meds.png" },
     { id: "finance", label: "Finance", desc: "Income, spending & patterns", img: "finance.png" },
     { id: "notes", label: "Notes", desc: "Thoughts, journal, ideas", img: "notes.png" },
     { id: "timers", label: "Timers", desc: "Focus & routine timers", img: "timer.png" },
     { id: "monthly", label: "Monthly Goals", desc: "Objectives & tracking", img: "monthly.png" },
-    { id: "list", label: "Task List", desc: "All tasks in flat view", img: "tasklist.png" },
   ];
 
   const navSlots = ["today", "list", "coach", "insights", "you"];
@@ -146,8 +150,8 @@ export function YouPage({
       <div className="py-flex-col py-gap-4" style={{ padding: "0 4px" }}>
         <button type="button" onClick={() => setSection(null)} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--py-accent-deep)", fontWeight: 600, padding: "4px 0" }}>← Back</button>
         <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--py-ink)" }}>Customize Navigation</h2>
-        <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)", marginBottom: 4 }}>Toggle modules on/off to add them to your bottom nav. The bar resizes to fit. Home, Coach, and You are always shown.</p>
-        <p style={{ fontSize: 12, color: "var(--py-ink-muted)" }}>Swap out Plan for Fitness, or add Finance next to Insights — whatever works for you.</p>
+        <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)", marginBottom: 4 }}>Choose which modules appear in your bottom nav. The bar resizes to fit.</p>
+        <p style={{ fontSize: 12, color: "var(--py-ink-muted)" }}>Anything not in the nav is accessible from the bottom of the Home page.</p>
         <div className="py-flex-col py-gap-2">
           {allModules.map(mod => {
             const inNav = enabledModules.includes(mod.id);
