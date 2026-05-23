@@ -7,9 +7,9 @@ const QUICK_SLIDES = [
       "The Today tab is your timeline: tasks show by time of day. **Above the add field**, use **Type** for plain language (for example Call Sam 2pm) or **Details** to set **time**, **category**, **repeat**, and **energy** before you tap Add task. Under **Daily Progress**, a separate **Type / Details** switch only changes how full each task row is on the timeline: **Type** stays minimal; **Details** shows extra controls on each card (like energy).",
   },
   {
-    title: "List & quick wins",
+    title: "Plan & quick wins",
     body:
-      "**List** shows everything still open for the day in one scrollable list, great for checking things off on the go. **Monthly Objectives** holds bigger goals without cluttering Today.",
+      "**Plan** holds monthly objectives plus a scrollable task list for the day — great for checking things off without the full Today timeline. Bigger goals stay separate from your hourly schedule.",
   },
   {
     title: "Coach, notes & money",
@@ -45,19 +45,19 @@ const FULL_SLIDES = [
       "Under **Daily Progress**, **Type** keeps each timeline row simple so you can check tasks off quickly. **Details** shows more on each card (energy controls, delete, and similar) while you arrange the day. This is separate from **Details** on the add bar, which is only for new tasks.",
   },
   {
-    title: "List tab",
+    title: "Plan tab",
     body:
-      "**List** is a single view of incomplete tasks for the selected day, sorted with heavier-energy items first. Check off here and it stays in sync with the timeline on Today.",
+      "**Plan** combines **monthly objectives** with a **today's list** view — a flat checklist for the selected day, sorted with heavier-energy items first. Check off here and it stays in sync with Today, without repeating the full home timeline.",
   },
   {
     title: "Monthly objectives",
     body:
-      "**Monthly Objectives** is for a few big outcomes that should not crowd your hourly list. Check them off when done; they stay separate from Today's clock-based tasks.",
+      "In **Plan**, monthly objectives sit above your daily list — a few big outcomes that should not crowd your hourly schedule on Today.",
   },
   {
     title: "Coach",
     body:
-      "The **Coach** tab can run a general check-in or help you plan or get unstuck. It reads anonymized summaries of your progress and habits; never judgment, always optional.",
+      "The **Coach** tab uses your patterns and picks a focus: **Schedule**, **Fitness**, or **Finance**. Tap the big coach button for that mode, or ask a follow-up question. Suggestions need your approval before anything is added.",
   },
   {
     title: "Notes & Finance",
@@ -77,7 +77,7 @@ const FULL_SLIDES = [
   {
     title: "Instructions on each tab",
     body:
-      "Longer help lives in the **Instructions** bar at the bottom of Today, List, Coach, Notes, Finance, and Health; open it anytime. This tour is the overview; combine both when you need detail.",
+      "Longer help lives in the **Instructions** bar at the bottom of Today, Plan, Coach, Notes, Finance, and Health; open it anytime. This tour is the overview; combine both when you need detail.",
   },
   {
     title: "Sync & account",

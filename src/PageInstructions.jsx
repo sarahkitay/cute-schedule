@@ -10,23 +10,27 @@ const INSTRUCTIONS = {
         <strong>Task notes:</strong> On Today, tap the small <strong>▸ / ▾</strong> arrow on a task row to open details; notes live there only. The <strong>⋯</strong> menu is for move, delete, time, lists, etc.
       </p>
       <p>
-        When you open Today, the schedule scrolls to your <strong>next incomplete</strong> task and highlights it. Habits, routines, and dock cards stay above the timeline. To jump to another date, use the <strong>List</strong> tab and the calendar icon in the header.
+        When you open Today, the schedule scrolls to your <strong>next incomplete</strong> task and highlights it. Habits, routines, and dock cards stay above the timeline. To jump to another date, use the <strong>Plan</strong> tab and the calendar icon in the header.
       </p>
       <p>
         <strong>Today’s Capacity bars:</strong> Percentages reflect completes, moved to tomorrow, deletes, unchecking, and (if enabled) missed-at-day-end logs, plus your all-done streak and whether your last seven scheduled days were all finished.
       </p>
     </>
   ),
-  list: (
-    <p>
-      Incomplete tasks for the selected day, sorted with heavier energy first. Use <strong>⋯</strong> for options; task notes are in that menu on List (there is no expand row here). Open the <strong>calendar</strong> icon in the header to pick another day.
-    </p>
+  plan: (
+    <>
+      <p>
+        <strong>Monthly objectives</strong> sit at the top — month-level goals that stay out of your hourly timeline until you turn them into tasks.
+      </p>
+      <p>
+        <strong>Today&apos;s list</strong> (or the day you pick on the calendar) is a flat checklist of incomplete tasks, sorted with heavier energy first. No timeline or quick-add here — that lives on Today. Use <strong>⋯</strong> for options; open the calendar in the header to change days.
+      </p>
+    </>
   ),
-  monthly: <p>Set month-level objectives; they stay out of your daily timeline until you work them into tasks.</p>,
   coach: (
     <>
       <p>Suggestions need your <strong>Approve</strong> before anything is added. Workout <em>programs</em> from Coach save under Health → My programs when approved, then the app opens the Health tab so you can edit or schedule them.</p>
-      <p>Structured modes (plan / unstuck / review) may return timebox or reorder actions; apply from the buttons shown.</p>
+      <p>Choose <strong>Schedule</strong>, <strong>Fitness</strong>, or <strong>Finance</strong>, then tap the main coach button. Schedule mode can apply timeline actions; fitness and finance return suggestions you approve (including wish list items and savings).</p>
       <p>
         Optional <strong>Get to know you</strong> fields (expand on Coach) give the coach stable context; update anytime.
       </p>
@@ -66,7 +70,7 @@ const INSTRUCTIONS = {
         <strong>Begin workout</strong> picks the current slot, then advances to the next (wrapping after the last). Coach can suggest a program; approve in the Coach tab and it appears here.
       </p>
       <p>
-        <strong>Macros:</strong> Set age, height, and weight, then use the calculator (Mifflin–St Jeor × activity, adjusted for goal) and <strong>Apply</strong> for tracker bars. Log meals per day; <strong>Meal prep mode</strong> copies one meal to the week days you select.
+        <strong>Macros:</strong> Set age, height, and weight, then use the calculator (Mifflin–St Jeor × activity, adjusted for goal) and <strong>Apply</strong> for tracker bars. Log meals per day; <strong>Meal prep mode</strong> copies one meal to the week days you select. At the bottom of Macros, <strong>Shopping lists</strong> can auto-fill from logged meals or suggested day plans; saved lists appear when you add grocery-type tasks.
       </p>
       <p>
         <strong>Macro overview</strong> sums all meals saved per day. Pick a day at the top of Macros to log or edit that date. Fill profile fields to unlock <strong>Workout</strong> in Today&apos;s quick-add Details.

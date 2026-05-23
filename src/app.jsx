@@ -36,6 +36,8 @@ import { OnboardingV2 } from "./components/OnboardingV2";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
 import { HealthPage } from "./HealthPage";
 import { PageInstructions } from "./PageInstructions";
+import { HabitIconPicker, HabitIconBadge } from "./HabitIconPicker";
+import { DEFAULT_HABIT_ICON, normalizeHabitIcon, suggestHabitIconFromLabel } from "./habitIcons";
 import { WorkoutProgramPickerModal } from "./WorkoutProgramPickerModal";
 import { FloatingNav } from "./components/FloatingNav";
 import { GlassCard } from "./components/GlassCard";
@@ -880,6 +882,7 @@ function normalizeHabitRow(h) {
     id: String(h.id),
     label: String(h.label || "").trim() || "Habit",
     direction: h.direction === "break" ? "break" : "build",
+    icon: normalizeHabitIcon(h.icon),
     reminderSchedule,
     reminderHours,
     reminderPushEnabled: h.reminderPushEnabled === false ? false : true,
@@ -2129,9 +2132,8 @@ function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError }) {
 
 /** Dock tabs (except Today) that can be hidden from nav - Today shows a CTA above Today's Capacity when hidden. */
 const DOCK_NAV_SETTINGS_ROWS = [
-  { id: "list", label: "List" },
+  { id: "plan", label: "Plan (monthly + list)" },
   { id: "health", label: "Health" },
-  { id: "monthly", label: "Monthly" },
   { id: "coach", label: "Coach (pattern insights)" },
   { id: "notes", label: "Notes" },
   { id: "finance", label: "Finance" },
@@ -2147,15 +2149,10 @@ const DOCK_EDITOR_ICON_BY_ID = {
 };
 
 const DOCK_FALLBACK_COPY = {
-  list: {
-    title: "List",
-    body: "See incomplete tasks in one scrollable view across your days.",
-    btn: "Open List",
-  },
-  monthly: {
-    title: "Monthly objectives",
-    body: "Set monthly direction and track what matters for the whole month.",
-    btn: "Open Monthly",
+  plan: {
+    title: "Plan",
+    body: "Monthly objectives and a focused task list for the day — without the full Today timeline.",
+    btn: "Open Plan",
   },
   coach: {
     title: "Coach",
@@ -2177,6 +2174,12 @@ const DOCK_FALLBACK_COPY = {
     body: "Plan this week's lifts, track macros and weight, and keep workout tasks in sync with your schedule.",
     btn: "Open Health",
   },
+};
+
+const COACH_SECTION_MODES = {
+  schedule: { label: "Schedule", button: "Coach my schedule", apply: "Apply to timeline" },
+  fitness: { label: "Fitness", button: "Coach my fitness", apply: "Apply training plan" },
+  finance: { label: "Finance", button: "Coach my finances", apply: "Apply suggestions" },
 };
 
 /** ====== Main App ====== **/
@@ -2514,6 +2517,7 @@ export default function App() {
   const [newDebtAmount, setNewDebtAmount] = useState("");
   const [newWishLabel, setNewWishLabel] = useState("");
   const [newWishTarget, setNewWishTarget] = useState("");
+  const [wishContribDraft, setWishContribDraft] = useState({});
   const [newSubName, setNewSubName] = useState("");
   const [newSubAmount, setNewSubAmount] = useState("");
   const [newSubCycle, setNewSubCycle] = useState("monthly");
@@ -2546,6 +2550,7 @@ export default function App() {
   const [listAttachTaskKey, setListAttachTaskKey] = useState("");
   const [newHabitLabel, setNewHabitLabel] = useState("");
   const [newHabitDirection, setNewHabitDirection] = useState("build");
+  const [newHabitIcon, setNewHabitIcon] = useState(DEFAULT_HABIT_ICON);
   /** `habitId` → draft `HH:mm` for "Add time" in settings */
   const [habitReminderDraft, setHabitReminderDraft] = useState({});
   const habitReminderFiredRef = useRef(new Set());
@@ -2757,7 +2762,7 @@ export default function App() {
   const [coachTrace, setCoachTrace] = useState(null);
   const [coachQuestion, setCoachQuestion] = useState("");
   const [coachConversation, setCoachConversation] = useState([]);
-  const [coachMode, setCoachMode] = useState("plan"); // "plan" | "unstuck" | "review"
+  const [coachMode, setCoachMode] = useState("schedule"); // schedule | fitness | finance
   const [coachUserProfile, setCoachUserProfile] = useState(() => {
     try {
       const raw = localStorage.getItem(COACH_USER_PROFILE_KEY);
@@ -3427,13 +3432,6 @@ export default function App() {
 
   const dailyMood = appState.days?.[tKey]?.dailyMood || null;
   const isOverwhelmedMode = dailyMood === "drained";
-  const isHyperfocusMode = dailyMood === "calm";
-
-  useEffect(() => {
-    if (tab !== "coach") return;
-    if (isOverwhelmedMode) setCoachMode("unstuck");
-    else if (isHyperfocusMode) setCoachMode("plan");
-  }, [tab, isOverwhelmedMode, isHyperfocusMode]);
 
   const visibleHourKeys = useMemo(() => {
     if (sortedHourKeys.length === 0) return sortedHourKeys;
@@ -4208,6 +4206,16 @@ export default function App() {
   }
   function removeWishItem(id) {
     setFinance((prev) => ({ ...prev, wishList: (prev.wishList || []).filter((w) => w.id !== id) }));
+  }
+  function contributeToWishItem(id, amountRaw) {
+    const amt = parseFloat(String(amountRaw).replace(",", "."));
+    if (!Number.isFinite(amt) || amt <= 0) return;
+    setFinance((prev) => ({
+      ...prev,
+      wishList: (prev.wishList || []).map((w) =>
+        w.id === id ? { ...w, savedSoFar: Math.max(0, (Number(w.savedSoFar) || 0) + amt) } : w
+      ),
+    }));
   }
   function addSubscription(name, amount, cycle = "monthly", dueDay = null) {
     setFinance((prev) => ({
@@ -5183,7 +5191,8 @@ export default function App() {
   function coachSuggestionIsBatchAuto(s) {
     if (!s || typeof s !== "object") return false;
     const t = String(s.type || "");
-    if (t === "ADD_WORKOUT_PROGRAM") return !!(s.workoutProgram?.name && (s.workoutProgram?.exerciseLines || []).length > 0);
+    if (t === "ADD_WISH") return !!(normalizeText(s.title || s.label) || normalizeText(s.wishLabel));
+    if (t === "WISH_CONTRIBUTION") return Number(s.amount) > 0;
     if (t === "BREAK") return true;
     if (t === "SPLIT_TASK") return false;
     if (t === "ADD_TASK") {
@@ -5216,10 +5225,23 @@ export default function App() {
         <div className="coach-v2-suggest-list">
           {suggestions.map((s) => {
             const isWorkoutProgram = s.type === "ADD_WORKOUT_PROGRAM";
+            const isWishAdd = s.type === "ADD_WISH";
+            const isWishContrib = s.type === "WISH_CONTRIBUTION";
             const bundledWp = coachSuggestionBundledWorkout(s);
             const isBundledWorkoutTask = Boolean(bundledWp?.exerciseLines?.length);
-            const canAuto = isWorkoutProgram || isBundledWorkoutTask || s.type === "ADD_TASK" || s.type === "BREAK" || s.type === "SPLIT_TASK";
-            const whenLine = isWorkoutProgram
+            const canAuto =
+              isWorkoutProgram ||
+              isWishAdd ||
+              isWishContrib ||
+              isBundledWorkoutTask ||
+              s.type === "ADD_TASK" ||
+              s.type === "BREAK" ||
+              s.type === "SPLIT_TASK";
+            const whenLine = isWishAdd
+              ? "Wish list · new goal"
+              : isWishContrib
+                ? `Wish list · save $${Number(s.amount || 0).toFixed(0)}`
+                : isWorkoutProgram
               ? "Workout program (saves to Health)"
               : isBundledWorkoutTask
                 ? "Workout + program (choose below)"
@@ -5233,7 +5255,7 @@ export default function App() {
                   {whenLine}
                   {!isWorkoutProgram && planDayLine ? <span className="coach-v2-plan-day"> · {planDayLine}</span> : null}
                 </div>
-                {!isWorkoutProgram && !isBundledWorkoutTask ? (
+                {!isWorkoutProgram && !isBundledWorkoutTask && !isWishAdd && !isWishContrib ? (
                   <div className="coach-v2-card-top">
                     <span className="coach-v2-meta">
                       <Pill label={s.category} />
@@ -5262,7 +5284,7 @@ export default function App() {
                     </span>
                   </div>
                 )}
-                <div className="coach-v2-card-title">{s.title}</div>
+                <div className="coach-v2-card-title">{s.title || s.label || s.wishLabel}</div>
                 {isWorkoutProgram && s.workoutProgram?.exerciseLines?.length ? (
                   <ul className="settings-hint" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
                     {s.workoutProgram.exerciseLines.slice(0, 6).map((line, i) => (
@@ -5308,9 +5330,9 @@ export default function App() {
                         </button>
                       </>
                     ) : (
-                      <button type="button" className="btn btn-primary" onClick={() => acceptCoachSuggestion(s)}>
-                        Approve
-                      </button>
+                        <button type="button" className="btn btn-primary" onClick={() => acceptCoachSuggestion(s)}>
+                          {isWishAdd ? "Add to wish list" : isWishContrib ? "Log savings" : "Approve"}
+                        </button>
                     )
                   ) : (
                     <button type="button" className="btn" disabled title="Reorder and timebox controls live in Details mode for now">
@@ -5382,7 +5404,48 @@ export default function App() {
         return { programId, rec, reused: false };
       }
 
-      if (s.type === "ADD_WORKOUT_PROGRAM" && s.workoutProgram?.name && s.workoutProgram.exerciseLines?.length) {
+      if (s.type === "ADD_WISH") {
+        const label = normalizeText(s.title || s.label || s.wishLabel);
+        if (!label) return false;
+        const targetRaw = s.targetAmount != null ? Number(s.targetAmount) : null;
+        const targetAmount = targetRaw != null && Number.isFinite(targetRaw) && targetRaw > 0 ? targetRaw : null;
+        addWishItem(label, targetAmount);
+        removeCoachSuggestionById(s.id);
+        toast({ text: "Added to wish list", detail: label, kind: "ok" });
+        goTab("finance");
+        return true;
+      }
+      if (s.type === "WISH_CONTRIBUTION") {
+        const amt = Number(s.amount);
+        if (!Number.isFinite(amt) || amt <= 0) return false;
+        const labelHint = normalizeText(s.wishLabel || s.title || "");
+        const existing = (finance.wishList || []).find(
+          (w) => labelHint && String(w.label || "").toLowerCase() === labelHint.toLowerCase()
+        );
+        if (existing) {
+          contributeToWishItem(existing.id, amt);
+          removeCoachSuggestionById(s.id);
+          toast({ text: `Added $${amt.toFixed(2)} toward ${existing.label}`, kind: "ok" });
+          goTab("finance");
+          return true;
+        }
+        if (labelHint) {
+          setFinance((prev) => ({
+            ...prev,
+            wishList: [
+              ...(prev.wishList || []),
+              { id: uid(), label: labelHint, targetAmount: null, savedSoFar: amt },
+            ],
+          }));
+          removeCoachSuggestionById(s.id);
+          toast({ text: `Started savings for ${labelHint}`, detail: `$${amt.toFixed(2)} set aside`, kind: "ok" });
+          goTab("finance");
+          return true;
+        }
+        toast({ text: "Could not match that wish item.", kind: "info" });
+        return false;
+      }
+      if (s.type === "ADD_WORKOUT_PROGRAM" && s.workoutProgram?.name && s.workoutProgram?.exerciseLines?.length) {
         const saved = saveCoachDraftWorkoutProgram(s.workoutProgram);
         if (!saved) {
           toast({ text: "That program suggestion had no exercises we could save.", kind: "info" });
@@ -5472,7 +5535,7 @@ export default function App() {
           );
           removeCoachSuggestionById(s.id);
           toast({ text: "Program saved and workout linked on your calendar", detail: rec.name, kind: "ok" });
-          goTab("list");
+          goTab("plan");
           return true;
         }
       }
@@ -5553,7 +5616,7 @@ export default function App() {
           text: `Added ${applied} coach suggestion${applied === 1 ? "" : "s"} to your schedule`,
           kind: "ok",
         });
-        setTab("list");
+        setTab("plan");
       }
     } finally {
       coachAcceptBusyRef.current = false;
@@ -5568,11 +5631,11 @@ export default function App() {
     try {
       const localNowHHMM = `${String(new Date().getHours()).padStart(2, "0")}:${String(new Date().getMinutes()).padStart(2, "0")}`;
       const adhdQuestion =
-        adhdMode === "plan"
-          ? "Plan my day for today"
-          : adhdMode === "unstuck"
-            ? "I'm stuck and need a tiny next step"
-            : "End of day review";
+        adhdMode === "schedule"
+          ? "Help me plan and organize my schedule for today"
+          : adhdMode === "fitness"
+            ? "Help me with training, workouts, and fitness goals"
+            : "Help me with money, savings, and my wish list";
       let coachContext = null;
       let coachReasoningMode = "general_coaching";
       let coachContextNarrative = "";
@@ -5669,7 +5732,21 @@ export default function App() {
         summary: data.summary || data.message || "",
         followUp: data.followUp || null,
         actions: Array.isArray(data.actions) ? data.actions : [],
+        suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
       });
+      if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+        const guarded = applyLiveDaySuggestionGuards(data.suggestions, todayHours, {
+          coachViewDayKey: tKey,
+          realTodayKey,
+          localNowHHMM,
+        });
+        setCoachResult({
+          message: data.summary || "",
+          suggestions: guarded,
+        });
+      } else {
+        setCoachResult(null);
+      }
     } catch {
       setCoachError("Network error");
     } finally {
@@ -5974,6 +6051,10 @@ export default function App() {
   useEffect(() => {
     const alwaysAllowed = ["today", "insights", "you", "coach", "list", "medications", "timers", "health", "finance", "notes", "monthly"];
     if (alwaysAllowed.includes(tab)) return;
+    if (tab === "list" || tab === "monthly") setTab("plan");
+  }, [tab]);
+
+  useEffect(() => {
     const nv = normalizeNavVisibility(profile.navVisibility);
     if (nv[tab] === true) return;
     const order = ["today", ...normalizeDockOrder(profile.dockOrder)];
@@ -6105,7 +6186,34 @@ export default function App() {
                       : "Coach"}
                   </h1>
                 </>
+              <span className="brand-name">PROYOU</span>
+              <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
+                {tab === "today"
+                  ? formatWeekday(tKey)
+                  : tab === "plan"
+                  ? "Plan"
+                  : tab === "notes"
+                  ? "Notes"
+                  : tab === "finance"
+                  ? "Finance"
+                  : tab === "health"
+                  ? "Health"
+                  : "Pattern insights"}
+              </h1>
+              {(tab !== "today" && tab !== "plan") && (
+                <span className="sub header-date header-date-visible">
+                  {tab === "finance"
+                    ? "Income, spending & savings"
+                    : tab === "health"
+                    ? "Training, macros & weight"
+                    : "Insights"}
+                </span>
               )}
+              {tab === "plan" ? (
+                <span className="sub header-date header-date-visible">
+                  {isSameDayKey(tKey, realTodayKey) ? "Monthly objectives · today's list" : `Monthly objectives · ${formatWeekday(tKey)}`}
+                </span>
+              ) : null}
             </div>
 
             <div className="tabs" aria-hidden="true">
@@ -6117,7 +6225,7 @@ export default function App() {
             </div>
 
             <div className="top-actions">
-              {tab === "list" && (
+              {tab === "plan" && (
                 <button
                   type="button"
                   className="btn-icon"
@@ -6480,6 +6588,13 @@ export default function App() {
                         <img src={`${import.meta.env.BASE_URL}watericon.png`} alt="" style={{ width: 42, height: 42, borderRadius: 12, objectFit: "cover" }} />
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{h.label}</div>
+                      <li key={h.id} className="habit-checkin-row">
+                        <div className="habit-checkin-label">
+                          <HabitIconBadge iconId={h.icon} className="habit-checkin-icon" />
+                          <span className="habit-checkin-name">{h.label}</span>
+                          <span className={`habit-direction-tag ${h.direction === "break" ? "is-break" : "is-build"}`}>
+                            {h.direction === "break" ? "Break" : "Build"}
+                          </span>
                         </div>
                         <span style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5, padding: "3px 8px", borderRadius: 999, background: h.direction === "break" ? "rgba(212,107,107,0.1)" : "rgba(232,169,183,0.15)", color: h.direction === "break" ? "#B85555" : "var(--py-accent-deep)" }}>
                           {h.direction === "break" ? "Break" : "Build"}
@@ -6506,14 +6621,15 @@ export default function App() {
             )}
 
             {tab === "today" && routineSchedule.enabledMorning !== false && routineAppliesToday(routineSchedule.morning, new Date(tKey + "T12:00:00").getDay()) && effectiveMorningRoutine.length > 0 && (
-              <section className="panel scroll-reveal" style={{ marginBottom: 14 }}>
+              <section className="today-section today-section--routine scroll-reveal">
                 <MorningRoutine routine={effectiveMorningRoutine} onToggle={toggleMorningRoutine} />
               </section>
             )}
 
-            <section className="timeline-wrap scroll-reveal">
+            <section className="today-section today-section--timeline timeline-wrap scroll-reveal">
               {sortedHourKeys.length === 0 ? (
                 <div className="empty-big" style={{ paddingBottom: 60 }}>
+                <div className="empty-big empty-big--plain">
                   <div className="empty-title">No hours yet.</div>
                 </div>
               ) : (
@@ -6676,7 +6792,7 @@ export default function App() {
 
             {/* Today's Capacity: Energy + Mood pills (reference) */}
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (
-              <section className="capacity-card scroll-reveal">
+              <section className="today-section today-section--capacity capacity-card capacity-card--plain scroll-reveal">
                 <div className="panel-title">
                   <span className="title">Today&apos;s Capacity</span>
                 </div>
@@ -6854,10 +6970,83 @@ export default function App() {
               </section>
             )}
           </>
-        ) : tab === "list" ? (
-          <section className="panel list-page scroll-reveal">
+        ) : tab === "plan" ? (
+          <section className="panel plan-page scroll-reveal">
+            <div className="plan-section plan-section-monthly monthly-objectives-section">
+              <div className="panel-top">
+                <div className="panel-title">
+                  <div className="title">Monthly objectives</div>
+                </div>
+              </div>
+
+              <form className="monthly-add monthly-add-bar" onSubmit={addMonthly}>
+                <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" aria-label="New objective" />
+                <button className="btn btn-primary monthly-add-submit" type="submit">Add</button>
+              </form>
+
+              {appState.monthly.length === 0 ? (
+                <div className="empty">Add your first monthly objective.</div>
+              ) : (
+                <ul className="list list-page-list monthly-objectives-list">
+                  {appState.monthly.map((m) => (
+                    <li
+                      key={m.id}
+                      className={["list-row", "monthly-list-row", m.done ? "monthly-list-row-done" : ""].filter(Boolean).join(" ")}
+                    >
+                      {editingMonthlyId === m.id ? (
+                        <div className="monthly-edit-row list-row-edit-row">
+                          <input
+                            className="input"
+                            value={editingMonthlyText}
+                            onChange={(e) => setEditingMonthlyText(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === "Enter") editMonthly(m.id, editingMonthlyText); if (e.key === "Escape") { setEditingMonthlyId(null); setEditingMonthlyText(""); } }}
+                            autoFocus
+                          />
+                          <div className="list-row-edit-actions">
+                            <button type="button" className="btn btn-sm btn-primary" onClick={() => editMonthly(m.id, editingMonthlyText)}>Save</button>
+                            <button type="button" className="btn btn-sm" onClick={() => { setEditingMonthlyId(null); setEditingMonthlyText(""); }}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="list-row-body monthly-list-row-body">
+                          <label className="list-row-main check monthly-list-check" onClick={(e) => e.stopPropagation()}>
+                            <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
+                            <span className="checkmark" />
+                            <span className={`list-row-title ${m.done ? "item-text-done" : ""}`}>{m.text}</span>
+                          </label>
+                          <div className="list-row-actions">
+                            <button
+                              type="button"
+                              className="icon-btn list-row-action list-row-more"
+                              title="Objective options"
+                              aria-label="Objective options"
+                              data-list-menu-trigger
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const anchorEl = e.currentTarget;
+                                if (!anchorEl) return;
+                                const rect = anchorEl.getBoundingClientRect();
+                                dismissTaskDropdownOnly();
+                                setSecondaryListMenu((prev) =>
+                                  prev?.kind === "monthly" && prev.id === m.id ? null : { kind: "monthly", id: m.id, rect }
+                                );
+                              }}
+                            >
+                              <MenuIcon style={{ width: 18, height: 18 }} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="plan-section plan-section-list list-page">
             <div className="list-page-header">
               <h2 className="list-page-title">Plan</h2>
+              <h2 className="list-page-title">{isSameDayKey(tKey, realTodayKey) ? "Today's list" : formatWeekday(tKey)}</h2>
               <span
                 className={
                   incompleteTasks.length === 0
@@ -6991,69 +7180,6 @@ export default function App() {
                 <div className="title">Monthly objectives</div>
               </div>
             </div>
-
-            <form className="monthly-add monthly-add-bar" onSubmit={addMonthly}>
-              <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" aria-label="New objective" />
-              <button className="btn btn-primary monthly-add-submit" type="submit">Add</button>
-            </form>
-
-            {appState.monthly.length === 0 ? (
-              <div className="empty">Add your first monthly objective.</div>
-            ) : (
-              <ul className="list list-page-list monthly-objectives-list">
-                {appState.monthly.map((m) => (
-                  <li
-                    key={m.id}
-                    className={["list-row", "monthly-list-row", m.done ? "monthly-list-row-done" : ""].filter(Boolean).join(" ")}
-                  >
-                    {editingMonthlyId === m.id ? (
-                      <div className="monthly-edit-row list-row-edit-row">
-                        <input
-                          className="input"
-                          value={editingMonthlyText}
-                          onChange={(e) => setEditingMonthlyText(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Enter") editMonthly(m.id, editingMonthlyText); if (e.key === "Escape") { setEditingMonthlyId(null); setEditingMonthlyText(""); } }}
-                          autoFocus
-                        />
-                        <div className="list-row-edit-actions">
-                          <button type="button" className="btn btn-sm btn-primary" onClick={() => editMonthly(m.id, editingMonthlyText)}>Save</button>
-                          <button type="button" className="btn btn-sm" onClick={() => { setEditingMonthlyId(null); setEditingMonthlyText(""); }}>Cancel</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="list-row-body monthly-list-row-body">
-                        <label className="list-row-main check monthly-list-check" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
-                          <span className="checkmark" />
-                          <span className={`list-row-title ${m.done ? "item-text-done" : ""}`}>{m.text}</span>
-                        </label>
-                        <div className="list-row-actions">
-                          <button
-                            type="button"
-                            className="icon-btn list-row-action list-row-more"
-                            title="Objective options"
-                            aria-label="Objective options"
-                            data-list-menu-trigger
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const anchorEl = e.currentTarget;
-                              if (!anchorEl) return;
-                              const rect = anchorEl.getBoundingClientRect();
-                              dismissTaskDropdownOnly();
-                              setSecondaryListMenu((prev) =>
-                                prev?.kind === "monthly" && prev.id === m.id ? null : { kind: "monthly", id: m.id, rect }
-                              );
-                            }}
-                          >
-                            <MenuIcon style={{ width: 18, height: 18 }} />
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            )}
           </section>
         ) : tab === "coach" ? (
           <section className="panel pattern-insights-section scroll-reveal">
@@ -7064,23 +7190,23 @@ export default function App() {
             </div>
 
             {/* Pattern insight cards */}
-            <div className="pattern-insights">
-              <div className="insight-card">
+            <div className="pattern-insights pattern-insights--v2">
+              <div className="insight-card insight-card--peak">
                 <span className="insight-label">Peak time</span>
                 <span className="insight-value">{patternInsights.bestTime}</span>
                 <span className="insight-detail">You complete most tasks in the {patternInsights.bestTime}.</span>
               </div>
               {patternInsights.leastCompletedCategory && (
-                <div className="insight-card">
+                <div className="insight-card insight-card--category">
                   <span className="insight-label">Category to nurture</span>
-                  <span className="insight-value">{patternInsights.leastCompletedCategory}</span>
+                  <span className="insight-value insight-value--sm">{patternInsights.leastCompletedCategory}</span>
                   <span className="insight-detail">
                     {Math.round((1 - patternInsights.leastCompletedRate) * 100)}% completion. Try one small win.
                   </span>
                 </div>
               )}
               {patternInsights.sleepCorrelation && (patternInsights.sleepCorrelation.nightsWithRoutine > 0 || patternInsights.sleepCorrelation.nightsWithoutRoutine > 0) && (
-                <div className="insight-card insight-sleep">
+                <div className="insight-card insight-card--sleep">
                   <span className="insight-label">Sleep correlation</span>
                   <span className="insight-value">
                     {patternInsights.sleepCorrelation.avgNextDayWithBedtime != null && patternInsights.sleepCorrelation.avgNextDayWithoutBedtime != null
@@ -7089,115 +7215,122 @@ export default function App() {
                         ? `${patternInsights.sleepCorrelation.avgNextDayWithBedtime} tasks next day (${patternInsights.sleepCorrelation.nightsWithRoutine} nights)`
                         : "Complete routine to see impact."}
                   </span>
-                  <span className="insight-detail">ADHD: consistency with wind-down often improves next-day focus.</span>
+                  <span className="insight-detail">Consistency with wind-down often improves next-day focus.</span>
                 </div>
               )}
-              <div className="insight-card">
+              <div className="insight-card insight-card--week">
                 <span className="insight-label">This week</span>
                 <span className="insight-value">{patternInsights.todayCompletions} today</span>
-                <span className="insight-detail">{patternInsights.totalCompletions} completions in history.</span>
+                <span className="insight-detail">{patternInsights.totalCompletions} completions in history</span>
               </div>
             </div>
 
             <h3 className="coach-subsection-title">Coach</h3>
-            <div className="panel-title"><div className="meta">{prog.done}/{prog.total} tasks · Plan / Unstuck / Review</div></div>
-
-            {/* Mode selector: Plan / Unstuck / Review */}
-            <div className="coach-mode-tabs">
-              {["plan", "unstuck", "review"].map((m) => (
+            <div className="coach-mode-tabs coach-mode-tabs--v2">
+              {Object.entries(COACH_SECTION_MODES).map(([m, meta]) => (
                 <button
                   key={m}
                   type="button"
                   className={`btn coach-mode-btn ${coachMode === m ? "active" : ""}`}
-                  onClick={() => { setCoachMode(m); setCoachStructuredResult(null); setCoachResult(null); }}
+                  onClick={() => {
+                    setCoachMode(m);
+                    setCoachStructuredResult(null);
+                    setCoachResult(null);
+                  }}
                 >
-                  {m === "plan" ? "Plan my day" : m === "unstuck" ? "Unstuck" : "Review"}
+                  {meta.label}
                 </button>
               ))}
             </div>
 
-            {/* ADHD Coach: run mode → structured result with Apply */}
-            <div className="coach-structured-section">
+            <div className="coach-hero-action">
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-primary coach-hero-btn"
                 disabled={coachLoading}
                 onClick={() => callCoach(coachMode)}
               >
-                {coachLoading ? "Thinking…" : coachMode === "plan" ? "Plan my day" : coachMode === "unstuck" ? "Pick one task & break it down" : "End-of-day review"}
+                {coachLoading ? "Thinking…" : COACH_SECTION_MODES[coachMode]?.button || "Ask Coach"}
               </button>
-              {coachLoading && !coachStructuredResult && (
-                <div className="coach-skeleton">
-                  <div className="coach-skeleton-line" />
-                  <div className="coach-skeleton-line short" />
-                </div>
-              )}
-              {coachStructuredResult && (
-                <div className="coach-output-card">
-                  <p className="coach-output-summary">{coachStructuredResult.summary}</p>
-                  {coachStructuredResult.followUp && <p className="coach-output-followup">{coachStructuredResult.followUp}</p>}
-                  {coachStructuredResult.actions && coachStructuredResult.actions.length > 0 && (
-                    <div className="coach-output-actions" style={{ marginTop: 12, display: "flex", flexWrap: "wrap", gap: 8 }}>
-                      <button type="button" className="btn btn-primary" onClick={() => applyCoachActions(coachStructuredResult.actions)}>
-                        {coachMode === "unstuck" ? "Pin micro-steps to timeline" : "Apply plan"}
-                      </button>
-                      {coachMode === "unstuck" && (
-                        <button type="button" className="btn btn-primary" onClick={() => startSprint(coachStructuredResult.actions)}>
-                          Start Sprint (10 min)
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  <button type="button" className="btn" style={{ marginTop: 8 }} onClick={() => setCoachStructuredResult(null)}>Dismiss</button>
-                </div>
-              )}
             </div>
 
-            {/* Question Input Form - Prominent */}
-            <form className="coach-question-form" onSubmit={handleCoachQuestion} style={{ marginBottom: 'var(--spacing-md)' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
+            {coachLoading && !coachStructuredResult && (
+              <div className="coach-skeleton">
+                <div className="coach-skeleton-line" />
+                <div className="coach-skeleton-line short" />
+              </div>
+            )}
+
+            {coachStructuredResult ? (
+              <div className="coach-output-card coach-output-card--v2">
+                <p className="coach-output-summary">{coachStructuredResult.summary}</p>
+                {coachStructuredResult.followUp ? <p className="coach-output-followup">{coachStructuredResult.followUp}</p> : null}
+                {coachStructuredResult.actions && coachStructuredResult.actions.length > 0 ? (
+                  <div className="coach-output-actions">
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => applyCoachActions(coachStructuredResult.actions)}
+                    >
+                      {COACH_SECTION_MODES[coachMode]?.apply || "Apply"}
+                    </button>
+                  </div>
+                ) : null}
+                {(coachStructuredResult.suggestions?.length || coachResult?.suggestions?.length)
+                  ? renderCoachSuggestionCards(
+                      coachStructuredResult.suggestions?.length ? coachStructuredResult.suggestions : coachResult?.suggestions
+                    )
+                  : null}
+                <button
+                  type="button"
+                  className="btn btn-ghost coach-output-dismiss"
+                  onClick={() => {
+                    setCoachStructuredResult(null);
+                    setCoachResult(null);
+                  }}
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : null}
+
+            <form className="coach-question-form" onSubmit={handleCoachQuestion}>
+              <div className="coach-question-row">
                 <input
-                  className="input"
+                  className="input coach-question-input"
                   type="text"
                   value={coachQuestion}
                   onChange={(e) => setCoachQuestion(e.target.value)}
-                  placeholder="Ask me anything about your schedule..."
+                  placeholder="Ask about schedule, fitness, or finances…"
                   disabled={coachLoading}
-                  style={{ flex: 1, fontSize: '15px', padding: '12px 16px' }}
                 />
                 <button
-                  className="btn btn-primary"
+                  className="btn btn-primary coach-question-submit"
                   type="submit"
                   disabled={coachLoading || !coachQuestion.trim()}
-                  style={{ padding: '12px 24px' }}
                 >
                   {coachLoading ? "Thinking…" : "Ask"}
                 </button>
               </div>
             </form>
 
-            <div className="coach-actions">
-              <button
-                className="btn btn-primary"
-                type="button"
-                disabled={coachLocked || coachLoading}
-                onClick={() => {
-                  if (!coachLocked) askCoach();
-                }}
-              >
-                {coachLoading ? "Thinking…" : coachLocked ? `Coach in ${minsLeft}m` : "General Check-in"}
-              </button>
-              {(coachResult || coachConversation.length > 0) && (
-                <button className="btn" type="button" onClick={() => {
-                  setCoachResult(null);
-                  setCoachConversation([]);
-                  setCoachEdit(null);
-                  setCoachToast(null);
-                }}>
-                  Clear
+            {(coachResult || coachConversation.length > 0) && (
+              <div className="coach-clear-row">
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  onClick={() => {
+                    setCoachResult(null);
+                    setCoachConversation([]);
+                    setCoachEdit(null);
+                    setCoachToast(null);
+                    setCoachStructuredResult(null);
+                  }}
+                >
+                  Clear conversation
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {coachError && (
               <div className="coach-error">
@@ -7979,14 +8112,58 @@ export default function App() {
                 <input className="input" type="number" min="0" step="0.01" value={newWishTarget} onChange={(e) => setNewWishTarget(e.target.value)} placeholder="Target $" style={{ width: 100 }} />
                 <button type="submit" className="btn btn-primary">Add</button>
               </form>
-              <ul className="finance-list">
-                {(finance.wishList || []).map((w) => (
-                  <li key={w.id} className="finance-list-item">
-                    <span className="finance-label">{w.label}</span>
-                    {w.targetAmount != null && <span className="finance-meta">Goal ${Number(w.targetAmount).toFixed(2)}</span>}
-                    <button type="button" className="icon-btn" onClick={() => removeWishItem(w.id)} aria-label="Remove"><TrashIcon /></button>
-                  </li>
-                ))}
+              <ul className="finance-list finance-wish-list">
+                {(finance.wishList || []).map((w) => {
+                  const saved = Number(w.savedSoFar) || 0;
+                  const target = w.targetAmount != null ? Number(w.targetAmount) : null;
+                  const pct = target && target > 0 ? Math.min(100, Math.round((saved / target) * 100)) : null;
+                  const draft = wishContribDraft[w.id] ?? "";
+                  return (
+                    <li key={w.id} className="finance-list-item finance-wish-item">
+                      <div className="finance-wish-main">
+                        <span className="finance-label">{w.label}</span>
+                        {target != null ? (
+                          <span className="finance-meta">
+                            ${saved.toFixed(2)} of ${target.toFixed(2)}
+                            {pct != null ? ` · ${pct}%` : ""}
+                          </span>
+                        ) : saved > 0 ? (
+                          <span className="finance-meta">${saved.toFixed(2)} set aside</span>
+                        ) : null}
+                        {target != null && pct != null ? (
+                          <div className="finance-wish-progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                            <div className="finance-wish-progress-fill" style={{ width: `${pct}%` }} />
+                          </div>
+                        ) : null}
+                      </div>
+                      <details className="finance-wish-progress-details">
+                        <summary className="finance-wish-progress-summary">Progress</summary>
+                        <form
+                          className="finance-wish-contrib-form"
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            contributeToWishItem(w.id, draft);
+                            setWishContribDraft((prev) => ({ ...prev, [w.id]: "" }));
+                          }}
+                        >
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={draft}
+                            onChange={(e) => setWishContribDraft((prev) => ({ ...prev, [w.id]: e.target.value }))}
+                            placeholder="Amount $"
+                          />
+                          <button type="submit" className="btn btn-primary btn-sm" disabled={!String(draft).trim()}>
+                            Add to savings
+                          </button>
+                        </form>
+                      </details>
+                      <button type="button" className="icon-btn" onClick={() => removeWishItem(w.id)} aria-label="Remove"><TrashIcon /></button>
+                    </li>
+                  );
+                })}
               </ul>
               </div>
             </details>
@@ -9711,6 +9888,7 @@ export default function App() {
                       <li key={row.id} className="habit-settings-card">
                         <div className="habit-settings-card-head">
                           <div className="habit-settings-card-title">
+                            <HabitIconBadge iconId={row.icon} className="habit-settings-card-icon" />
                             {row.label}{" "}
                             <span className="settings-item-meta">
                               ({row.direction === "break" ? "break" : "build"})
@@ -9737,6 +9915,19 @@ export default function App() {
                             <TrashIcon style={{ width: 14, height: 14 }} />
                           </button>
                         </div>
+                        <HabitIconPicker
+                          compact
+                          value={row.icon}
+                          ariaLabel={`Icon for ${row.label}`}
+                          onChange={(icon) =>
+                            setHabitTracker((prev) => ({
+                              ...prev,
+                              habits: (prev.habits || []).map((x) =>
+                                x.id === row.id ? normalizeHabitRow({ ...x, icon }) : x
+                              ),
+                            }))
+                          }
+                        />
                         {dashNp.habitReminderMode === "custom" ? (
                           <>
                             <label className="habit-settings-remind-label" htmlFor={`habit-remind-${row.id}`}>
@@ -9832,12 +10023,25 @@ export default function App() {
                     );
                   })}
                 </ul>
+                <label className="label" style={{ marginTop: 10, display: "block" }}>
+                  Icon for new habit
+                </label>
+                <HabitIconPicker
+                  value={newHabitIcon}
+                  compact
+                  onChange={setNewHabitIcon}
+                  ariaLabel="Icon for new habit"
+                />
                 <div className="settings-add-type" style={{ marginTop: 10 }}>
                   <input
                     className="input modal-input"
                     type="text"
                     value={newHabitLabel}
-                    onChange={(e) => setNewHabitLabel(e.target.value)}
+                    onChange={(e) => {
+                      const label = e.target.value;
+                      setNewHabitLabel(label);
+                      if (label.trim()) setNewHabitIcon(suggestHabitIconFromLabel(label));
+                    }}
                     placeholder="e.g. Drink water / stretch"
                     aria-label="New habit label"
                   />
@@ -9861,6 +10065,7 @@ export default function App() {
                         id: uid(),
                         label,
                         direction: newHabitDirection === "break" ? "break" : "build",
+                        icon: newHabitIcon,
                         reminderSchedule: "none",
                         reminderHours: [],
                       });
@@ -9870,6 +10075,7 @@ export default function App() {
                         log: prev.log || {},
                       }));
                       setNewHabitLabel("");
+                      setNewHabitIcon(DEFAULT_HABIT_ICON);
                     }}
                   >
                     Add habit

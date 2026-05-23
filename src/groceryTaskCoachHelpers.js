@@ -39,6 +39,63 @@ export function taskMatchesGroceryKeywords(text, keywords) {
   return pattern.test(String(text || "").trim());
 }
 
+/** @param {string[]} lines */
+export function dedupeShoppingLines(lines) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of lines || []) {
+    const text = String(raw || "").trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
+}
+
+/** @param {string[]} lines @param {() => string} [makeId] */
+export function buildGroceryListItems(lines, makeId) {
+  const idFn =
+    makeId ||
+    (() => {
+      try {
+        if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+      } catch {}
+      return `g-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    });
+  return dedupeShoppingLines(lines).map((text) => ({
+    id: idFn(),
+    text,
+    done: false,
+  }));
+}
+
+export function normalizeSavedGroceryLists(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((x) => {
+      if (!x || typeof x !== "object") return null;
+      const items = Array.isArray(x.items)
+        ? x.items
+            .map((it) => ({
+              id: it.id || `g-${Math.random().toString(36).slice(2, 11)}`,
+              text: String(it.text || "").trim(),
+              done: !!it.done,
+            }))
+            .filter((it) => it.text)
+        : [];
+      return {
+        id: x.id || `glist-${Math.random().toString(36).slice(2, 11)}`,
+        title: String(x.title || "Saved list").trim() || "Saved list",
+        savedAt: typeof x.savedAt === "string" ? x.savedAt : new Date().toISOString(),
+        items,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 40);
+}
+
 export function loadTaskBehaviorEntries() {
   try {
     const raw = localStorage.getItem(TASK_BEHAVIOR_KEY);
