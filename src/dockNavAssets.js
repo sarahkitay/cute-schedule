@@ -4,7 +4,7 @@ export const DOCK_NAV_ASSETS = {
   plan: { label: "Plan", image: "planIcon.png", iconSize: 38 },
   list: { label: "Plan", image: "tasklist.png", iconSize: 38 },
   monthly: { label: "Goals", image: "monthly.png", iconSize: 38 },
-  coach: { label: "Coach", image: "InsightsIcon.png", iconSize: 40, centerImage: "PYIcon.png", centerSize: 46 },
+  coach: { label: "Coach", image: "PYIcon.png", iconSize: 42, centerImage: "PYIcon.png", centerSize: 64 },
   insights: { label: "Insights", image: "InsightsIcon.png", iconSize: 40 },
   health: { label: "Fitness", image: "fitness.png", iconSize: 38 },
   finance: { label: "Finance", image: "finance.png", iconSize: 38 },

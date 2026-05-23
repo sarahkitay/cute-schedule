@@ -59,6 +59,9 @@ import { InsightCard } from "./components/InsightCard";
 import { InsightsPage } from "./components/InsightsPage";
 import { MedicationsPage } from "./components/MedicationsPage";
 import { TimersPage } from "./components/TimersPage";
+import { WakeUpChallenge } from "./components/WakeUpChallenge";
+import { startAlarmWatcher, stopAlarmSound, requestAlarmPermissions } from "./alarmScheduler";
+import { resyncIosAlarmNotifications } from "./nativeAlarmNotifications";
 import { NavIcons } from "./components/NavIcons";
 import { MODULE_REGISTRY, MODULE_IDS, DEFAULT_NAV_ORDER, DEFAULT_ENABLED_MODULES, getNavModules } from "./modules/registry";
 import { loadMedicationsFromDisk, saveMedicationsToDisk, defaultMedicationsState } from "./modules/medications";
@@ -2263,6 +2266,7 @@ export default function App() {
   const [medicationsState, setMedicationsState] = useState(() => loadMedicationsFromDisk());
   const [timersState, setTimersState] = useState(() => loadTimersFromDisk());
   const [alarmsState, setAlarmsState] = useState(() => loadAlarmsFromDisk());
+  const [ringingAlarm, setRingingAlarm] = useState(null);
   const [enabledModules, setEnabledModules] = useState(() => {
     try {
       const raw = localStorage.getItem("cute_schedule_enabled_modules_v1");
@@ -2284,6 +2288,15 @@ export default function App() {
   useEffect(() => { saveMedicationsToDisk(medicationsState); }, [medicationsState]);
   useEffect(() => { saveTimersToDisk(timersState); }, [timersState]);
   useEffect(() => { saveAlarmsToDisk(alarmsState); }, [alarmsState]);
+
+  useEffect(() => {
+    requestAlarmPermissions();
+    return startAlarmWatcher(alarmsState.alarms, (alarm) => setRingingAlarm(alarm));
+  }, [alarmsState.alarms]);
+
+  useEffect(() => {
+    resyncIosAlarmNotifications(alarmsState.alarms);
+  }, [alarmsState.alarms]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_enabled_modules_v1", JSON.stringify(enabledModules)); } catch {} }, [enabledModules]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_nav_order_v1", JSON.stringify(navOrder)); } catch {} }, [navOrder]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_coaching_tone_v1", coachingTone); } catch {} }, [coachingTone]);
@@ -3216,7 +3229,15 @@ export default function App() {
     (async () => {
       handle = await LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
         const extra = action?.notification?.extra;
-        if (!extra || extra.proyouSource !== "task_reminder") return;
+        if (!extra) return;
+        if (extra.proyouSource === "alarm") {
+          const alarmId = extra.alarmId != null ? String(extra.alarmId) : "";
+          const alarm = (alarmsState.alarms || []).find((a) => String(a.id) === alarmId);
+          if (alarm) setRingingAlarm(alarm);
+          setTab("timers");
+          return;
+        }
+        if (extra.proyouSource !== "task_reminder") return;
         const dk = typeof extra.dayKey === "string" ? extra.dayKey : "";
         const hk = typeof extra.hourKey === "string" ? extra.hourKey : "";
         const cat = typeof extra.category === "string" ? extra.category : "";
@@ -3229,9 +3250,7 @@ export default function App() {
     return () => {
       if (handle && typeof handle.remove === "function") handle.remove();
     };
-  }, []);
-
-  // Sync reminders to server so cron can send push when app is closed
+  }, [alarmsState.alarms]);
   useEffect(() => {
     if (pushRemindersList.length === 0) return;
     const t = setTimeout(() => {
@@ -6061,6 +6080,7 @@ export default function App() {
     if (tab === "medications") return "Meds";
     if (tab === "timers") return "Timers";
     if (tab === "coach") return "Coach";
+    if (tab === "insights") return "Insights";
     return "Pattern insights";
   }, [tab, tKey]);
 
@@ -6077,6 +6097,7 @@ export default function App() {
       if (tab === "finance") return "Income, spending & savings";
       if (tab === "health") return "Training, macros & weight";
       if (tab === "coach") return "Schedule, fitness & finance coaching";
+      if (tab === "insights") return "Patterns, trends & self-understanding";
       if (tab === "timers") return "Focus & routine timers";
       return "Insights";
     }
@@ -6089,7 +6110,6 @@ export default function App() {
 
   useEffect(() => {
     if (tab === "list") setTab("plan");
-    else if (tab === "insights") setTab("coach");
   }, [tab]);
 
   useEffect(() => {
@@ -7156,10 +7176,12 @@ export default function App() {
             </div>
           </section>
         ) : tab === "coach" ? (
-          <section className="panel pattern-insights-section scroll-reveal">
-            <div className="panel-top">
-              <div className="panel-title">
-                <div className="meta">Your data, not generic advice · ADHD-aware</div>
+          <section className="panel pattern-insights-section coach-page scroll-reveal">
+            <div className="coach-page-hero">
+              <DockNavIcon tabId="coach" active variant="center" />
+              <div>
+                <h2 className="coach-page-hero__title">Coach & Insights</h2>
+                <p className="coach-page-hero__sub">Your data, not generic advice · ADHD-aware              </p>
               </div>
             </div>
 
@@ -7607,9 +7629,13 @@ export default function App() {
           />
         ) : tab === "finance" ? (
           <section className="panel finance-panel surface-glass section-finance scroll-reveal">
-            <div className="panel-top">
-              <div className="panel-title">
-                <div className="title">Finance</div>
+            <div className="panel-top finance-page-header">
+              <div className="panel-title page-icon-header">
+                <DockNavIcon tabId="finance" active />
+                <div>
+                  <div className="title">Finance</div>
+                  <p className="page-icon-header__subtitle">Income, spending & savings</p>
+                </div>
               </div>
             </div>
 
@@ -8588,7 +8614,9 @@ export default function App() {
           <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
             <TimersPage
               timersState={timersState}
-              onUpdate={setTimersState}
+              onUpdateTimers={setTimersState}
+              alarmsState={alarmsState}
+              onUpdateAlarms={setAlarmsState}
             />
           </section>
         ) : null}
@@ -10959,6 +10987,16 @@ export default function App() {
             </div>,
             document.body
           )}
+
+        {ringingAlarm ? (
+          <WakeUpChallenge
+            alarm={ringingAlarm}
+            onDismiss={() => {
+              stopAlarmSound();
+              setRingingAlarm(null);
+            }}
+          />
+        ) : null}
 
       </div>
         </>

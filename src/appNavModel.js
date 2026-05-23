@@ -3,7 +3,6 @@ import { getDockNavAsset } from "./dockNavAssets";
 /** Map legacy / alias ids to the tab id used in app state. */
 export const TAB_ID_ALIASES = Object.freeze({
   list: "plan",
-  insights: "coach",
 });
 
 export function resolveTabId(moduleId) {
@@ -16,7 +15,8 @@ export const APP_MODULE_CATALOG = Object.freeze([
   { id: "today", tab: "today", alwaysNav: true, canUnpin: false },
   { id: "plan", tab: "plan", aliases: ["list"] },
   { id: "monthly", tab: "monthly" },
-  { id: "coach", tab: "coach", centerAction: true, aliases: ["insights"] },
+  { id: "coach", tab: "coach", centerAction: true },
+  { id: "insights", tab: "insights" },
   { id: "you", tab: "you" },
   { id: "medications", tab: "medications" },
   { id: "health", tab: "health" },
@@ -33,6 +33,7 @@ export const DEFAULT_ENABLED_MODULES = Object.freeze([
   "today",
   "plan",
   "coach",
+  "insights",
   "you",
   "monthly",
   "medications",

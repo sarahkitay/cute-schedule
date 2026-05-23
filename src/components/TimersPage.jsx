@@ -2,8 +2,15 @@ import React, { useState, useRef, useCallback, useEffect } from "react";
 import { GlassCard } from "./GlassCard";
 import { PillButton } from "./PillButton";
 import { SegmentedControl } from "./SegmentedControl";
-import { NavIcons } from "./NavIcons";
-import { TIMER_TYPES, formatTimerDisplay, createTimer } from "../modules/timers";
+import { DockNavIcon } from "../DockNavIcon";
+import {
+  ALARM_MODES,
+  TIMER_TYPES,
+  createAlarm,
+  formatTimerDisplay,
+  getNextAlarmTime,
+} from "../modules/timers";
+import { requestAlarmPermissions } from "../alarmScheduler";
 
 const PRESETS = [
   { label: "5 min", ms: 5 * 60 * 1000 },
@@ -13,8 +20,17 @@ const PRESETS = [
   { label: "60 min", ms: 60 * 60 * 1000 },
 ];
 
-export function TimersPage({ timersState, onUpdate }) {
-  const [mode, setMode] = useState("timer");
+const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const ALARM_MODE_OPTIONS = [
+  { value: ALARM_MODES.STANDARD, label: "Standard", desc: "Sound + notification" },
+  { value: ALARM_MODES.GENTLE, label: "Gentle", desc: "Softer tones" },
+  { value: ALARM_MODES.MATH_DISMISS, label: "Math wake-up", desc: "Solve a quick problem" },
+  { value: ALARM_MODES.ACTION_REQUIRED, label: "Writing wake-up", desc: "Type a phrase to dismiss" },
+];
+
+export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateAlarms }) {
+  const [section, setSection] = useState("timer");
   const [running, setRunning] = useState(false);
   const [remaining, setRemaining] = useState(25 * 60 * 1000);
   const [selectedPreset, setSelectedPreset] = useState(25 * 60 * 1000);
@@ -23,11 +39,24 @@ export function TimersPage({ timersState, onUpdate }) {
   const startTimeRef = useRef(null);
   const durationRef = useRef(null);
 
+  const [showAddAlarm, setShowAddAlarm] = useState(false);
+  const [newAlarmTime, setNewAlarmTime] = useState("07:00");
+  const [newAlarmLabel, setNewAlarmLabel] = useState("Morning alarm");
+  const [newAlarmMode, setNewAlarmMode] = useState(ALARM_MODES.STANDARD);
+  const [newAlarmDays, setNewAlarmDays] = useState([1, 2, 3, 4, 5]);
+
+  const alarms = alarmsState?.alarms || [];
+  const history = timersState?.history || [];
+
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (section === "alarms") requestAlarmPermissions();
+  }, [section]);
 
   const startTimer = useCallback(() => {
     startTimeRef.current = Date.now();
@@ -44,9 +73,18 @@ export function TimersPage({ timersState, onUpdate }) {
         if (typeof Notification !== "undefined" && Notification.permission === "granted") {
           new Notification("Timer complete", { body: `${label} timer finished!` });
         }
+        if (typeof onUpdateTimers === "function") {
+          onUpdateTimers((prev) => ({
+            ...prev,
+            history: [
+              { id: Date.now(), label, durationMs: durationRef.current, completedAt: Date.now(), type: TIMER_TYPES.FOCUS },
+              ...(prev?.history || []).slice(0, 49),
+            ],
+          }));
+        }
       }
     }, 100);
-  }, [remaining, label]);
+  }, [remaining, label, onUpdateTimers]);
 
   const pauseTimer = useCallback(() => {
     if (intervalRef.current) {
@@ -67,87 +105,222 @@ export function TimersPage({ timersState, onUpdate }) {
     pauseTimer();
   }
 
+  function toggleAlarmDay(day) {
+    setNewAlarmDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
+    );
+  }
+
+  function addAlarm(e) {
+    e.preventDefault();
+    if (!newAlarmTime) return;
+    const alarm = createAlarm({
+      time: newAlarmTime,
+      label: newAlarmLabel.trim() || "Morning alarm",
+      mode: newAlarmMode,
+      days: newAlarmDays.length ? newAlarmDays : [0, 1, 2, 3, 4, 5, 6],
+    });
+    onUpdateAlarms?.((prev) => ({ ...prev, alarms: [...(prev?.alarms || []), alarm] }));
+    setShowAddAlarm(false);
+  }
+
+  function toggleAlarmEnabled(id) {
+    onUpdateAlarms?.((prev) => ({
+      ...prev,
+      alarms: (prev?.alarms || []).map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a)),
+    }));
+  }
+
+  function removeAlarm(id) {
+    onUpdateAlarms?.((prev) => ({
+      ...prev,
+      alarms: (prev?.alarms || []).filter((a) => a.id !== id),
+    }));
+  }
+
   return (
-    <div className="py-flex-col py-gap-5">
+    <div className="py-flex-col py-gap-5 timers-page">
       <div className="py-section-header">
-        <h2 className="py-section-header__title">Timers</h2>
+        <div className="py-section-header__title-row">
+          <DockNavIcon tabId="timers" active />
+          <h2 className="py-section-header__title">Timers & Alarms</h2>
+        </div>
       </div>
 
       <SegmentedControl
         options={[
           { value: "timer", label: "Timer" },
-          { value: "focus", label: "Focus" },
+          { value: "alarms", label: "Alarms" },
           { value: "history", label: "History" },
         ]}
-        value={mode}
-        onChange={setMode}
+        value={section}
+        onChange={setSection}
       />
 
-      {(mode === "timer" || mode === "focus") && (
-        <GlassCard>
-          <div className="py-timer">
-            <div className="py-timer__display">
-              {formatTimerDisplay(remaining)}
+      {section === "timer" && (
+        <>
+          <GlassCard className="timers-display-card">
+            <div className="py-timer">
+              <div className="py-timer__display">{formatTimerDisplay(remaining)}</div>
+              <div className="py-timer__label">{label}</div>
+              <div className="py-timer__controls">
+                {!running ? (
+                  <PillButton variant="primary" size="lg" onClick={startTimer}>
+                    Start
+                  </PillButton>
+                ) : (
+                  <PillButton variant="secondary" size="lg" onClick={pauseTimer}>
+                    Pause
+                  </PillButton>
+                )}
+                <PillButton variant="ghost" onClick={resetTimer}>
+                  Reset
+                </PillButton>
+              </div>
             </div>
-            <div className="py-timer__label">{label}</div>
-            <div className="py-timer__controls">
-              {!running ? (
-                <PillButton variant="primary" size="lg" onClick={startTimer}>
-                  Start
-                </PillButton>
-              ) : (
-                <PillButton variant="secondary" size="lg" onClick={pauseTimer}>
-                  Pause
-                </PillButton>
-              )}
-              <PillButton variant="ghost" onClick={resetTimer}>
-                Reset
+          </GlassCard>
+
+          <div className="timers-preset-row">
+            {PRESETS.map((p) => (
+              <PillButton
+                key={p.ms}
+                variant={selectedPreset === p.ms ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => selectPreset(p.ms)}
+              >
+                {p.label}
               </PillButton>
-            </div>
+            ))}
           </div>
-        </GlassCard>
+        </>
       )}
 
-      {(mode === "timer" || mode === "focus") && (
-        <div style={{ display: "flex", gap: "var(--py-space-2)", flexWrap: "wrap" }}>
-          {PRESETS.map((p) => (
-            <PillButton
-              key={p.ms}
-              variant={selectedPreset === p.ms ? "primary" : "secondary"}
-              size="sm"
-              onClick={() => selectPreset(p.ms)}
-            >
-              {p.label}
-            </PillButton>
-          ))}
-        </div>
-      )}
-
-      {mode === "focus" && (
-        <GlassCard compact>
-          <p style={{ fontSize: "var(--py-text-caption)", color: "var(--py-ink-secondary)", margin: 0 }}>
-            Focus mode: minimize distractions, commit to one task. Link a timer to a task from the Today screen.
-          </p>
-        </GlassCard>
-      )}
-
-      {mode === "history" && (
-        <GlassCard>
-          <div className="py-text-center" style={{ padding: "var(--py-space-6) 0" }}>
-            <NavIcons name="timer" size={36} />
-            <p style={{ marginTop: "var(--py-space-3)", color: "var(--py-ink-secondary)" }}>
-              Timer history will appear here as you complete focus sessions.
+      {section === "alarms" && (
+        <>
+          <GlassCard compact className="timers-info-card">
+            <p className="timers-info-text">
+              Alarms ring with sound while PROYOU is open. On iPhone, the native app delivers reliable morning alarms even when the app is closed.
+              Add a wake-up challenge to make snoozing harder.
             </p>
+          </GlassCard>
+
+          <div className="timers-alarm-toolbar">
+            <PillButton variant="primary" size="sm" onClick={() => setShowAddAlarm((v) => !v)}>
+              {showAddAlarm ? "Cancel" : "+ Morning alarm"}
+            </PillButton>
           </div>
-        </GlassCard>
+
+          {showAddAlarm ? (
+            <GlassCard className="timers-alarm-form-card">
+              <form className="timers-alarm-form" onSubmit={addAlarm}>
+                <label className="timers-field">
+                  <span className="timers-field-label">Time</span>
+                  <input type="time" className="input" value={newAlarmTime} onChange={(e) => setNewAlarmTime(e.target.value)} required />
+                </label>
+                <label className="timers-field">
+                  <span className="timers-field-label">Label</span>
+                  <input className="input" value={newAlarmLabel} onChange={(e) => setNewAlarmLabel(e.target.value)} placeholder="Morning alarm" />
+                </label>
+                <div className="timers-field">
+                  <span className="timers-field-label">Wake-up style</span>
+                  <div className="timers-alarm-mode-grid">
+                    {ALARM_MODE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        className={`timers-alarm-mode-option${newAlarmMode === opt.value ? " is-selected" : ""}`}
+                        onClick={() => setNewAlarmMode(opt.value)}
+                      >
+                        <span className="timers-alarm-mode-label">{opt.label}</span>
+                        <span className="timers-alarm-mode-desc">{opt.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="timers-field">
+                  <span className="timers-field-label">Repeat</span>
+                  <div className="timers-day-pills">
+                    {DAY_LABELS.map((d, i) => (
+                      <button
+                        key={d}
+                        type="button"
+                        className={`timers-day-pill${newAlarmDays.includes(i) ? " is-on" : ""}`}
+                        onClick={() => toggleAlarmDay(i)}
+                      >
+                        {d}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <PillButton variant="primary" type="submit">
+                  Save alarm
+                </PillButton>
+              </form>
+            </GlassCard>
+          ) : null}
+
+          {alarms.length === 0 ? (
+            <GlassCard>
+              <div className="timers-empty">
+                <DockNavIcon tabId="timers" active={false} />
+                <p>No alarms yet. Add a morning alarm to start your day on your terms.</p>
+              </div>
+            </GlassCard>
+          ) : (
+            <ul className="timers-alarm-list">
+              {alarms.map((alarm) => {
+                const next = getNextAlarmTime(alarm);
+                const modeMeta = ALARM_MODE_OPTIONS.find((o) => o.value === alarm.mode);
+                return (
+                  <li key={alarm.id} className={`timers-alarm-item${alarm.enabled ? "" : " is-off"}`}>
+                    <div className="timers-alarm-main">
+                      <span className="timers-alarm-time">{alarm.time}</span>
+                      <div className="timers-alarm-meta">
+                        <span className="timers-alarm-label">{alarm.label}</span>
+                        <span className="timers-alarm-mode">{modeMeta?.label || "Standard"}</span>
+                        {next ? (
+                          <span className="timers-alarm-next">
+                            Next: {next.toLocaleDateString(undefined, { weekday: "short" })} {next.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="timers-alarm-actions">
+                      <label className="timers-alarm-toggle">
+                        <input type="checkbox" checked={!!alarm.enabled} onChange={() => toggleAlarmEnabled(alarm.id)} />
+                        <span className="timers-alarm-toggle-ui" />
+                      </label>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => removeAlarm(alarm.id)}>
+                        Remove
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
 
-      {/* Platform notice */}
-      <GlassCard compact>
-        <p style={{ fontSize: "var(--py-text-caption)", color: "var(--py-ink-muted)", textAlign: "center", margin: 0 }}>
-          Native alarm sounds and background timers require the iOS app. Web timers work while the tab is active.
-        </p>
-      </GlassCard>
+      {section === "history" && (
+        <GlassCard>
+          {history.length === 0 ? (
+            <div className="timers-empty">
+              <DockNavIcon tabId="timers" active={false} />
+              <p>Completed focus sessions will show up here.</p>
+            </div>
+          ) : (
+            <ul className="timers-history-list">
+              {history.map((h) => (
+                <li key={h.id} className="timers-history-item">
+                  <span>{h.label || "Focus"}</span>
+                  <span className="timers-history-duration">{formatTimerDisplay(h.durationMs || 0)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </GlassCard>
+      )}
     </div>
   );
 }

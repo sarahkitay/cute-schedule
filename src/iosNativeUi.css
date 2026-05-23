@@ -1,0 +1,390 @@
+/* iOS-native polish: tasks, menus, pages */
+
+.page-icon-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.page-icon-header__subtitle {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--py-ink-muted, var(--text-soft));
+  font-weight: 400;
+}
+
+.card {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 2px 16px rgba(140, 100, 90, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  overflow: hidden;
+}
+.card-top {
+  padding: 4px 2px 8px;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+}
+.hour-title {
+  border-radius: 12px;
+  transition: background 150ms ease;
+}
+.hour-title:active {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.list .item {
+  border-radius: 14px;
+  margin-bottom: 6px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 0.5px solid rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  overflow: hidden;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.list .item:active {
+  transform: scale(0.992);
+}
+.item-expanded {
+  background: rgba(255, 252, 250, 0.82);
+  box-shadow: 0 4px 18px rgba(140, 100, 90, 0.1);
+}
+.item-main {
+  padding: 12px 10px;
+  gap: 8px;
+}
+.item-actions .icon-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+}
+.item-expand-btn {
+  font-size: 13px;
+  color: var(--text-soft);
+}
+
+.item-detail {
+  margin: 0 8px 10px;
+  padding: 14px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+.item-detail-note-input,
+.item-detail-reminders select,
+.item-detail-reminders .input {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+}
+.item-detail-actions-spaced {
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.item-detail-actions-spaced .btn {
+  border-radius: 999px;
+}
+
+.task-dropdown-portal .task-dropdown {
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 0.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.06);
+  padding: 6px;
+}
+.task-dropdown-portal .dropdown-item {
+  border-radius: 10px;
+  margin-bottom: 2px;
+  border-bottom: none;
+  font-weight: 500;
+  font-size: 16px;
+  padding: 11px 14px;
+}
+.task-dropdown-portal .dropdown-item:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+.task-dropdown-note-section {
+  padding: 8px 8px 4px;
+}
+.task-dropdown-note-input {
+  border-radius: 12px;
+}
+
+.finance-page-header {
+  margin-bottom: var(--space-3);
+}
+.finance-panel .finance-totals {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+.finance-panel .finance-quick-add .input {
+  border-radius: 14px;
+}
+.finance-panel .finance-quick-add .btn-primary {
+  border-radius: 14px;
+}
+.finance-details-block {
+  border-radius: 18px;
+}
+
+.coach-page-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 4px 16px;
+  margin-bottom: 8px;
+}
+.coach-page-hero__title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.coach-page-hero__sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.pattern-insights--v2 .insight-card {
+  border-radius: 18px;
+}
+
+.wake-challenge-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(20, 10, 16, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.wake-challenge-card {
+  width: min(100%, 380px);
+  padding: 28px 22px;
+  border-radius: 24px;
+  background: rgba(255, 252, 250, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
+  text-align: center;
+}
+.wake-challenge-icon-wrap {
+  margin-bottom: 12px;
+}
+.wake-challenge-icon {
+  border-radius: 20px;
+  object-fit: contain;
+}
+.wake-challenge-title {
+  margin: 0 0 8px;
+  font-size: 24px;
+  font-weight: 700;
+}
+.wake-challenge-sub {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--text-soft);
+}
+.wake-challenge-problem {
+  font-size: 32px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  margin-bottom: 12px;
+}
+.wake-challenge-phrase {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+.wake-challenge-input {
+  width: 100%;
+  margin-bottom: 8px;
+  border-radius: 14px;
+  text-align: center;
+  font-size: 18px;
+}
+.wake-challenge-error {
+  color: #b85555;
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+.wake-challenge-btn {
+  width: 100%;
+  border-radius: 999px;
+  padding: 14px;
+  font-size: 17px;
+}
+
+.timers-page .timers-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.timers-info-text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--py-ink-muted);
+  text-align: center;
+}
+.timers-alarm-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.timers-alarm-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
+}
+.timers-alarm-item.is-off {
+  opacity: 0.55;
+}
+.timers-alarm-time {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  letter-spacing: -0.02em;
+}
+.timers-alarm-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.timers-alarm-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+.timers-alarm-mode,
+.timers-alarm-next {
+  font-size: 12px;
+  color: var(--text-soft);
+}
+.timers-alarm-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.timers-field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  margin-bottom: 6px;
+}
+.timers-alarm-mode-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.timers-alarm-mode-option {
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+}
+.timers-alarm-mode-option.is-selected {
+  border-color: rgba(232, 169, 183, 0.5);
+  background: rgba(255, 230, 238, 0.65);
+}
+.timers-alarm-mode-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+.timers-alarm-mode-desc {
+  display: block;
+  font-size: 11px;
+  color: var(--text-soft);
+  margin-top: 2px;
+}
+.timers-day-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.timers-day-pill {
+  min-width: 40px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.timers-day-pill.is-on {
+  background: linear-gradient(135deg, #f0b4c4, #d4708a);
+  color: #fff;
+  border-color: transparent;
+}
+.timers-empty {
+  text-align: center;
+  padding: 24px 12px;
+  color: var(--text-soft);
+}
+.timers-alarm-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.timers-alarm-toggle-ui {
+  display: block;
+  width: 48px;
+  height: 28px;
+  border-radius: 14px;
+  background: rgba(180, 170, 175, 0.35);
+  position: relative;
+  transition: background 200ms ease;
+}
+.timers-alarm-toggle-ui::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: left 200ms ease;
+}
+.timers-alarm-toggle input:checked + .timers-alarm-toggle-ui {
+  background: var(--py-accent, #e8a9b7);
+}
+.timers-alarm-toggle input:checked + .timers-alarm-toggle-ui::after {
+  left: 23px;
+}
+.timers-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.timers-history-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06);
+}
+.timers-history-duration {
+  font-family: var(--font-mono);
+  color: var(--text-soft);
+}

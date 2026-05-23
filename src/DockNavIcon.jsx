@@ -8,7 +8,7 @@ export function DockNavIcon({ tabId, active = false, variant = "default", classN
   const asset = getDockNavAsset(tabId);
   const isCenter = variant === "center" && asset.centerImage;
   const src = dockNavAssetUrl(isCenter ? asset.centerImage : asset.image);
-  const size = isCenter ? asset.centerSize || 46 : asset.iconSize || 38;
+  const size = isCenter ? asset.centerSize || 64 : asset.iconSize || 38;
 
   return (
     <span
