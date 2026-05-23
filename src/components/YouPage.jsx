@@ -21,10 +21,10 @@ export function YouPage({
     { id: "health", label: "Fitness", desc: "Workouts, macros & programs", img: "fitness.png" },
     { id: "medications", label: "Medications", desc: "Tracking & reminders", img: "meds.png" },
     { id: "finance", label: "Finance", desc: "Income, spending & patterns", img: "finance.png" },
-    { id: "notes", label: "Notes", desc: "Thoughts, journal, ideas", img: null },
-    { id: "timers", label: "Timers", desc: "Focus & routine timers", img: null },
-    { id: "monthly", label: "Monthly Goals", desc: "Objectives & tracking", img: null },
-    { id: "list", label: "Task List", desc: "All tasks in flat view", img: null },
+    { id: "notes", label: "Notes", desc: "Thoughts, journal, ideas", img: "notes.png" },
+    { id: "timers", label: "Timers", desc: "Focus & routine timers", img: "timer.png" },
+    { id: "monthly", label: "Monthly Goals", desc: "Objectives & tracking", img: "monthly.png" },
+    { id: "list", label: "Task List", desc: "All tasks in flat view", img: "tasklist.png" },
   ];
 
   const navSlots = ["today", "list", "coach", "insights", "you"];
@@ -185,22 +185,22 @@ export function YouPage({
       {/* Quick actions grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <button type="button" onClick={() => setSection("habits")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, rgba(232,169,183,0.2), rgba(200,160,220,0.15))", marginBottom: 8 }} />
+          <img src={`${import.meta.env.BASE_URL}habit.png`} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Habits</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{(habitTracker.habits || []).length} active</div>
         </button>
         <button type="button" onClick={() => setSection("routine")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <img src={`${import.meta.env.BASE_URL}sunIcon.png`} alt="" style={{ width: 32, height: 32, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
+          <img src={`${import.meta.env.BASE_URL}sunIcon.png`} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Routines</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{morningRoutineTemplate.length} morning steps</div>
         </button>
         <button type="button" onClick={() => setSection("nav")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, rgba(180,200,230,0.25), rgba(160,180,220,0.15))", marginBottom: 8 }} />
+          <img src={`${import.meta.env.BASE_URL}nav.png`} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Navigation</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>Customize your nav bar</div>
         </button>
         <button type="button" onClick={onOpenSettings} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <div style={{ width: 32, height: 32, borderRadius: 10, background: "linear-gradient(135deg, rgba(200,190,210,0.25), rgba(180,170,195,0.15))", marginBottom: 8 }} />
+          <img src={`${import.meta.env.BASE_URL}settingsicon.png`} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Settings</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>Theme, data, account</div>
         </button>

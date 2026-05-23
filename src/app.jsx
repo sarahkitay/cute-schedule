@@ -6151,7 +6151,7 @@ export default function App() {
         {/* Bottom navigation: fully customizable, resizes to fit */}
         <nav className="bottom-nav surface-dock" aria-label="Main" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-evenly", padding: "8px 6px", paddingBottom: "max(12px, env(safe-area-inset-bottom))", gap: 2 }}>
           {(() => {
-            const imgMap = { today: "homeicon.png", list: "planIcon.png", plan: "planIcon.png", insights: "InsightsIcon.png", you: "YouIcon.png", coach: "PYIcon.png", health: "fitness.png", medications: "meds.png", finance: "finance.png", notes: "planIcon.png", timers: "planIcon.png", monthly: "planIcon.png" };
+            const imgMap = { today: "homeicon.png", list: "planIcon.png", plan: "planIcon.png", insights: "InsightsIcon.png", you: "YouIcon.png", coach: "PYIcon.png", health: "fitness.png", medications: "meds.png", finance: "finance.png", notes: "notes.png", timers: "timer.png", monthly: "monthly.png" };
             const labelMap = { today: "Home", list: "Plan", plan: "Plan", insights: "Insights", you: "You", coach: "Coach", health: "Fitness", medications: "Meds", finance: "Finance", notes: "Notes", timers: "Timers", monthly: "Goals" };
             const userNav = navOrder.filter(id => enabledModules.includes(id) || id === "today" || id === "you");
             const finalNav = userNav.length >= 3 ? userNav : ["today", "list", "insights", "you"];

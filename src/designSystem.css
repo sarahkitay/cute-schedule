@@ -1400,6 +1400,92 @@
   margin-top: var(--py-space-6);
 }
 
+/* ═══════════════════════════════════════════════
+   RESPONSIVE: iPad, Mac, larger screens
+   ═══════════════════════════════════════════════ */
+
+/* Tablet (iPad) */
+@media (min-width: 768px) {
+  .app .shell-main {
+    max-width: 600px !important;
+    margin: 0 auto !important;
+    padding: 0 28px !important;
+  }
+  .app .top.top-plain {
+    max-width: 640px !important;
+    margin: 0 auto !important;
+    padding-left: 28px !important;
+    padding-right: 28px !important;
+  }
+  .app .bottom-nav.surface-dock {
+    max-width: 520px !important;
+    margin: 0 auto !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    border-radius: 24px 24px 0 0 !important;
+    bottom: 0 !important;
+    right: auto !important;
+  }
+  .py-card-grid {
+    gap: 16px !important;
+  }
+  .app .panel,
+  .app section.panel {
+    padding: 24px !important;
+  }
+  .app .quick-add-entry-mode-btn {
+    padding: 12px 36px !important;
+    font-size: 16px !important;
+  }
+}
+
+/* Desktop (Mac / large iPad) */
+@media (min-width: 1024px) {
+  .app .shell-main {
+    max-width: 680px !important;
+    padding: 0 36px !important;
+  }
+  .app .top.top-plain {
+    max-width: 720px !important;
+    padding-left: 36px !important;
+    padding-right: 36px !important;
+  }
+  .app .bottom-nav.surface-dock {
+    max-width: 560px !important;
+    border-radius: 28px 28px 0 0 !important;
+    padding: 10px 16px !important;
+  }
+  .py-card-grid {
+    gap: 20px !important;
+  }
+  .app .panel,
+  .app section.panel {
+    padding: 28px !important;
+    border-radius: 28px !important;
+  }
+  .app .surface-glass {
+    border-radius: 28px !important;
+  }
+  .app .hour-card {
+    border-radius: 22px !important;
+    padding: 16px 20px !important;
+  }
+}
+
+/* Large desktop */
+@media (min-width: 1440px) {
+  .app .shell-main {
+    max-width: 720px !important;
+  }
+  .app .top.top-plain {
+    max-width: 760px !important;
+  }
+  .app .bottom-nav.surface-dock {
+    max-width: 600px !important;
+    border-radius: 32px 32px 0 0 !important;
+  }
+}
+
 /* ─── Utility ─── */
 .py-text-muted { color: var(--py-ink-muted); }
 .py-text-secondary { color: var(--py-ink-secondary); }
