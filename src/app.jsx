@@ -6076,7 +6076,7 @@ export default function App() {
                       <h1 className="h1 h1-banner-date" style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
                         Good {getTimeOfDay() === "morning" ? "morning" : getTimeOfDay() === "evening" ? "evening" : "afternoon"}, {profile.name || "there"}
                       </h1>
-                      <span style={{ fontSize: 13, color: "var(--py-ink-tertiary)", fontWeight: 400 }}>Let&apos;s make today meaningful.</span>
+                      <span className="greeting-tagline" style={{ fontSize: 13, fontWeight: 400 }}>Let&apos;s make today meaningful.</span>
                     </div>
                   </div>
                 </>
