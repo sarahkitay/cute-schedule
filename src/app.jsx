@@ -6148,48 +6148,51 @@ export default function App() {
           </div>
         </header>
 
-        {/* Bottom navigation: iOS glass dock with 3D icon images */}
+        {/* Bottom navigation: dynamic from enabledModules + always Home/You */}
         <nav className="bottom-nav surface-dock" aria-label="Main" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-around", padding: "8px 10px", paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
-          {[
-            { id: "today", label: "Home", img: "homeicon.png" },
-            { id: "list", label: "Plan", img: "planIcon.png" },
-            { id: "__center__", label: "", img: "PYIcon.png" },
-            { id: "insights", label: "Insights", img: "InsightsIcon.png" },
-            { id: "you", label: "You", img: "YouIcon.png" },
-          ].map((item) => {
-            if (item.id === "__center__") {
+          {(() => {
+            const imgMap = { today: "homeicon.png", list: "planIcon.png", plan: "planIcon.png", insights: "InsightsIcon.png", you: "YouIcon.png", coach: "PYIcon.png", health: "fitness.png", medications: "meds.png", finance: "finance.png", notes: "planIcon.png", timers: "planIcon.png", monthly: "planIcon.png" };
+            const labelMap = { today: "Home", list: "Plan", plan: "Plan", insights: "Insights", you: "You", coach: "Coach", health: "Fitness", medications: "Meds", finance: "Finance", notes: "Notes", timers: "Timers", monthly: "Goals" };
+            const priorityOrder = ["health", "medications", "finance", "list", "notes", "timers", "monthly"];
+            const customMiddle = priorityOrder.filter(id => enabledModules.includes(id));
+            const leftSlot = customMiddle.length > 0 ? customMiddle[0] : "list";
+            const navItems = ["today", leftSlot, "__center__", "insights", "you"];
+            return navItems.map((itemId) => {
+              if (itemId === "__center__") {
+                return (
+                  <button key="center" type="button" onClick={() => setTab("coach")} aria-label="Coach" style={{
+                    width: 68, height: 68, marginTop: -28, marginBottom: 0, borderRadius: "50%",
+                    background: "radial-gradient(circle at 40% 30%, rgba(255,225,235,0.95), rgba(248,190,210,0.7), rgba(240,170,195,0.5))",
+                    border: "3.5px solid rgba(255,255,255,0.9)", padding: 0,
+                    boxShadow: "0 8px 28px rgba(212,112,138,0.4), 0 3px 8px rgba(0,0,0,0.06), inset 0 2px 4px rgba(255,255,255,0.8)",
+                    display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
+                  }}>
+                    <img src={`${import.meta.env.BASE_URL}PYIcon.png`} alt="ProYou" style={{ width: 46, height: 46, borderRadius: "50%", objectFit: "contain" }} />
+                  </button>
+                );
+              }
+              const isActive = tab === itemId;
+              const img = imgMap[itemId] || "planIcon.png";
+              const label = labelMap[itemId] || itemId;
               return (
-                <button key="center" type="button" onClick={() => setTab("coach")} aria-label="Coach" style={{
-                  width: 68, height: 68, marginTop: -30, marginBottom: 0, borderRadius: "50%",
-                  background: "radial-gradient(circle at 40% 30%, rgba(255,225,235,0.95), rgba(248,190,210,0.7), rgba(240,170,195,0.5))",
-                  border: "3.5px solid rgba(255,255,255,0.9)", padding: 0,
-                  boxShadow: "0 8px 28px rgba(212,112,138,0.4), 0 3px 8px rgba(0,0,0,0.06), inset 0 2px 4px rgba(255,255,255,0.8)",
-                  display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
-                  transition: "all 200ms ease",
+                <button key={itemId} type="button" onClick={() => { setTab(itemId); if (itemId === "today") setShowMonthCalendar(false); }} aria-current={isActive ? "page" : undefined} style={{
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
+                  background: "none", border: "none", cursor: "pointer", padding: "4px 6px", minWidth: 52,
                 }}>
-                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt="ProYou" style={{ width: 46, height: 46, borderRadius: "50%", objectFit: "contain" }} />
+                  <span style={{
+                    width: 48, height: 48, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
+                    background: isActive ? "rgba(255,218,230,0.7)" : "rgba(255,240,244,0.4)",
+                    border: `1px solid ${isActive ? "rgba(232,169,183,0.25)" : "rgba(255,255,255,0.6)"}`,
+                    boxShadow: isActive ? "0 4px 16px rgba(212,96,122,0.2), inset 0 1px 2px rgba(255,255,255,0.7)" : "0 2px 8px rgba(0,0,0,0.03), inset 0 1px 1px rgba(255,255,255,0.5)",
+                    transition: "all 200ms ease", transform: isActive ? "scale(1.06)" : "scale(1)",
+                  }}>
+                    <img src={`${import.meta.env.BASE_URL}${img}`} alt={label} style={{ width: 38, height: 38, borderRadius: 10, objectFit: "contain" }} />
+                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? "#D4607A" : "rgba(160,140,150,0.8)", letterSpacing: 0.2 }}>{label}</span>
                 </button>
               );
-            }
-            const isActive = tab === item.id;
-            return (
-              <button key={item.id} type="button" onClick={() => { setTab(item.id); if (item.id === "today") setShowMonthCalendar(false); }} aria-current={isActive ? "page" : undefined} style={{
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                background: "none", border: "none", cursor: "pointer", padding: "4px 8px", minWidth: 56,
-              }}>
-                <span style={{
-                  width: 46, height: 46, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
-                  background: isActive ? "rgba(255,218,230,0.7)" : "rgba(255,240,244,0.45)",
-                  border: `1px solid ${isActive ? "rgba(232,169,183,0.25)" : "rgba(255,255,255,0.6)"}`,
-                  boxShadow: isActive ? "0 4px 16px rgba(212,96,122,0.2), inset 0 1px 2px rgba(255,255,255,0.7)" : "0 2px 8px rgba(0,0,0,0.03), inset 0 1px 1px rgba(255,255,255,0.5)",
-                  transition: "all 200ms ease", transform: isActive ? "scale(1.06)" : "scale(1)",
-                }}>
-                  <img src={`${import.meta.env.BASE_URL}${item.img}`} alt={item.label} style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain" }} />
-                </span>
-                <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? "#D4607A" : "rgba(160,140,150,0.8)", letterSpacing: 0.2 }}>{item.label}</span>
-              </button>
-            );
-          })}
+            });
+          })()}
         </nav>
 
         {/* Sprint countdown bar */}

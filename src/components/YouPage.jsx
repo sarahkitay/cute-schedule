@@ -15,6 +15,7 @@ export function YouPage({
   const [newHabitLabel, setNewHabitLabel] = useState("");
   const [newHabitDir, setNewHabitDir] = useState("build");
   const [newRoutineLine, setNewRoutineLine] = useState("");
+  const [nightRoutineLine, setNightRoutineLine] = useState("");
 
   const allModules = [
     { id: "health", label: "Fitness", desc: "Workouts, macros & programs", img: "fitness.png" },
@@ -62,6 +63,16 @@ export function YouPage({
     setMorningRoutineTemplate(prev => prev.filter(r => r.id !== id));
   }
 
+  function addNightItem() {
+    if (!nightRoutineLine.trim()) return;
+    setRoutineTemplate(prev => [...prev, { id: Math.random().toString(36).slice(2), text: nightRoutineLine.trim() }]);
+    setNightRoutineLine("");
+  }
+
+  function removeNightItem(id) {
+    setRoutineTemplate(prev => prev.filter(r => r.id !== id));
+  }
+
   if (section === "habits") {
     return (
       <div className="py-flex-col py-gap-4" style={{ padding: "0 4px" }}>
@@ -93,17 +104,36 @@ export function YouPage({
     return (
       <div className="py-flex-col py-gap-4" style={{ padding: "0 4px" }}>
         <button type="button" onClick={() => setSection(null)} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--py-accent-deep)", fontWeight: 600, padding: "4px 0" }}>← Back</button>
-        <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--py-ink)" }}>Morning Routine</h2>
+        <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--py-ink)" }}>Routines</h2>
+
+        {/* Morning */}
         <div className="py-glass-card" style={{ padding: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 12 }}>Morning Routine</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-            <input value={newRoutineLine} onChange={e => setNewRoutineLine(e.target.value)} placeholder="Add step..." className="py-input" style={{ flex: 1 }} onKeyDown={e => e.key === "Enter" && addMorningItem()} />
+            <input value={newRoutineLine} onChange={e => setNewRoutineLine(e.target.value)} placeholder="Add morning step..." className="py-input" style={{ flex: 1 }} onKeyDown={e => e.key === "Enter" && addMorningItem()} />
             <button type="button" onClick={addMorningItem} style={{ padding: "8px 16px", borderRadius: 999, background: "linear-gradient(135deg, #F0B4C4, #D4708A)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Add</button>
           </div>
           {morningRoutineTemplate.map((r, i) => (
             <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < morningRoutineTemplate.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
               <span style={{ fontSize: 13, color: "var(--py-ink-muted)", width: 20 }}>{i + 1}.</span>
               <span style={{ flex: 1, fontSize: 15 }}>{r.text}</span>
-              <button type="button" onClick={() => removeMorningItem(r.id)} style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.06)", background: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
+              <button type="button" onClick={() => removeMorningItem(r.id)} style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.06)", background: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>x</button>
+            </div>
+          ))}
+        </div>
+
+        {/* Night */}
+        <div className="py-glass-card" style={{ padding: 16 }}>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 12 }}>Night Routine</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <input value={nightRoutineLine} onChange={e => setNightRoutineLine(e.target.value)} placeholder="Add night step..." className="py-input" style={{ flex: 1 }} onKeyDown={e => { if (e.key === "Enter") { addNightItem(); }}} />
+            <button type="button" onClick={addNightItem} style={{ padding: "8px 16px", borderRadius: 999, background: "linear-gradient(135deg, #9B8EC4, #7B6BA8)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Add</button>
+          </div>
+          {routineTemplate.map((r, i) => (
+            <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < routineTemplate.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
+              <span style={{ fontSize: 13, color: "var(--py-ink-muted)", width: 20 }}>{i + 1}.</span>
+              <span style={{ flex: 1, fontSize: 15 }}>{r.text}</span>
+              <button type="button" onClick={() => removeNightItem(r.id)} style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.06)", background: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>x</button>
             </div>
           ))}
         </div>

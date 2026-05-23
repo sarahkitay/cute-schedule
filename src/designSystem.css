@@ -1106,6 +1106,94 @@
   box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.08) !important;
 }
 
+/* ─── List / Notes / Coach pages: glass styling ─── */
+.app .timeline-wrap,
+.app .list-section,
+.app .notes-section {
+  border-radius: 24px !important;
+}
+.app .list-section .list-row,
+.app .notes-section .note-row {
+  padding: 14px 16px !important;
+  margin-bottom: 8px !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 18px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .list-section .list-row:hover,
+.app .notes-section .note-row:hover {
+  background: rgba(255, 245, 248, 0.6) !important;
+}
+.app .notes-section .note-card,
+.app .notes-section .note-item {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 18px !important;
+  padding: 16px !important;
+  margin-bottom: 10px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .coach-section,
+.app .pattern-insights-section {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.app .coach-v2-card {
+  background: rgba(255, 255, 255, 0.55) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 20px !important;
+  padding: 18px !important;
+  margin-bottom: 12px !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+}
+.app .coach-conversation {
+  gap: 12px !important;
+}
+.app .coach-msg,
+.app .coach-bubble {
+  background: rgba(255, 255, 255, 0.6) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 20px !important;
+  padding: 16px 18px !important;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .coach-input-wrap,
+.app .coach-input-bar {
+  background: rgba(255, 255, 255, 0.7) !important;
+  border: 1px solid rgba(255, 255, 255, 0.6) !important;
+  border-radius: 22px !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.7) !important;
+}
+
+/* List page task rows */
+.app .list-task-row,
+.app .task-list-item {
+  padding: 12px 16px !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+  border: 1px solid rgba(0, 0, 0, 0.03) !important;
+  border-radius: 16px !important;
+  margin-bottom: 8px !important;
+}
+
+/* Theme accent awareness: use CSS variables for accent-dependent elements */
+.app .btn-primary,
+.app .quick-add-entry-mode-btn[aria-selected="true"],
+.app .quick-add-bar .btn-primary,
+.app .input-group .btn-primary {
+  background: linear-gradient(140deg, var(--theme-primary, #F4B8CA) 0%, var(--theme-secondary, #D4708A) 100%) !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--theme-accent, #D4708A) 30%, transparent) !important;
+}
+.app .bottom-nav .bottom-nav-item.active,
+.app .bottom-nav button[aria-current="page"] span {
+  color: var(--theme-accent, #D4607A) !important;
+}
+.app .progress-fill {
+  background: linear-gradient(90deg, var(--theme-primary, #E8A9B7), var(--theme-secondary, #D4708A)) !important;
+}
+
 /* ─── Buttons: pill style ─── */
 .app .btn {
   border-radius: 999px !important;
