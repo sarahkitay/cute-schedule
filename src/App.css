@@ -3777,12 +3777,14 @@ textarea.input {
 }
 .today-section--routine {
   margin-top: var(--space-6);
+  margin-bottom: var(--space-2);
 }
 .today-section--timeline {
-  margin-top: var(--space-6);
+  margin-top: var(--space-7, 2rem);
+  margin-bottom: var(--space-2);
 }
 .today-section--capacity {
-  margin-top: var(--space-7, 2.5rem);
+  margin-top: var(--space-8, 2.75rem);
 }
 
 .capacity-card--plain {
@@ -4694,8 +4696,9 @@ textarea.input {
   height: 32px;
 }
 .bottom-nav-item svg.dock-tab-icon--coach {
-  width: 28px;
-  height: 34px;
+  width: 32px;
+  height: 38px;
+  margin-top: -2px;
 }
 .bottom-nav-item:not(.active) svg.dock-tab-icon {
   color: color-mix(in srgb, var(--theme-accent) 42%, var(--text));
@@ -4938,9 +4941,9 @@ textarea.input {
   margin: var(--space-2) 0 var(--space-4);
 }
 .coach-hero-btn {
-  width: min(100%, 320px);
-  padding: 18px 28px;
-  font-size: 1.05rem;
+  width: min(100%, 360px);
+  padding: 20px 32px;
+  font-size: 1.12rem;
   font-weight: 650;
   border-radius: 999px;
   letter-spacing: -0.01em;
@@ -5609,8 +5612,8 @@ textarea.input {
   height: 30px;
 }
 .settings-dock-block-main svg.dock-tab-icon--coach {
-  width: 26px;
-  height: 32px;
+  width: 32px;
+  height: 38px;
 }
 .settings-dock-block-main svg.dock-tab-icon path,
 .settings-dock-block-main svg.dock-tab-icon rect,

@@ -5971,6 +5971,29 @@ export default function App() {
     return ord.filter((dockId) => nv[dockId] !== true);
   }, [profile.navVisibility, profile.dockOrder]);
 
+  const headerTitle = useMemo(() => {
+    if (tab === "today") return formatWeekday(tKey);
+    if (tab === "plan") return "Plan";
+    if (tab === "notes") return "Notes";
+    if (tab === "finance") return "Finance";
+    if (tab === "health") return "Health";
+    return "Pattern insights";
+  }, [tab, tKey]);
+
+  const headerSubtitle = useMemo(() => {
+    if (tab === "plan") {
+      return isSameDayKey(tKey, realTodayKey)
+        ? "Monthly objectives · today's list"
+        : `Monthly objectives · ${formatWeekday(tKey)}`;
+    }
+    if (tab !== "today" && tab !== "plan") {
+      if (tab === "finance") return "Income, spending & savings";
+      if (tab === "health") return "Training, macros & weight";
+      return "Insights";
+    }
+    return null;
+  }, [tab, tKey, realTodayKey]);
+
   const firebaseOn = isFirebaseEnabled();
   const authWaiting = firebaseOn && !firebaseAuthResolved;
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
@@ -6066,124 +6089,107 @@ export default function App() {
       )}
       {!authWaiting && !showLoginGate && (
         <>
-      <div
-        className="shell"
-        data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (appState.days?.[tKey]?.dailyMood || "") : ""}
-      >
-        <header className="top top-plain">
-          <div className="top-inner">
-            <div className="top-left">
-              <span className="brand-name">PROYOU</span>
-              <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
-                {tab === "today"
-                  ? formatWeekday(tKey)
-                  : tab === "plan"
-                  ? "Plan"
-                  : tab === "notes"
-                  ? "Notes"
-                  : tab === "finance"
-                  ? "Finance"
-                  : tab === "health"
-                  ? "Health"
-                  : "Pattern insights"}
-              </h1>
-              {(tab !== "today" && tab !== "plan") && (
-                <span className="sub header-date header-date-visible">
-                  {tab === "finance"
-                    ? "Income, spending & savings"
-                    : tab === "health"
-                    ? "Training, macros & weight"
-                    : "Insights"}
-                </span>
-              )}
-              {tab === "plan" ? (
-                <span className="sub header-date header-date-visible">
-                  {isSameDayKey(tKey, realTodayKey) ? "Monthly objectives · today's list" : `Monthly objectives · ${formatWeekday(tKey)}`}
-                </span>
-              ) : null}
-            </div>
+          <div
+            className="shell"
+            data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (appState.days?.[tKey]?.dailyMood || "") : ""}
+          >
+            <header className="top top-plain">
+              <div className="top-inner">
+                <div className="top-left">
+                  <span className="brand-name">PROYOU</span>
+                  <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
+                    {headerTitle}
+                  </h1>
+                  {headerSubtitle ? (
+                    <span className="sub header-date header-date-visible">{headerSubtitle}</span>
+                  ) : null}
+                </div>
 
-            <div className="tabs" aria-hidden="true">
-              {mainDockItems.map((item) => (
-                <TabButton key={item.id} active={tab === item.id} onClick={() => setTab(item.id)}>
-                  {item.headerLabel}
-                </TabButton>
-              ))}
-            </div>
+                <div className="tabs" aria-hidden="true">
+                  {mainDockItems.map((item) => (
+                    <TabButton key={item.id} active={tab === item.id} onClick={() => setTab(item.id)}>
+                      {item.headerLabel}
+                    </TabButton>
+                  ))}
+                </div>
 
-            <div className="top-actions">
-              {tab === "plan" && (
-                <button
-                  type="button"
-                  className="btn-icon"
-                  onClick={() => {
-                    setShowMonthCalendar(true);
-                    setMonthCalendarMonth({ year: new Date(selectedDayKey + "T12:00:00").getFullYear(), month: new Date(selectedDayKey + "T12:00:00").getMonth() });
-                  }}
-                  title="Calendar"
-                  aria-label="Open calendar"
-                >
-                  <CalendarIcon style={{ width: 22, height: 22 }} />
+                <div className="top-actions">
+                  {tab === "plan" && (
+                    <button
+                      type="button"
+                      className="btn-icon"
+                      onClick={() => {
+                        setShowMonthCalendar(true);
+                        setMonthCalendarMonth({
+                          year: new Date(selectedDayKey + "T12:00:00").getFullYear(),
+                          month: new Date(selectedDayKey + "T12:00:00").getMonth(),
+                        });
+                      }}
+                      title="Calendar"
+                      aria-label="Open calendar"
+                    >
+                      <CalendarIcon style={{ width: 22, height: 22 }} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    id="settings-open"
+                    className="btn-icon"
+                    onClick={() => {
+                      setSettingsSubView("main");
+                      setShowSettings(true);
+                    }}
+                    title="Settings"
+                    aria-label="Settings"
+                  >
+                    <SettingsIcon style={{ width: 22, height: 22 }} />
+                  </button>
+                </div>
+              </div>
+            </header>
+
+            {/* Bottom navigation: frosted dock, active-tab pill */}
+            <nav className="bottom-nav surface-dock" aria-label="Main">
+              {mainDockItems.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`bottom-nav-item ${tab === item.id ? "active" : ""}`}
+                    onClick={() => {
+                      setTab(item.id);
+                      if (item.id === "today") setShowMonthCalendar(false);
+                    }}
+                    aria-current={tab === item.id ? "page" : undefined}
+                  >
+                    <Icon aria-hidden />
+                    {item.label}
+                  </button>
+                );
+              })}
+            </nav>
+
+            {/* Sprint countdown bar */}
+            {sprintActive && (
+              <div className="sprint-bar" role="status" aria-live="polite">
+                <span className="sprint-bar-label">Sprint</span>
+                <span className="sprint-bar-time">
+                  {(() => {
+                    const secs = Math.max(0, Math.ceil((sprintEndsAt - Date.now()) / 1000));
+                    const m = Math.floor(secs / 60);
+                    const s = secs % 60;
+                    return `${m}:${String(s).padStart(2, "0")}`;
+                  })()}
+                </span>
+                <button type="button" className="btn btn-sm" onClick={() => setSprintEndsAt(null)}>
+                  End sprint
                 </button>
-              )}
-              <button
-                type="button"
-                id="settings-open"
-                className="btn-icon"
-                onClick={() => {
-                  setSettingsSubView("main");
-                  setShowSettings(true);
-                }}
-                title="Settings"
-                aria-label="Settings"
-              >
-                <SettingsIcon style={{ width: 22, height: 22 }} />
-              </button>
-            </div>
-          </div>
-        </header>
+              </div>
+            )}
 
-        {/* Bottom navigation: frosted dock, active-tab pill */}
-        <nav className="bottom-nav surface-dock" aria-label="Main">
-          {mainDockItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={`bottom-nav-item ${tab === item.id ? "active" : ""}`}
-                onClick={() => {
-                  setTab(item.id);
-                  if (item.id === "today") setShowMonthCalendar(false);
-                }}
-                aria-current={tab === item.id ? "page" : undefined}
-              >
-                <Icon aria-hidden />
-                {item.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Sprint countdown bar */}
-        {sprintActive && (
-          <div className="sprint-bar" role="status" aria-live="polite">
-            <span className="sprint-bar-label">Sprint</span>
-            <span className="sprint-bar-time">
-              {(() => {
-                const secs = Math.max(0, Math.ceil((sprintEndsAt - Date.now()) / 1000));
-                const m = Math.floor(secs / 60);
-                const s = secs % 60;
-                return `${m}:${String(s).padStart(2, "0")}`;
-              })()}
-            </span>
-            <button type="button" className="btn btn-sm" onClick={() => setSprintEndsAt(null)}>End sprint</button>
-          </div>
-        )}
-
-        <main className="shell-main">
-
-        {tab === "today" ? (
+            <main className="shell-main">
+              {tab === "today" ? (
           <>
             {/* Add bar: Type (natural language) vs Details (time, category, repeat, energy); above the add field */}
             <div className="quick-add-stack scroll-reveal">
@@ -7082,11 +7088,11 @@ export default function App() {
                   disabled={coachLoading}
                 />
                 <button
-                  className="btn btn-primary coach-question-submit"
+                  className="btn btn-ghost coach-question-submit"
                   type="submit"
                   disabled={coachLoading || !coachQuestion.trim()}
                 >
-                  {coachLoading ? "Thinking…" : "Ask"}
+                  {coachLoading ? "Thinking…" : "Send"}
                 </button>
               </div>
             </form>
@@ -7185,9 +7191,9 @@ export default function App() {
               </div>
             )}
 
-            {!coachResult && !coachError && !coachLoading && coachConversation.length === 0 && (
+            {!coachResult && !coachError && !coachLoading && coachConversation.length === 0 && !coachStructuredResult && (
               <div className="empty">
-                Type a question above, or click &quot;General Check-in&quot; for an overview.
+                Pick Schedule, Fitness, or Finance above, then tap the big coach button — or ask a question below.
                 <br />
                 <br />
                 <small style={{ opacity: 0.7 }}>

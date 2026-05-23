@@ -91,7 +91,8 @@ export function CoachIcon({ className = "", style = {} }) {
   return (
     <svg
       className={dockTabClass(className, "dock-tab-icon--portrait dock-tab-icon--coach")}
-      viewBox="300 620 420 280"
+      viewBox="355 628 325 235"
+      preserveAspectRatio="xMidYMax meet"
       fill="currentColor"
       style={style}
       aria-hidden
