@@ -996,10 +996,25 @@
   transform: scale(0.92) !important;
 }
 
-/* ─── Panel / section cards: soft glass ─── */
+/* ─── Sitewide spacing audit ─── */
 .app .shell-main {
   padding: 0 20px !important;
   gap: 20px !important;
+  padding-bottom: 24px !important;
+}
+.app .shell-main > section,
+.app .shell-main > div {
+  margin-bottom: 0 !important;
+}
+.app .empty-big {
+  padding: 32px 0 60px !important;
+  text-align: center !important;
+}
+.app .daily-progress-card {
+  margin-top: 8px !important;
+}
+.app .timeline-wrap {
+  margin-bottom: 16px !important;
 }
 .app .panel,
 .app section.panel {
@@ -1141,31 +1156,127 @@
   box-shadow: none !important;
   padding: 0 !important;
 }
-.app .coach-v2-card {
-  background: rgba(255, 255, 255, 0.55) !important;
-  border: 1px solid rgba(0, 0, 0, 0.04) !important;
-  border-radius: 20px !important;
-  padding: 18px !important;
-  margin-bottom: 12px !important;
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+.app .pattern-insights-section .panel-top {
+  margin-bottom: 16px !important;
+}
+.app .pattern-insights-section .panel-top .title {
+  font-size: 20px !important;
+  font-weight: 600 !important;
+}
+.app .coach-v2-card,
+.app .coach-v2-suggest-list > div {
+  background: rgba(255, 255, 255, 0.6) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 22px !important;
+  padding: 20px !important;
+  margin-bottom: 14px !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.7) !important;
+}
+.app .coach-v2-eyebrow {
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  color: var(--py-accent-deep) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.4px !important;
+  margin-bottom: 8px !important;
+}
+.app .coach-v2-desc,
+.app .coach-v2-reason {
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+  color: var(--py-ink-secondary) !important;
+}
+.app .coach-v2-why {
+  background: rgba(255, 240, 244, 0.4) !important;
+  border-radius: 16px !important;
+  padding: 14px 16px !important;
+  margin: 12px 0 !important;
+  border: 1px solid rgba(232, 169, 183, 0.12) !important;
+}
+.app .coach-v2-why-label {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.5px !important;
+  color: var(--py-accent-deep) !important;
+  margin-bottom: 4px !important;
 }
 .app .coach-conversation {
-  gap: 12px !important;
+  gap: 14px !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 .app .coach-msg,
-.app .coach-bubble {
-  background: rgba(255, 255, 255, 0.6) !important;
+.app .coach-bubble,
+.app .coach-message-wrap {
+  background: rgba(255, 255, 255, 0.65) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  border-radius: 22px !important;
+  padding: 18px 20px !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.6) !important;
+}
+.app .coach-mode-selector,
+.app .coach-mode-tabs {
+  display: flex !important;
+  gap: 8px !important;
+  margin-bottom: 16px !important;
+  flex-wrap: wrap !important;
+}
+.app .coach-mode-selector button,
+.app .coach-mode-tabs button,
+.app .coach-mode-btn {
+  padding: 10px 18px !important;
+  border-radius: 999px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
   border: 1px solid rgba(0, 0, 0, 0.04) !important;
-  border-radius: 20px !important;
-  padding: 16px 18px !important;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+  color: var(--py-ink-secondary) !important;
+  cursor: pointer !important;
+  transition: all 200ms ease !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+}
+.app .coach-mode-selector button.active,
+.app .coach-mode-selector button[aria-selected="true"],
+.app .coach-mode-tabs button.active,
+.app .coach-mode-btn.active {
+  background: linear-gradient(135deg, var(--theme-primary, #F4B8CA), var(--theme-secondary, #D4708A)) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: 0 4px 14px rgba(212, 112, 138, 0.25) !important;
 }
 .app .coach-input-wrap,
-.app .coach-input-bar {
+.app .coach-input-bar,
+.app .coach-input {
   background: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
   border: 1px solid rgba(255, 255, 255, 0.6) !important;
   border-radius: 22px !important;
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.7) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03), inset 0 1px 2px rgba(255, 255, 255, 0.7) !important;
+  padding: 6px 6px 6px 18px !important;
+}
+.app .coach-input-wrap .btn-primary,
+.app .coach-send-btn {
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.app .coach-toast {
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.5) !important;
+  padding: 14px 18px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06) !important;
 }
 
 /* List page task rows */

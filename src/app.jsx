@@ -6157,8 +6157,8 @@ export default function App() {
             const finalNav = userNav.length >= 3 ? userNav : ["today", "list", "insights", "you"];
             const centerIdx = Math.floor(finalNav.length / 2);
             const withCenter = [...finalNav.slice(0, centerIdx), "__center__", ...finalNav.slice(centerIdx)];
-            const iconSize = withCenter.length > 6 ? 34 : withCenter.length > 5 ? 36 : 38;
-            const containerSize = withCenter.length > 6 ? 40 : withCenter.length > 5 ? 42 : 48;
+            const iconSize = withCenter.length > 7 ? 32 : withCenter.length > 6 ? 36 : withCenter.length > 5 ? 38 : 40;
+            const containerSize = withCenter.length > 7 ? 40 : withCenter.length > 6 ? 44 : withCenter.length > 5 ? 46 : 50;
             return withCenter.map((itemId) => {
               if (itemId === "__center__") {
                 return (
@@ -6513,7 +6513,7 @@ export default function App() {
 
             <section className="timeline-wrap scroll-reveal">
               {sortedHourKeys.length === 0 ? (
-                <div className="empty-big">
+                <div className="empty-big" style={{ paddingBottom: 60 }}>
                   <div className="empty-title">No hours yet.</div>
                 </div>
               ) : (
