@@ -90,8 +90,8 @@ export function SparkleIcon({ className = "", style = {} }) {
 export function CoachIcon({ className = "", style = {} }) {
   return (
     <svg
-      className={dockTabClass(className, "dock-tab-icon--portrait")}
-      viewBox="0 0 1024 1536"
+      className={dockTabClass(className, "dock-tab-icon--portrait dock-tab-icon--coach")}
+      viewBox="300 620 420 280"
       fill="currentColor"
       style={style}
       aria-hidden

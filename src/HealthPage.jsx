@@ -4,6 +4,8 @@ import {
   PROGRAM_LIBRARY,
   addDaysToDayKey,
   cmToFeetInches,
+  collectShoppingLinesFromMacroDay,
+  collectShoppingLinesFromMealPlan,
   computeMacroTargetsFromProfile,
   computeWorkoutConsistency,
   feetInchesToCm,
@@ -25,6 +27,12 @@ import {
   suggestMealPlansForTargets,
   sumMacroDayTotals,
 } from "./health/healthModel";
+import {
+  buildGroceryListItems,
+  DEFAULT_GROCERY_KEYWORDS,
+  normalizeGroceryKeywordsFromProfile,
+  normalizeSavedGroceryLists,
+} from "./groceryTaskCoachHelpers";
 
 function newId(prefix) {
   try {
@@ -134,8 +142,25 @@ function GuidedWorkoutOverlay({ session, health, setHealth, onClose, onMarkTaskD
               const key = guidedSessionProgressKey(session.taskId, session.programId, i);
               const row = getWorkoutLineProgress(h, key);
               return (
-                <li key={key} className={`health-exercise-row surface-glass ${row.done ? "health-exercise-row--done" : ""}`}>
-                  <label className="health-exercise-check">
+                <li
+                  key={key}
+                  className={`health-exercise-row surface-glass ${row.done ? "health-exercise-row--done" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-pressed={row.done}
+                  aria-label={`${b.name || "Exercise"}${row.done ? ", done" : ", not done"}`}
+                  onClick={(e) => {
+                    if (e.target.closest(".health-exercise-check")) return;
+                    patchRowAt(i, { done: !row.done });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      patchRowAt(i, { done: !row.done });
+                    }
+                  }}
+                >
+                  <label className="health-exercise-check" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={row.done} onChange={(e) => patchRowAt(i, { done: e.target.checked })} />
                     <span className="health-exercise-check-ui" />
                   </label>
@@ -250,7 +275,7 @@ export function HealthPage({
   health,
   setHealth,
   profile,
-  setProfile: _setProfile,
+  setProfile,
   realTodayKey,
   appState,
   onOpenHealthCalendar,
@@ -302,6 +327,9 @@ export function HealthPage({
   const [mealFat, setMealFat] = useState("");
   const [mealCalories, setMealCalories] = useState("");
   const [macroOverviewOpen, setMacroOverviewOpen] = useState(false);
+  const [groceryListTitle, setGroceryListTitle] = useState("");
+  const [groceryListDraft, setGroceryListDraft] = useState("");
+  const [groceryPlanPickId, setGroceryPlanPickId] = useState("");
   const macroTargetsApplied = !!(h.macroTargets?.calories);
   const [macroCalcExpanded, setMacroCalcExpanded] = useState(() => !macroTargetsApplied);
   const prevMacroTargetsRef = useRef(macroTargetsApplied);
@@ -664,6 +692,22 @@ export function HealthPage({
     () => (targets?.calories ? suggestMealPlansForTargets(targets) : []),
     [targets]
   );
+  const groceryKeywordsLabel = useMemo(
+    () => normalizeGroceryKeywordsFromProfile(profile).join(", "),
+    [profile]
+  );
+  const grocerySavedLists = useMemo(
+    () => normalizeSavedGroceryLists(profile?.grocerySavedLists),
+    [profile?.grocerySavedLists]
+  );
+  const todayMealShoppingLines = useMemo(
+    () => collectShoppingLinesFromMacroDay(macroDay),
+    [macroDay]
+  );
+  const pickedMealPlan = useMemo(
+    () => macroMealPlanSuggestions.find((p) => p.id === groceryPlanPickId) || null,
+    [macroMealPlanSuggestions, groceryPlanPickId]
+  );
 
   const foodAutocompleteItems = useMemo(() => {
     const q = mealFood.trim();
@@ -840,6 +884,43 @@ export function HealthPage({
       const meals = cur.meals.filter((m) => m.id !== mealId);
       return { ...base, macroLog: { ...base.macroLog, [macroDate]: { meals } } };
     });
+  }
+
+  function saveGroceryListFromLines(titleRaw, lines, { clearDraft = false } = {}) {
+    const title = String(titleRaw || "").trim() || "Shopping list";
+    const items = buildGroceryListItems(lines, () => newId("gitem"));
+    if (!items.length) return false;
+    setProfile((p) => ({
+      ...p,
+      grocerySavedLists: normalizeSavedGroceryLists([
+        {
+          id: newId("glist"),
+          title,
+          savedAt: new Date().toISOString(),
+          items,
+        },
+        ...(p.grocerySavedLists || []),
+      ]),
+    }));
+    if (clearDraft) {
+      setGroceryListTitle("");
+      setGroceryListDraft("");
+    }
+    return true;
+  }
+
+  function loadShoppingDraftFromLines(lines, titleHint = "") {
+    const deduped = [...new Set(lines.map((l) => String(l).trim()).filter(Boolean))];
+    if (!deduped.length) return;
+    setGroceryListDraft(deduped.join("\n"));
+    if (titleHint && !groceryListTitle.trim()) setGroceryListTitle(titleHint);
+  }
+
+  function removeSavedGroceryList(id) {
+    setProfile((p) => ({
+      ...p,
+      grocerySavedLists: (p.grocerySavedLists || []).filter((x) => x.id !== id),
+    }));
   }
 
   const macroOverviewRows = useMemo(() => {
@@ -1753,6 +1834,136 @@ export function HealthPage({
                     </li>
                   ))}
               </ul>
+            )}
+          </div>
+
+          <div className="health-macro-block surface-glass health-macro-shopping-lists">
+            <div className="panel-title" style={{ marginBottom: 8 }}>
+              <span className="title">Shopping lists</span>
+            </div>
+            <p className="health-subline health-macro-shopping-intro">
+              Build reusable lists here. When you add a task with keywords like{" "}
+              <strong>{groceryKeywordsLabel || DEFAULT_GROCERY_KEYWORDS.join(", ")}</strong>, you can pick one of these lists on the prompt.
+            </p>
+
+            <div className="health-macro-shopping-autogen">
+              <span className="label">Auto-fill from meals</span>
+              <div className="health-macro-shopping-autogen-row">
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  disabled={!todayMealShoppingLines.length}
+                  onClick={() => loadShoppingDraftFromLines(todayMealShoppingLines, `Groceries · ${macroDate}`)}
+                >
+                  From {macroDate} meals
+                  {todayMealShoppingLines.length ? ` (${todayMealShoppingLines.length})` : ""}
+                </button>
+                {macroMealPlanSuggestions.length > 0 ? (
+                  <>
+                    <select
+                      className="input health-macro-shopping-plan-pick"
+                      value={groceryPlanPickId}
+                      onChange={(e) => setGroceryPlanPickId(e.target.value)}
+                      aria-label="Meal plan for shopping list"
+                    >
+                      <option value="">Meal plan…</option>
+                      {macroMealPlanSuggestions.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      disabled={!pickedMealPlan}
+                      onClick={() => {
+                        if (!pickedMealPlan) return;
+                        loadShoppingDraftFromLines(
+                          collectShoppingLinesFromMealPlan(pickedMealPlan),
+                          `${pickedMealPlan.name} groceries`
+                        );
+                      }}
+                    >
+                      From plan
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            <label className="quick-row" style={{ marginTop: 12 }}>
+              <span className="label">List name</span>
+              <input
+                className="input"
+                value={groceryListTitle}
+                onChange={(e) => setGroceryListTitle(e.target.value)}
+                placeholder="e.g. Weekly groceries"
+              />
+            </label>
+            <label className="quick-row">
+              <span className="label">Items (one per line)</span>
+              <textarea
+                className="input health-macro-shopping-textarea"
+                value={groceryListDraft}
+                onChange={(e) => setGroceryListDraft(e.target.value)}
+                placeholder={"Chicken breast\nBroccoli\nGreek yogurt"}
+                rows={5}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              disabled={!groceryListDraft.trim()}
+              onClick={() => {
+                const lines = groceryListDraft.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+                saveGroceryListFromLines(groceryListTitle, lines, { clearDraft: true });
+              }}
+            >
+              Save shopping list
+            </button>
+
+            {grocerySavedLists.length > 0 ? (
+              <ul className="health-macro-shopping-saved">
+                {grocerySavedLists.map((list) => (
+                  <li key={list.id} className="health-macro-shopping-saved-item">
+                    <details>
+                      <summary>
+                        <span className="health-macro-shopping-saved-title">{list.title}</span>
+                        <span className="health-subline">{(list.items || []).length} items</span>
+                      </summary>
+                      <ul className="health-macro-shopping-saved-lines">
+                        {(list.items || []).map((it) => (
+                          <li key={it.id}>{it.text}</li>
+                        ))}
+                      </ul>
+                      <div className="health-macro-shopping-saved-actions">
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() =>
+                            loadShoppingDraftFromLines(
+                              (list.items || []).map((it) => it.text),
+                              list.title
+                            )
+                          }
+                        >
+                          Edit in draft
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={() => removeSavedGroceryList(list.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </details>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="empty health-macro-shopping-empty">No saved lists yet.</p>
             )}
           </div>
         </>

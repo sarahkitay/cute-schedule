@@ -1,5 +1,7 @@
 import React, { startTransition, useEffect, useMemo, useState } from "react";
 import { CheckIcon } from "./Icons";
+import { HabitIconPicker, HabitIconBadge } from "./HabitIconPicker";
+import { DEFAULT_HABIT_ICON, suggestHabitIconFromLabel } from "./habitIcons";
 
 function rid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
@@ -46,6 +48,7 @@ export function OnboardingFlow({
   const totalSteps = 9;
   const [habitLabel, setHabitLabel] = useState("");
   const [habitDir, setHabitDir] = useState("build");
+  const [habitIcon, setHabitIcon] = useState(DEFAULT_HABIT_ICON);
   const [morningDraft, setMorningDraft] = useState("");
   const [nightDraft, setNightDraft] = useState("");
   const [catsDraft, setCatsDraft] = useState("");
@@ -118,11 +121,19 @@ export function OnboardingFlow({
     setHabitTracker((prev) => ({
       habits: [
         ...(prev.habits || []),
-        { id: rid(), label, direction: habitDir === "break" ? "break" : "build", reminderSchedule: "none", reminderHours: [] },
+        {
+          id: rid(),
+          label,
+          direction: habitDir === "break" ? "break" : "build",
+          icon: habitIcon,
+          reminderSchedule: "none",
+          reminderHours: [],
+        },
       ],
       log: prev.log || {},
     }));
     setHabitLabel("");
+    setHabitIcon(DEFAULT_HABIT_ICON);
   }
 
   const progress = `${Math.min(step + 1, totalSteps)} / ${totalSteps}`;
@@ -195,7 +206,11 @@ export function OnboardingFlow({
               <input
                 className="input onboarding-input"
                 value={habitLabel}
-                onChange={(e) => setHabitLabel(e.target.value)}
+                onChange={(e) => {
+                  const label = e.target.value;
+                  setHabitLabel(label);
+                  if (label.trim()) setHabitIcon(suggestHabitIconFromLabel(label));
+                }}
                 placeholder="e.g. Drink water, Screen off by 10pm"
               />
               <select className="input onboarding-select" value={habitDir} onChange={(e) => setHabitDir(e.target.value)} aria-label="Habit direction">
@@ -206,9 +221,11 @@ export function OnboardingFlow({
                 Add
               </button>
             </div>
+            <HabitIconPicker value={habitIcon} compact onChange={setHabitIcon} ariaLabel="Habit icon" />
             <ul className="onboarding-habit-list">
               {(habitTracker.habits || []).map((h) => (
                 <li key={h.id} className="onboarding-habit-item">
+                  <HabitIconBadge iconId={h.icon} />
                   <span>{h.label}</span>
                   <span className="onboarding-habit-meta">{h.direction === "break" ? "Break" : "Build"}</span>
                   <button

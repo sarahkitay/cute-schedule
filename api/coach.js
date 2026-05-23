@@ -92,34 +92,42 @@ export default async function handler(req, res) {
 
     const OUTPUT_RULES = "Return valid JSON only. No markdown. No code fences.";
 
-    // ADHD Coach modes: structured actions (plan / unstuck / review)
-    const adhdModes = ["plan", "unstuck", "review"];
+    // Coach section modes: schedule / fitness / finance
+    const adhdModes = ["schedule", "fitness", "finance"];
     if (mode && adhdModes.includes(mode)) {
       const tasksList = Array.isArray(tasks) ? tasks : [];
       const scheduleData = schedule || today || {};
       const habitBlock =
         Array.isArray(habits) && habits.length > 0
-          ? ` User habits (build = cultivate, break = reduce): ${JSON.stringify(habits)}. Recent check-ins: ${String(habitLogSummary || "none")}. Today: ${JSON.stringify(habitToday || {})}. Mention gently in review if relevant; no shame.`
+          ? ` User habits (build = cultivate, break = reduce): ${JSON.stringify(habits)}. Recent check-ins: ${String(habitLogSummary || "none")}. Today: ${JSON.stringify(habitToday || {})}. Mention gently if relevant; no shame.`
           : "";
-      const systemContent = `You are an ADHD-aware planning coach: emotionally steady, never shaming, and logically precise with the user's real schedule. You only reorder existing tasks, propose time blocks, suggest micro-steps for tasks already listed, or suggest breaks. Do not invent new obligations. Name overload when the task list implies it; offer one tiny on-ramp. Vary sentence shape (observational, practical); avoid therapy-speak. ${OUTPUT_RULES}`;
+      const wishListNote =
+        finance && Array.isArray(finance.wishList) && finance.wishList.length > 0
+          ? ` Wish list: ${finance.wishList.map((w) => (w.savedSoFar ? `${w.label} ($${w.savedSoFar}${w.targetAmount != null ? ` of $${w.targetAmount}` : ""})` : w.targetAmount != null ? `${w.label} (goal $${w.targetAmount})` : w.label)).join("; ")}.`
+          : "";
+      const systemContent = `You are an ADHD-aware planning coach: emotionally steady, never shaming, and logically precise with the user's real data. ${OUTPUT_RULES}`;
       let userContent = "";
-      if (mode === "plan") {
-        userContent = `Tone for this mode: calm strategist: clear structure over emotional processing; still kind.
+      if (mode === "schedule") {
+        userContent = `Tone: calm strategist focused on the calendar and time blocks.
 
-Plan my day. Date: ${dayKey}. Current schedule (time -> categories -> tasks): ${JSON.stringify(scheduleData)}. Incomplete tasks: ${JSON.stringify(tasksList)}. Mood: ${mood || "not set"}.${habitBlock}
-Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences", "followUp": "one optional question or null", "actions": [ { "type": "TIMEBOX", "taskId": "...", "start": "HH:MM", "end": "HH:MM" }, { "type": "REORDER", "taskIds": ["id1","id2"] }, { "type": "BREAK", "start": "HH:MM", "end": "HH:MM", "label": "Short break" } ] }. Use only taskIds that exist in the input.`;
-      } else if (mode === "unstuck") {
-        userContent = `Tone for this mode: friction-reducer: very small steps, low pressure; reduce activation energy, not maximize output.
-
-User is overwhelmed. Pick ONE task from: ${JSON.stringify(tasksList)}.${habitBlock} Break it into 3 micro-steps (5-15 min to start). Return JSON: { "summary": "1-2 sentences", "taskId": "...", "taskTitle": "...", "steps": [ { "text": "...", "minutes": 5 } ], "actions": [ { "type": "MICRO_STEPS", "taskId": "...", "steps": [ { "text": "...", "minutes": 5 } ] } ] }.`;
-      } else if (mode === "review") {
-        const financeNote = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || (finance.totalSavings || 0) > 0 || (finance.totalDebt || 0) > 0) ? ` Finance snapshot: income this month $${(finance.incomeThisMonth || 0).toFixed(2)}, spent $${(finance.spentThisMonth || 0).toFixed(2)}, savings $${(finance.totalSavings || 0).toFixed(2)}, debt $${(finance.totalDebt || 0).toFixed(2)}. If relevant, mention one gentle money habit (e.g. "You logged spending this month; that's a win.").` : "";
+Help plan and organize the schedule. Date: ${dayKey}. Current schedule (time -> categories -> tasks): ${JSON.stringify(scheduleData)}. Incomplete tasks: ${JSON.stringify(tasksList)}. Mood: ${mood || "not set"}.${habitBlock}
+Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences", "followUp": "one optional question or null", "actions": [ { "type": "TIMEBOX", "taskId": "...", "start": "HH:MM", "end": "HH:MM" }, { "type": "REORDER", "taskIds": ["id1","id2"] }, { "type": "BREAK", "start": "HH:MM", "end": "HH:MM", "label": "Short break" } ], "suggestions": [] }. Use only taskIds that exist in the input.`;
+      } else if (mode === "fitness") {
         const healthNote = String(healthSummary || "").trim()
-          ? ` Health / training context: ${String(healthSummary).slice(0, 1200)} If relevant, one gentle note on movement or fueling (no medical claims).`
+          ? ` Health / training: ${String(healthSummary).slice(0, 1400)}`
           : "";
-        userContent = `Tone for this mode: reflective pattern-noticer: precise, one real pattern, one clean adjustment for tomorrow.
+        userContent = `Tone: practical training partner; concrete lifts and sessions, no medical claims.
 
-End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progress?.total || 0}. Schedule: ${JSON.stringify(scheduleData)}. Patterns: ${JSON.stringify(patterns || {})}.${financeNote}${healthNote}${habitBlock} Summarise wins, detect one pattern (e.g. tasks missed at 3pm), suggest one change for tomorrow. If habit data is present, you may note one observation (e.g. consistency on a build habit or compassion after a break-habit slip). Return JSON: { "summary": "2-4 sentences", "wins": ["..."], "pattern": "one sentence", "suggestion": "one sentence", "actions": [] }.`;
+Coach fitness and training. Date: ${dayKey}. Schedule: ${JSON.stringify(scheduleData)}.${healthNote}${habitBlock}
+Return JSON: { "summary": "2-4 sentences on training focus", "followUp": null, "actions": [], "suggestions": [ { "type": "ADD_WORKOUT_PROGRAM", "title": "short name", "reason": "why this fits", "workoutProgram": { "name": "...", "exerciseLines": ["Lift 3x10", "..."] }, "requiresApproval": true }, { "type": "ADD_TASK", "title": "Workout label", "category": "...", "energyLevel": "HEAVY", "start": "HH:MM", "reason": "...", "workoutProgram": { "name": "...", "exerciseLines": ["..."] }, "requiresApproval": true } ] }. Prefer ADD_WORKOUT_PROGRAM when they need a saved program; ADD_TASK only when a calendar slot is clear. Honor saved programs uniqueness.`;
+      } else if (mode === "finance") {
+        const financeNote = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || (finance.totalSavings || 0) > 0 || (finance.totalDebt || 0) > 0)
+          ? ` Finance: income this month $${(finance.incomeThisMonth || 0).toFixed(2)}, spent $${(finance.spentThisMonth || 0).toFixed(2)}, savings $${(finance.totalSavings || 0).toFixed(2)}, debt $${(finance.totalDebt || 0).toFixed(2)}.${wishListNote}`
+          : wishListNote || " Finance data is sparse; still offer one small savings habit.";
+        userContent = `Tone: gentle money coach; one observation and one small next step, never shame.
+
+Coach finances and wish list savings. Date: ${dayKey}.${financeNote}
+Return JSON: { "summary": "2-4 sentences", "followUp": null, "actions": [], "suggestions": [ { "type": "ADD_WISH", "title": "item name", "targetAmount": number or null, "reason": "why save for this", "requiresApproval": true }, { "type": "WISH_CONTRIBUTION", "title": "existing wish label", "wishLabel": "must match an existing wish or new title", "amount": number, "reason": "why this amount now", "requiresApproval": true } ] }. Use ADD_WISH for new goals; WISH_CONTRIBUTION to log money set aside toward an existing wish (amount in dollars).`;
       }
       const adhdMessages = [
         { role: "system", content: systemContent },
@@ -155,7 +163,12 @@ End-of-day review. Date: ${dayKey}. Completion: ${progress?.done || 0}/${progres
           isProd ? { error: "Coach response was invalid." } : { error: "Model did not return valid JSON", raw: cleaned }
         );
       }
-      return res.status(200).json({ summary: parsed.summary || "", followUp: parsed.followUp || null, actions: Array.isArray(parsed.actions) ? parsed.actions : [] });
+      return res.status(200).json({
+        summary: parsed.summary || "",
+        followUp: parsed.followUp || null,
+        actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+      });
     }
 
     // Build conversation context

@@ -5,8 +5,7 @@ const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
 export const DEFAULT_NAV_VISIBILITY = Object.freeze({
   today: true,
-  list: true,
-  monthly: true,
+  plan: true,
   coach: true,
   notes: true,
   finance: true,
@@ -19,12 +18,19 @@ export function normalizeNavVisibility(raw) {
   for (const k of Object.keys(DEFAULT_NAV_VISIBILITY)) {
     if (typeof o[k] === "boolean") out[k] = o[k];
   }
+  if (typeof o.plan !== "boolean") {
+    const legacyVisible = o.list !== false && o.monthly !== false;
+    const eitherOn = o.list === true || o.monthly === true;
+    out.plan = legacyVisible || eitherOn;
+  }
   out.today = true;
   return out;
 }
 
-/** Bottom dock order for every tab except Today (Today is always first). Health defaults early so it stays on the bar; users can hide it to show the Today home card instead. */
-export const DOCK_ORDERABLE_IDS = Object.freeze(["list", "health", "monthly", "coach", "notes", "finance"]);
+/** Bottom dock order for every tab except Today (Today is always first). */
+export const DOCK_ORDERABLE_IDS = Object.freeze(["plan", "health", "coach", "notes", "finance"]);
+
+const DOCK_ORDER_ALIASES = Object.freeze({ list: "plan", monthly: "plan" });
 
 export function normalizeDockOrder(raw) {
   const defaults = [...DOCK_ORDERABLE_IDS];
@@ -32,9 +38,10 @@ export function normalizeDockOrder(raw) {
   const seen = new Set();
   const out = [];
   for (const id of raw) {
-    if (typeof id === "string" && DOCK_ORDERABLE_IDS.includes(id) && !seen.has(id)) {
-      out.push(id);
-      seen.add(id);
+    const mapped = DOCK_ORDER_ALIASES[id] || id;
+    if (typeof mapped === "string" && DOCK_ORDERABLE_IDS.includes(mapped) && !seen.has(mapped)) {
+      out.push(mapped);
+      seen.add(mapped);
     }
   }
   for (const id of defaults) {
@@ -1172,6 +1179,51 @@ export function sumMacroDayTotals(dayEntry) {
     }),
     { protein: 0, carbs: 0, fat: 0, calories: 0 }
   );
+}
+
+/** Split logged meal food text into shopping lines. */
+export function collectShoppingLinesFromMacroDay(dayEntry) {
+  const d = normalizeMacroDayEntry(dayEntry);
+  /** @type {string[]} */
+  const out = [];
+  for (const m of d.meals || []) {
+    const food = String(m.food || "").trim();
+    if (!food) continue;
+    for (const part of food.split(/\s*[·•,;]\s*|\s+\+\s+/)) {
+      const t = part.trim();
+      if (t) out.push(t);
+    }
+  }
+  return dedupeMacroShoppingLines(out);
+}
+
+/** Pull ingredient lines from a scaled meal plan suggestion. */
+export function collectShoppingLinesFromMealPlan(plan) {
+  if (!plan || typeof plan !== "object" || !Array.isArray(plan.meals)) return [];
+  /** @type {string[]} */
+  const out = [];
+  for (const meal of plan.meals) {
+    for (const line of meal.lines || []) {
+      const t = String(line).trim();
+      if (t) out.push(t);
+    }
+  }
+  return dedupeMacroShoppingLines(out);
+}
+
+/** @param {string[]} lines */
+function dedupeMacroShoppingLines(lines) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of lines) {
+    const text = String(raw || "").trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(text);
+  }
+  return out;
 }
 
 /** Lowercase, trim, collapse spaces; used to match repeated food descriptions in macro log. */

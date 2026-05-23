@@ -2036,6 +2036,22 @@ button {
 .panel.finance-panel,
 .section-finance { padding-top: 4px; }
 .panel.monthly-objectives-section { padding-top: 8px; padding-bottom: 32px; }
+
+.plan-page {
+  padding-top: 8px;
+  padding-bottom: 32px;
+}
+.plan-section-monthly {
+  margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.plan-section-list {
+  padding-top: var(--space-2);
+}
+.plan-section-list .list-page-header {
+  margin-top: 0;
+}
 /* Pattern B: full-width input + centered Add below */
 .monthly-add,
 .notes-add-form {
@@ -3747,6 +3763,37 @@ textarea.input {
   font-size: 14px;
 }
 
+.empty-big--plain {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  box-shadow: none;
+  padding: var(--space-3) var(--space-2);
+}
+
+.today-section {
+  margin-top: var(--space-5);
+}
+.today-section--routine {
+  margin-top: var(--space-6);
+}
+.today-section--timeline {
+  margin-top: var(--space-6);
+}
+.today-section--capacity {
+  margin-top: var(--space-7, 2.5rem);
+}
+
+.capacity-card--plain {
+  background: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
 .empty-big {
   text-align: center;
   padding: var(--space-5);
@@ -4530,6 +4577,56 @@ textarea.input {
   margin-left: auto;
 }
 .finance-list-empty { padding: var(--space-2); color: var(--muted); font-size: var(--caption); font-style: italic; }
+
+.finance-wish-list .finance-wish-item {
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+.finance-wish-main {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.finance-wish-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(120, 90, 110, 0.12);
+  overflow: hidden;
+}
+.finance-wish-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--theme-header-gradient, linear-gradient(90deg, #e4a3b8, #c9a0dc));
+  transition: width 0.25s ease;
+}
+.finance-wish-progress-details {
+  flex: 1 1 100%;
+}
+.finance-wish-progress-summary {
+  cursor: pointer;
+  font-size: var(--caption);
+  font-weight: 600;
+  color: var(--muted);
+  list-style: none;
+}
+.finance-wish-progress-summary::-webkit-details-marker {
+  display: none;
+}
+.finance-wish-contrib-form {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  align-items: center;
+}
+.finance-wish-contrib-form .input {
+  flex: 1;
+  min-width: 0;
+  max-width: 140px;
+}
 .finance-inline-form {
   display: flex;
   flex-wrap: wrap;
@@ -4595,6 +4692,10 @@ textarea.input {
 .bottom-nav-item svg.dock-tab-icon--portrait {
   width: 26px;
   height: 32px;
+}
+.bottom-nav-item svg.dock-tab-icon--coach {
+  width: 28px;
+  height: 34px;
 }
 .bottom-nav-item:not(.active) svg.dock-tab-icon {
   color: color-mix(in srgb, var(--theme-accent) 42%, var(--text));
@@ -4786,6 +4887,107 @@ textarea.input {
   color: var(--muted);
   line-height: 1.4;
 }
+
+.pattern-insights--v2 {
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.pattern-insights--v2 .insight-card {
+  background: rgba(255, 252, 250, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: var(--radius-xl, 18px);
+  padding: var(--space-3);
+  box-shadow: 0 8px 28px rgba(120, 90, 110, 0.06);
+}
+.pattern-insights--v2 .insight-card--peak .insight-value {
+  text-transform: capitalize;
+  font-size: clamp(1.35rem, 4vw, 1.75rem);
+}
+.pattern-insights--v2 .insight-value--sm {
+  font-size: var(--h3, 1.1rem);
+  line-height: 1.25;
+}
+.pattern-insights--v2 .insight-card--week .insight-value {
+  font-size: clamp(1.2rem, 3.5vw, 1.5rem);
+}
+.pattern-insights--v2 .insight-card--sleep .insight-value,
+.pattern-insights--v2 .insight-card--category .insight-value {
+  font-size: var(--body);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.coach-mode-tabs--v2 {
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.coach-mode-tabs--v2 .coach-mode-btn {
+  flex: 1;
+  min-width: 0;
+  max-width: 140px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.coach-hero-action {
+  display: flex;
+  justify-content: center;
+  margin: var(--space-2) 0 var(--space-4);
+}
+.coach-hero-btn {
+  width: min(100%, 320px);
+  padding: 18px 28px;
+  font-size: 1.05rem;
+  font-weight: 650;
+  border-radius: 999px;
+  letter-spacing: -0.01em;
+}
+
+.coach-question-form {
+  margin-bottom: var(--space-3);
+}
+.coach-question-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+.coach-question-input {
+  flex: 1;
+  font-size: 15px;
+  padding: 12px 16px;
+}
+.coach-question-submit {
+  padding: 12px 22px;
+  white-space: nowrap;
+}
+
+.coach-clear-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-3);
+}
+
+.coach-output-card--v2 {
+  background: rgba(255, 252, 250, 0.55);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: var(--radius-xl, 18px);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.coach-output-card--v2 .coach-output-actions {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.coach-output-dismiss {
+  margin-top: var(--space-2);
+}
+
 .coach-subsection-title {
   font-size: var(--h2);
   font-weight: 600;
@@ -5406,6 +5608,10 @@ textarea.input {
   width: 24px;
   height: 30px;
 }
+.settings-dock-block-main svg.dock-tab-icon--coach {
+  width: 26px;
+  height: 32px;
+}
 .settings-dock-block-main svg.dock-tab-icon path,
 .settings-dock-block-main svg.dock-tab-icon rect,
 .settings-dock-block-main svg.dock-tab-icon circle,
@@ -5917,6 +6123,63 @@ html[data-theme="dark"] .coach-gtky-body {
 }
 
 /* Settings: habit row + reminder controls */
+.habit-icon-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 var(--space-2);
+}
+.habit-icon-picker--compact {
+  gap: 4px;
+}
+.habit-icon-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-solid);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+}
+.habit-icon-picker--compact .habit-icon-option {
+  width: 32px;
+  height: 32px;
+}
+.habit-icon-option:hover {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, var(--border-subtle));
+  background: color-mix(in srgb, var(--theme-accent) 8%, var(--surface-solid));
+}
+.habit-icon-option.is-selected {
+  border-color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 16%, var(--surface-solid));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent) 35%, transparent);
+}
+.habit-icon-option-emoji {
+  font-size: 18px;
+  line-height: 1;
+}
+.habit-icon-picker--compact .habit-icon-option-emoji {
+  font-size: 16px;
+}
+.habit-icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.habit-settings-card-icon {
+  margin-right: 6px;
+}
+.habit-checkin-icon {
+  font-size: 20px;
+}
+
 .habit-settings-list {
   list-style: none;
   padding: 0;
@@ -6263,6 +6526,9 @@ html[data-theme="dark"] .coach-gtky-body {
   flex-wrap: wrap;
   gap: 8px;
   align-items: center;
+  margin-bottom: 8px;
+}
+.onboarding-habit-row + .habit-icon-picker {
   margin-bottom: 12px;
 }
 .onboarding-habit-row .onboarding-input {
@@ -6746,6 +7012,13 @@ html[data-theme="dark"] .coach-gtky-body {
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+}
+.health-guided-list .health-exercise-row {
+  cursor: pointer;
+}
+.health-guided-list .health-exercise-row:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  outline-offset: 2px;
 }
 .health-exercise-row {
   display: grid;
@@ -7785,6 +8058,79 @@ html[data-theme="dark"] .health-meal-type-btn.is-selected {
 }
 .health-macro-meal-plan-vs {
   margin: 12px 0 10px;
+}
+
+.health-macro-shopping-lists {
+  margin-top: var(--space-3);
+}
+.health-macro-shopping-intro {
+  margin: 0 0 var(--space-2);
+  line-height: 1.45;
+}
+.health-macro-shopping-autogen {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.health-macro-shopping-autogen-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.health-macro-shopping-plan-pick {
+  min-width: 140px;
+  flex: 1;
+  max-width: 220px;
+}
+.health-macro-shopping-textarea {
+  min-height: 110px;
+  resize: vertical;
+  font-family: inherit;
+}
+.health-macro-shopping-saved {
+  list-style: none;
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.health-macro-shopping-saved-item details {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-btn, 12px);
+  padding: 10px 12px;
+  background: rgba(255, 252, 250, 0.45);
+}
+.health-macro-shopping-saved-item summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  list-style: none;
+}
+.health-macro-shopping-saved-item summary::-webkit-details-marker {
+  display: none;
+}
+.health-macro-shopping-saved-title {
+  font-weight: 600;
+  color: var(--text);
+}
+.health-macro-shopping-saved-lines {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  font-size: var(--caption);
+  color: var(--text-soft);
+}
+.health-macro-shopping-saved-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.health-macro-shopping-empty {
+  margin-top: var(--space-2);
 }
 
 .health-meal-save-row {
