@@ -19,7 +19,7 @@ export const BUILTIN_ALARM_SOUNDS = Object.freeze([
   { id: ALARM_SOUND_IDS.DIGITAL, label: "Digital", desc: "Clear beeps" },
   { id: ALARM_SOUND_IDS.BIRDS, label: "Birdsong", desc: "Gentle nature chirps" },
   { id: ALARM_SOUND_IDS.PIANO, label: "Piano", desc: "Simple melody notes" },
-  { id: ALARM_SOUND_IDS.CUSTOM, label: "Your music", desc: "Pick a song or clip from your device" },
+  { id: ALARM_SOUND_IDS.CUSTOM, label: "Your music", desc: "Files, Apple Music, or device audio" },
 ]);
 
 const CUSTOM_DB = "cute_schedule_alarm_audio_v1";

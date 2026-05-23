@@ -1,0 +1,170 @@
+/**
+ * Responsive layout: iPhone-first, scales to iPad and Mac.
+ * Imported last so it can override earlier breakpoint rules safely.
+ */
+
+@supports (min-height: 100dvh) {
+  body,
+  #root,
+  .app,
+  .shell,
+  .login-gate {
+    min-height: 100dvh;
+  }
+}
+
+/* ─── Tablet (iPad portrait, small windows) ─── */
+@media (min-width: 744px) {
+  :root {
+    --app-content-max: 600px;
+    --bottom-nav-clearance: 96px;
+    --screen-margin: clamp(20px, 3.5vw, 32px);
+  }
+
+  .app .top.top-plain {
+    max-width: none !important;
+    margin: 0 !important;
+    width: 100%;
+  }
+
+  .top-inner {
+    max-width: calc(var(--app-content-max) + 56px);
+  }
+
+  .app .shell-main {
+    max-width: var(--app-content-max) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding: calc(env(safe-area-inset-top, 0px) + 10px) var(--screen-margin)
+      calc(env(safe-area-inset-bottom, 0px) + var(--bottom-nav-clearance)) !important;
+  }
+
+  .bottom-nav.surface-dock,
+  .bottom-nav.bottom-nav--png {
+    width: min(var(--app-content-max), calc(100% - 32px));
+    max-width: var(--app-content-max) !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%) !important;
+    margin: 0 auto;
+    border-radius: 24px 24px 0 0;
+    border-left: 1px solid var(--border-subtle);
+    border-right: 1px solid var(--border-subtle);
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.06);
+  }
+
+  .pattern-insights--v2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .py-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modal-overlay {
+    align-items: center !important;
+    padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom)) !important;
+  }
+
+  .modal,
+  .settings-modal {
+    max-width: min(560px, 92vw) !important;
+    border-radius: 28px !important;
+    max-height: min(86vh, 820px) !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.65) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.65) !important;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.65) !important;
+  }
+
+  .app .settings-modal {
+    border-radius: 28px !important;
+  }
+
+  .ai-panel {
+    max-width: min(520px, calc(100% - 32px));
+    border-radius: 24px 24px 0 0;
+    height: min(75vh, 720px);
+  }
+
+  .login-gate-card {
+    max-width: min(480px, 92vw);
+  }
+
+  .coach-page-hero__icon {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+/* ─── iPad landscape / Mac / desktop ─── */
+@media (min-width: 1024px) {
+  :root {
+    --app-content-max: 680px;
+    --screen-margin: clamp(24px, 4vw, 40px);
+  }
+
+  .top-inner {
+    max-width: calc(var(--app-content-max) + 64px);
+  }
+
+  .bottom-nav.surface-dock,
+  .bottom-nav.bottom-nav--png {
+    max-width: min(560px, var(--app-content-max)) !important;
+    border-radius: 28px 28px 0 0;
+    padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 10px);
+  }
+
+  .app .panel,
+  .app section.panel {
+    border-radius: 24px;
+  }
+
+  .pattern-insights {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --app-content-max: 720px;
+  }
+
+  .bottom-nav.surface-dock,
+  .bottom-nav.bottom-nav--png {
+    max-width: min(600px, var(--app-content-max)) !important;
+  }
+}
+
+/* ─── Landscape phone (short viewport) ─── */
+@media (max-height: 500px) and (orientation: landscape) {
+  .shell-main {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 4px) !important;
+  }
+
+  .bottom-nav--png .bottom-nav-item--center {
+    margin-top: -18px;
+  }
+
+  .coach-page-hero {
+    padding-top: 0;
+    padding-bottom: 8px;
+  }
+}
+
+/* ─── Pointer devices (Mac trackpad / mouse) ─── */
+@media (hover: hover) and (pointer: fine) {
+  .bottom-nav-item:hover {
+    background: rgba(255, 240, 244, 0.55);
+  }
+
+  .btn-icon:hover {
+    background: rgba(255, 255, 255, 0.65);
+  }
+}
+
+/* ─── Very wide screens: keep content centered, soft side gutters ─── */
+@media (min-width: 1440px) {
+  .app-bg::before {
+    opacity: 0.22;
+  }
+}

@@ -64,6 +64,19 @@ export function formatTimerDisplay(remainingMs) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Display stored HH:mm alarm time in 12-hour locale form (e.g. 4:41 PM). */
+export function formatAlarmTimeDisplay(time24) {
+  if (!time24 || typeof time24 !== "string") return time24 || "";
+  const parts = time24.trim().split(":");
+  if (parts.length < 2) return time24;
+  const h = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10);
+  if (Number.isNaN(h) || Number.isNaN(m)) return time24;
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+}
+
 // ─── Alarms ───
 export const ALARM_MODES = {
   GENTLE: "gentle",

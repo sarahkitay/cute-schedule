@@ -978,7 +978,7 @@ export function HealthPage({
         </div>
       </div>
 
-      <div className="health-segment-toggle" role="tablist" aria-label="Health section">
+      <div className="health-segment-toggle health-tab-toggle" role="tablist" aria-label="Health section">
         <button
           type="button"
           role="tab"

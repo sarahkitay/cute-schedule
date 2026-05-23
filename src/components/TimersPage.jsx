@@ -8,6 +8,7 @@ import {
   TIMER_TYPES,
   createAlarm,
   formatTimerDisplay,
+  formatAlarmTimeDisplay,
   getNextAlarmTime,
 } from "../modules/timers";
 import { requestAlarmPermissions } from "../alarmScheduler";
@@ -252,8 +253,8 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
         <>
           <GlassCard compact className="timers-info-card">
             <p className="timers-info-text">
-              Pick a built-in sound or import your own music. Custom tracks play while PROYOU is open;
-              the iPhone app uses the system alarm sound when the app is in the background.
+              Pick a built-in sound or import music from Files or Apple Music (share a song to Files, then import below).
+              Custom tracks play while PROYOU is open; the iPhone app uses the system alarm sound in the background.
             </p>
           </GlassCard>
 
@@ -325,7 +326,7 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
                     >
                       <span className="timers-alarm-mode-label">Your music</span>
                       <span className="timers-alarm-mode-desc">
-                        {newAlarmCustomSoundName || "Import MP3, M4A, or other audio from your device"}
+                        {newAlarmCustomSoundName || "Import from Files, Apple Music, or your device"}
                       </span>
                     </button>
                     <div className="timers-sound-custom-actions">
@@ -336,6 +337,14 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
                         onClick={() => musicInputRef.current?.click()}
                       >
                         {soundImporting ? "Saving…" : newAlarmCustomSoundName ? "Change file" : "Choose file"}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        disabled={soundImporting}
+                        onClick={() => musicInputRef.current?.click()}
+                      >
+                        Apple Music
                       </button>
                       {newAlarmCustomSoundId ? (
                         <button
@@ -348,6 +357,9 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
                         </button>
                       ) : null}
                     </div>
+                    <p className="timers-sound-import-hint">
+                      iPhone: Music → song → Share → Save to Files, then tap Apple Music or Choose file.
+                    </p>
                     <input
                       ref={musicInputRef}
                       type="file"
@@ -399,7 +411,7 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
                 return (
                   <li key={alarm.id} className={`timers-alarm-item${alarm.enabled ? "" : " is-off"}`}>
                     <div className="timers-alarm-main">
-                      <span className="timers-alarm-time">{alarm.time}</span>
+                      <span className="timers-alarm-time">{formatAlarmTimeDisplay(alarm.time)}</span>
                       <div className="timers-alarm-meta">
                         <span className="timers-alarm-label">{alarm.label}</span>
                         <span className="timers-alarm-mode">{modeMeta?.label || "Standard"}</span>

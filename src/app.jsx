@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import ReactDOM, { flushSync } from "react-dom";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
-  SettingsIcon, CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
+  CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
   LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, MenuIcon,
   CheckIcon, FinanceIcon, BulletIcon
 } from "./Icons";
@@ -6332,7 +6332,13 @@ export default function App() {
                     title="Settings"
                     aria-label="Settings"
                   >
-                    <SettingsIcon style={{ width: 22, height: 22 }} />
+                    <img
+                      src={`${import.meta.env.BASE_URL}settings.png`}
+                      alt=""
+                      className="header-settings-icon"
+                      width={26}
+                      height={26}
+                    />
                   </button>
                 </div>
               </div>
@@ -7252,7 +7258,13 @@ export default function App() {
         ) : tab === "coach" ? (
           <section className="panel pattern-insights-section coach-page scroll-reveal">
             <div className="coach-page-hero">
-              <DockNavIcon tabId="coach" active variant="center" />
+              <img
+                src={`${import.meta.env.BASE_URL}PYIcon.png`}
+                alt=""
+                className="coach-page-hero__icon"
+                width={48}
+                height={48}
+              />
               <div>
                 <h2 className="coach-page-hero__title">Coach & Insights</h2>
                 <p className="coach-page-hero__sub">Your data, not generic advice · ADHD-aware              </p>

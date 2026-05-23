@@ -5,6 +5,7 @@ import './design-tokens.css'
 import './App.css'
 import './iosNativeUi.css'
 import './designSystem.css'
+import './responsive.css'
 import App from './app.jsx'
 
 // Error boundary so a runtime error shows a message instead of a blank page

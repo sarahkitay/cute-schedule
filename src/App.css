@@ -80,7 +80,8 @@
   --space-5: 24px;
   --space-6: 32px;
   --card-pad: 16px;
-  --screen-margin: 16px;
+  --screen-margin: clamp(16px, 3vw, 28px);
+  --app-content-max: 430px;
   --spacing-xs: 8px;
   --spacing-sm: 16px;
   --spacing-md: 24px;
@@ -151,6 +152,7 @@ body::-webkit-scrollbar,
 .app-bg {
   position: relative;
   min-height: 100vh;
+  min-height: 100dvh;
   /* Theme-driven base so color scheme changes read across the full canvas */
   background: var(--theme-bg-gradient, linear-gradient(180deg, #fff8f7 0%, #fef5f3 25%, #fceeea 50%, #faf0ed 75%, #fff9f7 100%));
   background-image: var(--theme-bg-gradient, linear-gradient(180deg, rgba(255,245,242,0.98) 0%, rgba(252,228,220,0.95) 28%, rgba(245,210,200,0.92) 52%, rgba(252,232,226,0.94) 72%, rgba(255,248,245,0.98) 100%)), var(--moodboard-image, none);
@@ -212,6 +214,7 @@ body::-webkit-scrollbar,
   z-index: 1;
   width: 100%;
   min-height: 100vh;
+  min-height: 100dvh;
   background: transparent;
   font-family: var(--font-primary);
   font-weight: var(--body-w);
@@ -222,7 +225,7 @@ body::-webkit-scrollbar,
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(var(--bottom-nav-clearance, 88px) + env(safe-area-inset-bottom, 0px));
 }
 .app::before {
   content: "";
@@ -1267,7 +1270,7 @@ html[data-theme="dark"] .settings-logout-btn {
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
-  max-width: 414px;
+  max-width: min(100%, 480px);
   height: 75vh;
   background: white;
   border-radius: 0;
@@ -1977,6 +1980,7 @@ button {
   max-width: 1120px;
   margin: 0 auto;
   min-height: 100vh;
+  min-height: 100dvh;
   position: relative;
   z-index: 1;
   display: flex;
@@ -1987,10 +1991,11 @@ button {
 .shell-main {
   flex: 1;
   width: 100%;
-  max-width: 640px;
+  max-width: min(var(--app-content-max, 430px), 100%);
   margin: 0 auto;
   /* Tight under sticky header + bottom nav safe area (was 22px top; too airy on iOS) */
-  padding: calc(env(safe-area-inset-top, 0px) + 8px) var(--screen-margin) calc(env(safe-area-inset-bottom, 0px) + 64px);
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) var(--screen-margin)
+    calc(env(safe-area-inset-bottom, 0px) + var(--bottom-nav-clearance, 88px));
   box-sizing: border-box;
   animation: contentReveal 0.72s cubic-bezier(0.22, 1, 0.36, 1) forwards;
   scroll-behavior: smooth;
@@ -2145,20 +2150,22 @@ button {
 
 @media (min-width: 900px) {
   .shell {
-    display: grid;
-    grid-template-columns: 1fr 280px;
-    gap: var(--space-4);
-    padding: 0 var(--space-3);
-    align-items: start;
-  }
-  .shell-main {
-    max-width: none;
-    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 1120px;
+    margin: 0 auto;
     padding: 0;
   }
+  .shell-main {
+    max-width: var(--app-content-max, 680px);
+    width: 100%;
+    margin: 0 auto;
+    padding: calc(env(safe-area-inset-top, 0px) + 8px) var(--screen-margin)
+      calc(env(safe-area-inset-bottom, 0px) + var(--bottom-nav-clearance, 88px));
+  }
   .shell-rail {
-    position: sticky;
-    top: calc(env(safe-area-inset-top, 0px) + 80px);
+    display: none;
   }
 }
 
@@ -2217,6 +2224,13 @@ button {
   background: transparent;
   border: 1px solid var(--border-subtle);
   color: var(--text);
+}
+.header-settings-icon {
+  display: block;
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  pointer-events: none;
 }
 .top-plain .btn-pill {
   background: rgba(0, 0, 0, 0.04);

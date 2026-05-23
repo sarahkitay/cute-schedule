@@ -1910,27 +1910,20 @@ html[data-theme="dark"] .app .notes-section .note-date {
    RESPONSIVE: iPad, Mac, larger screens
    ═══════════════════════════════════════════════ */
 
-/* Tablet (iPad) */
+/* Tablet (iPad) — content width only; header stays full bleed */
 @media (min-width: 768px) {
   .app .shell-main {
-    max-width: 600px !important;
+    max-width: var(--app-content-max, 600px) !important;
     margin: 0 auto !important;
-    padding: 0 28px !important;
   }
   .app .top.top-plain {
-    max-width: 640px !important;
-    margin: 0 auto !important;
-    padding-left: 28px !important;
-    padding-right: 28px !important;
+    max-width: none !important;
+    margin: 0 !important;
+    width: 100% !important;
   }
-  .app .bottom-nav.surface-dock {
-    max-width: 520px !important;
-    margin: 0 auto !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    border-radius: 24px 24px 0 0 !important;
-    bottom: 0 !important;
-    right: auto !important;
+  .app .top.top-plain .top-inner {
+    max-width: calc(var(--app-content-max, 600px) + 56px);
+    margin: 0 auto;
   }
   .py-card-grid {
     gap: 16px !important;
@@ -1948,18 +1941,10 @@ html[data-theme="dark"] .app .notes-section .note-date {
 /* Desktop (Mac / large iPad) */
 @media (min-width: 1024px) {
   .app .shell-main {
-    max-width: 680px !important;
-    padding: 0 36px !important;
+    max-width: var(--app-content-max, 680px) !important;
   }
-  .app .top.top-plain {
-    max-width: 720px !important;
-    padding-left: 36px !important;
-    padding-right: 36px !important;
-  }
-  .app .bottom-nav.surface-dock {
-    max-width: 560px !important;
-    border-radius: 28px 28px 0 0 !important;
-    padding: 10px 16px !important;
+  .app .top.top-plain .top-inner {
+    max-width: calc(var(--app-content-max, 680px) + 64px);
   }
   .py-card-grid {
     gap: 20px !important;
@@ -1981,14 +1966,10 @@ html[data-theme="dark"] .app .notes-section .note-date {
 /* Large desktop */
 @media (min-width: 1440px) {
   .app .shell-main {
-    max-width: 720px !important;
+    max-width: var(--app-content-max, 720px) !important;
   }
-  .app .top.top-plain {
-    max-width: 760px !important;
-  }
-  .app .bottom-nav.surface-dock {
-    max-width: 600px !important;
-    border-radius: 32px 32px 0 0 !important;
+  .app .top.top-plain .top-inner {
+    max-width: calc(var(--app-content-max, 720px) + 64px);
   }
 }
 

@@ -312,6 +312,15 @@
   padding: 8px 4px 16px;
   margin-bottom: 8px;
 }
+.coach-page-hero__icon {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+}
 .coach-page-hero__title {
   margin: 0;
   font-size: 22px;
@@ -323,6 +332,49 @@
   font-size: 13px;
   color: var(--text-soft);
 }
+
+.section-health .health-segment-toggle.health-tab-toggle {
+  display: flex;
+  width: 100%;
+  max-width: none;
+  padding: 4px;
+  background: rgba(255, 238, 242, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  margin: 0 0 14px;
+  gap: 2px;
+  box-sizing: border-box;
+}
+.section-health .health-tab-toggle .health-segment-btn {
+  flex: 1;
+  padding: 9px 20px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--py-ink-tertiary, var(--text-soft));
+  margin-left: 0;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.section-health .health-tab-toggle .health-segment-btn:first-child,
+.section-health .health-tab-toggle .health-segment-btn:last-child {
+  border-radius: 999px;
+}
+.section-health .health-tab-toggle .health-segment-btn--on {
+  background: linear-gradient(135deg, var(--theme-primary, #f4b8ca), var(--theme-secondary, #d4708a));
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 4px 12px rgba(212, 112, 138, 0.25);
+}
+.section-health .health-tab-toggle .health-segment-btn:hover {
+  color: var(--text);
+}
+.section-health .health-tab-toggle .health-segment-btn--on:hover {
+  color: #fff;
+}
+
 .pattern-insights--v2 .insight-card {
   border-radius: 18px;
 }
@@ -432,7 +484,6 @@
 .timers-alarm-time {
   font-size: 28px;
   font-weight: 700;
-  font-family: var(--font-mono);
   letter-spacing: -0.02em;
 }
 .timers-alarm-meta {
@@ -524,6 +575,12 @@
   margin: 6px 0 0;
   font-size: 12px;
   color: #b85555;
+}
+.timers-sound-import-hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-soft);
 }
 .timers-alarm-form {
   display: flex;
