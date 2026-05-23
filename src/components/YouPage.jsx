@@ -32,7 +32,7 @@ export function YouPage({
   function toggleNavModule(id) {
     setNavOrder(prev => {
       if (prev.includes(id)) return prev.filter(x => x !== id);
-      return [...prev.slice(0, -1), id, prev[prev.length - 1]];
+      return [...prev.slice(0, prev.indexOf("you")), id, ...prev.slice(prev.indexOf("you"))].filter((v, i, a) => a.indexOf(v) === i);
     });
     setEnabledModules(prev => {
       if (prev.includes(id)) return prev.filter(x => x !== id);
@@ -146,7 +146,8 @@ export function YouPage({
       <div className="py-flex-col py-gap-4" style={{ padding: "0 4px" }}>
         <button type="button" onClick={() => setSection(null)} style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--py-accent-deep)", fontWeight: 600, padding: "4px 0" }}>← Back</button>
         <h2 style={{ fontSize: 20, fontWeight: 600, color: "var(--py-ink)" }}>Customize Navigation</h2>
-        <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)" }}>Add modules to your bottom nav bar. Anything not in the nav is accessible from this page.</p>
+        <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)", marginBottom: 4 }}>Toggle modules on/off to add them to your bottom nav. The bar resizes to fit. Home, Coach, and You are always shown.</p>
+        <p style={{ fontSize: 12, color: "var(--py-ink-muted)" }}>Swap out Plan for Fitness, or add Finance next to Insights — whatever works for you.</p>
         <div className="py-flex-col py-gap-2">
           {allModules.map(mod => {
             const inNav = enabledModules.includes(mod.id);

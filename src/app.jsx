@@ -6148,26 +6148,28 @@ export default function App() {
           </div>
         </header>
 
-        {/* Bottom navigation: dynamic from enabledModules + always Home/You */}
-        <nav className="bottom-nav surface-dock" aria-label="Main" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-around", padding: "8px 10px", paddingBottom: "max(14px, env(safe-area-inset-bottom))" }}>
+        {/* Bottom navigation: fully customizable, resizes to fit */}
+        <nav className="bottom-nav surface-dock" aria-label="Main" style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-evenly", padding: "8px 6px", paddingBottom: "max(12px, env(safe-area-inset-bottom))", gap: 2 }}>
           {(() => {
             const imgMap = { today: "homeicon.png", list: "planIcon.png", plan: "planIcon.png", insights: "InsightsIcon.png", you: "YouIcon.png", coach: "PYIcon.png", health: "fitness.png", medications: "meds.png", finance: "finance.png", notes: "planIcon.png", timers: "planIcon.png", monthly: "planIcon.png" };
             const labelMap = { today: "Home", list: "Plan", plan: "Plan", insights: "Insights", you: "You", coach: "Coach", health: "Fitness", medications: "Meds", finance: "Finance", notes: "Notes", timers: "Timers", monthly: "Goals" };
-            const priorityOrder = ["health", "medications", "finance", "list", "notes", "timers", "monthly"];
-            const customMiddle = priorityOrder.filter(id => enabledModules.includes(id));
-            const leftSlot = customMiddle.length > 0 ? customMiddle[0] : "list";
-            const navItems = ["today", leftSlot, "__center__", "insights", "you"];
-            return navItems.map((itemId) => {
+            const userNav = navOrder.filter(id => enabledModules.includes(id) || id === "today" || id === "you");
+            const finalNav = userNav.length >= 3 ? userNav : ["today", "list", "insights", "you"];
+            const centerIdx = Math.floor(finalNav.length / 2);
+            const withCenter = [...finalNav.slice(0, centerIdx), "__center__", ...finalNav.slice(centerIdx)];
+            const iconSize = withCenter.length > 6 ? 34 : withCenter.length > 5 ? 36 : 38;
+            const containerSize = withCenter.length > 6 ? 40 : withCenter.length > 5 ? 42 : 48;
+            return withCenter.map((itemId) => {
               if (itemId === "__center__") {
                 return (
                   <button key="center" type="button" onClick={() => setTab("coach")} aria-label="Coach" style={{
-                    width: 68, height: 68, marginTop: -28, marginBottom: 0, borderRadius: "50%",
+                    width: 64, height: 64, marginTop: -26, marginBottom: 0, borderRadius: "50%", flexShrink: 0,
                     background: "radial-gradient(circle at 40% 30%, rgba(255,225,235,0.95), rgba(248,190,210,0.7), rgba(240,170,195,0.5))",
                     border: "3.5px solid rgba(255,255,255,0.9)", padding: 0,
                     boxShadow: "0 8px 28px rgba(212,112,138,0.4), 0 3px 8px rgba(0,0,0,0.06), inset 0 2px 4px rgba(255,255,255,0.8)",
                     display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer",
                   }}>
-                    <img src={`${import.meta.env.BASE_URL}PYIcon.png`} alt="ProYou" style={{ width: 46, height: 46, borderRadius: "50%", objectFit: "contain" }} />
+                    <img src={`${import.meta.env.BASE_URL}PYIcon.png`} alt="ProYou" style={{ width: 42, height: 42, borderRadius: "50%", objectFit: "contain" }} />
                   </button>
                 );
               }
@@ -6177,18 +6179,18 @@ export default function App() {
               return (
                 <button key={itemId} type="button" onClick={() => { setTab(itemId); if (itemId === "today") setShowMonthCalendar(false); }} aria-current={isActive ? "page" : undefined} style={{
                   display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
-                  background: "none", border: "none", cursor: "pointer", padding: "4px 6px", minWidth: 52,
+                  background: "none", border: "none", cursor: "pointer", padding: "2px 4px", minWidth: 0, flex: 1, maxWidth: 64,
                 }}>
                   <span style={{
-                    width: 48, height: 48, borderRadius: 16, display: "flex", alignItems: "center", justifyContent: "center",
+                    width: containerSize, height: containerSize, borderRadius: 14, display: "flex", alignItems: "center", justifyContent: "center",
                     background: isActive ? "rgba(255,218,230,0.7)" : "rgba(255,240,244,0.4)",
                     border: `1px solid ${isActive ? "rgba(232,169,183,0.25)" : "rgba(255,255,255,0.6)"}`,
                     boxShadow: isActive ? "0 4px 16px rgba(212,96,122,0.2), inset 0 1px 2px rgba(255,255,255,0.7)" : "0 2px 8px rgba(0,0,0,0.03), inset 0 1px 1px rgba(255,255,255,0.5)",
                     transition: "all 200ms ease", transform: isActive ? "scale(1.06)" : "scale(1)",
                   }}>
-                    <img src={`${import.meta.env.BASE_URL}${img}`} alt={label} style={{ width: 38, height: 38, borderRadius: 10, objectFit: "contain" }} />
+                    <img src={`${import.meta.env.BASE_URL}${img}`} alt={label} style={{ width: iconSize, height: iconSize, borderRadius: 8, objectFit: "contain" }} />
                   </span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: isActive ? "#D4607A" : "rgba(160,140,150,0.8)", letterSpacing: 0.2 }}>{label}</span>
+                  <span style={{ fontSize: 9, fontWeight: 600, color: isActive ? "var(--theme-accent, #D4607A)" : "rgba(160,140,150,0.8)", letterSpacing: 0.1, whiteSpace: "nowrap" }}>{label}</span>
                 </button>
               );
             });
@@ -6828,7 +6830,7 @@ export default function App() {
         ) : tab === "list" ? (
           <section className="panel list-page scroll-reveal">
             <div className="list-page-header">
-              <h2 className="list-page-title">List</h2>
+              <h2 className="list-page-title">Plan</h2>
               <span
                 className={
                   incompleteTasks.length === 0
@@ -6927,6 +6929,33 @@ export default function App() {
                 })}
               </ul>
             )}
+
+            {/* Monthly objectives below today's list */}
+            <div style={{ marginTop: 24 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <h3 style={{ fontSize: 17, fontWeight: 600, color: "var(--py-ink)", margin: 0 }}>Monthly Objectives</h3>
+                <span style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{appState.monthly.filter(m => m.done).length}/{appState.monthly.length} complete</span>
+              </div>
+              <form style={{ display: "flex", gap: 8, marginBottom: 14 }} onSubmit={addMonthly}>
+                <input className="py-input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective..." style={{ flex: 1 }} />
+                <button type="submit" style={{ padding: "8px 18px", borderRadius: 999, background: "linear-gradient(135deg, var(--theme-primary, #F0B4C4), var(--theme-secondary, #D4708A))", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Add</button>
+              </form>
+              {appState.monthly.length === 0 ? (
+                <p style={{ fontSize: 14, color: "var(--py-ink-muted)", textAlign: "center", padding: 16 }}>No monthly objectives yet.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {appState.monthly.map((m) => (
+                    <div key={m.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: "rgba(255,255,255,0.5)", border: "1px solid rgba(0,0,0,0.03)", borderRadius: 16 }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, cursor: "pointer" }}>
+                        <input type="checkbox" checked={!!m.done} onChange={() => toggleMonthly(m.id)} style={{ width: 18, height: 18, borderRadius: 5, accentColor: "var(--theme-accent, #D4708A)" }} />
+                        <span style={{ fontSize: 15, color: m.done ? "var(--py-ink-muted)" : "var(--py-ink)", textDecoration: m.done ? "line-through" : "none" }}>{m.text}</span>
+                      </label>
+                      <button type="button" onClick={() => deleteMonthly(m.id)} style={{ width: 26, height: 26, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.06)", background: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--py-ink-muted)" }}>x</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </section>
         ) : tab === "monthly" ? (
           <section className="panel monthly-objectives-section scroll-reveal">
