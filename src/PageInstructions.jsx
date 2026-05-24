@@ -39,9 +39,25 @@ const INSTRUCTIONS = {
   notes: (
     <>
       <p>
-        Use <strong>This day</strong> for notes tied to the calendar day you have selected on Today, or <strong>All notes</strong> for workspace-wide entries. Pick a <strong>subject</strong> when adding (or change it from the ⋯ menu) and filter the list with <em>Organize by subject</em>. Check the circle to cross off a note and move it to <strong>Archive</strong>; open Archive and uncheck to restore.
+        Use <strong>This day</strong> for notes tied to the calendar day you have selected on Today (reflections, logs, or anything day-specific). Use <strong>All notes</strong> for workspace-wide entries not tied to a calendar day.
+      </p>
+      <p>
+        Pick a <strong>subject</strong> when adding (or change it from the ⋯ menu) and filter the list with <em>Organize by subject</em>. Check the circle to cross off a note and move it to <strong>Archive</strong>; open Archive and uncheck to restore.
       </p>
       <p>Search still filters the current view. Tap a search result to jump to that note.</p>
+    </>
+  ),
+  timers: (
+    <>
+      <p>
+        <strong>Focus timer:</strong> Choose a preset, start a session, and pause or reset anytime. Completed sessions appear under <strong>History</strong>.
+      </p>
+      <p>
+        <strong>Alarms:</strong> Pick a built-in sound or import music from Files or Apple Music. On iPhone: Music → song → Share → Save to Files, then tap <strong>Apple Music</strong> or <strong>Choose file</strong> in the alarm form.
+      </p>
+      <p>
+        When an alarm fires, PROYOU opens to a full-screen wake-up screen. <strong>Math wake-up</strong> and <strong>Writing wake-up</strong> keep the alarm sounding until you complete the challenge. Standard and Gentle can be dismissed with one tap once the app is open. Tap the notification to open PROYOU if the app was in the background.
+      </p>
     </>
   ),
   finance: (
@@ -108,6 +124,9 @@ const INSTRUCTIONS = {
       </p>
       <p>
         <strong>Notifications &amp; reminders</strong> opens the full screen for permissions, task defaults, timing, habit cadence, quiet hours, and per-habit toggles; see <strong>Instructions</strong> on that screen for platform details (iOS, Android, browser).
+      </p>
+      <p>
+        <strong>Home screen widgets (iPhone):</strong> After building the native app, long-press your home screen → add widget → choose PROYOU. Options include <strong>Today&apos;s tasks</strong>, <strong>Habits</strong>, or <strong>Tasks &amp; habits</strong>. Widgets update when you open the app or change tasks and habits.
       </p>
       <p>
         <strong>Guides &amp; tours:</strong> Replay the quick tab overview or the full walkthrough. Exiting early does not mark complete; finishing the last slide does.

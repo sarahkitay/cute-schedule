@@ -289,11 +289,15 @@
 .finance-page-header {
   margin-bottom: var(--space-3);
 }
+.finance-panel .finance-month-snapshot,
 .finance-panel .finance-totals {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.62);
   border: 0.5px solid rgba(0, 0, 0, 0.06);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+}
+.finance-panel .finance-month-stat {
+  border-radius: 14px;
 }
 .finance-panel .finance-quick-add .input {
   border-radius: 14px;
@@ -308,13 +312,13 @@
 .coach-page-hero {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 18px;
   padding: 8px 4px 16px;
   margin-bottom: 8px;
 }
 .coach-page-hero__icon {
-  width: 48px;
-  height: 48px;
+  width: 96px;
+  height: 96px;
   object-fit: contain;
   flex-shrink: 0;
   border: none;

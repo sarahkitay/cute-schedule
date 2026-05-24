@@ -56,8 +56,6 @@ export function startAlarmWatcher(alarms, onFire) {
       const key = alarmFireKey(alarm.id, next.getTime());
       if (firedKeys.has(key)) continue;
       firedKeys.add(key);
-      playAlarmSound(alarm);
-      notifyAlarm(alarm);
       onFireCallback?.(alarm);
     }
   };

@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ALARM_MODES } from "../modules/timers";
+import { playAlarmSoundForAlarm } from "../alarmSounds";
 
 const WRITING_PROMPTS = [
   "I am awake and ready",
@@ -29,15 +30,15 @@ function buildMathProblem(difficulty = "easy") {
 
 /**
  * Full-screen wake-up challenge shown when an alarm rings.
+ * Alarm sound loops until onDismiss (after challenge or standard dismiss).
  */
 export function WakeUpChallenge({ alarm, onDismiss }) {
   const needsMath = alarm?.mode === ALARM_MODES.MATH_DISMISS;
   const needsWriting = alarm?.mode === ALARM_MODES.ACTION_REQUIRED;
   const needsChallenge = needsMath || needsWriting;
 
-  const math = useMemo(
-    () => (needsMath ? buildMathProblem(alarm?.mathDifficulty || "easy") : null),
-    [needsMath, alarm?.mathDifficulty, alarm?.id]
+  const [math, setMath] = useState(() =>
+    needsMath ? buildMathProblem(alarm?.mathDifficulty || "easy") : null
   );
   const writingPrompt = useMemo(
     () => (needsWriting ? WRITING_PROMPTS[Math.floor(Math.random() * WRITING_PROMPTS.length)] : null),
@@ -47,17 +48,55 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    if (!alarm) return;
+    void playAlarmSoundForAlarm(alarm);
+    try {
+      navigator.vibrate?.([300, 120, 300, 120, 300]);
+    } catch {}
+  }, [alarm]);
+
+  useEffect(() => {
+    let wakeLock = null;
+    let cancelled = false;
+    (async () => {
+      try {
+        if (cancelled || !navigator.wakeLock?.request) return;
+        wakeLock = await navigator.wakeLock.request("screen");
+      } catch {}
+    })();
+    return () => {
+      cancelled = true;
+      wakeLock?.release?.().catch?.(() => {});
+    };
+  }, []);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible" && alarm) {
+        void playAlarmSoundForAlarm(alarm);
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [alarm]);
+
   function tryDismiss() {
     if (!needsChallenge) {
       onDismiss();
       return;
     }
-    if (needsMath) {
+    if (needsMath && math) {
       if (answer.trim() === math.answer) {
         onDismiss();
         return;
       }
       setError("Not quite — try again to wake up your brain.");
+      setMath(buildMathProblem(alarm?.mathDifficulty || "easy"));
+      setAnswer("");
+      try {
+        navigator.vibrate?.([120, 80, 120]);
+      } catch {}
       return;
     }
     if (needsWriting) {
@@ -66,12 +105,19 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
         return;
       }
       setError("Type the phrase exactly to dismiss.");
+      setAnswer("");
     }
   }
 
   return (
-    <div className="wake-challenge-overlay" role="dialog" aria-modal="true" aria-labelledby="wake-challenge-title">
-      <div className="wake-challenge-card">
+    <div
+      className="wake-challenge-overlay"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="wake-challenge-title"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="wake-challenge-card" onClick={(e) => e.stopPropagation()}>
         <div className="wake-challenge-icon-wrap">
           <img src={`${import.meta.env.BASE_URL}PYIcon.png`} alt="" className="wake-challenge-icon" width={72} height={72} />
         </div>
@@ -80,14 +126,14 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
         </h2>
         <p className="wake-challenge-sub">
           {needsMath
-            ? "Solve this to turn off your alarm."
+            ? "Solve this to turn off your alarm. It keeps ringing until you finish."
             : needsWriting
-              ? "Type the phrase below to turn off your alarm."
-              : "Tap dismiss when you're ready to start the day."}
+              ? "Type the phrase below to turn off your alarm. It keeps ringing until you finish."
+              : "Your alarm is ringing. Tap dismiss when you're ready to start the day."}
         </p>
 
-        {needsMath ? <div className="wake-challenge-problem">{math.prompt}</div> : null}
-        {needsWriting ? <p className="wake-challenge-phrase">“{writingPrompt}”</p> : null}
+        {needsMath ? <div className="wake-challenge-problem">{math?.prompt}</div> : null}
+        {needsWriting ? <p className="wake-challenge-phrase">&ldquo;{writingPrompt}&rdquo;</p> : null}
 
         {needsChallenge ? (
           <input
@@ -103,6 +149,7 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
+            enterKeyHint="done"
           />
         ) : null}
 

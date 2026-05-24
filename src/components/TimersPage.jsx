@@ -1,15 +1,20 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { GlassCard } from "./GlassCard";
 import { PillButton } from "./PillButton";
 import { SegmentedControl } from "./SegmentedControl";
 import { DockNavIcon } from "../DockNavIcon";
 import {
   ALARM_MODES,
-  TIMER_TYPES,
   createAlarm,
   formatTimerDisplay,
   formatAlarmTimeDisplay,
   getNextAlarmTime,
+  defaultActiveTimerDraft,
+  normalizeActiveTimer,
+  getActiveTimerRemaining,
+  startActiveTimer,
+  pauseActiveTimer,
+  resetActiveTimer,
 } from "../modules/timers";
 import { requestAlarmPermissions } from "../alarmScheduler";
 import {
@@ -40,13 +45,16 @@ const ALARM_MODE_OPTIONS = [
 
 export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateAlarms }) {
   const [section, setSection] = useState("timer");
-  const [running, setRunning] = useState(false);
-  const [remaining, setRemaining] = useState(25 * 60 * 1000);
-  const [selectedPreset, setSelectedPreset] = useState(25 * 60 * 1000);
-  const [label, setLabel] = useState("Focus");
-  const intervalRef = useRef(null);
-  const startTimeRef = useRef(null);
-  const durationRef = useRef(null);
+  const [tick, setTick] = useState(() => Date.now());
+
+  const activeTimer = normalizeActiveTimer(timersState?.activeTimer);
+  const selectedPreset = activeTimer?.selectedPresetMs ?? 25 * 60 * 1000;
+  const label = activeTimer?.label ?? "Focus";
+  const running = !!activeTimer?.running;
+  const remaining = useMemo(() => {
+    void tick;
+    return activeTimer ? getActiveTimerRemaining(activeTimer) : selectedPreset;
+  }, [tick, activeTimer, selectedPreset]);
 
   const [showAddAlarm, setShowAddAlarm] = useState(false);
   const [newAlarmTime, setNewAlarmTime] = useState("07:00");
@@ -64,10 +72,10 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
   const history = timersState?.history || [];
 
   useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
+    if (!running) return;
+    const id = setInterval(() => setTick(Date.now()), 250);
+    return () => clearInterval(id);
+  }, [running, activeTimer?.endsAt]);
 
   useEffect(() => {
     if (section === "alarms") requestAlarmPermissions();
@@ -75,51 +83,28 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
 
   useEffect(() => () => stopAlarmSoundPlayback(), []);
 
-  const startTimer = useCallback(() => {
-    startTimeRef.current = Date.now();
-    durationRef.current = remaining;
-    setRunning(true);
-    intervalRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTimeRef.current;
-      const left = Math.max(0, durationRef.current - elapsed);
-      setRemaining(left);
-      if (left <= 0) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-        setRunning(false);
-        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-          new Notification("Timer complete", { body: `${label} timer finished!` });
-        }
-        if (typeof onUpdateTimers === "function") {
-          onUpdateTimers((prev) => ({
-            ...prev,
-            history: [
-              { id: Date.now(), label, durationMs: durationRef.current, completedAt: Date.now(), type: TIMER_TYPES.FOCUS },
-              ...(prev?.history || []).slice(0, 49),
-            ],
-          }));
-        }
-      }
-    }, 100);
-  }, [remaining, label, onUpdateTimers]);
+  function patchActiveTimer(nextActive) {
+    onUpdateTimers?.((prev) => ({ ...prev, activeTimer: nextActive }));
+  }
 
-  const pauseTimer = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    setRunning(false);
-  }, []);
+  function startTimer() {
+    const next = startActiveTimer(activeTimer ?? defaultActiveTimerDraft(selectedPreset), {
+      remainingMs: remaining,
+      label,
+    });
+    patchActiveTimer(next);
+  }
 
-  const resetTimer = useCallback(() => {
-    pauseTimer();
-    setRemaining(selectedPreset);
-  }, [pauseTimer, selectedPreset]);
+  function pauseTimer() {
+    patchActiveTimer(pauseActiveTimer(activeTimer));
+  }
+
+  function resetTimer() {
+    patchActiveTimer(resetActiveTimer(activeTimer, selectedPreset));
+  }
 
   function selectPreset(ms) {
-    setSelectedPreset(ms);
-    setRemaining(ms);
-    pauseTimer();
+    patchActiveTimer(resetActiveTimer(activeTimer ?? defaultActiveTimerDraft(ms), ms));
   }
 
   function toggleAlarmDay(day) {
@@ -251,13 +236,6 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
 
       {section === "alarms" && (
         <>
-          <GlassCard compact className="timers-info-card">
-            <p className="timers-info-text">
-              Pick a built-in sound or import music from Files or Apple Music (share a song to Files, then import below).
-              Custom tracks play while PROYOU is open; the iPhone app uses the system alarm sound in the background.
-            </p>
-          </GlassCard>
-
           <div className="timers-alarm-toolbar">
             <PillButton variant="primary" size="sm" onClick={() => setShowAddAlarm((v) => !v)}>
               {showAddAlarm ? "Cancel" : "+ Morning alarm"}
@@ -357,9 +335,6 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
                         </button>
                       ) : null}
                     </div>
-                    <p className="timers-sound-import-hint">
-                      iPhone: Music → song → Share → Save to Files, then tap Apple Music or Choose file.
-                    </p>
                     <input
                       ref={musicInputRef}
                       type="file"

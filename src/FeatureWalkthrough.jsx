@@ -14,7 +14,7 @@ const QUICK_SLIDES = [
   {
     title: "Coach, notes & money",
     body:
-      "**Coach** uses your real schedule and habits for gentle check-ins. **Notes** is for thoughts and ideas. **Finance** tracks bills and subscriptions and can surface due dates on your day.",
+      "**Coach** uses your real schedule and habits for gentle check-ins. **Notes** uses **This day** for the calendar day on Today, or **All notes** for workspace-wide entries. **Finance** tracks bills and subscriptions and can surface due dates on your day.",
   },
   {
     title: "Settings & habits",
@@ -62,7 +62,12 @@ const FULL_SLIDES = [
   {
     title: "Notes & Finance",
     body:
-      "**Notes** is a lightweight inbox for ideas and snippets. **Finance** tracks bills and subscriptions; due items can appear as gentle reminders when you have configured them.",
+      "**Notes**: **This day** pins entries to the calendar day selected on Today; **All notes** keeps workspace-wide reflections and logs. **Finance** tracks bills and subscriptions; due items can appear as gentle reminders when you have configured them.",
+  },
+  {
+    title: "Timers & alarms",
+    body:
+      "**Timers** (when in your nav) covers focus presets and morning alarms. Built-in sounds are available, or import from Files or Apple Music — see **Instructions** on the Timers tab for import steps and how custom sounds behave on iPhone vs in the app.",
   },
   {
     title: "Habits & reminders",
@@ -77,7 +82,7 @@ const FULL_SLIDES = [
   {
     title: "Instructions on each tab",
     body:
-      "Longer help lives in the **Instructions** bar at the bottom of Today, Plan, Coach, Notes, Finance, and Health; open it anytime. This tour is the overview; combine both when you need detail.",
+      "Longer help lives in the **Instructions** bar at the bottom of each main tab (Today, Plan, Coach, Notes, Finance, Health, Timers, and more); open it anytime. This tour is the overview; combine both when you need detail.",
   },
   {
     title: "Sync & account",

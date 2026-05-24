@@ -27,11 +27,12 @@ export function loadTimersFromDisk() {
     const raw = localStorage.getItem(TIMERS_STORAGE_KEY);
     if (!raw) return defaultTimersState();
     const parsed = JSON.parse(raw);
-    return {
+    const state = {
       timers: Array.isArray(parsed.timers) ? parsed.timers : [],
       activeTimer: parsed.activeTimer || null,
       history: Array.isArray(parsed.history) ? parsed.history : [],
     };
+    return reconcileActiveTimerOnLoad(state);
   } catch {
     return defaultTimersState();
   }
@@ -62,6 +63,114 @@ export function formatTimerDisplay(remainingMs) {
   const s = totalSec % 60;
   if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+const DEFAULT_PRESET_MS = 25 * 60 * 1000;
+
+/** @returns {import('./timers').ActiveTimerDraft} */
+export function defaultActiveTimerDraft(presetMs = DEFAULT_PRESET_MS) {
+  return {
+    label: "Focus",
+    selectedPresetMs: presetMs,
+    remainingMs: presetMs,
+    running: false,
+    endsAt: null,
+  };
+}
+
+/** @param {object|null|undefined} raw */
+export function normalizeActiveTimer(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const selectedPresetMs = Number(raw.selectedPresetMs) || DEFAULT_PRESET_MS;
+  const remainingMs = Number(raw.remainingMs) || selectedPresetMs;
+  const running = !!raw.running;
+  const endsAt = running && raw.endsAt != null ? Number(raw.endsAt) : null;
+  return {
+    label: typeof raw.label === "string" && raw.label.trim() ? raw.label.trim() : "Focus",
+    selectedPresetMs,
+    remainingMs,
+    running: running && endsAt != null,
+    endsAt: running && endsAt != null ? endsAt : null,
+  };
+}
+
+/** @param {object|null|undefined} active */
+export function getActiveTimerRemaining(active) {
+  const norm = normalizeActiveTimer(active);
+  if (!norm) return DEFAULT_PRESET_MS;
+  if (norm.running && norm.endsAt) return Math.max(0, norm.endsAt - Date.now());
+  return norm.remainingMs;
+}
+
+/** @param {object|null|undefined} active @param {{ remainingMs?: number, label?: string }} [opts] */
+export function startActiveTimer(active, opts = {}) {
+  const base = normalizeActiveTimer(active) ?? defaultActiveTimerDraft();
+  const remainingMs = opts.remainingMs ?? getActiveTimerRemaining(base);
+  const ms = Math.max(0, remainingMs);
+  return {
+    ...base,
+    label: opts.label ?? base.label,
+    remainingMs: ms,
+    running: true,
+    endsAt: Date.now() + ms,
+  };
+}
+
+/** @param {object|null|undefined} active */
+export function pauseActiveTimer(active) {
+  const base = normalizeActiveTimer(active);
+  if (!base?.running) return base;
+  const remainingMs = Math.max(0, (base.endsAt || Date.now()) - Date.now());
+  return { ...base, running: false, endsAt: null, remainingMs };
+}
+
+/** @param {object|null|undefined} active @param {number} [presetMs] */
+export function resetActiveTimer(active, presetMs) {
+  const base = normalizeActiveTimer(active) ?? defaultActiveTimerDraft();
+  const ms = presetMs ?? base.selectedPresetMs ?? DEFAULT_PRESET_MS;
+  return { ...base, selectedPresetMs: ms, remainingMs: ms, running: false, endsAt: null };
+}
+
+/** @param {object} active @param {Array} history */
+export function buildFocusTimerHistoryEntry(active) {
+  const base = normalizeActiveTimer(active);
+  return {
+    id: Date.now(),
+    label: base?.label || "Focus",
+    durationMs: base?.selectedPresetMs || base?.remainingMs || DEFAULT_PRESET_MS,
+    completedAt: Date.now(),
+    type: TIMER_TYPES.FOCUS,
+  };
+}
+
+/** If a running timer was stored past its end time, return updated state. */
+export function reconcileActiveTimerOnLoad(state) {
+  const active = normalizeActiveTimer(state?.activeTimer);
+  if (!active?.running || !active.endsAt) return state;
+  if (Date.now() < active.endsAt) return { ...state, activeTimer: active };
+  const entry = buildFocusTimerHistoryEntry(active);
+  return {
+    ...state,
+    activeTimer: resetActiveTimer(active, active.selectedPresetMs),
+    history: [entry, ...(state.history || [])].slice(0, 50),
+  };
+}
+
+/** @param {object} state */
+export function completeActiveTimerState(state) {
+  const active = normalizeActiveTimer(state?.activeTimer);
+  if (!active?.running || !active.endsAt || Date.now() < active.endsAt) return state;
+  const entry = buildFocusTimerHistoryEntry(active);
+  try {
+    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+      new Notification("Timer complete", { body: `${active.label} timer finished!` });
+    }
+  } catch {}
+  return {
+    ...state,
+    activeTimer: resetActiveTimer(active, active.selectedPresetMs),
+    history: [entry, ...(state.history || [])].slice(0, 50),
+  };
 }
 
 /** Display stored HH:mm alarm time in 12-hour locale form (e.g. 4:41 PM). */

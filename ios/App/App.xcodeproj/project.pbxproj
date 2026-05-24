@@ -19,7 +19,13 @@
 		B04EC31C1FED79650016851F /* ProyouApnsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC31A1FED79650016851F /* ProyouApnsPlugin.swift */; };
 		C94B20032FA1000100CAFE01 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = C94B20022FA1000100CAFE01 /* GoogleService-Info.plist */; };
 		E04EC3181FED79650016851F /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04EC3171FED79650016851F /* SceneDelegate.swift */; };
+		A1WGT0021FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */; };
+		A1WGT0051FED79650016851F /* ProyouWidgetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0041FED79650016851F /* ProyouWidgetPlugin.swift */; };
+		A1WGT0031FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */; };
+		A1WGT0071FED79650016851F /* ProyouWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0061FED79650016851F /* ProyouWidget.swift */; };
+		A1WGT0101FED79650016851F /* ProyouWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1WGT00A1FED79650016851F /* ProyouWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
 
 /* Begin PBXFileReference section */
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
@@ -39,14 +45,61 @@
 		C94B20022FA1000100CAFE01 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		E04EC3171FED79650016851F /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
+		A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouWidgetSnapshot.swift; sourceTree = "<group>"; };
+		A1WGT0041FED79650016851F /* ProyouWidgetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouWidgetPlugin.swift; sourceTree = "<group>"; };
+		A1WGT0061FED79650016851F /* ProyouWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouWidget.swift; sourceTree = "<group>"; };
+		A1WGT0081FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1WGT0091FED79650016851F /* ProyouWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ProyouWidget.entitlements; sourceTree = "<group>"; };
+		A1WGT00A1FED79650016851F /* ProyouWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ProyouWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A1WGT00F1FED79650016851F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1WGT0101FED79650016851F /* ProyouWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXContainerItemProxy section */
+		A1WGT0111FED79650016851F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 504EC2FC1FED79650016851F /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1WGT00B1FED79650016851F;
+			remoteInfo = ProyouWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		A1WGT0121FED79650016851F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1WGT00B1FED79650016851F /* ProyouWidgetExtension */;
+			targetProxy = A1WGT0111FED79650016851F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin PBXFrameworksBuildPhase section */
+
 		504EC3011FED79650016851F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1WGT00E1FED79650016851F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +118,8 @@
 			isa = PBXGroup;
 			children = (
 				504EC3061FED79650016851F /* App */,
+				A1WGT0131FED79650016851F /* Shared */,
+				A1WGT0141FED79650016851F /* ProyouWidget */,
 				504EC3051FED79650016851F /* Products */,
 				7F8756D8B27F46E3366F6CEA /* Pods */,
 				27E2DDA53C4D2A4D1A88CE4A /* Frameworks */,
@@ -75,6 +130,7 @@
 			isa = PBXGroup;
 			children = (
 				504EC3041FED79650016851F /* App.app */,
+				A1WGT00A1FED79650016851F /* ProyouWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -89,6 +145,7 @@
 				E04EC3171FED79650016851F /* SceneDelegate.swift */,
 				B04EC3191FED79650016851F /* ProyouApnsTokenStore.swift */,
 				B04EC31A1FED79650016851F /* ProyouApnsPlugin.swift */,
+				A1WGT0041FED79650016851F /* ProyouWidgetPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
 				504EC3101FED79650016851F /* LaunchScreen.storyboard */,
@@ -108,7 +165,26 @@
 			name = Pods;
 			sourceTree = "<group>";
 		};
+		A1WGT0131FED79650016851F /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		A1WGT0141FED79650016851F /* ProyouWidget */ = {
+			isa = PBXGroup;
+			children = (
+				A1WGT0061FED79650016851F /* ProyouWidget.swift */,
+				A1WGT0081FED79650016851F /* Info.plist */,
+				A1WGT0091FED79650016851F /* ProyouWidget.entitlements */,
+			);
+			path = ProyouWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
+
 
 /* Begin PBXNativeTarget section */
 		504EC3031FED79650016851F /* App */ = {
@@ -120,17 +196,37 @@
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
 				9592DBEFFC6D2A0C8D5DEB22 /* [CP] Embed Pods Frameworks */,
+				A1WGT00F1FED79650016851F /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A1WGT0121FED79650016851F /* PBXTargetDependency */,
 			);
 			name = App;
 			productName = App;
 			productReference = 504EC3041FED79650016851F /* App.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A1WGT00B1FED79650016851F /* ProyouWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1WGT0171FED79650016851F /* Build configuration list for PBXNativeTarget "ProyouWidgetExtension" */;
+			buildPhases = (
+				A1WGT00C1FED79650016851F /* Sources */,
+				A1WGT00E1FED79650016851F /* Frameworks */,
+				A1WGT00D1FED79650016851F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ProyouWidgetExtension;
+			productName = ProyouWidgetExtension;
+			productReference = A1WGT00A1FED79650016851F /* ProyouWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
+
 
 /* Begin PBXProject section */
 		504EC2FC1FED79650016851F /* Project object */ = {
@@ -142,6 +238,10 @@
 					504EC3031FED79650016851F = {
 						CreatedOnToolsVersion = 9.2;
 						LastSwiftMigration = 1100;
+						ProvisioningStyle = Automatic;
+					};
+					A1WGT00B1FED79650016851F = {
+						CreatedOnToolsVersion = 15.0;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -162,6 +262,7 @@
 			projectRoot = "";
 			targets = (
 				504EC3031FED79650016851F /* App */,
+				A1WGT00B1FED79650016851F /* ProyouWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -181,7 +282,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1WGT00D1FED79650016851F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
+
 
 /* Begin PBXShellScriptBuildPhase section */
 		6634F4EFEBD30273BCE97C65 /* [CP] Check Pods Manifest.lock */ = {
@@ -229,10 +338,22 @@
 				E04EC3181FED79650016851F /* SceneDelegate.swift in Sources */,
 				B04EC31B1FED79650016851F /* ProyouApnsTokenStore.swift in Sources */,
 				B04EC31C1FED79650016851F /* ProyouApnsPlugin.swift in Sources */,
+				A1WGT0021FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */,
+				A1WGT0051FED79650016851F /* ProyouWidgetPlugin.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1WGT00C1FED79650016851F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1WGT0031FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */,
+				A1WGT0071FED79650016851F /* ProyouWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -415,7 +536,58 @@
 			};
 			name = Release;
 		};
+		A1WGT0151FED79650016851F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ProyouWidget/ProyouWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HF3AKH98PY;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ProyouWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PROYOU;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 10.5;
+				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou.ProyouWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A1WGT0161FED79650016851F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ProyouWidget/ProyouWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = HF3AKH98PY;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ProyouWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PROYOU;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 10.5;
+				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou.ProyouWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
+
 
 /* Begin XCConfigurationList section */
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
@@ -436,7 +608,17 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		A1WGT0171FED79650016851F /* Build configuration list for PBXNativeTarget "ProyouWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1WGT0151FED79650016851F /* Debug */,
+				A1WGT0161FED79650016851F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
+
 	};
 	rootObject = 504EC2FC1FED79650016851F /* Project object */;
 }

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactDOM, { flushSync } from "react-dom";
 import { 
-  StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, CelebrateIcon, WindDownIcon,
+  StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, WindDownIcon,
   CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
   LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, MenuIcon,
   CheckIcon, FinanceIcon, BulletIcon
@@ -60,8 +60,15 @@ import { InsightsPage } from "./components/InsightsPage";
 import { MedicationsPage } from "./components/MedicationsPage";
 import { TimersPage } from "./components/TimersPage";
 import { WakeUpChallenge } from "./components/WakeUpChallenge";
-import { startAlarmWatcher, stopAlarmSound, requestAlarmPermissions } from "./alarmScheduler";
-import { resyncIosAlarmNotifications } from "./nativeAlarmNotifications";
+import { startAlarmWatcher, requestAlarmPermissions } from "./alarmScheduler";
+import {
+  fireAlarm,
+  dismissActiveAlarm,
+  resolveActiveRingingAlarm,
+  alarmFromNotificationExtra,
+} from "./alarmRinging";
+import { scheduleWidgetSync, syncWidgetFromDisk } from "./widgetSync";
+import { resyncAlarmNotifications } from "./nativeAlarmNotifications";
 import { NavIcons } from "./components/NavIcons";
 import { MODULE_REGISTRY, MODULE_IDS, DEFAULT_NAV_ORDER, DEFAULT_ENABLED_MODULES, getNavModules } from "./modules/registry";
 import {
@@ -71,7 +78,7 @@ import {
   getMedicationStatus,
   logMedicationAction,
 } from "./modules/medications";
-import { loadTimersFromDisk, saveTimersToDisk, defaultTimersState, loadAlarmsFromDisk, saveAlarmsToDisk, defaultAlarmsState } from "./modules/timers";
+import { loadTimersFromDisk, saveTimersToDisk, defaultTimersState, loadAlarmsFromDisk, saveAlarmsToDisk, defaultAlarmsState, completeActiveTimerState } from "./modules/timers";
 import { YouPage } from "./components/YouPage";
 import {
   bumpWeekRoutineCursor,
@@ -2279,6 +2286,30 @@ export default function App() {
   const [timersState, setTimersState] = useState(() => loadTimersFromDisk());
   const [alarmsState, setAlarmsState] = useState(() => loadAlarmsFromDisk());
   const [ringingAlarm, setRingingAlarm] = useState(null);
+  const alarmsRef = useRef(alarmsState.alarms);
+  const ringAlarmRef = useRef(null);
+
+  const ringAlarm = useCallback((alarm) => {
+    if (!alarm?.enabled) return;
+    fireAlarm(alarm);
+    setRingingAlarm(alarm);
+    setTab("timers");
+  }, []);
+
+  useEffect(() => {
+    alarmsRef.current = alarmsState.alarms;
+  }, [alarmsState.alarms]);
+
+  useEffect(() => {
+    ringAlarmRef.current = ringAlarm;
+  }, [ringAlarm]);
+
+  const dismissRingingAlarm = useCallback(async () => {
+    if (!ringingAlarm) return;
+    const id = ringingAlarm.id;
+    await dismissActiveAlarm(id);
+    setRingingAlarm(null);
+  }, [ringingAlarm]);
   const [enabledModules, setEnabledModules] = useState(() => {
     try {
       const raw = localStorage.getItem("cute_schedule_enabled_modules_v1");
@@ -2299,16 +2330,44 @@ export default function App() {
 
   useEffect(() => { saveMedicationsToDisk(medicationsState); }, [medicationsState]);
   useEffect(() => { saveTimersToDisk(timersState); }, [timersState]);
+
+  useEffect(() => {
+    const active = timersState.activeTimer;
+    if (!active?.running || !active?.endsAt) return;
+    const check = () => {
+      setTimersState((prev) => completeActiveTimerState(prev));
+    };
+    check();
+    const id = setInterval(check, 500);
+    return () => clearInterval(id);
+  }, [timersState.activeTimer?.running, timersState.activeTimer?.endsAt]);
   useEffect(() => { saveAlarmsToDisk(alarmsState); }, [alarmsState]);
 
   useEffect(() => {
     requestAlarmPermissions();
-    return startAlarmWatcher(alarmsState.alarms, (alarm) => setRingingAlarm(alarm));
+    return startAlarmWatcher(alarmsState.alarms, ringAlarm);
+  }, [alarmsState.alarms, ringAlarm]);
+
+  useEffect(() => {
+    resyncAlarmNotifications(alarmsState.alarms);
   }, [alarmsState.alarms]);
 
   useEffect(() => {
-    resyncIosAlarmNotifications(alarmsState.alarms);
-  }, [alarmsState.alarms]);
+    const active = resolveActiveRingingAlarm(alarmsState.alarms);
+    if (active && !ringingAlarm) {
+      fireAlarm(active, { replayOnly: true });
+      setRingingAlarm(active);
+    }
+  }, [alarmsState.alarms, ringingAlarm]);
+
+  useEffect(() => {
+    scheduleWidgetSync(appState, habitTracker, realTodayKey);
+  }, [appState, habitTracker, realTodayKey]);
+
+  useEffect(() => {
+    if (!isCapacitorNativeApp()) return;
+    void syncWidgetFromDisk();
+  }, []);
   useEffect(() => { try { localStorage.setItem("cute_schedule_enabled_modules_v1", JSON.stringify(enabledModules)); } catch {} }, [enabledModules]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_nav_order_v1", JSON.stringify(navOrder)); } catch {} }, [navOrder]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_coaching_tone_v1", coachingTone); } catch {} }, [coachingTone]);
@@ -3244,6 +3303,9 @@ export default function App() {
         if (cancelled) return;
         listener = await App.addListener("resume", () => {
           void refreshNativeNotificationDiagnostics();
+          const active = resolveActiveRingingAlarm(alarmsRef.current);
+          if (active && ringAlarmRef.current) ringAlarmRef.current(active);
+          void syncWidgetFromDisk();
           if (Capacitor.getPlatform() === "ios") {
             void resyncIosTaskLocalNotifications(
               iosResyncDaysRef.current,
@@ -3264,17 +3326,46 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!isCapacitorNativeApp() || Capacitor.getPlatform() !== "ios") return;
+    if (!isCapacitorNativeApp()) return;
     let handle;
+    let cancelled = false;
     (async () => {
-      handle = await LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
+      try {
+        const { App } = await import("@capacitor/app");
+        if (cancelled) return;
+        const routeFromUrl = (url) => {
+          if (!url || typeof url !== "string") return;
+          if (url.includes("today") || url.includes("tasks") || url.includes("habits")) {
+            setTab("today");
+          }
+        };
+        handle = await App.addListener("appUrlOpen", ({ url }) => routeFromUrl(url));
+        const launch = await App.getLaunchUrl();
+        if (launch?.url) routeFromUrl(launch.url);
+      } catch (e) {
+        console.warn("[App] appUrlOpen listener", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (handle && typeof handle.remove === "function") handle.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isCapacitorNativeApp()) return;
+    let actionHandle;
+    let receivedHandle;
+    (async () => {
+      const onAlarmExtra = (extra) => {
+        const alarm = alarmFromNotificationExtra(extra, alarmsState.alarms);
+        if (alarm) ringAlarm(alarm);
+      };
+      actionHandle = await LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
         const extra = action?.notification?.extra;
         if (!extra) return;
         if (extra.proyouSource === "alarm") {
-          const alarmId = extra.alarmId != null ? String(extra.alarmId) : "";
-          const alarm = (alarmsState.alarms || []).find((a) => String(a.id) === alarmId);
-          if (alarm) setRingingAlarm(alarm);
-          setTab("timers");
+          onAlarmExtra(extra);
           return;
         }
         if (extra.proyouSource !== "task_reminder") return;
@@ -3286,11 +3377,16 @@ export default function App() {
         setTab("today");
         if (hk && cat && tid) setExpandedTaskKey(`${hk}-${cat}-${tid}`);
       });
+      receivedHandle = await LocalNotifications.addListener("localNotificationReceived", (notification) => {
+        const extra = notification?.extra;
+        if (extra?.proyouSource === "alarm") onAlarmExtra(extra);
+      });
     })();
     return () => {
-      if (handle && typeof handle.remove === "function") handle.remove();
+      if (actionHandle && typeof actionHandle.remove === "function") actionHandle.remove();
+      if (receivedHandle && typeof receivedHandle.remove === "function") receivedHandle.remove();
     };
-  }, [alarmsState.alarms]);
+  }, [alarmsState.alarms, ringAlarm]);
   useEffect(() => {
     if (pushRemindersList.length === 0) return;
     const t = setTimeout(() => {
@@ -6324,7 +6420,7 @@ export default function App() {
                   <button
                     type="button"
                     id="settings-open"
-                    className="btn-icon"
+                    className="btn-icon header-settings-btn"
                     onClick={() => {
                       setSettingsSubView("main");
                       setShowSettings(true);
@@ -6336,8 +6432,8 @@ export default function App() {
                       src={`${import.meta.env.BASE_URL}settings.png`}
                       alt=""
                       className="header-settings-icon"
-                      width={26}
-                      height={26}
+                      width={38}
+                      height={38}
                     />
                   </button>
                 </div>
@@ -6853,8 +6949,8 @@ export default function App() {
               <HomeModuleTray
                 navOrder={navOrder}
                 enabledModules={enabledModules}
-                onNavOrderChange={(order) => applyNavPreferences(order, enabledModules)}
-                onEnabledModulesChange={(enabled) => applyNavPreferences(navOrder, enabled)}
+                dockItems={mainDockItems}
+                onNavPreferencesChange={applyNavPreferences}
                 onOpenModule={(moduleTab) => setTab(moduleTab)}
               />
             ) : null}
@@ -7080,24 +7176,11 @@ export default function App() {
             <div className="plan-section plan-section-list list-page">
             <div className="list-page-header">
               <h2 className="list-page-title">{isSameDayKey(tKey, realTodayKey) ? "Today's list" : formatWeekday(tKey)}</h2>
-              <span
-                className={
-                  incompleteTasks.length === 0
-                    ? "list-page-count list-page-count-done-row"
-                    : "list-page-count"
-                }
-              >
-                {incompleteTasks.length === 0 ? (
-                  <>
-                    <span className="list-page-count-done-text">All done for today!</span>
-                    <span className="list-page-celebrate-wrap" aria-hidden>
-                      <CelebrateIcon className="list-page-celebrate-icon" />
-                    </span>
-                  </>
-                ) : (
-                  `${incompleteTasks.length} task${incompleteTasks.length === 1 ? '' : 's'} remaining`
-                )}
-              </span>
+              {incompleteTasks.length > 0 ? (
+                <span className="list-page-count">
+                  {`${incompleteTasks.length} task${incompleteTasks.length === 1 ? "" : "s"} remaining`}
+                </span>
+              ) : null}
             </div>
 
             {incompleteTasks.length === 0 ? (
@@ -7262,12 +7345,12 @@ export default function App() {
                 src={`${import.meta.env.BASE_URL}PYIcon.png`}
                 alt=""
                 className="coach-page-hero__icon"
-                width={48}
-                height={48}
+                width={96}
+                height={96}
               />
               <div>
                 <h2 className="coach-page-hero__title">Coach & Insights</h2>
-                <p className="coach-page-hero__sub">Your data, not generic advice · ADHD-aware              </p>
+                <p className="coach-page-hero__sub">Your data, not generic advice · ADHD-aware</p>
               </div>
             </div>
 
@@ -7760,10 +7843,10 @@ export default function App() {
               <button type="submit" className="btn-primary" disabled={!financeQuickInput.trim()}>Add</button>
             </form>
 
-            <div className="finance-totals surface-glass">
-              <div className="finance-total-row">
-                <span className="finance-total-label">Income (this month)</span>
-                <span className="finance-total-value income">
+            <div className="finance-month-snapshot surface-glass">
+              <div className="finance-month-stat finance-month-stat--income">
+                <span className="finance-month-stat-label">Income (this month)</span>
+                <span className="finance-month-stat-value">
                   +${(finance.incomeEntries || []).reduce((sum, e) => {
                     const d = new Date(e.dateISO);
                     const n = new Date();
@@ -7772,9 +7855,9 @@ export default function App() {
                   }, 0).toFixed(2)}
                 </span>
               </div>
-              <div className="finance-total-row">
-                <span className="finance-total-label">Spent (this month)</span>
-                <span className="finance-total-value expense">
+              <div className="finance-month-stat finance-month-stat--expense">
+                <span className="finance-month-stat-label">Spent (this month)</span>
+                <span className="finance-month-stat-value">
                   -${(finance.expenseEntries || []).reduce((sum, e) => {
                     const d = new Date(e.dateISO);
                     const n = new Date();
@@ -7783,9 +7866,9 @@ export default function App() {
                   }, 0).toFixed(2)}
                 </span>
               </div>
-              <div className="finance-total-row finance-total-row-net">
-                <span className="finance-total-label">Net (this month)</span>
-                <span className="finance-total-value net">
+              <div className="finance-month-stat finance-month-stat--net">
+                <span className="finance-month-stat-label">Net (this month)</span>
+                <span className="finance-month-stat-value">
                   ${(() => {
                     const income = (finance.incomeEntries || []).reduce((sum, e) => {
                       const d = new Date(e.dateISO);
@@ -8385,11 +8468,6 @@ export default function App() {
                 All notes
               </button>
             </div>
-            <p className="notes-scope-hint">
-              {notesScope === "day"
-                ? `Showing notes pinned to ${noteScopeDayLabel}${tKey === realTodayKey ? " (selected calendar day)" : ""}. All notes keeps workspace-wide entries.`
-                : "Workspace-wide notes (not tied to a calendar day). Use This day for reflections or logs for the day you have selected on Today."}
-            </p>
 
             <div className="notes-organize-row">
               <span className="notes-organize-label" id="notes-subject-filter-label">
@@ -11081,15 +11159,12 @@ export default function App() {
             document.body
           )}
 
-        {ringingAlarm ? (
-          <WakeUpChallenge
-            alarm={ringingAlarm}
-            onDismiss={() => {
-              stopAlarmSound();
-              setRingingAlarm(null);
-            }}
-          />
-        ) : null}
+        {ringingAlarm
+          ? ReactDOM.createPortal(
+              <WakeUpChallenge alarm={ringingAlarm} onDismiss={dismissRingingAlarm} />,
+              document.body
+            )
+          : null}
 
       </div>
         </>

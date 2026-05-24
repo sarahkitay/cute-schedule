@@ -105,6 +105,12 @@ export function getModulesNotInNav(navOrder, enabledModules) {
   return APP_MODULE_CATALOG.filter((m) => !m.alwaysNav && !order.has(m.id) && isModuleEnabled(m.id, enabledModules));
 }
 
+/** All catalog modules not pinned in the nav bar (for home tray "add" pool). */
+export function getAvailableModulesNotInNav(navOrder, enabledModules) {
+  const order = new Set(normalizeNavOrder(navOrder, enabledModules));
+  return APP_MODULE_CATALOG.filter((m) => !m.alwaysNav && !order.has(m.id));
+}
+
 export function getModulesInNav(navOrder, enabledModules) {
   return normalizeNavOrder(navOrder, enabledModules)
     .map((id) => CATALOG_BY_ID[id])
