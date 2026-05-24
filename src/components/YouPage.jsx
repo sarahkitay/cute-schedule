@@ -76,6 +76,7 @@ export function YouPage({
   function addMorningItem() {
     if (!newRoutineLine.trim()) return;
     setMorningRoutineTemplate(prev => [...prev, { id: Math.random().toString(36).slice(2), text: newRoutineLine.trim() }]);
+    setRoutineSchedule((s) => ({ ...s, enabledMorning: true }));
     setNewRoutineLine("");
   }
 
@@ -133,7 +134,7 @@ export function YouPage({
             <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: "var(--py-ink-secondary)", cursor: "pointer" }}>
               <input
                 type="checkbox"
-                checked={routineSchedule?.enabledMorning !== false}
+                checked={routineSchedule?.enabledMorning === true}
                 onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))}
               />
               Show on Today

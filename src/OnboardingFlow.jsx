@@ -76,7 +76,8 @@ export function OnboardingFlow({
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-    setMorningRoutineTemplate(mLines.length ? mLines.map((text) => ({ id: rid(), text })) : fallbackMorningTemplate);
+    setMorningRoutineTemplate(mLines.length ? mLines.map((text) => ({ id: rid(), text })) : []);
+    if (mLines.length) setRoutineSchedule((s) => ({ ...s, enabledMorning: true }));
     setRoutineTemplate(nLines.length ? nLines.map((text) => ({ id: rid(), text })) : fallbackNightTemplate);
   }
 
@@ -294,7 +295,7 @@ export function OnboardingFlow({
             <label className="onboarding-check">
               <input
                 type="checkbox"
-                checked={routineSchedule.enabledMorning !== false}
+                checked={routineSchedule.enabledMorning === true}
                 onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))}
               />
               <span>Show morning routine</span>

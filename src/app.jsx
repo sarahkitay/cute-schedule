@@ -544,6 +544,44 @@ const MORNING_ROUTINE = [
   { id: "breakfast", text: "Eat breakfast" },
 ];
 
+function isLegacyDefaultMorningTemplate(arr) {
+  if (!Array.isArray(arr) || arr.length !== MORNING_ROUTINE.length) return false;
+  return MORNING_ROUTINE.every((def, i) => {
+    const item = arr[i];
+    return item?.id === def.id && item?.text === def.text;
+  });
+}
+
+function loadMorningRoutineTemplateFromDisk() {
+  try {
+    const raw = localStorage.getItem(ROUTINE_MORNING_TEMPLATE_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return [];
+      if (isLegacyDefaultMorningTemplate(arr)) return [];
+      return arr;
+    }
+  } catch {}
+  return [];
+}
+
+function loadRoutineScheduleFromDisk(morningTemplate = loadMorningRoutineTemplateFromDisk()) {
+  try {
+    const raw = localStorage.getItem(ROUTINE_SCHEDULE_KEY);
+    if (raw) {
+      const o = JSON.parse(raw);
+      const explicitMorning = Object.prototype.hasOwnProperty.call(o, "enabledMorning");
+      return {
+        morning: o.morning === "every" || (Array.isArray(o.morning) && o.morning.length) ? o.morning : "every",
+        night: o.night === "every" || (Array.isArray(o.night) && o.night.length) ? o.night : "every",
+        enabledMorning: explicitMorning ? o.enabledMorning === true : morningTemplate.length > 0,
+        enabledNight: o.enabledNight !== false,
+      };
+    }
+  } catch {}
+  return { morning: "every", night: "every", enabledMorning: false, enabledNight: true };
+}
+
 /** dayOfWeek 0=Sun..6=Sat; schedule is 'every' or array of 0-6 */
 function routineAppliesToday(schedule, dayOfWeek) {
   if (!schedule || schedule === "every") return true;
@@ -2388,33 +2426,10 @@ export default function App() {
   });
 
   // Morning routine template (persisted)
-  const [morningRoutineTemplate, setMorningRoutineTemplate] = useState(() => {
-    try {
-      const raw = localStorage.getItem(ROUTINE_MORNING_TEMPLATE_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw);
-        return Array.isArray(arr) && arr.length ? arr : MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
-      }
-    } catch {}
-    return MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
-  });
+  const [morningRoutineTemplate, setMorningRoutineTemplate] = useState(() => loadMorningRoutineTemplateFromDisk());
 
   // Which days morning/night routines apply: 'every' or [0,1,2,3,4,5,6] (0=Sun). enabledMorning/enabledNight = optional add-ons.
-  const [routineSchedule, setRoutineSchedule] = useState(() => {
-    try {
-      const raw = localStorage.getItem(ROUTINE_SCHEDULE_KEY);
-      if (raw) {
-        const o = JSON.parse(raw);
-        return {
-          morning: o.morning === "every" || (Array.isArray(o.morning) && o.morning.length) ? o.morning : "every",
-          night: o.night === "every" || (Array.isArray(o.night) && o.night.length) ? o.night : "every",
-          enabledMorning: o.enabledMorning !== false,
-          enabledNight: o.enabledNight !== false,
-        };
-      }
-    } catch {}
-    return { morning: "every", night: "every", enabledMorning: true, enabledNight: true };
-  });
+  const [routineSchedule, setRoutineSchedule] = useState(() => loadRoutineScheduleFromDisk());
 
   // Theme state
   const [theme, setTheme] = useState(() => {
@@ -2597,9 +2612,8 @@ export default function App() {
 
   // When morning routine template changes, merge into today's per-day routine (preserve done flags)
   useEffect(() => {
-    const template = morningRoutineTemplate.length
-      ? morningRoutineTemplate
-      : MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+    if (!morningRoutineTemplate.length) return;
+    const template = morningRoutineTemplate;
     setAppState((prev) => {
       const day = prev.days?.[realTodayKey];
       if (!day) return prev;
@@ -2751,9 +2765,9 @@ export default function App() {
 
   // Morning routine for selected day: merge template with stored per-day completion
   const effectiveMorningRoutine = useMemo(() => {
-    const template = morningRoutineTemplate.length ? morningRoutineTemplate : MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }));
+    if (!morningRoutineTemplate.length) return [];
     const stored = appState.days?.[tKey]?.morningRoutine || [];
-    return template.map((t) => {
+    return morningRoutineTemplate.map((t) => {
       const s = stored.find((r) => r.id === t.id);
       return { ...t, done: s ? s.done : false };
     });
@@ -2945,8 +2959,11 @@ export default function App() {
     setAppState((prev) => {
       const existing = prev.days?.[tKey];
       if (existing != null) return prev;
-      const morningInit = (morningRoutineTemplate.length ? morningRoutineTemplate : MORNING_ROUTINE.map((r) => ({ id: r.id, text: r.text }))).map((r) => ({ ...r, done: false }));
-      return { ...prev, days: { ...prev.days, [tKey]: { hours: {}, morningRoutine: morningInit } } };
+      const dayPayload = { hours: {} };
+      if (morningRoutineTemplate.length > 0) {
+        dayPayload.morningRoutine = morningRoutineTemplate.map((r) => ({ ...r, done: false }));
+      }
+      return { ...prev, days: { ...prev.days, [tKey]: dayPayload } };
     });
   }, [tKey, morningRoutineTemplate]);
 
@@ -6442,7 +6459,11 @@ export default function App() {
             </header>
 
             {/* Bottom navigation: PNG dock icons */}
-            <nav className="bottom-nav surface-dock bottom-nav--png" aria-label="Main">
+            <nav
+              className="bottom-nav surface-dock bottom-nav--png"
+              aria-label="Main"
+              style={{ "--dock-count": mainDockItems.length }}
+            >
               {(() => {
                 const coachItem = mainDockItems.find((item) => item.centerAction);
                 const sideItems = coachItem ? mainDockItems.filter((item) => !item.centerAction) : mainDockItems;
@@ -6742,11 +6763,11 @@ export default function App() {
                 <div className="py-glass-card" style={{ padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
                   <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 8 }}>Streak</div>
                   <div className="py-streak">
-                    <span className="py-streak__count">{computeCalendarCompletionStreak(appState, realTodayKey)}</span>
+                    <span className="py-streak__count">{scheduleStreakStats.streak}</span>
                     <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" className="py-streak__flame-img" />
                     <span className="py-streak__label">days</span>
                   </div>
-                  <div style={{ fontSize: 12, color: "var(--py-accent-deep)", fontWeight: 500, marginTop: 8 }}>Keep it going!</div>
+                  <div style={{ fontSize: 12, color: "var(--py-accent-deep)", fontWeight: 500, marginTop: 8 }}>{scheduleStreakStats.streak > 0 ? "Keep it going!" : "Let's build a streak"}</div>
                 </div>
               </div>
             )}
@@ -6840,7 +6861,7 @@ export default function App() {
               </section>
             )}
 
-            {tab === "today" && routineSchedule.enabledMorning !== false && routineAppliesToday(routineSchedule.morning, new Date(tKey + "T12:00:00").getDay()) && effectiveMorningRoutine.length > 0 && (
+            {tab === "today" && routineSchedule.enabledMorning === true && routineAppliesToday(routineSchedule.morning, new Date(tKey + "T12:00:00").getDay()) && effectiveMorningRoutine.length > 0 && (
               <section className="today-section today-section--routine scroll-reveal">
                 <MorningRoutine routine={effectiveMorningRoutine} onToggle={toggleMorningRoutine} />
               </section>
@@ -10426,7 +10447,7 @@ export default function App() {
               <div className="settings-section">
                 <label className="label">Morning routine (optional add-on)</label>
                 <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <input type="checkbox" checked={routineSchedule.enabledMorning !== false} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))} />
+                  <input type="checkbox" checked={routineSchedule.enabledMorning === true} onChange={(e) => setRoutineSchedule((s) => ({ ...s, enabledMorning: e.target.checked }))} />
                   <span>Show morning routine on Today</span>
                 </label>
                 <ul className="routine-template-list">
@@ -10445,7 +10466,14 @@ export default function App() {
                     </li>
                   ))}
                 </ul>
-                <button type="button" className="btn btn-sm" onClick={() => setMorningRoutineTemplate((prev) => [...prev, { id: `morning-${Date.now()}`, text: "New step" }])}>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    setMorningRoutineTemplate((prev) => [...prev, { id: `morning-${Date.now()}`, text: "New step" }]);
+                    setRoutineSchedule((s) => ({ ...s, enabledMorning: true }));
+                  }}
+                >
                   Add step
                 </button>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 12 }}>

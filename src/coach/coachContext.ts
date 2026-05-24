@@ -448,7 +448,7 @@ export function buildCoachContext(input: BuildCoachContextInput): CoachContext {
       profileGoal,
     },
     routines: {
-      morningEnabled: routineSchedule?.enabledMorning !== false,
+      morningEnabled: routineSchedule?.enabledMorning === true,
       nightEnabled: routineSchedule?.enabledNight !== false,
     },
     habits: { missedRecent: missedHabits.slice(0, 8) },
