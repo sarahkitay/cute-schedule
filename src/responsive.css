@@ -17,7 +17,7 @@
 @media (min-width: 744px) {
   :root {
     --app-content-max: 600px;
-    --bottom-nav-clearance: 96px;
+    --bottom-nav-clearance: 100px;
     --screen-margin: clamp(20px, 3.5vw, 32px);
   }
 
@@ -39,18 +39,31 @@
       calc(env(safe-area-inset-bottom, 0px) + var(--bottom-nav-clearance)) !important;
   }
 
-  .bottom-nav.surface-dock,
-  .bottom-nav.bottom-nav--png {
-    width: min(var(--app-content-max), calc(100% - 32px));
+  /* Beat designSystem `.app .bottom-nav.surface-dock { left/right: 0 !important }` */
+  .app .bottom-nav.surface-dock,
+  .app .bottom-nav.surface-dock.bottom-nav--png {
+    width: min(var(--app-content-max), calc(100vw - 32px)) !important;
     max-width: var(--app-content-max) !important;
     left: 50% !important;
     right: auto !important;
     transform: translateX(-50%) !important;
-    margin: 0 auto;
-    border-radius: 24px 24px 0 0;
-    border-left: 1px solid var(--border-subtle);
-    border-right: 1px solid var(--border-subtle);
-    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.06);
+    bottom: max(10px, env(safe-area-inset-bottom, 0px)) !important;
+    margin: 0 !important;
+    border-radius: 24px !important;
+    border: 1px solid rgba(255, 255, 255, 0.88) !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.88) !important;
+    box-shadow:
+      0 8px 32px rgba(0, 0, 0, 0.08),
+      0 2px 10px rgba(140, 100, 90, 0.06) !important;
+    padding: 10px 12px max(12px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .app .bottom-nav--png .bottom-nav-item {
+    max-width: 88px !important;
+  }
+
+  .app .bottom-nav--png .bottom-nav-item--center {
+    margin-top: -24px !important;
   }
 
   .pattern-insights--v2 {
@@ -100,6 +113,7 @@
 @media (min-width: 1024px) {
   :root {
     --app-content-max: 680px;
+    --bottom-nav-clearance: 108px;
     --screen-margin: clamp(24px, 4vw, 40px);
   }
 
@@ -107,11 +121,22 @@
     max-width: calc(var(--app-content-max) + 64px);
   }
 
-  .bottom-nav.surface-dock,
-  .bottom-nav.bottom-nav--png {
-    max-width: min(560px, var(--app-content-max)) !important;
-    border-radius: 28px 28px 0 0;
-    padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 10px);
+  .app .bottom-nav.surface-dock,
+  .app .bottom-nav.surface-dock.bottom-nav--png {
+    width: min(560px, calc(100vw - 48px)) !important;
+    max-width: 560px !important;
+    border-radius: 28px !important;
+    bottom: max(16px, env(safe-area-inset-bottom, 0px)) !important;
+    padding: 12px 18px max(14px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .app .bottom-nav--png .bottom-nav-item {
+    max-width: 96px !important;
+    min-width: 60px !important;
+  }
+
+  .app .bottom-nav--png .bottom-nav-label {
+    font-size: 11px !important;
   }
 
   .app .panel,
@@ -127,11 +152,13 @@
 @media (min-width: 1280px) {
   :root {
     --app-content-max: 720px;
+    --bottom-nav-clearance: 112px;
   }
 
-  .bottom-nav.surface-dock,
-  .bottom-nav.bottom-nav--png {
-    max-width: min(600px, var(--app-content-max)) !important;
+  .app .bottom-nav.surface-dock,
+  .app .bottom-nav.surface-dock.bottom-nav--png {
+    width: min(600px, calc(100vw - 64px)) !important;
+    max-width: 600px !important;
   }
 }
 
