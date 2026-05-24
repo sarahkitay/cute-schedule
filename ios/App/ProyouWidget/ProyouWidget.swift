@@ -10,16 +10,16 @@ struct ProyouWidgetEntry: TimelineEntry {
 
 struct ProyouWidgetProvider: TimelineProvider {
     func placeholder(in context: Context) -> ProyouWidgetEntry {
-        ProyouWidgetEntry(date: Date(), snapshot: ProyouWidgetStore.placeholder())
+        ProyouWidgetEntry(date: Date(), snapshot: ProyouWidgetSnapshot.placeholder())
     }
 
     func getSnapshot(in context: Context, completion: @escaping (ProyouWidgetEntry) -> Void) {
-        let snap = ProyouWidgetStore.loadSnapshot() ?? ProyouWidgetStore.placeholder()
+        let snap = ProyouWidgetStore.loadSnapshot() ?? ProyouWidgetSnapshot.placeholder()
         completion(ProyouWidgetEntry(date: Date(), snapshot: snap))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<ProyouWidgetEntry>) -> Void) {
-        let snap = ProyouWidgetStore.loadSnapshot() ?? ProyouWidgetStore.placeholder()
+        let snap = ProyouWidgetStore.loadSnapshot() ?? ProyouWidgetSnapshot.placeholder()
         let entry = ProyouWidgetEntry(date: Date(), snapshot: snap)
         let next = Calendar.current.date(byAdding: .minute, value: 30, to: Date()) ?? Date().addingTimeInterval(1800)
         completion(Timeline(entries: [entry], policy: .after(next)))

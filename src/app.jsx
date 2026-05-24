@@ -2360,14 +2360,6 @@ export default function App() {
     }
   }, [alarmsState.alarms, ringingAlarm]);
 
-  useEffect(() => {
-    scheduleWidgetSync(appState, habitTracker, realTodayKey);
-  }, [appState, habitTracker, realTodayKey]);
-
-  useEffect(() => {
-    if (!isCapacitorNativeApp()) return;
-    void syncWidgetFromDisk();
-  }, []);
   useEffect(() => { try { localStorage.setItem("cute_schedule_enabled_modules_v1", JSON.stringify(enabledModules)); } catch {} }, [enabledModules]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_nav_order_v1", JSON.stringify(navOrder)); } catch {} }, [navOrder]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_coaching_tone_v1", coachingTone); } catch {} }, [coachingTone]);
@@ -2706,6 +2698,15 @@ export default function App() {
       localStorage.setItem(HABITS_STORAGE_KEY, JSON.stringify(habitTracker));
     } catch {}
   }, [habitTracker]);
+
+  useEffect(() => {
+    scheduleWidgetSync(appState, habitTracker, realTodayKey);
+  }, [appState, habitTracker, realTodayKey]);
+
+  useEffect(() => {
+    if (!isCapacitorNativeApp()) return;
+    void syncWidgetFromDisk();
+  }, []);
 
   const [toastNotification, setToastNotification] = useState(null);
   const toastDismissTimerRef = useRef(null);

@@ -20,6 +20,21 @@ public struct ProyouWidgetSnapshot: Codable {
     public let todayKey: String
     public let tasks: [TaskItem]
     public let habits: [HabitItem]
+
+    public static func placeholder() -> ProyouWidgetSnapshot {
+        ProyouWidgetSnapshot(
+            updatedAt: ISO8601DateFormatter().string(from: Date()),
+            todayKey: "today",
+            tasks: [
+                TaskItem(id: "1", text: "Morning routine", done: false, hourKey: "08:00", category: "Personal"),
+                TaskItem(id: "2", text: "Deep work block", done: false, hourKey: "10:00", category: "Work"),
+            ],
+            habits: [
+                HabitItem(id: "h1", label: "Water", direction: "build", todayStatus: nil),
+                HabitItem(id: "h2", label: "Screen time", direction: "break", todayStatus: "no"),
+            ]
+        )
+    }
 }
 
 public enum ProyouWidgetStore {
@@ -35,20 +50,5 @@ public enum ProyouWidgetStore {
               let data = json.data(using: .utf8)
         else { return nil }
         return try? JSONDecoder().decode(ProyouWidgetSnapshot.self, from: data)
-    }
-
-    public static func placeholder() -> ProyouWidgetSnapshot {
-        ProyouWidgetSnapshot(
-            updatedAt: ISO8601DateFormatter().string(from: Date()),
-            todayKey: "today",
-            tasks: [
-                TaskItem(id: "1", text: "Morning routine", done: false, hourKey: "08:00", category: "Personal"),
-                TaskItem(id: "2", text: "Deep work block", done: false, hourKey: "10:00", category: "Work"),
-            ],
-            habits: [
-                HabitItem(id: "h1", label: "Water", direction: "build", todayStatus: nil),
-                HabitItem(id: "h2", label: "Screen time", direction: "break", todayStatus: "no"),
-            ]
-        )
     }
 }
