@@ -15,58 +15,16 @@
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
 		A084ECDBA7D38E1E42DFC39D /* Pods_App.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */; };
+		A1WGT0021FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */; };
+		A1WGT0031FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */; };
+		A1WGT0051FED79650016851F /* ProyouWidgetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0041FED79650016851F /* ProyouWidgetPlugin.swift */; };
+		A1WGT0071FED79650016851F /* ProyouWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0061FED79650016851F /* ProyouWidget.swift */; };
+		A1WGT0101FED79650016851F /* ProyouWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1WGT00A1FED79650016851F /* ProyouWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B04EC31B1FED79650016851F /* ProyouApnsTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3191FED79650016851F /* ProyouApnsTokenStore.swift */; };
 		B04EC31C1FED79650016851F /* ProyouApnsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC31A1FED79650016851F /* ProyouApnsPlugin.swift */; };
 		C94B20032FA1000100CAFE01 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = C94B20022FA1000100CAFE01 /* GoogleService-Info.plist */; };
 		E04EC3181FED79650016851F /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04EC3171FED79650016851F /* SceneDelegate.swift */; };
-		A1WGT0021FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */; };
-		A1WGT0051FED79650016851F /* ProyouWidgetPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0041FED79650016851F /* ProyouWidgetPlugin.swift */; };
-		A1WGT0031FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */; };
-		A1WGT0071FED79650016851F /* ProyouWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WGT0061FED79650016851F /* ProyouWidget.swift */; };
-		A1WGT0101FED79650016851F /* ProyouWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1WGT00A1FED79650016851F /* ProyouWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
-
-
-/* Begin PBXFileReference section */
-		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
-		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
-		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
-		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
-		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
-		AB0DF8862F943C820046C254 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
-		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
-		B04EC3191FED79650016851F /* ProyouApnsTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouApnsTokenStore.swift; sourceTree = "<group>"; };
-		B04EC31A1FED79650016851F /* ProyouApnsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouApnsPlugin.swift; sourceTree = "<group>"; };
-		C94B20022FA1000100CAFE01 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
-		E04EC3171FED79650016851F /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
-		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
-		A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouWidgetSnapshot.swift; sourceTree = "<group>"; };
-		A1WGT0041FED79650016851F /* ProyouWidgetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouWidgetPlugin.swift; sourceTree = "<group>"; };
-		A1WGT0061FED79650016851F /* ProyouWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouWidget.swift; sourceTree = "<group>"; };
-		A1WGT0081FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		A1WGT0091FED79650016851F /* ProyouWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ProyouWidget.entitlements; sourceTree = "<group>"; };
-		A1WGT00A1FED79650016851F /* ProyouWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ProyouWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-/* End PBXFileReference section */
-
-
-/* Begin PBXCopyFilesBuildPhase section */
-		A1WGT00F1FED79650016851F /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				A1WGT0101FED79650016851F /* ProyouWidgetExtension.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-		};
-/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXContainerItemProxy section */
 		A1WGT0111FED79650016851F /* PBXContainerItemProxy */ = {
@@ -78,16 +36,47 @@
 		};
 /* End PBXContainerItemProxy section */
 
-/* Begin PBXTargetDependency section */
-		A1WGT0121FED79650016851F /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = A1WGT00B1FED79650016851F /* ProyouWidgetExtension */;
-			targetProxy = A1WGT0111FED79650016851F /* PBXContainerItemProxy */;
+/* Begin PBXCopyFilesBuildPhase section */
+		A1WGT00F1FED79650016851F /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A1WGT0101FED79650016851F /* ProyouWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
 		};
-/* End PBXTargetDependency section */
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
+		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		504EC3071FED79650016851F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		504EC30C1FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		504EC30E1FED79650016851F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		504EC3111FED79650016851F /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		504EC3131FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		50B271D01FEDC1A000F3C39B /* public */ = {isa = PBXFileReference; lastKnownFileType = folder; path = public; sourceTree = "<group>"; };
+		A1WGT0011FED79650016851F /* ProyouWidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouWidgetSnapshot.swift; sourceTree = "<group>"; };
+		A1WGT0041FED79650016851F /* ProyouWidgetPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouWidgetPlugin.swift; sourceTree = "<group>"; };
+		A1WGT0061FED79650016851F /* ProyouWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouWidget.swift; sourceTree = "<group>"; };
+		A1WGT0081FED79650016851F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1WGT0091FED79650016851F /* ProyouWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ProyouWidget.entitlements; sourceTree = "<group>"; };
+		A1WGT00A1FED79650016851F /* ProyouWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ProyouWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB0DF8862F943C820046C254 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		AF277DCFFFF123FFC6DF26C7 /* Pods_App.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_App.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
+		B04EC3191FED79650016851F /* ProyouApnsTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouApnsTokenStore.swift; sourceTree = "<group>"; };
+		B04EC31A1FED79650016851F /* ProyouApnsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouApnsPlugin.swift; sourceTree = "<group>"; };
+		C94B20022FA1000100CAFE01 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
+		E04EC3171FED79650016851F /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-
 		504EC3011FED79650016851F /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -185,7 +174,6 @@
 		};
 /* End PBXGroup section */
 
-
 /* Begin PBXNativeTarget section */
 		504EC3031FED79650016851F /* App */ = {
 			isa = PBXNativeTarget;
@@ -226,7 +214,6 @@
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
-
 
 /* Begin PBXProject section */
 		504EC2FC1FED79650016851F /* Project object */ = {
@@ -291,7 +278,6 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
-
 /* Begin PBXShellScriptBuildPhase section */
 		6634F4EFEBD30273BCE97C65 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -354,6 +340,13 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		A1WGT0121FED79650016851F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1WGT00B1FED79650016851F /* ProyouWidgetExtension */;
+			targetProxy = A1WGT0111FED79650016851F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		504EC30B1FED79650016851F /* Main.storyboard */ = {
@@ -490,7 +483,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = HF3AKH98PY;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ProYou;
@@ -500,7 +493,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 10.5;
+				MARKETING_VERSION = 10.6;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -517,7 +510,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = HF3AKH98PY;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ProYou;
@@ -527,7 +520,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 10.5;
+				MARKETING_VERSION = 10.6;
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -588,7 +581,6 @@
 		};
 /* End XCBuildConfiguration section */
 
-
 /* Begin XCConfigurationList section */
 		504EC2FF1FED79650016851F /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
@@ -618,7 +610,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
 	};
 	rootObject = 504EC2FC1FED79650016851F /* Project object */;
 }

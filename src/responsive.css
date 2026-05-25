@@ -211,7 +211,8 @@
   .bottom-nav--with-center.bottom-nav--png .bottom-nav-item--center .dock-nav-icon-wrap--center {
     width: 72px;
     height: 72px;
-    margin-top: calc(-1 * var(--nav-coach-lift, 2px));
+    margin-top: 0;
+    transform: translateY(6px);
   }
 
   .coach-page-hero {

@@ -808,10 +808,32 @@
 
 /* Greeting tagline: responds to dark mode */
 .app .greeting-tagline {
+  font-size: 13px;
+  font-weight: 400;
   color: var(--py-ink-tertiary);
 }
+.app .top-left-greeting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 2px;
+}
+.app .top-left-greeting .today-greeting-title {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+html[data-theme="dark"] .app .top-left-greeting .today-greeting-title,
+html[data-theme="dark"] .app .top-left-greeting .h1-banner-date {
+  color: #fafafa !important;
+}
+html[data-theme="dark"] .app .top-left-greeting .greeting-tagline {
+  color: #fafafa !important;
+  opacity: 0.92;
+}
 html[data-theme="dark"] .app .greeting-tagline {
-  color: #52525b !important;
+  color: #fafafa !important;
 }
 
 /* Keep original rich gradient background — do NOT override .app-bg */
@@ -1230,9 +1252,18 @@ html[data-theme="dark"] .app .greeting-tagline {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
 }
 html[data-theme="dark"] .app .morning-routine,
-html[data-theme="dark"] .app .routine-block {
-  background: rgba(30, 28, 35, 0.6) !important;
-  border-color: rgba(255, 255, 255, 0.06) !important;
+html[data-theme="dark"] .app .morning-routine-block,
+html[data-theme="dark"] .app .routine-block,
+html[data-theme="dark"] .app .today-section--routine .morning-routine {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border: 1.5px solid rgba(10, 10, 12, 0.22) !important;
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45) !important;
+}
+html[data-theme="dark"] .app .morning-routine-item {
+  border-bottom-color: rgba(10, 10, 12, 0.1) !important;
 }
 
 /* Routine items: clean rows */
@@ -1871,8 +1902,8 @@ html[data-theme="dark"] .app .notes-search-input {
 html[data-theme="dark"] .app .top-left .brand-name {
   color: #52525b !important;
 }
-html[data-theme="dark"] .app .top-left .h1.h1-banner-date,
-html[data-theme="dark"] .app .top-left h1 {
+html[data-theme="dark"] .app .top-left:not(.top-left-greeting) .h1.h1-banner-date,
+html[data-theme="dark"] .app .top-left:not(.top-left-greeting) h1 {
   color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .top-left span[style*="color"] {
@@ -1888,9 +1919,24 @@ html[data-theme="dark"] .app .py-glass-card,
 html[data-theme="dark"] .app .panel,
 html[data-theme="dark"] .app section.panel,
 html[data-theme="dark"] .app .surface-glass {
-  background: rgba(255, 255, 255, 0.82) !important;
-  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  border: 1.5px solid rgba(10, 10, 12, 0.28) !important;
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.42) !important;
+}
+html[data-theme="dark"] .app .hour-card,
+html[data-theme="dark"] .app .habit-card,
+html[data-theme="dark"] .app .habit-row-item,
+html[data-theme="dark"] .app .list-section .list-row,
+html[data-theme="dark"] .app .notes-section .note-row,
+html[data-theme="dark"] .app .coach-v2-card,
+html[data-theme="dark"] .app .input-group,
+html[data-theme="dark"] .app .py-input,
+html[data-theme="dark"] .app .quick-add-entry-mode {
+  border: 1.5px solid rgba(10, 10, 12, 0.24) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35) !important;
 }
 html[data-theme="dark"] .app .bottom-nav.surface-dock {
   background: rgba(255, 255, 255, 0.98) !important;
@@ -1999,10 +2045,63 @@ html[data-theme="dark"] .app .coach-mode-btn.active {
 }
 html[data-theme="dark"] .app .progress-wrap {
   background: rgba(10, 10, 12, 0.08) !important;
+  box-shadow: inset 0 0 0 1px rgba(10, 10, 12, 0.12) !important;
+}
+html[data-theme="dark"] .app .progress-fill {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.55) 0%, #ffffff 100%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
 }
 
-/* Center PY button in dark mode — keep accent bubble on white nav */
-html[data-theme="dark"] .app .bottom-nav button[aria-label="Coach"] {
+/* Today's Focus progress — white bubble in dark mode */
+.today-focus-progress {
+  margin-bottom: 10px;
+}
+.today-focus-progress__track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(200, 190, 195, 0.15);
+}
+.today-focus-progress__fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #c8bfd4, #a8a0b8);
+  transition: width 500ms ease;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+.today-focus-progress__bubble {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #d0c8e0, #a898b8);
+  border: 2px solid #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+html[data-theme="dark"] .today-focus-progress__track {
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+html[data-theme="dark"] .today-focus-progress__fill {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.82) 100%);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+html[data-theme="dark"] .today-focus-progress__bubble {
+  background: #ffffff !important;
+  border: 2px solid rgba(255, 255, 255, 0.95) !important;
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.22),
+    0 0 0 1px rgba(10, 10, 12, 0.1) !important;
+}
+
+/* Center PY bubble in dark mode — keep accent bubble on white nav */
+html[data-theme="dark"] .app .bottom-nav-item--center .dock-nav-icon-wrap--center,
+html[data-theme="dark"] .app .bottom-nav button[aria-label="Coach"] .dock-nav-icon-wrap--center {
   background: radial-gradient(
     circle at 32% 22%,
     color-mix(in srgb, var(--theme-accent) 18%, #fff) 0%,

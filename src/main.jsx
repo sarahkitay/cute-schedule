@@ -6,7 +6,11 @@ import './App.css'
 import './iosNativeUi.css'
 import './designSystem.css'
 import './responsive.css'
+import './subscription/subscription.css'
 import App from './app.jsx'
+import { initSubscriptionSnapshotFromStorage } from './subscription/subscriptionStore.js'
+
+initSubscriptionSnapshotFromStorage()
 
 // Error boundary so a runtime error shows a message instead of a blank page
 class ErrorBoundary extends Component {

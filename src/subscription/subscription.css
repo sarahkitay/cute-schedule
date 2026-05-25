@@ -1,0 +1,244 @@
+/* ProYou Pro subscription UI */
+
+.pro-upgrade-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  background: rgba(10, 10, 12, 0.42);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.pro-upgrade-modal {
+  position: relative;
+  width: min(420px, 100%);
+  max-height: min(88vh, 720px);
+  overflow-y: auto;
+  padding: 24px 20px 20px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+.pro-upgrade-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.pro-upgrade-eyebrow {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--theme-accent, #d4958a);
+}
+
+.pro-upgrade-title {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.pro-upgrade-body {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.pro-upgrade-list {
+  margin: 0 0 16px;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.pro-upgrade-pricing {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.pro-upgrade-price {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.pro-upgrade-period {
+  font-size: 14px;
+  color: var(--text-soft);
+}
+
+.pro-upgrade-trial {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--theme-accent, #c4687e);
+}
+
+.pro-upgrade-product-id {
+  margin: 0 0 12px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  opacity: 0.65;
+}
+
+.pro-upgrade-free-hint {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.pro-upgrade-primary {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.pro-upgrade-restore {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.pro-upgrade-error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #c0392b;
+}
+
+.pro-upgrade-legal {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
+.pro-feature-gate {
+  position: relative;
+}
+
+.pro-feature-gate__content--dimmed {
+  opacity: 0.35;
+  pointer-events: none;
+  user-select: none;
+  filter: saturate(0.85);
+}
+
+.pro-feature-gate__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.pro-feature-gate__card {
+  max-width: 320px;
+  padding: 18px 16px;
+  border-radius: 20px;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+}
+
+.pro-feature-gate__badge {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: color-mix(in srgb, var(--theme-accent) 18%, #fff);
+  color: color-mix(in srgb, var(--theme-accent) 75%, var(--text));
+}
+
+.pro-feature-gate__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.pro-feature-gate__body {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+
+.pro-feature-gate__cta {
+  width: 100%;
+}
+
+.pro-settings-card {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--theme-accent) 8%, rgba(255, 255, 255, 0.72));
+}
+
+.pro-settings-card__title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pro-settings-card__meta {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+.pro-coach-prompts-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-soft);
+}
+
+.login-gate-free {
+  margin-bottom: 12px;
+}
+
+html[data-theme="dark"] .pro-upgrade-modal,
+html[data-theme="dark"] .pro-feature-gate__card {
+  background: rgba(255, 255, 255, 0.92) !important;
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+}
+
+html[data-theme="dark"] .pro-upgrade-title,
+html[data-theme="dark"] .pro-feature-gate__title {
+  color: var(--ink-strong, #0a0a0c);
+}
+
+html[data-theme="dark"] .pro-upgrade-body,
+html[data-theme="dark"] .pro-feature-gate__body {
+  color: #52525b;
+}

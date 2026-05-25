@@ -1,5 +1,6 @@
 import { applyApiCors } from "./lib/cors.js";
 import { assertCoachRateLimit } from "./lib/coachRateLimit.js";
+import { assertCoachEntitlement } from "./lib/coachEntitlement.js";
 import { buildProgramDraftDetectionText, userWantsWorkoutProgramDraft, validateCoachSpecificity } from "./lib/coachValidate.js";
 import { clientSafeDetail, logServerError } from "./lib/safeJsonError.js";
 
@@ -10,7 +11,7 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") {
     applyApiCors(req, res);
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-ProYou-Device-Id");
     return res.status(200).end();
   }
 
@@ -31,7 +32,19 @@ export default async function handler(req, res) {
     });
   }
 
-  // TODO(security): Verify Firebase ID token (Firebase Admin on Vercel) before calling OpenAI.
+  const bodyPreview = typeof req.body === "object" && req.body != null ? req.body : {};
+  const entitlement = await assertCoachEntitlement(req, bodyPreview);
+  if (!entitlement.ok) {
+    return res.status(402).json({
+      error: "Daily coach prompt limit reached",
+      code: entitlement.code,
+      limit: entitlement.limit,
+      used: entitlement.used,
+      upgrade: true,
+    });
+  }
+
+  // TODO(security): Verify Firebase ID token + RevenueCat entitlement server-side for isPro.
 
   try {
     const key = process.env.OPENAI_API_KEY;

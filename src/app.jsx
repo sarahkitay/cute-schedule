@@ -60,6 +60,18 @@ import { InsightsPage } from "./components/InsightsPage";
 import { MedicationsPage } from "./components/MedicationsPage";
 import { TimersPage } from "./components/TimersPage";
 import { WakeUpChallenge } from "./components/WakeUpChallenge";
+import { FeatureGate } from "./components/FeatureGate.jsx";
+import { UpgradeProModal } from "./components/UpgradeProModal.jsx";
+import { SubscriptionBridge } from "./subscription/SubscriptionBridge.jsx";
+import { SKIP_LOGIN_STORAGE_KEY } from "./subscription/constants.js";
+import { getCoachRequestHeaders } from "./subscription/coachApiHeaders.js";
+import { consumeCoachPromptLocal } from "./subscription/promptUsage.js";
+import { getSubscriptionSnapshot, setSubscriptionSnapshot, tryBeginCoachPrompt } from "./subscription/subscriptionStore.js";
+import { useSubscriptionOptional } from "./subscription/SubscriptionContext.jsx";
+import { countOptionalEnabledModules } from "./subscription/features.js";
+import { FREE_OPTIONAL_MODULE_LIMIT } from "./subscription/constants.js";
+import { SettingsProSection } from "./components/SettingsProSection.jsx";
+import { CoachPromptPill } from "./components/CoachPromptPill.jsx";
 import { startAlarmWatcher, requestAlarmPermissions } from "./alarmScheduler";
 import {
   fireAlarm,
@@ -1996,7 +2008,7 @@ function MorningRoutine({ routine, onToggle }) {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
         {(routine || []).map((item, idx) => (
-          <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: idx < (routine || []).length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
+          <div key={item.id} className="morning-routine-item" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: idx < (routine || []).length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, cursor: "pointer" }}>
               <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} style={{ width: 18, height: 18, borderRadius: 5, accentColor: "#D4708A", cursor: "pointer" }} />
               <span style={{ fontSize: 15, fontWeight: 400, color: item.done ? "var(--py-ink-muted)" : "var(--py-ink)", textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
@@ -2118,8 +2130,18 @@ function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, on
   );
 }
 
-/** Full-screen first step when Firebase is on: each person signs in to load their own cloud data. */
-function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError }) {
+function ProUpgradeEventListener() {
+  const sub = useSubscriptionOptional();
+  useEffect(() => {
+    const fn = (e) => sub?.openUpgrade?.(e.detail?.feature || "coach_prompt");
+    window.addEventListener("proyou:upgrade", fn);
+    return () => window.removeEventListener("proyou:upgrade", fn);
+  }, [sub]);
+  return null;
+}
+
+/** Full-screen sign-in — optional; app works locally without an account. */
+function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError, onContinueFree }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2142,9 +2164,36 @@ function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError }) {
     <div className="login-gate" role="main">
       <div className="login-gate-card surface-glass">
         <p className="login-gate-brand">PROYOU</p>
-        <h1 className="login-gate-title">Sign in</h1>
+        <h1 className="login-gate-title">Welcome</h1>
         <p className="login-gate-sub">
-          Use your own account so your schedule, notes, and habits stay private and sync only for you.
+          Start free with planner, tasks, habits, and notes. Sign in anytime to sync — Pro unlocks cloud backup and more.
+        </p>
+
+        <button
+          type="button"
+          className="btn btn-primary login-gate-btn login-gate-free"
+          disabled={busy}
+          onClick={() => {
+            try {
+              localStorage.setItem(SKIP_LOGIN_STORAGE_KEY, "1");
+            } catch {
+              /* ignore */
+            }
+            onContinueFree?.();
+          }}
+        >
+          Get started free
+        </button>
+
+        <div className="login-gate-divider">
+          <span>or sign in</span>
+        </div>
+
+        <h2 className="login-gate-title" style={{ fontSize: "1.125rem", marginBottom: 8 }}>
+          Sign in
+        </h2>
+        <p className="login-gate-hint" style={{ marginTop: 0, marginBottom: 12 }}>
+          Use your account so your schedule syncs across devices (Pro includes cloud backup).
         </p>
 
         <button
@@ -2463,13 +2512,22 @@ export default function App() {
   const applyNavPreferences = useCallback((nextOrder, nextEnabled) => {
     const enabled = normalizeEnabledModules(nextEnabled);
     const order = normalizeNavOrder(nextOrder, enabled);
+    const snap = getSubscriptionSnapshot();
+    if (!snap.isPro) {
+      const nextOptional = countOptionalEnabledModules(enabled);
+      const prevOptional = countOptionalEnabledModules(enabledModules);
+      if (nextOptional > FREE_OPTIONAL_MODULE_LIMIT && nextOptional > prevOptional) {
+        window.dispatchEvent(new CustomEvent("proyou:upgrade", { detail: { feature: "unlimited_modules" } }));
+        return;
+      }
+    }
     setEnabledModules(enabled);
     setNavOrder(order);
     setProfile((p) => ({
       ...p,
       navVisibility: syncNavVisibilityFromModules(enabled, order, normalizeNavVisibility(p.navVisibility)),
     }));
-  }, []);
+  }, [enabledModules]);
 
   // Editable bedtime routine template (persisted)
   const [routineTemplate, setRoutineTemplate] = useState(() => {
@@ -2719,6 +2777,13 @@ export default function App() {
   const [settingsSubView, setSettingsSubView] = useState(/** @type {"main" | "notifications"} */ ("main"));
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [firebaseUser, setFirebaseUser] = useState(null);
+  const [loginSkipped, setLoginSkipped] = useState(() => {
+    try {
+      return localStorage.getItem(SKIP_LOGIN_STORAGE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
   const [firebaseAuthResolved, setFirebaseAuthResolved] = useState(false);
   const [firebaseRedirectAuthError, setFirebaseRedirectAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
@@ -5119,7 +5184,8 @@ export default function App() {
 
   async function askCoach(userQuestion = null) {
     if (coachLocked && !userQuestion) return;
-    
+    if (!tryBeginCoachPrompt(() => dispatchProUpgrade("coach_prompt"))) return;
+
     setCoachError("");
     setCoachLoading(true);
 
@@ -5277,10 +5343,16 @@ export default function App() {
         coachContextNarrative,
       };
 
+      const subSnap = getSubscriptionSnapshot();
+      const coachHeaders = await getCoachRequestHeaders();
+
       const res = await fetch(apiUrl("/api/coach"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        headers: coachHeaders,
+        body: JSON.stringify({
+          ...payload,
+          subscription: { isPro: subSnap.isPro, trialActive: subSnap.trialActive },
+        }),
       });
 
       const rawText = await res.text();
@@ -5313,11 +5385,16 @@ export default function App() {
       if (!res.ok || looksLikeHtml) {
         const hint = looksLikeHtml
           ? "Coach could not reach the API (got a web page instead of JSON). Run vercel dev on port 3000 next to Vite, use the deployed site, or set VITE_APP_ORIGIN for native builds."
-          : res.status === 429
+          : res.status === 402
+            ? typeof data?.error === "string"
+              ? data.error
+              : "Daily coach limit reached. Upgrade to Pro for unlimited prompts."
+            : res.status === 429
             ? `Too many coach requests. Try again in about ${Number(data?.retryAfterSec) || 60} seconds.`
             : typeof data?.error === "string"
               ? data.error
               : String(data?.detail || data?.hint || `Coach request failed (${res.status}).`);
+        if (res.status === 402) dispatchProUpgrade("coach_prompt");
         setCoachError(hint);
         const localResponse = guardCoachResult(applyCoachSpecificityToResult(fallbackPayload(), coachContext));
         setCoachResult(localResponse);
@@ -5390,6 +5467,11 @@ export default function App() {
         setCoachConversation([]);
       }
       setCoachResult(guardCoachResult(afterSpecificity));
+
+      if (!getSubscriptionSnapshot().isPro) {
+        consumeCoachPromptLocal();
+        setSubscriptionSnapshot({});
+      }
 
       setCoachMeta((prev) => ({ ...prev, lastCoachAt: Date.now() }));
     } catch {
@@ -5943,6 +6025,8 @@ export default function App() {
 
 
   async function callCoach(adhdMode) {
+    if (!tryBeginCoachPrompt(() => dispatchProUpgrade("coach_prompt"))) return;
+
     setCoachError("");
     setCoachLoading(true);
     setCoachStructuredResult(null);
@@ -6019,10 +6103,16 @@ export default function App() {
         },
         healthSummary: formatHealthForCoach(health),
       };
+      const subSnap = getSubscriptionSnapshot();
+      const coachHeaders = await getCoachRequestHeaders();
       const res = await fetch(apiUrl("/api/coach"), {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...payload, mode: adhdMode }),
+        headers: coachHeaders,
+        body: JSON.stringify({
+          ...payload,
+          mode: adhdMode,
+          subscription: { isPro: subSnap.isPro, trialActive: subSnap.trialActive },
+        }),
       });
       const rawText = await res.text();
       const trimmed = rawText.trim();
@@ -6037,10 +6127,13 @@ export default function App() {
         }
       }
       if (!res.ok || looksLikeHtml) {
+        if (res.status === 402) dispatchProUpgrade("coach_prompt");
         setCoachError(
           looksLikeHtml
             ? "Could not reach the coach API (HTML instead of JSON). Run vercel dev on port 3000 with Vite, or open the deployed app."
-            : res.status === 429
+            : res.status === 402
+              ? data?.error || "Daily coach limit reached. Upgrade to Pro for unlimited prompts."
+              : res.status === 429
               ? `Too many coach requests. Try again in about ${Number(data?.retryAfterSec) || 60} seconds.`
               : data?.error || data?.detail || "Something went wrong"
         );
@@ -6064,6 +6157,10 @@ export default function App() {
         });
       } else {
         setCoachResult(null);
+      }
+      if (!getSubscriptionSnapshot().isPro) {
+        consumeCoachPromptLocal();
+        setSubscriptionSnapshot({});
       }
     } catch {
       setCoachError("Network error");
@@ -6382,7 +6479,16 @@ export default function App() {
 
   const firebaseOn = isFirebaseEnabled();
   const authWaiting = firebaseOn && !firebaseAuthResolved;
-  const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser;
+  const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser && !loginSkipped;
+
+  const routineTemplateCount = useMemo(
+    () => Math.max(routineTemplate?.length || 0, morningRoutineTemplate?.length || 0),
+    [routineTemplate, morningRoutineTemplate]
+  );
+
+  function dispatchProUpgrade(feature = "coach_prompt") {
+    window.dispatchEvent(new CustomEvent("proyou:upgrade", { detail: { feature } }));
+  }
 
   useEffect(() => {
     if (tab === "list") setTab("plan");
@@ -6450,7 +6556,14 @@ export default function App() {
   }
 
   return (
-    <div className="app">
+    <SubscriptionBridge
+      firebaseUid={firebaseUser?.uid ?? null}
+      enabledModules={enabledModules}
+      routineTemplateCount={routineTemplateCount}
+    >
+      <ProUpgradeEventListener />
+      <UpgradeProModal />
+      <div className="app">
       {authWaiting && (
         <div className="login-gate login-gate-loading" aria-busy="true" aria-live="polite">
           <div className="login-gate-card surface-glass login-gate-loading-inner">
@@ -6463,6 +6576,7 @@ export default function App() {
         <LoginGateScreen
           redirectAuthError={firebaseRedirectAuthError}
           onConsumeRedirectError={() => setFirebaseRedirectAuthError("")}
+          onContinueFree={() => setLoginSkipped(true)}
         />
       )}
       {!authWaiting && !showLoginGate && (
@@ -6475,32 +6589,19 @@ export default function App() {
               <div className="top-inner">
                 <div className="top-left">
                   {tab === "today" ? (
-                    <div className="top-left-greeting" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 2 }}>
-                      <span className="header-brand-py" aria-hidden>
-                        <img
-                          src={`${import.meta.env.BASE_URL}pyiconnobubble.png`}
-                          alt=""
-                          className="header-brand-py-img"
-                        />
-                        <span className="header-brand-py-svg">
-                          <CoachIcon />
-                        </span>
-                      </span>
-                      <div>
-                        <span className="brand-name">PROYOU</span>
-                        <h1 className="h1 h1-banner-date" style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
-                          Good{" "}
-                          {getTimeOfDay() === "morning"
-                            ? "morning"
-                            : getTimeOfDay() === "evening"
-                              ? "evening"
-                              : "afternoon"}
-                          , {profile.name || "there"}
-                        </h1>
-                        <span className="greeting-tagline" style={{ fontSize: 13, fontWeight: 400 }}>
-                          Let&apos;s make today meaningful.
-                        </span>
-                      </div>
+                    <div className="top-left-greeting">
+                      <h1 className="h1 h1-banner-date today-greeting-title">
+                        Good{" "}
+                        {getTimeOfDay() === "morning"
+                          ? "morning"
+                          : getTimeOfDay() === "evening"
+                            ? "evening"
+                            : "afternoon"}
+                        {(profile.userName || profile.name)
+                          ? `, ${profile.userName || profile.name}`
+                          : ""}
+                      </h1>
+                      <span className="greeting-tagline">Let&apos;s make today meaningful.</span>
                     </div>
                   ) : (
                     <>
@@ -6613,10 +6714,10 @@ export default function App() {
                         type="button"
                         className={`bottom-nav-item bottom-nav-item--center ${tab === coachItem.id ? "active" : ""}`}
                         onClick={() => setTab(coachItem.id)}
+                        aria-label={coachItem.label || "Coach"}
                         aria-current={tab === coachItem.id ? "page" : undefined}
                       >
                         <DockNavIcon tabId={coachItem.moduleId || coachItem.id} active={tab === coachItem.id} variant="center" />
-                        <span className="bottom-nav-label">{coachItem.label}</span>
                       </button>
                     </div>
                     <div className="bottom-nav-side bottom-nav-side--end">
@@ -6870,9 +6971,11 @@ export default function App() {
                 <div className="py-glass-card" style={{ padding: 18 }}>
                   <div style={{ fontSize: 16, fontWeight: 600, color: "var(--py-ink)", marginBottom: 4 }}>Today&apos;s Focus</div>
                   <div style={{ fontSize: 13, color: "var(--py-ink-secondary)", marginBottom: 14 }}>{prog.total} task{prog.total !== 1 ? "s" : ""} planned</div>
-                  <div style={{ position: "relative", height: 10, borderRadius: 999, background: "rgba(200,190,195,0.15)", marginBottom: 10 }}>
-                    <div style={{ position: "absolute", left: 0, top: 0, height: "100%", borderRadius: 999, background: "linear-gradient(90deg, #c8bfd4, #a8a0b8)", width: `${Math.max(prog.pct, 8)}%`, transition: "width 500ms ease", boxShadow: "0 1px 4px rgba(0,0,0,0.08)" }} />
-                    <div style={{ position: "absolute", left: `${Math.max(prog.pct, 5)}%`, top: "50%", transform: "translate(-50%, -50%)", width: 20, height: 20, borderRadius: "50%", background: "linear-gradient(135deg, #d0c8e0, #a898b8)", border: "2px solid #fff", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" }} />
+                  <div className="today-focus-progress" role="progressbar" aria-valuenow={prog.pct} aria-valuemin={0} aria-valuemax={100}>
+                    <div className="today-focus-progress__track">
+                      <div className="today-focus-progress__fill" style={{ width: `${Math.max(prog.pct, 8)}%` }} />
+                      <div className="today-focus-progress__bubble" style={{ left: `${Math.max(prog.pct, 5)}%` }} />
+                    </div>
                   </div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: "var(--py-accent-deep)" }}>Small steps, big change.</span>
@@ -7503,6 +7606,7 @@ export default function App() {
               <div>
                 <h2 className="coach-page-hero__title">Coach & Insights</h2>
                 <p className="coach-page-hero__sub">Your data, not generic advice · ADHD-aware</p>
+                <CoachPromptPill />
               </div>
             </div>
 
@@ -8867,6 +8971,7 @@ export default function App() {
 
         {tab === "insights" ? (
           <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <FeatureGate feature="insights">
             <InsightsPage
               data={{
                 completionHistory: (() => {
@@ -8912,17 +9017,20 @@ export default function App() {
                 streak: computeCalendarCompletionStreak(appState, realTodayKey),
               }}
             />
+            </FeatureGate>
           </section>
         ) : null}
 
         {tab === "medications" ? (
           <section className="panel scroll-reveal" style={{ padding: "0 4px" }}>
+            <FeatureGate feature="medications">
             <MedicationsPage
               medications={medicationsState.medications}
               log={medicationsState.log}
               dayKey={realTodayKey}
               onUpdate={setMedicationsState}
             />
+            </FeatureGate>
           </section>
         ) : null}
 
@@ -10228,6 +10336,7 @@ export default function App() {
               </div>
               ) : (
               <>
+              <SettingsProSection />
               <div className="settings-section settings-section-priority settings-theme-top">
                 <label className="label">Theme color</label>
                 <p className="settings-hint settings-priority-hint">Pick the palette for the whole app.</p>
@@ -11416,5 +11525,6 @@ export default function App() {
         </>
       )}
     </div>
+    </SubscriptionBridge>
   );
 }

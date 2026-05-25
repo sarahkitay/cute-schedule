@@ -29,6 +29,7 @@ export const MODULE_REGISTRY = {
     icon: "home",
     description: "Your daily command center",
     category: "core",
+    tier: "free",
     alwaysVisible: true,
     defaultNav: true,
   },
@@ -39,6 +40,7 @@ export const MODULE_REGISTRY = {
     icon: "plan",
     description: "Timeline and task planning",
     category: "core",
+    tier: "free",
     defaultNav: true,
   },
   [MODULE_IDS.COACH]: {
@@ -48,6 +50,7 @@ export const MODULE_REGISTRY = {
     icon: "sparkle",
     description: "AI-powered personal coaching",
     category: "core",
+    tier: "free",
     defaultNav: true,
     centerAction: true,
   },
@@ -58,6 +61,7 @@ export const MODULE_REGISTRY = {
     icon: "insights",
     description: "Patterns, trends, and self-understanding",
     category: "core",
+    tier: "pro",
     defaultNav: true,
   },
   [MODULE_IDS.PROFILE]: {
@@ -124,6 +128,7 @@ export const MODULE_REGISTRY = {
     icon: "pill",
     description: "Medication tracking and reminders",
     category: "health",
+    tier: "pro",
   },
   [MODULE_IDS.TIMERS]: {
     id: MODULE_IDS.TIMERS,
@@ -140,6 +145,7 @@ export const MODULE_REGISTRY = {
     icon: "alarm",
     description: "Smart alarms with conditions",
     category: "tools",
+    tier: "pro",
   },
   [MODULE_IDS.CALENDAR]: {
     id: MODULE_IDS.CALENDAR,

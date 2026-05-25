@@ -4969,10 +4969,10 @@ textarea.input {
   gap: 2px;
 }
 
-/* Coach sits in the nav bar; only the top of the circle peeks above the strip */
+/* Coach sits in the nav bar; bubble bottom aligns with other tab labels (no coach label) */
 .app .bottom-nav.bottom-nav--with-center.surface-dock {
-  --nav-coach-peek: 6px;
-  --nav-coach-lift: 2px;
+  --nav-coach-peek: 0px;
+  --nav-coach-lift: 0px;
   --nav-strip-height: 62px;
   --nav-safe-bottom: max(8px, env(safe-area-inset-bottom));
   position: fixed !important;
@@ -5037,7 +5037,12 @@ textarea.input {
   align-items: flex-end;
   justify-content: center;
   align-self: flex-end;
-  padding-bottom: 4px;
+  padding-bottom: 2px;
+}
+
+/* Coach is the only tab without a visible label */
+.bottom-nav--with-center .bottom-nav-center .bottom-nav-label {
+  display: none !important;
 }
 
 .bottom-nav--with-center .bottom-nav-side .bottom-nav-item {
@@ -5058,14 +5063,15 @@ textarea.input {
   height: 44px;
 }
 .bottom-nav--compact.bottom-nav--with-center.surface-dock {
-  --nav-coach-peek: 5px;
-  --nav-coach-lift: 2px;
+  --nav-coach-peek: 0px;
+  --nav-coach-lift: 0px;
   --nav-strip-height: 58px;
 }
 .bottom-nav--compact .bottom-nav-item--center .dock-nav-icon-wrap--center {
   width: 76px;
   height: 76px;
-  margin-top: calc(-1 * var(--nav-coach-lift, 2px));
+  margin-top: 0;
+  transform: translateY(6px);
 }
 
 .bottom-nav--png .bottom-nav-item {
@@ -5086,13 +5092,16 @@ textarea.input {
   flex: 0 0 auto;
   max-width: none;
   margin-top: 0;
-  padding-bottom: 0;
+  padding: 4px 2px 2px;
+  gap: 0;
+  justify-content: flex-end;
   transform: none;
 }
 .bottom-nav--png .bottom-nav-item--center .dock-nav-icon-wrap--center {
   width: 88px;
   height: 88px;
-  margin-top: calc(-1 * var(--nav-coach-lift, 2px));
+  margin-top: 0;
+  transform: translateY(6px);
   border-radius: 50%;
   background: radial-gradient(circle at 32% 22%, rgba(255, 235, 242, 1), rgba(248, 175, 200, 0.88) 55%, rgba(232, 130, 160, 0.75));
   border: 3.5px solid rgba(255, 255, 255, 0.96);
@@ -5103,7 +5112,7 @@ textarea.input {
   animation: py-nav-pulse 3s ease-in-out infinite;
 }
 .bottom-nav--png .bottom-nav-item--center.active .dock-nav-icon-wrap--center {
-  transform: scale(1.06);
+  transform: translateY(6px) scale(1.06);
   box-shadow:
     0 14px 36px rgba(212, 96, 122, 0.5),
     0 4px 14px rgba(212, 112, 138, 0.3),
@@ -9183,8 +9192,8 @@ html[data-theme="dark"] .daily-progress-card .progress-wrap {
   box-shadow: inset 0 0 0 1px var(--ink-border-soft);
 }
 html[data-theme="dark"] .daily-progress-card .progress-fill {
-  background: linear-gradient(90deg, #27272a 0%, var(--ink-strong) 100%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.5) 0%, #ffffff 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 html[data-theme="dark"] .progress-segment {
   background: rgba(10, 10, 12, 0.14);
@@ -9250,6 +9259,15 @@ html[data-theme="dark"] .top-plain .header-date {
 html[data-theme="dark"] .top-plain .h1,
 html[data-theme="dark"] .top-plain .h1-banner-date {
   color: var(--ink-strong) !important;
+}
+html[data-theme="dark"] .top-plain .top-left-greeting .h1,
+html[data-theme="dark"] .top-plain .top-left-greeting .h1-banner-date,
+html[data-theme="dark"] .top-plain .top-left-greeting .today-greeting-title {
+  color: #fafafa !important;
+}
+html[data-theme="dark"] .top-plain .top-left-greeting .greeting-tagline {
+  color: #fafafa !important;
+  opacity: 0.92;
 }
 html[data-theme="dark"] .page-instructions-bar {
   background: rgba(255, 255, 255, 0.72);
