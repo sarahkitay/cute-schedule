@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import ReactDOM, { flushSync } from "react-dom";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, WindDownIcon,
-  CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
+  CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon, CoachIcon, SettingsIcon,
   LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, MenuIcon,
   CheckIcon, FinanceIcon, BulletIcon
 } from "./Icons";
@@ -912,6 +912,58 @@ function to12Hour(time24) {
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
+/** Compact time for chips, e.g. "9 am" */
+function toShort12Hour(time24) {
+  const [h, m] = time24.split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return time24;
+  const period = (h >= 12 ? "pm" : "am");
+  const hour12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  if (m === 0) return `${hour12} ${period}`;
+  return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
+}
+
+function TaskMetaChips({ hourKey, category, energyLevel, mode = "type", showTime = false, showEnergy = true, inline = false, size = "default" }) {
+  const energy = ENERGY_LEVELS[energyLevel || "MEDIUM"];
+  const energyKey = (energyLevel || "MEDIUM").toLowerCase();
+  const isTiny = size === "tiny";
+  const chips = [];
+  if (showTime && hourKey) {
+    chips.push(
+      <span key="time" className="task-meta-chip task-meta-chip--time">{toShort12Hour(hourKey)}</span>
+    );
+  }
+  if (category) {
+    chips.push(
+      <span key="cat" className="task-meta-chip task-meta-chip--category">{category}</span>
+    );
+  }
+  if (showEnergy && mode === "details") {
+    chips.push(
+      <span key="energy" className={`task-meta-chip task-meta-chip--energy task-meta-chip--energy-${energyKey}`}>
+        {!isTiny ? React.createElement(energy.icon, { className: "task-meta-chip-icon", "aria-hidden": true }) : null}
+        {isTiny ? energy.label.slice(0, 1) : energy.label}
+      </span>
+    );
+  }
+  if (!chips.length) return null;
+  return (
+    <span
+      className={[
+        "task-meta-chips",
+        inline ? "task-meta-chips--inline" : "",
+        isTiny ? "task-meta-chips--tiny" : "",
+      ].filter(Boolean).join(" ")}
+    >
+      {chips.map((chip, i) => (
+        <React.Fragment key={chip.key}>
+          {inline && i > 0 ? <span className="task-meta-sep" aria-hidden>·</span> : null}
+          {chip}
+        </React.Fragment>
+      ))}
+    </span>
+  );
+}
+
 /** 3-hour window key for time-block color: 06 Dawn, 09 Morning, 12 Noon, 15 Afternoon, 18 Evening, 21 Night */
 function getTimeBlockKey(hourKey) {
   const [h] = (hourKey || "09:00").split(":").map(Number);
@@ -1574,6 +1626,19 @@ function ProgressBar({ pct }) {
   );
 }
 
+function ToastProgressBar({ fromPct = 0, toPct = 0 }) {
+  const [width, setWidth] = useState(fromPct);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setWidth(toPct));
+    return () => cancelAnimationFrame(id);
+  }, [toPct]);
+  return (
+    <div className="toast-progress-wrap progress-wrap animating" aria-hidden>
+      <div className="progress-fill" style={{ width: `${width}%` }} />
+    </div>
+  );
+}
+
 function ProgressSegments({ total, done }) {
   if (total === 0) return null;
   return (
@@ -1646,8 +1711,8 @@ function HourCard({
       <div className="card-top">
         <button type="button" className="hour-title" onClick={() => setOpen((v) => !v)}>
           <div className="hour-left">
-            <span className="hour-time">{to12Hour(hourKey)}</span>
-            <span className="hour-meta">
+            <span className="hour-time">{toShort12Hour(hourKey)}</span>
+            <span className="hour-meta hour-meta-pill">
               {totals.done}/{totals.total}
             </span>
       </div>
@@ -1678,25 +1743,11 @@ function HourCard({
                 style={{ cursor: "pointer" }}
               >
                 <div className="item-main">
-                  <label className="check" onClick={(e) => e.stopPropagation()}>
+                  <label className="check item-check" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" checked={!!t.done} onChange={() => onToggleTask(hourKey, t.category, t.id)} />
                     <span className="checkmark" />
-                    <span className={`item-text ${t.done ? 'item-text-done' : ''}`}>
-                      {null}
-                      {mode === "details" && (
-                        <span className="energy-badge" style={{ 
-                          marginLeft: '8px',
-                          fontSize: '14px',
-                          color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color,
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '4px'
-                        }}>
-                          {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: '14px', height: '14px' } })}
-                          {ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label}
-                        </span>
-                      )}
-                      {t.text}
+                    <span className="item-body">
+                      <span className={`item-text ${t.done ? "item-text-done" : ""}`}>{t.text}</span>
                     </span>
                   </label>
 
@@ -1764,7 +1815,14 @@ function HourCard({
                       Begin workout
                     </button>
                   ) : null}
-                  <div className="item-actions-trailing">
+                  <div className="item-actions-stack">
+                    <TaskMetaChips
+                      category={t.category}
+                      energyLevel={t.energyLevel}
+                      mode={mode}
+                      size="tiny"
+                    />
+                    <div className="item-actions-trailing">
                     <button
                       type="button"
                       className={`item-action-btn item-action-btn--menu${taskDropdown === `${hourKey}-${t.category}-${t.id}` ? " is-active" : ""}`}
@@ -1798,39 +1856,42 @@ function HourCard({
                     >
                       <span className="item-action-chevron" aria-hidden>{expanded ? "▾" : "▸"}</span>
                     </button>
+                    </div>
                   </div>
                   </div>
                 </div>
                 {expanded && (
                   <div className="item-detail" onClick={(e) => e.stopPropagation()}>
-                    <div className="item-detail-row">
-                      <span className="item-detail-time">{to12Hour(hourKey)}</span>
-                      {mode === "details" && (
-                        <span className="energy-badge" style={{ fontSize: '12px', color: ENERGY_LEVELS[t.energyLevel || "MEDIUM"].color }}>
-                          {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon, { style: { width: 12, height: 12 } })}
-                          {ENERGY_LEVELS[t.energyLevel || "MEDIUM"].label}
-                        </span>
-                      )}
+                    <div className="item-detail-head">
+                      <TaskMetaChips
+                        hourKey={hourKey}
+                        category={t.category}
+                        energyLevel={t.energyLevel}
+                        mode={mode}
+                        showTime
+                        inline
+                      />
+                      <p className="item-detail-title">{t.text}</p>
                     </div>
                     {typeof dayKey === "string" && typeof onPatchTaskReminder === "function" ? (
-                      <div className="item-detail-reminders" style={{ marginTop: 10, fontSize: 13 }}>
+                      <div className="item-detail-group item-detail-reminders">
                         {(() => {
                           const r = normalizeTaskReminderFields(t);
                           return (
                             <>
-                              <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                              <label className="task-detail-row task-detail-row--toggle">
+                                <span className="task-detail-row-label">Remind me</span>
                                 <input
                                   type="checkbox"
+                                  className="task-detail-toggle"
                                   checked={r.remindersEnabled}
                                   onChange={(e) => onPatchTaskReminder(dayKey, hourKey, t.category, t.id, { remindersEnabled: e.target.checked })}
                                 />
-                                Remind me
                               </label>
-                              <label style={{ display: "block", marginBottom: 6, opacity: r.remindersEnabled ? 1 : 0.45 }}>
-                                Before task starts
+                              <label className={`task-detail-row${r.remindersEnabled ? "" : " is-disabled"}`}>
+                                <span className="task-detail-row-label">Before task starts</span>
                                 <select
-                                  className="input"
-                                  style={{ marginLeft: 8, maxWidth: 140 }}
+                                  className="input task-detail-select"
                                   disabled={!r.remindersEnabled}
                                   value={r.remindBeforeMinutes == null ? "" : String(r.remindBeforeMinutes)}
                                   onChange={(e) => {
@@ -1847,14 +1908,15 @@ function HourCard({
                                   ))}
                                 </select>
                               </label>
-                              <label style={{ display: "flex", alignItems: "center", gap: 8, opacity: r.remindersEnabled ? 1 : 0.45 }}>
+                              <label className={`task-detail-row task-detail-row--toggle${r.remindersEnabled ? "" : " is-disabled"}`}>
+                                <span className="task-detail-row-label">Notify when task starts</span>
                                 <input
                                   type="checkbox"
+                                  className="task-detail-toggle"
                                   disabled={!r.remindersEnabled}
                                   checked={r.remindAtStart}
                                   onChange={(e) => onPatchTaskReminder(dayKey, hourKey, t.category, t.id, { remindAtStart: e.target.checked })}
                                 />
-                                Also notify me when task starts
                               </label>
                             </>
                           );
@@ -2743,8 +2805,14 @@ export default function App() {
   const [onboardingStep, setOnboardingStep] = useState(0);
   /** After setup, optional one-time product tour */
   const [featureWalkthroughMode, setFeatureWalkthroughMode] = useState(null);
-  const [editingTaskTime, setEditingTaskTime] = useState(null); // "hourKey-category-id" when showing time editor
-  const [editTaskTimeValue, setEditTaskTimeValue] = useState("09:00"); // new time for edit
+  const [editingTaskKey, setEditingTaskKey] = useState(null); // "hourKey-category-id" when showing task editor
+  const [editTaskDraft, setEditTaskDraft] = useState({
+    text: "",
+    hourKey: "09:00",
+    category: "",
+    energyLevel: "MEDIUM",
+    taskKind: "default",
+  });
   const [expandedTaskKey, setExpandedTaskKey] = useState(null); // "hourKey-category-id" for expandable detail
   const [quickAddValue, setQuickAddValue] = useState("");
   const [taskBanner, setTaskBanner] = useState(null); // { type: 'start'|'wrapup', task, nextTask?, hourKey }
@@ -3949,17 +4017,18 @@ export default function App() {
     flushTaskMenuNoteForKeyRef.current(taskDropdownRef.current);
     setTaskDropdown(key);
     setDropdownAnchorRect(key ? rect || null : null);
-    if (key) {
-      const parts = key.split("-");
-      if (parts.length >= 3) {
-        const hourKey = parts[0];
-        const cat = parts[1];
-        const tid = parts.slice(2).join("-") || parts[2];
-        const task = findTaskInAppState(appStateRef.current, tKey, hourKey, cat, tid);
-        setTaskMenuNoteDraft(task?.taskNote != null ? String(task.taskNote) : "");
-      }
-    } else {
+    if (!key) {
+      setEditingTaskKey(null);
       setTaskMenuNoteDraft("");
+      return;
+    }
+    const parts = key.split("-");
+    if (parts.length >= 3) {
+      const hourKey = parts[0];
+      const cat = parts[1];
+      const tid = parts.slice(2).join("-") || parts[2];
+      const task = findTaskInAppState(appStateRef.current, tKey, hourKey, cat, tid);
+      setTaskMenuNoteDraft(task?.taskNote != null ? String(task.taskNote) : "");
     }
   }
 
@@ -3968,6 +4037,82 @@ export default function App() {
     setTaskDropdown(null);
     setDropdownAnchorRect(null);
     setTaskMenuNoteDraft("");
+    setEditingTaskKey(null);
+  }
+
+  function openTaskEditor(task, hourKey, category, editKey) {
+    setEditTaskDraft({
+      text: task?.text != null ? String(task.text) : "",
+      hourKey,
+      category,
+      energyLevel: task?.energyLevel === "LIGHT" || task?.energyLevel === "HEAVY" ? task.energyLevel : "MEDIUM",
+      taskKind: task?.taskType === "workout" ? "workout" : "default",
+    });
+    setEditingTaskKey(editKey);
+  }
+
+  function saveTaskEdits(originalHourKey, originalCategory, taskId, draft) {
+    const clean = normalizeText(draft?.text);
+    if (!clean) return;
+    const hourKey = normalizeTimeKey(draft.hourKey);
+    const category = String(draft.category || "").trim() || originalCategory;
+    const energyLevel =
+      draft.energyLevel === "LIGHT" || draft.energyLevel === "MEDIUM" || draft.energyLevel === "HEAVY"
+        ? draft.energyLevel
+        : "MEDIUM";
+    const day = appState.days[tKey];
+    const byCat = day?.hours?.[originalHourKey];
+    const existing = (byCat?.[originalCategory] || []).find((t) => t.id === taskId);
+
+    setAppState((prev) => {
+      const prevDay = prev.days[tKey];
+      if (!prevDay?.hours) return prev;
+      const hours = { ...(prevDay.hours || {}) };
+      const srcByCat = hours[originalHourKey];
+      if (!srcByCat) return prev;
+      const task = (srcByCat[originalCategory] || []).find((t) => t.id === taskId);
+      if (!task) return prev;
+
+      let updated = { ...task, text: clean, energyLevel };
+      if (draft.taskKind === "workout") {
+        updated = {
+          ...updated,
+          taskType: "workout",
+          workoutProgramMode: updated.workoutProgramMode || "auto",
+        };
+      } else {
+        const { taskType, workoutProgramMode, workoutProgramId, ...rest } = updated;
+        updated = rest;
+      }
+
+      const oldList = (srcByCat[originalCategory] || []).filter((t) => t.id !== taskId);
+      if (oldList.length) {
+        hours[originalHourKey] = { ...srcByCat, [originalCategory]: oldList };
+      } else {
+        const nextSrc = { ...srcByCat };
+        delete nextSrc[originalCategory];
+        if (Object.keys(nextSrc).some((c) => (nextSrc[c] || []).length > 0)) {
+          hours[originalHourKey] = nextSrc;
+        } else {
+          delete hours[originalHourKey];
+        }
+      }
+
+      const destByCat = hours[hourKey] || emptySlot(customCategories);
+      hours[hourKey] = { ...destByCat, [category]: [...(destByCat[category] || []), updated] };
+
+      return { ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } };
+    });
+
+    if (existing?.coachSuggestionId && !existing.done && hourKey !== originalHourKey) {
+      setCoachLearning((prev) =>
+        recordCoachSuggestedTaskPostponed(prev, {
+          type: existing.sourceSuggestionType || "ADD_TASK",
+          titleSnippet: String(existing.text || ""),
+        })
+      );
+    }
+    dismissTaskDropdownOnly();
   }
 
   function ensureHour(hourKey, optionalDayKey) {
@@ -4155,6 +4300,11 @@ export default function App() {
             const energyLevel = t.energyLevel || "MEDIUM";
             const allTasksList = allTasksInDay(todayHours, customCategories);
             const emotionalState = inferEmotionalState(allTasksList, getTimeOfDay());
+            const totalToday = allTasksList.length;
+            const doneBefore = allTasksList.filter((task) => task.done && task.id !== taskId).length;
+            const doneAfter = doneBefore + 1;
+            const progressFrom = totalToday ? Math.round((doneBefore / totalToday) * 100) : 0;
+            const progressTo = totalToday ? Math.round((doneAfter / totalToday) * 100) : 0;
             
             // Generate contextual completion message using Gentle Anchor
             if (profile.completionAffirmationsOn !== false) {
@@ -4171,8 +4321,9 @@ export default function App() {
               }
               setToastNotification({
                 message,
-                taskText: t.text,
                 type: "completion",
+                progressFrom,
+                progressTo,
               });
               toastDismissTimerRef.current = window.setTimeout(() => {
                 setToastNotification(null);
@@ -4610,36 +4761,6 @@ export default function App() {
     });
 
     dismissTaskDropdownOnly();
-  }
-
-  function changeTaskTime(hourKey, category, taskId, newHourKey) {
-    const day = appState.days[tKey];
-    if (!day) return;
-    const hours = { ...(day.hours || {}) };
-    const byCat = hours[hourKey];
-    if (!byCat) return;
-    const task = (byCat[category] || []).find((t) => t.id === taskId);
-    if (!task) return;
-    if (newHourKey === hourKey) return;
-
-    const list = (byCat[category] || []).filter((t) => t.id !== taskId);
-    hours[hourKey] = { ...byCat, [category]: list };
-
-    const nextByCat = hours[newHourKey] || emptySlot(customCategories);
-    const nextList = [...(nextByCat[category] || []), { ...task, hour: newHourKey }];
-    hours[newHourKey] = { ...nextByCat, [category]: nextList };
-
-    setAppState((prev) => ({ ...prev, days: { ...prev.days, [tKey]: { ...(prev.days[tKey] || {}), hours } } }));
-    if (task.coachSuggestionId && !task.done) {
-      setCoachLearning((prev) =>
-        recordCoachSuggestedTaskPostponed(prev, {
-          type: task.sourceSuggestionType || "ADD_TASK",
-          titleSnippet: String(task.text || ""),
-        })
-      );
-    }
-    dismissTaskDropdownOnly();
-    setEditingTaskTime(null);
   }
 
   function deleteHour(hourKey) {
@@ -6355,17 +6476,16 @@ export default function App() {
                 <div className="top-left">
                   {tab === "today" ? (
                     <div className="top-left-greeting" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 2 }}>
-                      <img
-                        src={`${import.meta.env.BASE_URL}pyiconnobubble.png`}
-                        alt=""
-                        style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 14,
-                          objectFit: "cover",
-                          boxShadow: "0 3px 12px rgba(212, 112, 138, 0.2)",
-                        }}
-                      />
+                      <span className="header-brand-py" aria-hidden>
+                        <img
+                          src={`${import.meta.env.BASE_URL}pyiconnobubble.png`}
+                          alt=""
+                          className="header-brand-py-img"
+                        />
+                        <span className="header-brand-py-svg">
+                          <CoachIcon />
+                        </span>
+                      </span>
                       <div>
                         <span className="brand-name">PROYOU</span>
                         <h1 className="h1 h1-banner-date" style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
@@ -6432,13 +6552,7 @@ export default function App() {
                     title="Settings"
                     aria-label="Settings"
                   >
-                    <img
-                      src={`${import.meta.env.BASE_URL}settings.png`}
-                      alt=""
-                      className="header-settings-icon"
-                      width={38}
-                      height={38}
-                    />
+                    <SettingsIcon className="header-settings-svg" />
                   </button>
                 </div>
               </div>
@@ -7230,13 +7344,12 @@ export default function App() {
                       }}
                     >
                       <div className="list-row-body list-row-body-task">
-                        <span className="list-row-time" title="Scheduled time">
-                          {to12Hour(t.hour)}
-                        </span>
                         <label className="list-row-main check" onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" checked={!!t.done} onChange={() => toggleTask(t.hour, t.category, t.id)} />
                           <span className="checkmark" />
-                          <span className={`list-row-title ${t.done ? 'item-text-done' : ''}`}>{t.text}</span>
+                          <span className="list-row-content">
+                            <span className={`list-row-title ${t.done ? "item-text-done" : ""}`}>{t.text}</span>
+                          </span>
                         </label>
                         <div className="list-row-actions">
                         {(taskHasAssociatedGroceryList(t) || groceryTextMatch(t.text)) && (
@@ -7265,24 +7378,34 @@ export default function App() {
                             Begin workout
                           </button>
                         ) : null}
-                        <button
-                          type="button"
-                          className="icon-btn list-row-action list-row-more"
-                          title="Task options"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (taskDropdown === dropdownKey) {
-                              handleTaskMenuOpen(null, null);
-                            } else {
-                              handleTaskMenuOpen(dropdownKey, e.currentTarget.getBoundingClientRect());
-                            }
-                          }}
-                          data-task-menu-trigger
-                          data-task-dropdown-key={dropdownKey}
-                          aria-label="Task options"
-                        >
-                          <MenuIcon style={{ width: 18, height: 18 }} />
-                        </button>
+                        <div className="list-row-actions-stack">
+                          <TaskMetaChips
+                            hourKey={t.hour}
+                            category={t.category}
+                            energyLevel={t.energyLevel}
+                            mode="details"
+                            showTime
+                            size="tiny"
+                          />
+                          <button
+                            type="button"
+                            className="icon-btn list-row-action list-row-more"
+                            title="Task options"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (taskDropdown === dropdownKey) {
+                                handleTaskMenuOpen(null, null);
+                              } else {
+                                handleTaskMenuOpen(dropdownKey, e.currentTarget.getBoundingClientRect());
+                              }
+                            }}
+                            data-task-menu-trigger
+                            data-task-dropdown-key={dropdownKey}
+                            aria-label="Task options"
+                          >
+                            <MenuIcon style={{ width: 18, height: 18 }} />
+                          </button>
+                        </div>
                         </div>
                       </div>
                     </li>
@@ -8850,17 +8973,16 @@ export default function App() {
             const category = parts[1];
             const id = parts.slice(2).join('-') || parts[2];
             const editKey = `${hourKey}-${category}-${id}`;
-            const isEditing = editingTaskTime === editKey;
+            const isEditing = editingTaskKey === editKey;
             const closeDropdown = () => handleTaskMenuOpen(null, null);
-            const dropdownMaxHeight = isEditing ? 340 : 440;
+            const dropdownMaxHeight = isEditing ? 560 : 440;
             const vv = typeof window !== "undefined" ? window.visualViewport : null;
             const vwForPanel =
               typeof window !== "undefined"
                 ? Math.min(vv?.width ?? window.innerWidth, window.innerWidth)
                 : 400;
-            /** Edit time: native `input[type=time]` is wide on iOS; width must match computeDropdown margins (vw - 32). */
             const panelWidth = isEditing
-              ? Math.max(240, Math.min(400, vwForPanel - 32))
+              ? Math.max(280, Math.min(400, vwForPanel - 32))
               : Math.max(260, Math.min(320, vwForPanel - 24));
             const taskNodeForMenu = findTaskInAppState(appState, tKey, hourKey, category, id);
             const showOptionalRepeatBtn =
@@ -8869,12 +8991,11 @@ export default function App() {
             const { left, top, bottom, width } = computeDropdownPosition(rect, {
               panelWidth,
               maxHeight: dropdownMaxHeight,
-              /** Avoid horizontal nudge for wide edit-time panel so `left + width` stays inside the viewport. */
               leftNudge: isEditing ? 0 : undefined,
             });
             return (
               <div
-                className={["task-dropdown-portal", isEditing ? "task-dropdown-portal--edit-time" : ""]
+                className={["task-dropdown-portal", isEditing ? "task-dropdown-portal--edit-task" : ""]
                   .filter(Boolean)
                   .join(" ")}
                 style={{
@@ -8888,29 +9009,107 @@ export default function App() {
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className={`task-dropdown${isEditing ? " task-dropdown--edit-time" : ""}`}>
+                <div className={`task-dropdown${isEditing ? " task-dropdown--edit-task" : ""}`}>
                   {!isEditing ? (
-                    <div className="task-dropdown-header">
-                      <span className="task-dropdown-header-title">Task options</span>
+                    <div className="task-dropdown-preview">
+                      <TaskMetaChips
+                        hourKey={hourKey}
+                        category={category}
+                        energyLevel={taskNodeForMenu?.energyLevel}
+                        mode="details"
+                        showTime
+                        inline
+                      />
+                      {taskNodeForMenu?.text ? (
+                        <p className="task-dropdown-preview-title">{taskNodeForMenu.text}</p>
+                      ) : null}
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="task-dropdown-header">
+                      <span className="task-dropdown-header-title">Edit task</span>
+                    </div>
+                  )}
                   {isEditing ? (
-                    <div className="dropdown-edit-time">
-                      <label className="dropdown-edit-time-label">New time</label>
-                      <div className="dropdown-time-input-wrap">
+                    <div className="task-edit-form">
+                      <label className="task-edit-row">
+                        <span className="task-edit-label">Time</span>
                         <input
                           type="time"
-                          className="input dropdown-time-input"
-                          value={editTaskTimeValue}
-                          onChange={(e) => setEditTaskTimeValue(e.target.value)}
+                          className="input task-edit-input"
+                          value={editTaskDraft.hourKey}
+                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, hourKey: e.target.value }))}
                           aria-label="Task time"
                         />
+                      </label>
+                      <label className="task-edit-row">
+                        <span className="task-edit-label">Category</span>
+                        <select
+                          className="input task-edit-input"
+                          value={editTaskDraft.category}
+                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, category: e.target.value }))}
+                          aria-label="Task category"
+                        >
+                          {customCategories.map((c) => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="task-edit-row task-edit-row--grow">
+                        <span className="task-edit-label">Task</span>
+                        <input
+                          type="text"
+                          className="input task-edit-input"
+                          value={editTaskDraft.text}
+                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, text: e.target.value }))}
+                          placeholder="What to do…"
+                          aria-label="Task title"
+                        />
+                      </label>
+                      <div className="task-edit-row task-edit-row--energy">
+                        <span className="task-edit-label" id={`task-edit-energy-${editKey}`}>Energy</span>
+                        <div className="quick-detail-energy-pills" role="group" aria-labelledby={`task-edit-energy-${editKey}`}>
+                          {["LIGHT", "MEDIUM", "HEAVY"].map((lev) => (
+                            <button
+                              key={lev}
+                              type="button"
+                              className={`quick-detail-energy-pill ${editTaskDraft.energyLevel === lev ? "active" : ""}`}
+                              onClick={() => setEditTaskDraft((d) => ({ ...d, energyLevel: lev }))}
+                            >
+                              {lev.charAt(0) + lev.slice(1).toLowerCase()}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                      <div className="dropdown-edit-time-actions">
-                        <button type="button" className="dropdown-item" onClick={() => { flushTaskMenuNoteForKeyRef.current(taskDropdown); changeTaskTime(hourKey, category, id, editTaskTimeValue); setEditingTaskTime(null); }}>
+                      {healthProfileComplete(health) ? (
+                        <label className="task-edit-row">
+                          <span className="task-edit-label">Task type</span>
+                          <select
+                            className="input task-edit-input"
+                            value={editTaskDraft.taskKind}
+                            onChange={(e) => setEditTaskDraft((d) => ({ ...d, taskKind: e.target.value }))}
+                            aria-label="Task type"
+                          >
+                            <option value="default">Normal</option>
+                            <option value="workout">Workout</option>
+                          </select>
+                        </label>
+                      ) : null}
+                      <div className="task-edit-actions">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm task-edit-save"
+                          onClick={() => {
+                            flushTaskMenuNoteForKeyRef.current(taskDropdown);
+                            saveTaskEdits(hourKey, category, id, editTaskDraft);
+                          }}
+                        >
                           Save
                         </button>
-                        <button type="button" className="dropdown-item" onClick={() => { setEditingTaskTime(null); closeDropdown(); }}>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() => { setEditingTaskKey(null); closeDropdown(); }}
+                        >
                           Cancel
                         </button>
                       </div>
@@ -9000,11 +9199,10 @@ export default function App() {
                           className="dropdown-item"
                           onClick={() => {
                             flushTaskMenuNoteForKeyRef.current(taskDropdown);
-                            setEditTaskTimeValue(hourKey);
-                            setEditingTaskTime(editKey);
+                            openTaskEditor(taskNodeForMenu, hourKey, category, editKey);
                           }}
                         >
-                          Edit time
+                          Edit task
                         </button>
                         <button type="button" className="dropdown-item" onClick={() => { closeDropdown(); }}>
                           Keep task
@@ -11006,11 +11204,23 @@ export default function App() {
               }}
             />
             <div className="toast-notification" role="status">
-              <div className="toast-content">
-                <SparkleIcon style={{ width: "20px", height: "20px", flexShrink: 0 }} />
+              <div
+                className={[
+                  "toast-content",
+                  toastNotification.type === "completion" ? "toast-content--completion" : "",
+                ].filter(Boolean).join(" ")}
+              >
                 <div className="toast-text">
                   <div className="toast-message">{String(toastNotification.message || "")}</div>
-                  {toastNotification.taskText ? <div className="toast-task">{toastNotification.taskText}</div> : null}
+                  {toastNotification.type === "completion" ? (
+                    <ToastProgressBar
+                      key={`${toastNotification.progressFrom}-${toastNotification.progressTo}`}
+                      fromPct={toastNotification.progressFrom ?? 0}
+                      toPct={toastNotification.progressTo ?? 0}
+                    />
+                  ) : toastNotification.taskText ? (
+                    <div className="toast-task">{toastNotification.taskText}</div>
+                  ) : null}
                 </div>
               </div>
             </div>

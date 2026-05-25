@@ -811,7 +811,7 @@
   color: var(--py-ink-tertiary);
 }
 html[data-theme="dark"] .app .greeting-tagline {
-  color: rgba(255, 255, 255, 0.5) !important;
+  color: #52525b !important;
 }
 
 /* Keep original rich gradient background — do NOT override .app-bg */
@@ -1865,66 +1865,67 @@ html[data-theme="dark"] .app .notes-search-input {
 }
 
 /* ═══════════════════════════════════════════════
-   DARK MODE: Midnight / Mocha themes
+   DARK MODE: Midnight / Mocha — high-contrast frosted UI
+   Light panels + dark ink (boyish / readable variant)
    ═══════════════════════════════════════════════ */
 html[data-theme="dark"] .app .top-left .brand-name {
-  color: rgba(255, 255, 255, 0.6) !important;
+  color: #52525b !important;
 }
 html[data-theme="dark"] .app .top-left .h1.h1-banner-date,
 html[data-theme="dark"] .app .top-left h1 {
-  color: #fff !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .top-left span[style*="color"] {
-  color: rgba(255, 255, 255, 0.55) !important;
+  color: #52525b !important;
 }
 html[data-theme="dark"] .app .shell-main .title,
 html[data-theme="dark"] .app .panel-title .title,
 html[data-theme="dark"] .app h2,
 html[data-theme="dark"] .app h3 {
-  color: #fff !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .py-glass-card,
 html[data-theme="dark"] .app .panel,
 html[data-theme="dark"] .app section.panel,
 html[data-theme="dark"] .app .surface-glass {
-  background: rgba(30, 28, 35, 0.7) !important;
-  border-color: rgba(255, 255, 255, 0.06) !important;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
+  background: rgba(255, 255, 255, 0.82) !important;
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.72) !important;
 }
 html[data-theme="dark"] .app .bottom-nav.surface-dock {
-  background: rgba(24, 22, 28, 0.92) !important;
-  border-top-color: rgba(255, 255, 255, 0.04) !important;
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3) !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  border-top-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.1) !important;
 }
 html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock {
   background: transparent !important;
   box-shadow: none !important;
 }
 html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock::before {
-  background: rgba(24, 22, 28, 0.92) !important;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3) !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  border: none !important;
+  border-top: 1px solid var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.1) !important;
 }
 html[data-theme="dark"] .app .bottom-nav button span[style] {
-  background: rgba(40, 36, 48, 0.7) !important;
-  border-color: rgba(255, 255, 255, 0.06) !important;
+  background: rgba(255, 255, 255, 0.88) !important;
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .bottom-nav button[aria-current="page"] span[style] {
-  background: rgba(60, 40, 55, 0.8) !important;
-  border-color: rgba(200, 140, 170, 0.2) !important;
-  box-shadow: 0 4px 16px rgba(200, 140, 170, 0.15) !important;
+  background: var(--ink-strong, #0a0a0c) !important;
+  border-color: var(--ink-strong, #0a0a0c) !important;
+  color: #fafafa !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12) !important;
 }
 
-/* Dark mode: icon filters — dark, masculine, desaturated */
-html[data-theme="dark"] .app .bottom-nav img,
-html[data-theme="dark"] .app img[src*="icon"],
-html[data-theme="dark"] .app img[src*="Icon"],
+/* Dark mode: page/module PNGs only (header + dock use SVG) */
+html[data-theme="dark"] .app img[src*="icon"]:not(.header-brand-py-img),
+html[data-theme="dark"] .app img[src*="Icon"]:not(.header-brand-py-img),
 html[data-theme="dark"] .app img[src*="fire"],
 html[data-theme="dark"] .app img[src*="water"],
 html[data-theme="dark"] .app img[src*="sun"],
 html[data-theme="dark"] .app img[src*="fork"],
-html[data-theme="dark"] .app img[src*="PY"],
 html[data-theme="dark"] .app img[src*="fitness"],
 html[data-theme="dark"] .app img[src*="meds"],
 html[data-theme="dark"] .app img[src*="finance"],
@@ -1933,74 +1934,86 @@ html[data-theme="dark"] .app img[src*="timer"],
 html[data-theme="dark"] .app img[src*="monthly"],
 html[data-theme="dark"] .app img[src*="task"],
 html[data-theme="dark"] .app img[src*="habit"],
-html[data-theme="dark"] .app img[src*="nav"],
-html[data-theme="dark"] .app img[src*="settings"] {
-  filter: brightness(0.7) saturate(0.5) contrast(1.1) !important;
+html[data-theme="dark"] .app img[src*="nav"] {
+  filter: brightness(0.92) saturate(0.85) contrast(1.05) !important;
 }
 
-/* Dark mode text colors */
+/* Dark mode text: default dark ink on frosted surfaces */
 html[data-theme="dark"] .app {
-  color: rgba(255, 255, 255, 0.9) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
-html[data-theme="dark"] .app .list-row-title,
-html[data-theme="dark"] .app .item-text,
-html[data-theme="dark"] .app .habit-checkin-name,
-html[data-theme="dark"] .app .bedtime-title {
-  color: #fff !important;
+html[data-theme="dark"] .app .panel-title .title,
+html[data-theme="dark"] .app .panel-top .title,
+html[data-theme="dark"] .app .empty-title,
+html[data-theme="dark"] .app .list-page-title,
+html[data-theme="dark"] .app .coach-v2-card-top,
+html[data-theme="dark"] .app .coach-v2-title {
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .list-row-time,
 html[data-theme="dark"] .app .meta,
 html[data-theme="dark"] .app .sub,
 html[data-theme="dark"] .app .bedtime-subtitle {
-  color: rgba(255, 255, 255, 0.5) !important;
+  color: #52525b !important;
 }
 html[data-theme="dark"] .app .input-group,
 html[data-theme="dark"] .app .py-input,
 html[data-theme="dark"] .app .quick-add-entry-mode {
-  background: rgba(40, 36, 48, 0.6) !important;
-  border-color: rgba(255, 255, 255, 0.06) !important;
-  color: #fff !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .input-group .input,
 html[data-theme="dark"] .app .py-input {
-  color: #fff !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .input-group .input::placeholder,
 html[data-theme="dark"] .app .py-input::placeholder {
-  color: rgba(255, 255, 255, 0.35) !important;
+  color: #71717a !important;
 }
 html[data-theme="dark"] .app .hour-card {
-  background: rgba(35, 32, 42, 0.6) !important;
-  border-color: rgba(255, 255, 255, 0.04) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
 }
 html[data-theme="dark"] .app .coach-v2-card,
 html[data-theme="dark"] .app .coach-msg,
 html[data-theme="dark"] .app .coach-bubble {
-  background: rgba(35, 32, 42, 0.7) !important;
-  border-color: rgba(255, 255, 255, 0.06) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .coach-v2-why {
-  background: rgba(60, 40, 55, 0.4) !important;
-  border-color: rgba(200, 140, 170, 0.12) !important;
+  background: rgba(255, 255, 255, 0.62) !important;
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+  color: #52525b !important;
 }
 html[data-theme="dark"] .app .coach-mode-selector button,
 html[data-theme="dark"] .app .coach-mode-btn {
-  background: rgba(40, 36, 48, 0.6) !important;
-  border-color: rgba(255, 255, 255, 0.06) !important;
-  color: rgba(255, 255, 255, 0.7) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
+}
+html[data-theme="dark"] .app .coach-mode-btn.active {
+  background: var(--ink-strong, #0a0a0c) !important;
+  color: #fafafa !important;
 }
 html[data-theme="dark"] .app .progress-wrap {
-  background: rgba(255, 255, 255, 0.06) !important;
+  background: rgba(10, 10, 12, 0.08) !important;
 }
 
-/* Center PY button in dark mode */
+/* Center PY button in dark mode — keep accent bubble on white nav */
 html[data-theme="dark"] .app .bottom-nav button[aria-label="Coach"] {
-  background: radial-gradient(circle at 40% 30%, rgba(80, 50, 65, 0.95), rgba(50, 30, 40, 0.8)) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.4), 0 3px 8px rgba(0, 0, 0, 0.2) !important;
+  background: radial-gradient(
+    circle at 32% 22%,
+    color-mix(in srgb, var(--theme-accent) 18%, #fff) 0%,
+    color-mix(in srgb, var(--theme-accent) 55%, #fff) 55%,
+    color-mix(in srgb, var(--theme-accent) 78%, transparent) 100%
+  ) !important;
+  border-color: rgba(255, 255, 255, 0.92) !important;
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--theme-accent) 35%, transparent), 0 4px 12px rgba(0, 0, 0, 0.08) !important;
 }
 
-/* COMPREHENSIVE: no black text in dark mode */
+/* Dark mode: readable copy on frosted surfaces */
 html[data-theme="dark"] .app span,
 html[data-theme="dark"] .app p,
 html[data-theme="dark"] .app div,
@@ -2010,60 +2023,53 @@ html[data-theme="dark"] .app li {
 }
 html[data-theme="dark"] .app [style*="color: var(--py-ink)"],
 html[data-theme="dark"] .app [style*="color:var(--py-ink)"] {
-  color: #fff !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
-html[data-theme="dark"] .app .panel-title .title,
-html[data-theme="dark"] .app .panel-top .title,
-html[data-theme="dark"] .app .empty-title,
-html[data-theme="dark"] .app .list-page-title,
-html[data-theme="dark"] .app .coach-v2-card-top,
-html[data-theme="dark"] .app .coach-v2-title {
-  color: #fff !important;
+html[data-theme="dark"] .app .list-row-title,
+html[data-theme="dark"] .app .habit-checkin-name,
+html[data-theme="dark"] .app .bedtime-title {
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .list-page-count,
 html[data-theme="dark"] .app .state-empty,
 html[data-theme="dark"] .app .empty,
 html[data-theme="dark"] .app .settings-hint,
 html[data-theme="dark"] .app .pct {
-  color: rgba(255, 255, 255, 0.7) !important;
+  color: #52525b !important;
 }
 html[data-theme="dark"] .app .daily-progress-copy,
 html[data-theme="dark"] .app .label,
 html[data-theme="dark"] .app select,
 html[data-theme="dark"] .app option {
-  color: rgba(255, 255, 255, 0.8) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
-html[data-theme="dark"] .app .bottom-nav span[style] {
-  color: rgba(255, 255, 255, 0.5) !important;
+html[data-theme="dark"] .app .bottom-nav .bottom-nav-label {
+  color: #52525b !important;
 }
-html[data-theme="dark"] .app .bottom-nav button[aria-current="page"] span:last-child {
-  color: rgba(200, 160, 180, 0.9) !important;
+html[data-theme="dark"] .app .bottom-nav-item.active .bottom-nav-label {
+  color: #fafafa !important;
 }
 html[data-theme="dark"] .app .btn {
-  color: rgba(255, 255, 255, 0.85) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .btn-primary {
   color: #fff !important;
 }
-html[data-theme="dark"] .app .check .item-text,
-html[data-theme="dark"] .app .checkmark + span {
-  color: rgba(255, 255, 255, 0.85) !important;
-}
 html[data-theme="dark"] .app .item-text-done {
-  color: rgba(255, 255, 255, 0.4) !important;
+  color: #71717a !important;
 }
 
 /* Notes page dark mode */
 html[data-theme="dark"] .app .notes-section,
 html[data-theme="dark"] .app .notes-section .note-card,
 html[data-theme="dark"] .app .notes-section textarea {
-  background: rgba(30, 28, 35, 0.6) !important;
-  color: #fff !important;
-  border-color: rgba(255, 255, 255, 0.06) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
 }
 html[data-theme="dark"] .app .notes-section .note-subject,
 html[data-theme="dark"] .app .notes-section .note-date {
-  color: rgba(255, 255, 255, 0.5) !important;
+  color: #52525b !important;
 }
 
 /* ═══════════════════════════════════════════════

@@ -17,7 +17,7 @@
 @media (min-width: 744px) {
   :root {
     --app-content-max: 600px;
-    --bottom-nav-clearance: 120px;
+    --bottom-nav-clearance: 108px;
     --screen-margin: clamp(20px, 3.5vw, 32px);
   }
 
@@ -63,10 +63,11 @@
     -webkit-backdrop-filter: none !important;
     border: none !important;
     box-shadow: none !important;
-    padding-top: var(--nav-coach-overhang, 48px) !important;
+    --nav-safe-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    padding-top: var(--nav-coach-peek, 6px) !important;
     padding-left: 14px !important;
     padding-right: 14px !important;
-    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: var(--nav-safe-bottom) !important;
   }
 
   .app .bottom-nav.bottom-nav--with-center.surface-dock::before {
@@ -129,7 +130,7 @@
 @media (min-width: 1024px) {
   :root {
     --app-content-max: 680px;
-    --bottom-nav-clearance: 124px;
+    --bottom-nav-clearance: 110px;
     --screen-margin: clamp(24px, 4vw, 40px);
   }
 
@@ -151,10 +152,11 @@
 
   .app .bottom-nav.bottom-nav--with-center.surface-dock,
   .app .bottom-nav.bottom-nav--with-center.surface-dock.bottom-nav--png {
-    padding-top: var(--nav-coach-overhang, 48px) !important;
+    --nav-safe-bottom: max(14px, env(safe-area-inset-bottom, 0px));
+    padding-top: var(--nav-coach-peek, 6px) !important;
     padding-left: 20px !important;
     padding-right: 20px !important;
-    padding-bottom: max(14px, env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: var(--nav-safe-bottom) !important;
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
@@ -162,7 +164,7 @@
 
   .app .bottom-nav.bottom-nav--with-center.surface-dock::before {
     border-radius: 28px;
-    bottom: max(14px, env(safe-area-inset-bottom, 0px));
+    bottom: 0;
   }
 
   .app .bottom-nav--png .bottom-nav-item {
@@ -187,7 +189,7 @@
 @media (min-width: 1280px) {
   :root {
     --app-content-max: 720px;
-    --bottom-nav-clearance: 128px;
+    --bottom-nav-clearance: 112px;
   }
 
   .app .bottom-nav.surface-dock,
@@ -206,13 +208,10 @@
     padding-top: calc(env(safe-area-inset-top, 0px) + 4px) !important;
   }
 
-  .bottom-nav--with-center.bottom-nav--png .bottom-nav-item--center {
-    transform: translateY(calc(-1 * var(--nav-coach-overhang, 48px) + 4px));
-  }
-
   .bottom-nav--with-center.bottom-nav--png .bottom-nav-item--center .dock-nav-icon-wrap--center {
     width: 72px;
     height: 72px;
+    margin-top: calc(-1 * var(--nav-coach-lift, 2px));
   }
 
   .coach-page-hero {
