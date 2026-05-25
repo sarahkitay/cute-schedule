@@ -74,12 +74,9 @@ export function normalizeNavOrder(raw, enabledModules) {
   for (const id of source) {
     const mod = CATALOG_BY_ID[id];
     if (!mod || seen.has(mod.id)) continue;
-    if (!enabled.has(mod.id) && !mod.alwaysNav) continue;
+    if (!mod.alwaysNav && !enabled.has(mod.id)) continue;
     seen.add(mod.id);
     out.push(mod.id);
-  }
-  for (const id of enabled) {
-    if (!seen.has(id)) out.push(id);
   }
   if (!seen.has("today")) out.unshift("today");
   return out;
@@ -117,6 +114,11 @@ export function getModulesInNav(navOrder, enabledModules) {
     .filter(Boolean);
 }
 
+/** Enabled modules pinned for home-screen access but not in the bottom nav. */
+export function getHomeScreenModules(navOrder, enabledModules) {
+  return getModulesNotInNav(navOrder, enabledModules);
+}
+
 export function addModuleToNav(moduleId, navOrder, enabledModules) {
   const mod = CATALOG_BY_ID[moduleId];
   if (!mod) return { navOrder, enabledModules };
@@ -151,21 +153,10 @@ export function reorderNavModule(fromId, toId, navOrder, enabledModules) {
   return order;
 }
 
-/** Build bottom dock items from v2 nav + legacy visibility. */
-export function buildMainDockItems({ navOrder, enabledModules, navVisibility, dockOrder }) {
+/** Build bottom dock items from explicit nav order (pinned tabs only). */
+export function buildMainDockItems({ navOrder, enabledModules }) {
   const enabled = normalizeEnabledModules(enabledModules);
-  let order = normalizeNavOrder(navOrder, enabled);
-
-  // Legacy profile dock: ensure visible core tabs appear if not in navOrder yet
-  if (navVisibility && typeof navVisibility === "object") {
-    const legacyOrder = Array.isArray(dockOrder) ? dockOrder : [];
-    for (const id of legacyOrder) {
-      const tab = resolveTabId(id);
-      if (CORE_NAV_VISIBILITY_KEYS.includes(tab) && navVisibility[tab] === true && !order.includes(tab)) {
-        order = [...order, tab];
-      }
-    }
-  }
+  const order = normalizeNavOrder(navOrder, enabled);
 
   const seen = new Set();
   const items = [];
@@ -173,9 +164,6 @@ export function buildMainDockItems({ navOrder, enabledModules, navVisibility, do
     const mod = CATALOG_BY_ID[moduleId];
     if (!mod || seen.has(mod.id)) continue;
     if (!mod.alwaysNav && !enabled.includes(mod.id)) continue;
-    if (!mod.alwaysNav && CORE_NAV_VISIBILITY_KEYS.includes(mod.tab) && navVisibility?.[mod.tab] === false) {
-      continue;
-    }
     seen.add(mod.id);
     const asset = getDockNavAsset(mod.id);
     items.push({

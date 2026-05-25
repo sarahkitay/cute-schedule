@@ -6,6 +6,7 @@ import {
   addModuleToNav,
   removeModuleFromNav,
   reorderNavModule,
+  getHomeScreenModules,
 } from "./appNavModel";
 
 /**
@@ -15,6 +16,8 @@ export function HomeModuleTray({
   navOrder,
   enabledModules,
   dockItems = [],
+  navLabelsVisible = true,
+  onNavLabelsVisibleChange,
   onNavPreferencesChange,
   onOpenModule,
 }) {
@@ -40,9 +43,9 @@ export function HomeModuleTray({
 
   const inNavIds = useMemo(() => new Set(inNav.map((m) => m.id)), [inNav]);
 
-  const notInNav = useMemo(
-    () => APP_MODULE_CATALOG.filter((m) => !m.alwaysNav && !inNavIds.has(m.id)),
-    [inNavIds]
+  const onHomeScreen = useMemo(
+    () => getHomeScreenModules(navOrder, enabledModules),
+    [navOrder, enabledModules]
   );
 
   function applyNav(nextOrder, nextEnabled) {
@@ -110,10 +113,17 @@ export function HomeModuleTray({
   return (
     <section className="home-module-tray scroll-reveal" aria-label="Customize navigation">
       <div className="home-module-tray-head">
-        <h3 className="home-module-tray-title">Navigation</h3>
-        <p className="home-module-tray-hint">
-          Matches your bottom nav bar. Drag to reorder, tap × to remove, or drag modules up from below to add.
-        </p>
+        <div className="home-module-tray-head-row">
+          <h3 className="home-module-tray-title">Navigation</h3>
+          <label className="home-module-tray-label-toggle">
+            <input
+              type="checkbox"
+              checked={navLabelsVisible}
+              onChange={(e) => onNavLabelsVisibleChange?.(e.target.checked)}
+            />
+            <span>Nav labels</span>
+          </label>
+        </div>
       </div>
 
       <p className="home-module-tray-section-label">In your nav bar</p>
@@ -129,9 +139,7 @@ export function HomeModuleTray({
           handleDropOnNav(null, e.dataTransfer.getData("text/module-id") || dragId);
         }}
       >
-        {inNav.length === 0 ? (
-          <p className="home-module-tray-empty">No modules in nav yet — add some below.</p>
-        ) : (
+        {inNav.length === 0 ? null : (
           inNav.map((mod) => {
             const asset = getDockNavAsset(mod.id);
             return (
@@ -174,57 +182,53 @@ export function HomeModuleTray({
         )}
       </div>
 
-      {notInNav.length > 0 ? (
-        <>
-          <p className="home-module-tray-section-label">Not in nav — drag or tap Add</p>
-          <div
-            className={`home-module-tray-grid${dropHint === "library" ? " is-drop-target" : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDropHint("library");
-            }}
-            onDragLeave={() => setDropHint(null)}
-            onDrop={(e) => {
-              e.preventDefault();
-              handleDropOnLibrary();
-            }}
-          >
-            {notInNav.map((mod) => {
-              const asset = getDockNavAsset(mod.id);
-              return (
-                <div
-                  key={mod.id}
-                  className={`home-module-tray-tile${dragId === mod.id ? " is-dragging" : ""}`}
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("text/module-id", mod.id);
-                    handleDragStart(mod.id);
-                  }}
-                  onDragEnd={handleDragEnd}
+      <p className="home-module-tray-section-label">On Home screen</p>
+      <div
+        className={`home-module-tray-grid home-module-tray-grid--home${dropHint === "library" ? " is-drop-target" : ""}${onHomeScreen.length === 0 ? " is-empty" : ""}`}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDropHint("library");
+        }}
+        onDragLeave={() => setDropHint(null)}
+        onDrop={(e) => {
+          e.preventDefault();
+          handleDropOnLibrary();
+        }}
+      >
+        {onHomeScreen.length === 0 ? null : (
+          onHomeScreen.map((mod) => {
+            const asset = getDockNavAsset(mod.id);
+            return (
+              <div
+                key={mod.id}
+                className={`home-module-tray-tile${dragId === mod.id ? " is-dragging" : ""}`}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/module-id", mod.id);
+                  handleDragStart(mod.id);
+                }}
+                onDragEnd={handleDragEnd}
+              >
+                <button
+                  type="button"
+                  className="home-module-tray-tile-main"
+                  onClick={() => onOpenModule(mod.tab)}
                 >
-                  <button
-                    type="button"
-                    className="home-module-tray-tile-main"
-                    onClick={() => onOpenModule(mod.tab)}
-                  >
-                    <DockNavIcon tabId={mod.id} active={false} />
-                    <span className="home-module-tray-label">{asset.label}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="home-module-tray-add"
-                    onClick={() => addToNav(mod.id)}
-                  >
-                    Add
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        <p className="home-module-tray-all-in">All modules are in your nav bar.</p>
-      )}
+                  <DockNavIcon tabId={mod.id} active={false} />
+                  <span className="home-module-tray-label">{asset.label}</span>
+                </button>
+                <button
+                  type="button"
+                  className="home-module-tray-add"
+                  onClick={() => addToNav(mod.id)}
+                >
+                  Add to nav
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
     </section>
   );
 }

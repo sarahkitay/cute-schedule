@@ -10,6 +10,9 @@ const INSTRUCTIONS = {
         <strong>Task notes:</strong> On Today, tap the small <strong>▸ / ▾</strong> arrow on a task row to open details; notes live there only. The <strong>⋯</strong> menu is for move, delete, time, lists, etc.
       </p>
       <p>
+        <strong>Navigation:</strong> Use the <strong>Navigation</strong> section to choose what appears in the bottom nav bar vs on Home only. Drag between sections, tap × to remove from the nav, or tap <strong>Add to nav</strong>. Toggle <strong>Nav labels</strong> to show or hide names under dock icons.
+      </p>
+      <p>
         When you open Today, the schedule scrolls to your <strong>next incomplete</strong> task and highlights it. Habits, routines, and dock cards stay above the timeline. To jump to another date, use the <strong>Plan</strong> tab and the calendar icon in the header.
       </p>
       <p>

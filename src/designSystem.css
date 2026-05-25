@@ -879,7 +879,7 @@ html[data-theme="dark"] .app .greeting-tagline {
   left: 0 !important;
   right: 0 !important;
   display: flex !important;
-  align-items: flex-end !important;
+  align-items: center !important;
   justify-content: space-around !important;
   padding: 10px 12px !important;
   padding-bottom: max(14px, env(safe-area-inset-bottom)) !important;
@@ -937,6 +937,9 @@ html[data-theme="dark"] .app .greeting-tagline {
 .app .quick-add-stack {
   padding: 0 !important;
   margin-bottom: 20px !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 .app .quick-add-top-bar {
   margin-bottom: 12px !important;
@@ -993,10 +996,10 @@ html[data-theme="dark"] .app .greeting-tagline {
   color: var(--py-ink-muted) !important;
   font-size: 14px !important;
 }
-/* The add button: prominent pink circle with + */
+/* The add button: prominent pink circle with + (Type mode only) */
 .app .input-group .btn-primary,
-.app .quick-add-stack .btn-primary,
-.app .quick-add-bar .btn-primary {
+.app .quick-add-bar .btn-primary,
+.app .quick-add-stack .quick-add-submit-btn {
   width: 42px !important;
   height: 42px !important;
   min-width: 42px !important;
@@ -1013,8 +1016,148 @@ html[data-theme="dark"] .app .greeting-tagline {
   transition: all 200ms ease !important;
 }
 .app .input-group .btn-primary:active,
-.app .quick-add-stack .btn-primary:active {
+.app .quick-add-bar .btn-primary:active,
+.app .quick-add-stack .quick-add-submit-btn:active {
   transform: scale(0.92) !important;
+}
+
+/* Details form: iOS grouped inset card */
+.app .quick-add-details-form {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.82) !important;
+  border-radius: 18px !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(24px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(160%) !important;
+  box-shadow:
+    0 4px 20px rgba(140, 100, 90, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92) !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: 100% !important;
+}
+.app .quick-add-details-form .quick-row {
+  display: grid !important;
+  grid-template-columns: minmax(68px, 92px) minmax(0, 1fr) !important;
+  gap: 10px !important;
+  align-items: center !important;
+  margin: 0 !important;
+  padding: 11px 14px !important;
+  border-bottom: 0.5px solid rgba(0, 0, 0, 0.06) !important;
+}
+.app .quick-add-details-form .quick-row:last-of-type {
+  border-bottom: none !important;
+}
+.app .quick-add-details-form .quick-row .label {
+  min-width: 0 !important;
+  margin: 0 !important;
+  font-size: 15px !important;
+  font-weight: 500 !important;
+  color: var(--py-ink, #3d3538) !important;
+  line-height: 1.25 !important;
+}
+.app .quick-add-details-form .input {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 8px 10px !important;
+  min-height: 36px !important;
+  font-size: 15px !important;
+  line-height: 1.3 !important;
+  border-radius: 10px !important;
+  border: 0.5px solid rgba(0, 0, 0, 0.08) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: var(--py-ink, #3d3538) !important;
+  text-align: right !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+}
+.app .quick-add-details-form .input:focus {
+  border-color: rgba(212, 112, 138, 0.45) !important;
+  box-shadow: 0 0 0 3px rgba(232, 169, 183, 0.22) !important;
+  outline: none !important;
+}
+.app .quick-add-details-form .quick-detail-energy-row {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  padding: 12px 14px !important;
+}
+.app .quick-add-details-form .quick-detail-energy-row .label {
+  padding-top: 0 !important;
+}
+.app .quick-add-details-form .quick-detail-energy-pills {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
+}
+.app .quick-add-details-form .quick-detail-energy-pill {
+  flex: 1 1 calc(33.333% - 6px) !important;
+  min-width: 0 !important;
+  padding: 9px 8px !important;
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  border-radius: 999px !important;
+  border: 0.5px solid rgba(0, 0, 0, 0.08) !important;
+  background: rgba(255, 255, 255, 0.65) !important;
+  color: var(--py-ink-secondary, #6b6165) !important;
+  text-align: center !important;
+}
+.app .quick-add-details-form .quick-detail-energy-pill.active {
+  background: linear-gradient(140deg, #F4B8CA 0%, #E89AAE 50%, #D4708A 100%) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 4px 12px rgba(212, 112, 138, 0.28) !important;
+}
+.app .quick-add-details-form .quick-detail-actions {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+  margin: 0 !important;
+  padding: 12px 14px 14px !important;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.06) !important;
+  background: rgba(255, 248, 250, 0.45) !important;
+}
+.app .quick-add-details-form .quick-details-submit {
+  width: 100% !important;
+  min-height: 44px !important;
+  padding: 0 18px !important;
+  border-radius: 999px !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  background: linear-gradient(140deg, #F4B8CA 0%, #E89AAE 50%, #D4708A 100%) !important;
+  box-shadow: 0 6px 18px rgba(212, 112, 138, 0.32) !important;
+  color: #fff !important;
+}
+.app .quick-add-details-form .quick-details-past-btn {
+  width: 100% !important;
+  min-height: 40px !important;
+  border-radius: 999px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 0.5px solid rgba(0, 0, 0, 0.08) !important;
+  color: var(--py-accent-deep, #c45f7a) !important;
+  justify-content: center !important;
+}
+.app .quick-add-details-form .quick-add-past-repeats {
+  margin: 0 !important;
+  padding: 12px 14px 14px !important;
+  border-top: 0.5px solid rgba(0, 0, 0, 0.06) !important;
+  border-radius: 0 !important;
+  background: rgba(255, 255, 255, 0.5) !important;
+}
+.app .quick-add-details-form .quick-detail-task-input {
+  text-align: left !important;
+}
+.app .quick-add-details-form .quick-detail-task-input::placeholder {
+  text-align: left !important;
+  color: var(--py-ink-muted) !important;
 }
 
 /* ─── Sitewide spacing audit ─── */

@@ -506,6 +506,7 @@ function loadHealthFromDisk() {
 const ROUTINE_TEMPLATE_KEY = "cute_schedule_routine_template_v1";
 const ROUTINE_MORNING_TEMPLATE_KEY = "cute_schedule_routine_morning_v1";
 const ROUTINE_SCHEDULE_KEY = "cute_schedule_routine_schedule_v1"; // { morning: 'every' | [0..6], night: 'every' | [0..6] }
+const NAV_LABELS_VISIBLE_KEY = "cute_schedule_nav_labels_visible_v1";
 
 const ENERGY_LEVELS = {
   LIGHT: { icon: LightEnergyIcon, label: "Light", color: "#90EE90" },
@@ -1922,22 +1923,6 @@ function HourCard({
 function MorningRoutine({ routine, onToggle }) {
   const allDone = (routine || []).length > 0 && (routine || []).every((r) => r.done);
   const doneCount = (routine || []).filter(r => r.done).length;
-  const routineIcons = {
-    "wake up": "sunIcon.png",
-    "stretch": "sunIcon.png",
-    "drink": "watericon.png",
-    "water": "watericon.png",
-    "eat": "forkandknife.png",
-    "breakfast": "forkandknife.png",
-    "food": "forkandknife.png",
-  };
-  function getRoutineIcon(text) {
-    const lower = (text || "").toLowerCase();
-    for (const [key, img] of Object.entries(routineIcons)) {
-      if (lower.includes(key)) return img;
-    }
-    return "sunIcon.png";
-  }
   return (
     <div className="bedtime morning-routine" style={{ padding: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -1954,7 +1939,6 @@ function MorningRoutine({ routine, onToggle }) {
               <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} style={{ width: 18, height: 18, borderRadius: 5, accentColor: "#D4708A", cursor: "pointer" }} />
               <span style={{ fontSize: 15, fontWeight: 400, color: item.done ? "var(--py-ink-muted)" : "var(--py-ink)", textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
             </label>
-            <img src={`${import.meta.env.BASE_URL}${getRoutineIcon(item.text)}`} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "cover" }} />
           </div>
         ))}
       </div>
@@ -2362,6 +2346,13 @@ export default function App() {
     } catch {}
     return [...APP_DEFAULT_NAV_ORDER];
   });
+  const [navLabelsVisible, setNavLabelsVisible] = useState(() => {
+    try {
+      const raw = localStorage.getItem(NAV_LABELS_VISIBLE_KEY);
+      if (raw === "0") return false;
+    } catch {}
+    return true;
+  });
   const [coachingTone, setCoachingTone] = useState(() => {
     try { return localStorage.getItem("cute_schedule_coaching_tone_v1") || "gentle"; } catch { return "gentle"; }
   });
@@ -2400,6 +2391,11 @@ export default function App() {
 
   useEffect(() => { try { localStorage.setItem("cute_schedule_enabled_modules_v1", JSON.stringify(enabledModules)); } catch {} }, [enabledModules]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_nav_order_v1", JSON.stringify(navOrder)); } catch {} }, [navOrder]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(NAV_LABELS_VISIBLE_KEY, navLabelsVisible ? "1" : "0");
+    } catch {}
+  }, [navLabelsVisible]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_coaching_tone_v1", coachingTone); } catch {} }, [coachingTone]);
 
   const applyNavPreferences = useCallback((nextOrder, nextEnabled) => {
@@ -6214,10 +6210,8 @@ export default function App() {
     return buildMainDockItems({
       navOrder,
       enabledModules,
-      navVisibility: profile.navVisibility,
-      dockOrder: profile.dockOrder,
     });
-  }, [navOrder, enabledModules, profile.navVisibility, profile.dockOrder]);
+  }, [navOrder, enabledModules]);
 
   // V2 navigation modules for the new FloatingNav component
   const navModules = useMemo(() => getNavModules(navOrder, enabledModules), [navOrder, enabledModules]);
@@ -6272,14 +6266,6 @@ export default function App() {
   useEffect(() => {
     if (tab === "list") setTab("plan");
   }, [tab]);
-
-  useEffect(() => {
-    const dockTabs = new Set(mainDockItems.map((item) => item.id));
-    const coreTabs = ["plan", "health", "coach", "notes", "finance"];
-    if (!coreTabs.includes(tab)) return;
-    if (dockTabs.has(tab)) return;
-    setTab(mainDockItems[0]?.id || "today");
-  }, [tab, mainDockItems]);
 
   useLayoutEffect(() => {
     if (authWaiting || showLoginGate) return;
@@ -6460,14 +6446,25 @@ export default function App() {
 
             {/* Bottom navigation: PNG dock icons */}
             <nav
-              className="bottom-nav surface-dock bottom-nav--png"
+              className={[
+                "bottom-nav",
+                "surface-dock",
+                "bottom-nav--png",
+                "bottom-nav--with-center",
+                mainDockItems.length >= 5 ? "bottom-nav--compact" : "",
+                navLabelsVisible ? "" : "bottom-nav--hide-labels",
+              ].filter(Boolean).join(" ")}
               aria-label="Main"
               style={{ "--dock-count": mainDockItems.length }}
             >
               {(() => {
-                const coachItem = mainDockItems.find((item) => item.centerAction);
-                const sideItems = coachItem ? mainDockItems.filter((item) => !item.centerAction) : mainDockItems;
-                const centerSplit = coachItem ? Math.ceil(sideItems.length / 2) : sideItems.length;
+                const coachItem = mainDockItems.find(
+                  (item) => item.centerAction || item.id === "coach" || item.moduleId === "coach",
+                );
+                const sideItems = coachItem
+                  ? mainDockItems.filter((item) => item.id !== coachItem.id)
+                  : mainDockItems;
+                const centerSplit = Math.floor(sideItems.length / 2);
                 const beforeCenter = sideItems.slice(0, centerSplit);
                 const afterCenter = sideItems.slice(centerSplit);
 
@@ -6487,10 +6484,16 @@ export default function App() {
                   </button>
                 );
 
+                if (!coachItem) {
+                  return sideItems.map(renderDockButton);
+                }
+
                 return (
                   <>
-                    {beforeCenter.map(renderDockButton)}
-                    {coachItem ? (
+                    <div className="bottom-nav-side bottom-nav-side--start">
+                      {beforeCenter.map(renderDockButton)}
+                    </div>
+                    <div className="bottom-nav-center">
                       <button
                         key={coachItem.id}
                         type="button"
@@ -6501,8 +6504,10 @@ export default function App() {
                         <DockNavIcon tabId={coachItem.moduleId || coachItem.id} active={tab === coachItem.id} variant="center" />
                         <span className="bottom-nav-label">{coachItem.label}</span>
                       </button>
-                    ) : null}
-                    {afterCenter.map(renderDockButton)}
+                    </div>
+                    <div className="bottom-nav-side bottom-nav-side--end">
+                      {afterCenter.map(renderDockButton)}
+                    </div>
                   </>
                 );
               })()}
@@ -6972,6 +6977,8 @@ export default function App() {
                 navOrder={navOrder}
                 enabledModules={enabledModules}
                 dockItems={mainDockItems}
+                navLabelsVisible={navLabelsVisible}
+                onNavLabelsVisibleChange={setNavLabelsVisible}
                 onNavPreferencesChange={applyNavPreferences}
                 onOpenModule={(moduleTab) => setTab(moduleTab)}
               />
