@@ -760,7 +760,7 @@ html[data-theme="dark"] .app .quick-add-details-form .quick-detail-actions {
   border-top-color: rgba(255, 255, 255, 0.08) !important;
 }
 
-/* Bottom nav: stay within viewport on iPhone */
+/* Bottom nav: stay within viewport on iPhone; coach bubble overflows above strip */
 @media (max-width: 743px) {
   .app .bottom-nav.bottom-nav--with-center.surface-dock {
     width: 100% !important;
@@ -770,34 +770,32 @@ html[data-theme="dark"] .app .quick-add-details-form .quick-detail-actions {
     transform: none !important;
     margin: 0 !important;
     box-sizing: border-box !important;
-    overflow: hidden !important;
-    align-items: center !important;
-    padding-top: 6px !important;
+    overflow: visible !important;
+    align-items: flex-end !important;
     padding-left: max(2px, env(safe-area-inset-left)) !important;
     padding-right: max(2px, env(safe-area-inset-right)) !important;
-    padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
   }
 
   .bottom-nav--with-center .bottom-nav-side {
     flex: 1 1 0 !important;
     min-width: 0 !important;
-    overflow: hidden !important;
+    overflow: visible !important;
     gap: 0 !important;
-    align-items: center !important;
-    align-self: center !important;
+    align-items: flex-end !important;
+    align-self: stretch !important;
   }
 
   .bottom-nav--with-center .bottom-nav-center {
     align-self: flex-end !important;
-    padding-bottom: 0 !important;
+    overflow: visible !important;
   }
 
   .bottom-nav--with-center .bottom-nav-side .bottom-nav-item {
     flex: 1 1 0 !important;
     min-width: 0 !important;
     max-width: none !important;
-    padding: 2px 0 0 !important;
-    justify-content: center !important;
+    padding: 0 0 2px !important;
+    justify-content: flex-end !important;
   }
 
   .bottom-nav--with-center .bottom-nav-side .bottom-nav-label {
@@ -813,14 +811,5 @@ html[data-theme="dark"] .app .quick-add-details-form .quick-detail-actions {
   .bottom-nav--with-center .dock-nav-icon-wrap:not(.dock-nav-icon-wrap--center) {
     width: 40px !important;
     height: 40px !important;
-  }
-
-  .bottom-nav--compact .bottom-nav-item--center .dock-nav-icon-wrap--center {
-    width: 62px !important;
-    height: 62px !important;
-  }
-
-  .bottom-nav--compact.bottom-nav--png .bottom-nav-item--center {
-    margin-top: -14px !important;
   }
 }

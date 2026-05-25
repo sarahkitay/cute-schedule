@@ -1,6 +1,6 @@
 :root {
   /* Space above fixed bottom nav + home indicator so toasts / banners sit clear */
-  --bottom-nav-clearance: 88px;
+  --bottom-nav-clearance: 112px;
   --radius: 6px;
   --radius-sm: 4px;
   --radius-md: 6px;
@@ -4882,38 +4882,80 @@ textarea.input {
   gap: 2px;
 }
 
-/* Three-zone dock: side tabs flank a fixed center Coach button */
+/* Coach bubble rises above the nav strip; strip height matches side icon row */
 .app .bottom-nav.bottom-nav--with-center.surface-dock {
+  --nav-coach-overhang: 48px;
+  --nav-strip-height: 56px;
+  position: fixed !important;
+  overflow: visible !important;
   justify-content: stretch !important;
   gap: 0 !important;
-  align-items: center !important;
+  align-items: flex-end !important;
+  padding-top: var(--nav-coach-overhang) !important;
+  padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
+  min-height: calc(var(--nav-strip-height) + var(--nav-coach-overhang));
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  isolation: isolate;
 }
+
+.app .bottom-nav.bottom-nav--with-center.surface-dock::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: auto;
+  bottom: max(8px, env(safe-area-inset-bottom));
+  height: var(--nav-strip-height);
+  z-index: 0;
+  pointer-events: none;
+  background: rgba(255, 250, 248, 0.92);
+  backdrop-filter: blur(40px) saturate(1.6);
+  -webkit-backdrop-filter: blur(40px) saturate(1.6);
+  border-top: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 -2px 24px rgba(0, 0, 0, 0.04);
+}
+
+.bottom-nav--with-center .bottom-nav-side,
+.bottom-nav--with-center .bottom-nav-center {
+  position: relative;
+  z-index: 1;
+}
+
 .bottom-nav--with-center .bottom-nav-side {
   flex: 1 1 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   min-width: 0;
   gap: 2px;
   align-self: stretch;
+  padding-bottom: 4px;
 }
+
 .bottom-nav--with-center .bottom-nav-side--start {
   justify-content: flex-end;
 }
+
 .bottom-nav--with-center .bottom-nav-side--end {
   justify-content: flex-start;
 }
+
 .bottom-nav--with-center .bottom-nav-center {
   flex: 0 0 auto;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   align-self: flex-end;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
 }
+
 .bottom-nav--with-center .bottom-nav-side .bottom-nav-item {
   flex: 0 1 auto;
   min-width: 0;
-  justify-content: center;
+  justify-content: flex-end;
 }
 .bottom-nav--hide-labels .bottom-nav-side .bottom-nav-label,
 .bottom-nav--hide-labels .bottom-nav-center .bottom-nav-label {
@@ -4927,12 +4969,16 @@ textarea.input {
   width: 40px;
   height: 40px;
 }
-.bottom-nav--compact.bottom-nav--png .bottom-nav-item--center {
-  margin-top: -16px;
+.bottom-nav--compact.bottom-nav--with-center.surface-dock {
+  --nav-coach-overhang: 40px;
+  --nav-strip-height: 52px;
 }
 .bottom-nav--compact .bottom-nav-item--center .dock-nav-icon-wrap--center {
-  width: 68px;
-  height: 68px;
+  width: 76px;
+  height: 76px;
+}
+.bottom-nav--compact.bottom-nav--png .bottom-nav-item--center {
+  transform: translateY(calc(-1 * var(--nav-coach-overhang, 40px) + 6px));
 }
 
 .bottom-nav--png .bottom-nav-item {
@@ -4952,12 +4998,13 @@ textarea.input {
 .bottom-nav--png .bottom-nav-item--center {
   flex: 0 0 auto;
   max-width: none;
-  margin-top: -18px;
+  margin-top: 0;
   padding-bottom: 0;
+  transform: translateY(calc(-1 * var(--nav-coach-overhang, 48px) + 6px));
 }
 .bottom-nav--png .bottom-nav-item--center .dock-nav-icon-wrap--center {
-  width: 76px;
-  height: 76px;
+  width: 92px;
+  height: 92px;
   border-radius: 50%;
   background: radial-gradient(circle at 32% 22%, rgba(255, 235, 242, 1), rgba(248, 175, 200, 0.88) 55%, rgba(232, 130, 160, 0.75));
   border: 3.5px solid rgba(255, 255, 255, 0.96);

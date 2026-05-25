@@ -879,7 +879,7 @@ html[data-theme="dark"] .app .greeting-tagline {
   left: 0 !important;
   right: 0 !important;
   display: flex !important;
-  align-items: center !important;
+  align-items: flex-end !important;
   justify-content: space-around !important;
   padding: 10px 12px !important;
   padding-bottom: max(14px, env(safe-area-inset-bottom)) !important;
@@ -891,6 +891,13 @@ html[data-theme="dark"] .app .greeting-tagline {
   border-top: none !important;
   box-shadow: 0 -2px 24px rgba(0, 0, 0, 0.04) !important;
   z-index: 100 !important;
+}
+
+.app .bottom-nav.bottom-nav--with-center.surface-dock {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
 }
 .app .bottom-nav-item {
   display: flex !important;
@@ -1887,6 +1894,16 @@ html[data-theme="dark"] .app .surface-glass {
 html[data-theme="dark"] .app .bottom-nav.surface-dock {
   background: rgba(24, 22, 28, 0.92) !important;
   border-top-color: rgba(255, 255, 255, 0.04) !important;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3) !important;
+}
+html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock::before {
+  background: rgba(24, 22, 28, 0.92) !important;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.3) !important;
 }
 html[data-theme="dark"] .app .bottom-nav button span[style] {

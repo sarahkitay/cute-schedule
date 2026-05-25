@@ -6,7 +6,7 @@ export const DOCK_NAV_ASSETS = {
   plan: { label: "Plan", image: "planIcon.png", iconSize: DOCK_NAV_SIZE, iconScale: 1.22 },
   list: { label: "Plan", image: "tasklist.png", iconSize: DOCK_NAV_SIZE, iconScale: 1.18 },
   monthly: { label: "Goals", image: "monthly.png", iconSize: DOCK_NAV_SIZE },
-  coach: { label: "Coach", image: "PYIcon.png", iconSize: DOCK_NAV_SIZE, centerImage: "PYIcon.png", centerSize: 64 },
+  coach: { label: "Coach", image: "PYIcon.png", iconSize: DOCK_NAV_SIZE, centerImage: "PYIcon.png", centerSize: 76 },
   insights: { label: "Insights", image: "InsightsIcon.png", iconSize: DOCK_NAV_SIZE, iconScale: 1.08 },
   health: { label: "Fitness", image: "fitness.png", iconSize: DOCK_NAV_SIZE },
   finance: { label: "Finance", image: "finance.png", iconSize: DOCK_NAV_SIZE },
