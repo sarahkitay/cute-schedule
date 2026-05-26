@@ -549,15 +549,128 @@
 }
 
 /* ─── Streak Badge ─── */
+.py-streak-card {
+  position: relative;
+}
+.py-streak-tap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 16px;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 150ms ease, background 150ms ease;
+}
+.py-streak-tap:hover {
+  background: rgba(255, 255, 255, 0.35);
+}
+.py-streak-tap:active {
+  transform: scale(0.97);
+}
 .py-streak {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--py-space-2);
   padding: 0;
 }
 .py-streak-card .py-streak {
   margin-bottom: 0;
+}
+.py-streak__stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.py-streak__flag {
+  position: relative;
+  display: inline-block;
+  padding: 3px 9px 5px;
+  font-family: var(--py-font-display);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 14%, rgba(255, 255, 255, 0.94));
+  border: 1.5px solid var(--theme-accent);
+  border-radius: 5px 5px 2px 2px;
+  box-shadow: 0 2px 6px color-mix(in srgb, var(--theme-accent) 22%, transparent);
+}
+.py-streak__flag::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -5px;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 5px solid var(--theme-accent);
+}
+.py-streak__main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--py-space-2);
+}
+html[data-theme="dark"] .py-streak__flag {
+  background: color-mix(in srgb, var(--theme-accent) 16%, rgba(255, 255, 255, 0.96));
+  color: color-mix(in srgb, var(--theme-accent) 88%, #0a0a0c);
+}
+.py-streak-tip {
+  margin-top: 12px;
+  padding: 12px 14px;
+  width: 100%;
+  max-width: 220px;
+  text-align: center;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 18%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  animation: py-streak-tip-in 200ms ease;
+}
+@keyframes py-streak-tip-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.py-streak-tip__text {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--py-ink, var(--text));
+}
+.py-streak-tip__detail {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--py-ink-secondary, var(--text-soft));
+}
+html[data-theme="dark"] .py-streak-tip {
+  background: rgba(255, 255, 255, 0.94);
+  border-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28));
+}
+html[data-theme="dark"] .py-streak-tip__text {
+  color: var(--ink-strong, #0a0a0c);
+}
+html[data-theme="dark"] .py-streak-tip__detail {
+  color: #52525b;
+}
+html[data-theme="dark"] .py-streak-tap:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
 .py-streak__flame-img {
   width: 32px;
@@ -571,10 +684,24 @@
   filter: drop-shadow(0 2px 6px rgba(255, 120, 50, 0.3));
 }
 .py-streak__count {
-  font-size: 34px;
-  font-weight: var(--py-weight-bold);
-  color: var(--py-ink);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
   line-height: 1;
+}
+.py-streak__digit {
+  font-family: var(--py-font-display);
+  font-size: 36px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: color-mix(in srgb, var(--theme-accent) 10%, rgba(255, 255, 255, 0.94));
+  -webkit-text-stroke: 2.5px var(--theme-accent);
+  paint-order: stroke fill;
+}
+html[data-theme="dark"] .py-streak__digit {
+  color: color-mix(in srgb, var(--theme-accent) 12%, rgba(255, 255, 255, 0.96));
+  -webkit-text-stroke: 2.5px var(--theme-accent);
 }
 .py-streak__label {
   font-size: var(--py-text-caption);
@@ -812,11 +939,28 @@
   font-weight: 400;
   color: var(--py-ink-tertiary);
 }
+.app .top-left-today {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.app .header-brand-py-logo {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  display: block;
+  margin-top: 2px;
+}
 .app .top-left-greeting {
   display: flex;
   flex-direction: column;
   gap: 4px;
   margin-bottom: 2px;
+  flex: 1;
+  min-width: 0;
 }
 .app .top-left-greeting .today-greeting-title {
   font-size: 24px;
@@ -1832,6 +1976,9 @@ html[data-theme="dark"] .app .notes-search-input {
   grid-template-columns: 1fr 1fr;
   gap: var(--py-space-4);
 }
+.today-focus-streak-row {
+  margin-bottom: var(--py-space-4);
+}
 
 /* ─── Medication Item ─── */
 .py-med-item {
@@ -1966,8 +2113,8 @@ html[data-theme="dark"] .app .bottom-nav button[aria-current="page"] span[style]
 }
 
 /* Dark mode: page/module PNGs only (header + dock use SVG) */
-html[data-theme="dark"] .app img[src*="icon"]:not(.header-brand-py-img),
-html[data-theme="dark"] .app img[src*="Icon"]:not(.header-brand-py-img),
+html[data-theme="dark"] .app img[src*="icon"]:not(.header-brand-py-logo),
+html[data-theme="dark"] .app img[src*="Icon"]:not(.header-brand-py-logo),
 html[data-theme="dark"] .app img[src*="fire"],
 html[data-theme="dark"] .app img[src*="water"],
 html[data-theme="dark"] .app img[src*="sun"],
@@ -2053,8 +2200,27 @@ html[data-theme="dark"] .app .progress-fill {
 }
 
 /* Today's Focus progress — white bubble in dark mode */
-.today-focus-progress {
-  margin-bottom: 10px;
+#today-tasks-section {
+  scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 64px);
+}
+
+.today-focus-card {
+  display: block;
+  width: 100%;
+  margin: 0;
+  border: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+.today-focus-card:hover {
+  box-shadow: var(--py-shadow-lg), var(--py-shadow-inset-top);
+}
+.today-focus-card:active {
+  transform: scale(0.99);
 }
 .today-focus-progress__track {
   position: relative;

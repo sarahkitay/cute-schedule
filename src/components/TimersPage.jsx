@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
+import { FeatureGate } from "./FeatureGate.jsx";
 import { GlassCard } from "./GlassCard";
 import { PillButton } from "./PillButton";
 import { SegmentedControl } from "./SegmentedControl";
@@ -235,6 +236,7 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
       )}
 
       {section === "alarms" && (
+        <FeatureGate feature="advanced_alarms">
         <>
           <div className="timers-alarm-toolbar">
             <PillButton variant="primary" size="sm" onClick={() => setShowAddAlarm((v) => !v)}>
@@ -413,6 +415,7 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
             </ul>
           )}
         </>
+        </FeatureGate>
       )}
 
       {section === "history" && (

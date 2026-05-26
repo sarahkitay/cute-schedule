@@ -15,3 +15,7 @@ export const FREE_OPTIONAL_MODULE_LIMIT = 6;
 export const SKIP_LOGIN_STORAGE_KEY = "proyou_skip_login_v1";
 
 export const SUBSCRIPTION_SNAPSHOT_KEY = "proyou_subscription_snapshot_v1";
+
+/** First 30 days after first app open — meds, fitness, alarms included */
+export const APP_TRIAL_START_KEY = "proyou_app_trial_start_v1";
+export const APP_TRIAL_DAYS = 30;

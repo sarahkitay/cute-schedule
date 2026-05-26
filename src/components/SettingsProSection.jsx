@@ -8,6 +8,9 @@ export function SettingsProSection() {
     trialActive,
     subscriptionExpired,
     promptsRemainingToday,
+    appTrialActive,
+    appTrialDaysLeft,
+    appTrialEnded,
     openUpgrade,
     restorePurchases,
     loading,
@@ -21,9 +24,13 @@ export function SettingsProSection() {
         : subscriptionExpired
           ? "Subscription expired"
           : "Pro active"
-      : Number.isFinite(promptsRemainingToday)
-        ? `${promptsRemainingToday} coach prompt${promptsRemainingToday === 1 ? "" : "s"} left today`
-        : "Free plan";
+      : appTrialActive
+        ? `${appTrialDaysLeft} day${appTrialDaysLeft === 1 ? "" : "s"} left — meds, fitness & alarms free`
+        : appTrialEnded
+          ? "30-day welcome access ended"
+          : Number.isFinite(promptsRemainingToday)
+            ? `${promptsRemainingToday} coach prompt${promptsRemainingToday === 1 ? "" : "s"} left today`
+            : "Free plan";
 
   return (
     <div className="settings-section pro-settings-card surface-glass">
@@ -32,7 +39,11 @@ export function SettingsProSection() {
       {!isPro ? (
         <>
           <p className="settings-hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            30-day free trial, then $4.99/month. Unlimited coach, meds, insights, cloud backup, and more.
+            {appTrialActive
+              ? `Meds, fitness, and alarms are free for your first 30 days (${appTrialDaysLeft} day${appTrialDaysLeft === 1 ? "" : "s"} left). After that, they’re part of ProYou Pro — $4.99/mo after a 30-day Pro trial.`
+              : appTrialEnded
+                ? "Your first 30 days of meds, fitness, and alarms have ended. ProYou Pro unlocks them again, plus unlimited coach and more."
+                : "30-day free Pro trial, then $4.99/month. Unlimited coach, cloud backup, and more."}
           </p>
           <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8 }}>
             <button type="button" className="btn btn-primary btn-sm" onClick={() => openUpgrade("cloud_sync")}>

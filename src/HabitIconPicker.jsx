@@ -41,3 +41,20 @@ export function HabitIconBadge({ iconId, className = "" }) {
     </span>
   );
 }
+
+/** Build = green dot; break = muted rose dot (no text label). */
+export function HabitDirectionDot({ direction, className = "" }) {
+  const isBreak = direction === "break";
+  return (
+    <span
+      className={[
+        "habit-direction-dot",
+        isBreak ? "habit-direction-dot--break" : "habit-direction-dot--build",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      aria-hidden
+    />
+  );
+}

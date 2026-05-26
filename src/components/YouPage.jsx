@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { HabitDirectionDot } from "../HabitIconPicker";
 import { DockNavIcon } from "../DockNavIcon";
 import { getDockNavAsset } from "../dockNavAssets";
 import {
@@ -34,17 +35,6 @@ export function YouPage({
       id: mod.id,
       tab: mod.tab,
       label: asset.label,
-      desc: {
-        plan: "Today's task list",
-        monthly: "Objectives & tracking",
-        coach: "Schedule, fitness & finance coaching",
-        you: "Profile & settings",
-        health: "Workouts, macros & programs",
-        medications: "Tracking & reminders",
-        finance: "Income, spending & patterns",
-        notes: "Thoughts, journal, ideas",
-        timers: "Focus & routine timers",
-      }[mod.id] || asset.label,
       img: getDockNavAsset(mod.id).image,
     };
   });
@@ -112,7 +102,7 @@ export function YouPage({
           {(habitTracker.habits || []).map(h => (
             <div key={h.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid rgba(0,0,0,0.04)" }}>
               <span style={{ flex: 1, fontSize: 15, fontWeight: 500 }}>{h.label}</span>
-              <span style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 999, background: h.direction === "break" ? "rgba(212,107,107,0.1)" : "rgba(232,169,183,0.15)", color: h.direction === "break" ? "#B85555" : "#D4708A", textTransform: "uppercase" }}>{h.direction}</span>
+              <HabitDirectionDot direction={h.direction} />
               <button type="button" onClick={() => removeHabit(h.id)} style={{ width: 28, height: 28, borderRadius: "50%", border: "1px solid rgba(0,0,0,0.06)", background: "rgba(255,255,255,0.7)", cursor: "pointer", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
             </div>
           ))}
@@ -209,7 +199,6 @@ export function YouPage({
                 <DockNavIcon tabId={mod.id} active={inNav} />
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{mod.label}</div>
-                  <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{mod.desc}</div>
                 </div>
                 <div style={{ width: 44, height: 26, borderRadius: 13, background: inNav ? "var(--py-accent)" : "rgba(180,170,175,0.3)", position: "relative", transition: "background 200ms ease" }}>
                   <div style={{ position: "absolute", top: 3, left: inNav ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.15)", transition: "left 200ms ease" }} />
@@ -267,7 +256,6 @@ export function YouPage({
               <DockNavIcon tabId={mod.id} active={false} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{mod.label}</div>
-                <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{mod.desc}</div>
               </div>
               <span style={{ fontSize: 16, color: "var(--py-ink-muted)" }}>›</span>
             </button>

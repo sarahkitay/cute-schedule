@@ -48,10 +48,7 @@ export function InsightsPage({ data }) {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
         <img src={`${import.meta.env.BASE_URL}InsightsIcon.png`} alt="" style={{ width: 44, height: 44, borderRadius: 12, objectFit: "contain" }} />
-        <div>
-          <h2 style={{ fontSize: 22, fontWeight: 600, color: "var(--py-ink)", margin: 0 }}>Insights</h2>
-          <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)", margin: 0 }}>Your patterns & averages</p>
-        </div>
+        <h2 style={{ fontSize: 22, fontWeight: 600, color: "var(--py-ink)", margin: 0 }}>Insights</h2>
       </div>
 
       {/* Stats grid */}

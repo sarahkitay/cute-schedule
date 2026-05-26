@@ -1,4 +1,5 @@
 import { listMergedTasksForDay } from "../groceryTaskCoachHelpers";
+import { filterMonthlyForCoach } from "../monthlyObjectivesModel.js";
 import {
   PROGRAM_LIBRARY,
   fingerprintExerciseBlocksForDedupe,
@@ -289,7 +290,7 @@ export function buildCoachContext(input: BuildCoachContextInput): CoachContext {
     }
   }
 
-  const activeMonthly = (monthly || []).filter((m) => m && !m.done && String(m.text || "").trim());
+  const activeMonthly = filterMonthlyForCoach(monthly, realTodayKey);
   const dayKeysForObj = Array.from({ length: 7 }, (_, i) => addCalendarDays(realTodayKey, -i));
   const tasksByDay = new Map<string, TaskLite[]>();
   for (const dk of dayKeysForObj) {

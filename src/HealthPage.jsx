@@ -33,6 +33,7 @@ import {
   normalizeGroceryKeywordsFromProfile,
   normalizeSavedGroceryLists,
 } from "./groceryTaskCoachHelpers";
+import { dockNavAssetUrl } from "./dockNavAssets";
 
 function newId(prefix) {
   try {
@@ -306,6 +307,7 @@ export function HealthPage({
   const [buildProgramOpen, setBuildProgramOpen] = useState(false);
   const [selectedProgramId, setSelectedProgramId] = useState("");
   const [programPickerOpen, setProgramPickerOpen] = useState(false);
+  const [programsGalleryOpen, setProgramsGalleryOpen] = useState(false);
   const [programPickerSearch, setProgramPickerSearch] = useState("");
   const [programDragOverId, setProgramDragOverId] = useState(null);
   const programPickerRef = useRef(null);
@@ -624,6 +626,12 @@ export function HealthPage({
   function selectProgram(p) {
     setSelectedProgramId(p.id);
     setProgramPickerSearch("");
+    setProgramPickerOpen(false);
+    setProgramsGalleryOpen(false);
+  }
+
+  function openProgramsGallery() {
+    setProgramsGalleryOpen(true);
     setProgramPickerOpen(false);
   }
 
@@ -970,8 +978,14 @@ export function HealthPage({
   return (
     <section className="panel health-panel surface-glass scroll-reveal section-health">
       <div className="panel-top health-page-head">
-        <div className="panel-title">
-          <DumbbellIcon style={{ width: 22, height: 22, marginRight: 8 }} />
+        <div className="panel-title health-page-head-title">
+          <img
+            src={dockNavAssetUrl("fitness.png")}
+            alt=""
+            className="health-page-head-icon"
+            width={40}
+            height={40}
+          />
           <div>
             <div className="title">Health &amp; training</div>
           </div>
@@ -1253,6 +1267,11 @@ export function HealthPage({
                           </button>
                         </div>
                         <div className="health-program-card-actions-secondary">
+                          {displayPrograms.length > 1 ? (
+                            <button type="button" className="btn btn-sm btn-ghost" onClick={openProgramsGallery}>
+                              See all
+                            </button>
+                          ) : null}
                           {builtIn ? (
                             <button type="button" className="btn btn-sm" onClick={() => saveLibraryCopy(p)}>
                               Save copy
@@ -1272,6 +1291,48 @@ export function HealthPage({
                     </article>
                   );
                 })() : null}
+
+                {programsGalleryOpen ? (
+                  <div className="health-programs-gallery" role="region" aria-label="All programs">
+                    <div className="health-programs-gallery-head">
+                      <span className="health-programs-gallery-title">All programs</span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-ghost"
+                        onClick={() => setProgramsGalleryOpen(false)}
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <ul className="health-programs-gallery-grid">
+                      {displayPrograms.map((prog) => {
+                        const moveCount = (prog.exercises || []).length;
+                        const builtInTile = PROGRAM_LIBRARY.some((lib) => lib.id === prog.id);
+                        const active = prog.id === selectedProgramId;
+                        return (
+                          <li key={prog.id}>
+                            <button
+                              type="button"
+                              className={[
+                                "health-program-tile",
+                                active ? "health-program-tile--active" : "",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
+                              onClick={() => selectProgram(prog)}
+                            >
+                              <span className="health-program-tile-name">{prog.name}</span>
+                              <span className="health-program-tile-meta">
+                                {moveCount} {moveCount === 1 ? "move" : "moves"}
+                                {builtInTile ? " · Sample" : ""}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
 
                 {displayPrograms.length > 1 ? (
                   <details className="health-program-reorder-details">

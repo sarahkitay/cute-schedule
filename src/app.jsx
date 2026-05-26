@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import ReactDOM, { flushSync } from "react-dom";
 import { 
   StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, WindDownIcon,
-  CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon, CoachIcon, SettingsIcon,
+  CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
   LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, MenuIcon,
   CheckIcon, FinanceIcon, BulletIcon
 } from "./Icons";
@@ -36,11 +36,11 @@ import { OnboardingV2 } from "./components/OnboardingV2";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
 import { HealthPage } from "./HealthPage";
 import { PageInstructions } from "./PageInstructions";
-import { HabitIconPicker, HabitIconBadge } from "./HabitIconPicker";
+import { HabitIconPicker, HabitIconBadge, HabitDirectionDot } from "./HabitIconPicker";
 import { DEFAULT_HABIT_ICON, normalizeHabitIcon, suggestHabitIconFromLabel } from "./habitIcons";
 import { WorkoutProgramPickerModal } from "./WorkoutProgramPickerModal";
 import { DockNavIcon } from "./DockNavIcon";
-import { getDockNavAsset } from "./dockNavAssets";
+import { dockNavAssetUrl, getDockNavAsset } from "./dockNavAssets";
 import { HomeModuleTray } from "./HomeModuleTray";
 import {
   buildMainDockItems,
@@ -67,11 +67,23 @@ import { SKIP_LOGIN_STORAGE_KEY } from "./subscription/constants.js";
 import { getCoachRequestHeaders } from "./subscription/coachApiHeaders.js";
 import { consumeCoachPromptLocal } from "./subscription/promptUsage.js";
 import { getSubscriptionSnapshot, setSubscriptionSnapshot, tryBeginCoachPrompt } from "./subscription/subscriptionStore.js";
+import { isAppTrialActive } from "./subscription/appTrial.js";
 import { useSubscriptionOptional } from "./subscription/SubscriptionContext.jsx";
 import { countOptionalEnabledModules } from "./subscription/features.js";
 import { FREE_OPTIONAL_MODULE_LIMIT } from "./subscription/constants.js";
 import { SettingsProSection } from "./components/SettingsProSection.jsx";
+import { MonthlyCarryOverSection } from "./components/MonthlyCarryOverSection.jsx";
 import { CoachPromptPill } from "./components/CoachPromptPill.jsx";
+import {
+  objectiveMonthKey,
+  priorObjectiveMonthKey,
+  normalizeMonthlyList,
+  getPendingCarryObjectives,
+  getVisibleMonthObjectives,
+  carryMonthlyObjective,
+  leaveMonthlyObjectiveInPriorMonth,
+  completeMonthlyObjectiveUnmarked,
+} from "./monthlyObjectivesModel.js";
 import { startAlarmWatcher, requestAlarmPermissions } from "./alarmScheduler";
 import {
   fireAlarm,
@@ -729,7 +741,11 @@ function loadState() {
 function migrateState(saved, categories) {
   if (!saved) return saved;
   const daysSource = saved.days && typeof saved.days === "object" ? saved.days : {};
-  if (!categories || categories.length === 0) return { ...saved, days: daysSource };
+  if (!categories || categories.length === 0) {
+    const currentMonthKey = objectiveMonthKey();
+    const monthly = normalizeMonthlyList(saved.monthly, currentMonthKey);
+    return { ...saved, days: daysSource, monthly };
+  }
   const newDays = {};
   Object.entries(daysSource).forEach(([dayKey, day]) => {
     const hours = day.hours || {};
@@ -752,7 +768,9 @@ function migrateState(saved, categories) {
     });
     newDays[dayKey] = { ...day, hours: newHours };
   });
-  return { ...saved, days: Object.keys(newDays).length ? newDays : daysSource };
+  const currentMonthKey = objectiveMonthKey();
+  const monthly = normalizeMonthlyList(saved.monthly, currentMonthKey);
+  return { ...saved, days: Object.keys(newDays).length ? newDays : daysSource, monthly };
 }
 
 function emptySlot(categories) {
@@ -1403,13 +1421,10 @@ function dayIsStarred(hours, categories = DEFAULT_CATEGORIES) {
   return total > 0 && done === total;
 }
 
-function getProgressCopy(pct) {
-  if (pct === 0) return "Add one task to get started";
-  if (pct >= 100) return "You showed up today";
-  if (pct >= 1 && pct <= 40) return "Momentum started";
-  if (pct >= 41 && pct <= 80) return "You're on a roll";
-  if (pct >= 81 && pct <= 99) return "Close it out";
-  return "Momentum started";
+function getProgressCopy(pct, done = 0, total = 0) {
+  if (total === 0) return "No tasks scheduled";
+  if (pct >= 100) return `${done} of ${total} complete`;
+  return `${done} of ${total} complete · ${pct}%`;
 }
 
 function getDayKeysInMonth(year, month) {
@@ -2018,7 +2033,7 @@ function MorningRoutine({ routine, onToggle }) {
       </div>
       {allDone && (
         <div style={{ marginTop: 14, textAlign: "center", padding: "10px 0" }}>
-          <p style={{ fontSize: 14, color: "var(--py-accent-deep)", fontWeight: 500, margin: 0 }}>Good start to your day.</p>
+          <p style={{ fontSize: 14, color: "var(--py-ink-secondary)", fontWeight: 500, margin: 0 }}>Morning routine complete.</p>
         </div>
       )}
     </div>
@@ -3052,11 +3067,17 @@ export default function App() {
   const [coachStructuredResult, setCoachStructuredResult] = useState(null); // { summary, followUp, actions }
   const [coachLearning, setCoachLearning] = useState(() => loadCoachLearning());
   const [coachToast, setCoachToast] = useState(null);
+  const [streakTipOpen, setStreakTipOpen] = useState(false);
+
+  useEffect(() => {
+    if (tab !== "today") setStreakTipOpen(false);
+  }, [tab]);
   const [coachEdit, setCoachEdit] = useState(null);
   const [coachProfileSaveShowsSaved, setCoachProfileSaveShowsSaved] = useState(false);
   const coachGtkyDetailsRef = useRef(null);
   const coachProfileSaveCloseTimerRef = useRef(null);
   const coachResultRef = useRef(null);
+  const todayTasksSectionRef = useRef(null);
   /** Prevents double-apply (double tap / duplicate program rows) while a coach card is committing. */
   const coachAcceptBusyRef = useRef(false);
   const [sprintEndsAt, setSprintEndsAt] = useState(null); // timestamp; when set, 10-min sprint is active
@@ -4999,8 +5020,47 @@ export default function App() {
     e.preventDefault();
     const clean = normalizeText(monthlyText);
     if (!clean) return;
-    setAppState((prev) => ({ ...prev, monthly: [...prev.monthly, { id: uid(), text: clean, done: false }] }));
+    const monthKey = objectiveMonthKey();
+    setAppState((prev) => ({
+      ...prev,
+      monthly: [...prev.monthly, { id: uid(), text: clean, done: false, monthKey }],
+    }));
     setMonthlyText("");
+  }
+  const currentObjectiveMonthKey = useMemo(
+    () => objectiveMonthKey(new Date(`${realTodayKey}T12:00:00`)),
+    [realTodayKey]
+  );
+  const priorObjectiveMonth = useMemo(
+    () => priorObjectiveMonthKey(currentObjectiveMonthKey),
+    [currentObjectiveMonthKey]
+  );
+  const pendingMonthlyCarry = useMemo(
+    () => getPendingCarryObjectives(appState.monthly, currentObjectiveMonthKey),
+    [appState.monthly, currentObjectiveMonthKey]
+  );
+  const visibleMonthlyObjectives = useMemo(
+    () => getVisibleMonthObjectives(appState.monthly, currentObjectiveMonthKey),
+    [appState.monthly, currentObjectiveMonthKey]
+  );
+  function resolveMonthlyCarry(id) {
+    const newId = uid();
+    setAppState((prev) => ({
+      ...prev,
+      monthly: carryMonthlyObjective(prev.monthly, id, currentObjectiveMonthKey, newId),
+    }));
+  }
+  function resolveMonthlyLeave(id) {
+    setAppState((prev) => ({
+      ...prev,
+      monthly: leaveMonthlyObjectiveInPriorMonth(prev.monthly, id),
+    }));
+  }
+  function resolveMonthlyCompleteUnmarked(id) {
+    setAppState((prev) => ({
+      ...prev,
+      monthly: completeMonthlyObjectiveUnmarked(prev.monthly, id),
+    }));
   }
   function toggleMonthly(id) {
     setAppState((prev) => ({ ...prev, monthly: prev.monthly.map((m) => (m.id === id ? { ...m, done: !m.done } : m)) }));
@@ -5272,7 +5332,14 @@ export default function App() {
         mood: appState.days?.[tKey]?.dailyMood || null,
         progress: prog,
         today: todayHours,
-        monthly: (appState.monthly || []).map((m) => ({ id: m.id, text: m.text, done: m.done })),
+        monthly: (appState.monthly || []).map((m) => ({
+          id: m.id,
+          text: m.text,
+          done: m.done,
+          monthKey: m.monthKey,
+          carryResolved: m.carryResolved,
+          carryOutcome: m.carryOutcome,
+        })),
         notes: activeNotesForCoach(notes).slice(0, 50).map((n) => ({
           text: n.text,
           createdAt: n.createdAt,
@@ -6457,26 +6524,6 @@ export default function App() {
     return "Pattern insights";
   }, [tab, tKey]);
 
-  const headerSubtitle = useMemo(() => {
-    if (tab === "plan") {
-      return isSameDayKey(tKey, realTodayKey)
-        ? "Today's task list"
-        : `${formatWeekday(tKey)} task list`;
-    }
-    if (tab === "monthly") return "Monthly objectives & progress";
-    if (tab === "you") return "Profile, habits & routines";
-    if (tab === "medications") return "Tracking & reminders";
-    if (tab !== "today" && tab !== "plan") {
-      if (tab === "finance") return "Income, spending & savings";
-      if (tab === "health") return "Training, macros & weight";
-      if (tab === "coach") return "Schedule, fitness & finance coaching";
-      if (tab === "insights") return "Patterns, trends & self-understanding";
-      if (tab === "timers") return "Focus & routine timers";
-      return "Insights";
-    }
-    return null;
-  }, [tab, tKey, realTodayKey]);
-
   const firebaseOn = isFirebaseEnabled();
   const authWaiting = firebaseOn && !firebaseAuthResolved;
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser && !loginSkipped;
@@ -6488,6 +6535,10 @@ export default function App() {
 
   function dispatchProUpgrade(feature = "coach_prompt") {
     window.dispatchEvent(new CustomEvent("proyou:upgrade", { detail: { feature } }));
+  }
+
+  function scrollToTodayTasks() {
+    todayTasksSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   useEffect(() => {
@@ -6589,7 +6640,16 @@ export default function App() {
               <div className="top-inner">
                 <div className="top-left">
                   {tab === "today" ? (
-                    <div className="top-left-greeting">
+                    <div className="top-left-today">
+                      <img
+                        src={`${import.meta.env.BASE_URL}pyiconnobubble.png`}
+                        alt=""
+                        className="header-brand-py-logo"
+                        width={40}
+                        height={40}
+                      />
+                    <div className="top-left-greeting top-left-greeting--today">
+                      <span className="brand-name">PROYOU</span>
                       <h1 className="h1 h1-banner-date today-greeting-title">
                         Good{" "}
                         {getTimeOfDay() === "morning"
@@ -6601,7 +6661,14 @@ export default function App() {
                           ? `, ${profile.userName || profile.name}`
                           : ""}
                       </h1>
-                      <span className="greeting-tagline">Let&apos;s make today meaningful.</span>
+                      <span className="greeting-tagline">
+                        {new Date(realTodayKey + "T12:00:00").toLocaleDateString(undefined, {
+                          weekday: "long",
+                          month: "long",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </div>
                     </div>
                   ) : (
                     <>
@@ -6609,9 +6676,6 @@ export default function App() {
                       <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
                         {headerTitle}
                       </h1>
-                      {headerSubtitle ? (
-                        <span className="sub header-date header-date-visible">{headerSubtitle}</span>
-                      ) : null}
                     </>
                   )}
                 </div>
@@ -6653,7 +6717,13 @@ export default function App() {
                     title="Settings"
                     aria-label="Settings"
                   >
-                    <SettingsIcon className="header-settings-svg" />
+                    <img
+                      src={dockNavAssetUrl("settings.png")}
+                      alt=""
+                      className="header-settings-icon"
+                      width={38}
+                      height={38}
+                    />
                   </button>
                 </div>
               </div>
@@ -6965,35 +7035,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Today's Focus + Streak cards — side by side */}
-            {tab === "today" && (
-              <div className="py-card-grid scroll-reveal" style={{ marginBottom: 16 }}>
-                <div className="py-glass-card" style={{ padding: 18 }}>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: "var(--py-ink)", marginBottom: 4 }}>Today&apos;s Focus</div>
-                  <div style={{ fontSize: 13, color: "var(--py-ink-secondary)", marginBottom: 14 }}>{prog.total} task{prog.total !== 1 ? "s" : ""} planned</div>
-                  <div className="today-focus-progress" role="progressbar" aria-valuenow={prog.pct} aria-valuemin={0} aria-valuemax={100}>
-                    <div className="today-focus-progress__track">
-                      <div className="today-focus-progress__fill" style={{ width: `${Math.max(prog.pct, 8)}%` }} />
-                      <div className="today-focus-progress__bubble" style={{ left: `${Math.max(prog.pct, 5)}%` }} />
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span style={{ fontSize: 12, color: "var(--py-accent-deep)" }}>Small steps, big change.</span>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: "var(--py-ink)" }}>{prog.pct}%</span>
-                  </div>
-                </div>
-                <div className="py-glass-card" style={{ padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                  <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)", marginBottom: 8 }}>Streak</div>
-                  <div className="py-streak">
-                    <span className="py-streak__count">{scheduleStreakStats.streak}</span>
-                    <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" className="py-streak__flame-img" />
-                    <span className="py-streak__label">days</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--py-accent-deep)", fontWeight: 500, marginTop: 8 }}>{scheduleStreakStats.streak > 0 ? "Keep it going!" : "Let's build a streak"}</div>
-                </div>
-              </div>
-            )}
-
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
               <section className="panel habit-daily-card surface-glass scroll-reveal today-section--habits">
                 <div className="panel-title">
@@ -7007,9 +7048,7 @@ export default function App() {
                         <div className="habit-checkin-label">
                           <HabitIconBadge iconId={h.icon} className="habit-checkin-icon" />
                           <span className="habit-checkin-name">{h.label}</span>
-                          <span className={`habit-direction-tag ${h.direction === "break" ? "is-break" : "is-build"}`}>
-                            {h.direction === "break" ? "Break" : "Build"}
-                          </span>
+                          <HabitDirectionDot direction={h.direction} />
                         </div>
                         <div className="habit-checkin-actions">
                           <button
@@ -7050,7 +7089,7 @@ export default function App() {
               </section>
             )}
 
-            {tab === "today" && isSameDayKey(tKey, realTodayKey) && pendingMedsToday.length > 0 && (
+            {tab === "today" && isSameDayKey(tKey, realTodayKey) && pendingMedsToday.length > 0 && (getSubscriptionSnapshot().isPro || isAppTrialActive()) && (
               <section className="panel home-meds-card surface-glass scroll-reveal today-section--habits">
                 <div className="panel-title">
                   <span className="title">Meds · today</span>
@@ -7089,7 +7128,11 @@ export default function App() {
               </section>
             )}
 
-            <section className="today-section today-section--timeline timeline-wrap scroll-reveal">
+            <section
+              ref={todayTasksSectionRef}
+              id="today-tasks-section"
+              className="today-section today-section--timeline timeline-wrap scroll-reveal"
+            >
               {sortedHourKeys.length === 0 ? (
                 <div className="empty-big empty-big--plain">
                   <div className="empty-title">No hours yet.</div>
@@ -7162,7 +7205,7 @@ export default function App() {
                         <button type="button" role="tab" aria-selected={mode === "details"} className="do-plan-subtle-btn" onClick={() => setMode("details")}>Details</button>
                       </span>
                     ) : (
-                      getProgressCopy(prog.pct)
+                      getProgressCopy(prog.pct, prog.done, prog.total)
                     )}
                   </div>
                 </div>
@@ -7188,6 +7231,75 @@ export default function App() {
                 </div>
               )}
             </section>
+
+            {/* Today's Focus + Streak — below daily progress, above module nav */}
+            <div className="py-card-grid today-focus-streak-row scroll-reveal">
+              <button
+                type="button"
+                className="py-glass-card today-focus-card"
+                style={{ padding: 18, textAlign: "left" }}
+                onClick={scrollToTodayTasks}
+                aria-label="Go to today's tasks"
+              >
+                <div style={{ fontSize: 16, fontWeight: 600, color: "var(--py-ink)", marginBottom: 4 }}>Today&apos;s Focus</div>
+                <div style={{ fontSize: 13, color: "var(--py-ink-secondary)", marginBottom: 14 }}>{prog.total} task{prog.total !== 1 ? "s" : ""} planned</div>
+                <div className="today-focus-progress" role="presentation">
+                  <div className="today-focus-progress__track">
+                    <div className="today-focus-progress__fill" style={{ width: `${Math.max(prog.pct, 8)}%` }} />
+                    <div className="today-focus-progress__bubble" style={{ left: `${Math.max(prog.pct, 5)}%` }} />
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, color: "var(--py-ink-secondary)" }}>
+                    {prog.done} of {prog.total} done
+                  </span>
+                  <span style={{ fontSize: 18, fontWeight: 700, color: "var(--py-ink)" }}>{prog.pct}%</span>
+                </div>
+              </button>
+              <div className="py-glass-card py-streak-card" style={{ padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  className="py-streak-tap"
+                  onClick={() => setStreakTipOpen((open) => !open)}
+                  aria-expanded={streakTipOpen}
+                  aria-label={
+                    scheduleStreakStats.streak > 0
+                      ? `${scheduleStreakStats.streak} day streak`
+                      : "Start a streak"
+                  }
+                >
+                  <div className="py-streak">
+                    <div className="py-streak__stack">
+                      <span className="py-streak__flag">Streak</span>
+                      <div className="py-streak__main">
+                        <span className="py-streak__count" aria-hidden="true">
+                          {String(scheduleStreakStats.streak).split("").map((digit, i) => (
+                            <span key={i} className="py-streak__digit">
+                              {digit}
+                            </span>
+                          ))}
+                        </span>
+                        <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" className="py-streak__flame-img" />
+                      </div>
+                    </div>
+                  </div>
+                </button>
+                {streakTipOpen ? (
+                  <div className="py-streak-tip" role="status">
+                    <p className="py-streak-tip__text">
+                      {scheduleStreakStats.streak > 0
+                        ? `${scheduleStreakStats.streak} day${scheduleStreakStats.streak === 1 ? "" : "s"} — all tasks completed`
+                        : "No active streak"}
+                    </p>
+                    <p className="py-streak-tip__detail">
+                      {scheduleStreakStats.streak > 0
+                        ? "Counts consecutive days where every scheduled task was marked done."
+                        : "Complete every task on a day to start counting."}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            </div>
 
             {tab === "today" ? (
               <HomeModuleTray
@@ -7528,16 +7640,25 @@ export default function App() {
                   <div className="title">Monthly objectives</div>
                 </div>
               </div>
+              <MonthlyCarryOverSection
+                pending={pendingMonthlyCarry}
+                priorMonthKey={priorObjectiveMonth}
+                currentMonthKey={currentObjectiveMonthKey}
+                onCarry={resolveMonthlyCarry}
+                onLeave={resolveMonthlyLeave}
+                onCompleteUnmarked={resolveMonthlyCompleteUnmarked}
+              />
+
               <form className="monthly-add monthly-add-bar" onSubmit={addMonthly}>
                 <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" aria-label="New objective" />
                 <button className="btn btn-primary monthly-add-submit" type="submit">Add</button>
               </form>
 
-              {appState.monthly.length === 0 ? (
+              {visibleMonthlyObjectives.length === 0 && pendingMonthlyCarry.length === 0 ? (
                 <div className="empty">Add your first monthly objective.</div>
-              ) : (
+              ) : visibleMonthlyObjectives.length === 0 ? null : (
                 <ul className="list list-page-list monthly-objectives-list">
-                  {appState.monthly.map((m) => (
+                  {visibleMonthlyObjectives.map((m) => (
                     <li
                       key={m.id}
                       className={["list-row", "monthly-list-row", m.done ? "monthly-list-row-done" : ""].filter(Boolean).join(" ")}
@@ -7605,7 +7726,6 @@ export default function App() {
               />
               <div>
                 <h2 className="coach-page-hero__title">Coach & Insights</h2>
-                <p className="coach-page-hero__sub">Your data, not generic advice · ADHD-aware</p>
                 <CoachPromptPill />
               </div>
             </div>
@@ -8037,6 +8157,7 @@ export default function App() {
             ) : null}
           </section>
         ) : tab === "health" ? (
+          <FeatureGate feature="health">
           <HealthPage
             health={health}
             setHealth={setHealth}
@@ -8052,15 +8173,13 @@ export default function App() {
             onMarkGuidedTaskDone={markGuidedTaskDone}
             scrollToProgramBuilderSignal={healthProgramBuilderScroll}
           />
+          </FeatureGate>
         ) : tab === "finance" ? (
           <section className="panel finance-panel surface-glass section-finance scroll-reveal">
             <div className="panel-top finance-page-header">
               <div className="panel-title page-icon-header">
                 <DockNavIcon tabId="finance" active />
-                <div>
-                  <div className="title">Finance</div>
-                  <p className="page-icon-header__subtitle">Income, spending & savings</p>
-                </div>
+                <div className="title">Finance</div>
               </div>
             </div>
 
@@ -10397,10 +10516,8 @@ export default function App() {
                         <div className="habit-settings-card-head">
                           <div className="habit-settings-card-title">
                             <HabitIconBadge iconId={row.icon} className="habit-settings-card-icon" />
-                            {row.label}{" "}
-                            <span className="settings-item-meta">
-                              ({row.direction === "break" ? "break" : "build"})
-                            </span>
+                            <span className="habit-settings-card-title-text">{row.label}</span>
+                            <HabitDirectionDot direction={row.direction} />
                           </div>
                           <button
                             type="button"

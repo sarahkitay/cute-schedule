@@ -9,7 +9,9 @@ import './responsive.css'
 import './subscription/subscription.css'
 import App from './app.jsx'
 import { initSubscriptionSnapshotFromStorage } from './subscription/subscriptionStore.js'
+import { initAppTrialStart } from './subscription/appTrial.js'
 
+initAppTrialStart()
 initSubscriptionSnapshotFromStorage()
 
 // Error boundary so a runtime error shows a message instead of a blank page

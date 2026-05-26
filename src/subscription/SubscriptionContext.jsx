@@ -4,8 +4,9 @@ import {
   canUseFeature,
   coachPromptsRemaining,
   countOptionalEnabledModules,
-  FEATURE_COPY,
+  getFeatureGateCopy,
 } from "./features.js";
+import { getAppTrialStatus, initAppTrialStart } from "./appTrial.js";
 import { getCoachPromptsUsedToday, consumeCoachPromptLocal } from "./promptUsage.js";
 import {
   purchaseProMonthly,
@@ -35,6 +36,15 @@ export function SubscriptionProvider({
   const [promptsUsedToday, setPromptsUsedToday] = useState(() => getCoachPromptsUsedToday());
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [upgradeFeature, setUpgradeFeature] = useState(/** @type {FeatureId | null} */ (null));
+  const [appTrial, setAppTrial] = useState(() => getAppTrialStatus());
+
+  useEffect(() => {
+    initAppTrialStart();
+    const refresh = () => setAppTrial(getAppTrialStatus());
+    refresh();
+    const id = setInterval(refresh, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const syncSubscription = useCallback(async () => {
     setLoading(true);
@@ -69,11 +79,14 @@ export function SubscriptionProvider({
   const featureCtx = useMemo(
     () => ({
       isPro,
+      appTrialActive: appTrial.active,
+      appTrialDaysLeft: appTrial.daysLeft,
+      appTrialEnded: appTrial.ended,
       promptsRemainingToday: isPro ? Infinity : promptsRemainingToday,
       routineTemplateCount,
       optionalModuleCount: countOptionalEnabledModules(enabledModules),
     }),
-    [isPro, promptsRemainingToday, routineTemplateCount, enabledModules]
+    [isPro, appTrial, promptsRemainingToday, routineTemplateCount, enabledModules]
   );
 
   const openUpgrade = useCallback((featureId = null) => {
@@ -146,7 +159,11 @@ export function SubscriptionProvider({
       closeUpgrade,
       upgradeOpen,
       upgradeFeature,
-      upgradeCopy: upgradeFeature ? FEATURE_COPY[upgradeFeature] : null,
+      upgradeCopy: upgradeFeature ? getFeatureGateCopy(upgradeFeature, featureCtx) : null,
+      appTrialActive: appTrial.active,
+      appTrialDaysLeft: appTrial.daysLeft,
+      appTrialEnded: appTrial.ended,
+      getFeatureGateCopy: (featureId) => getFeatureGateCopy(featureId, featureCtx),
       purchasePro,
       restorePurchases: restore,
       refreshSubscription: syncSubscription,
@@ -166,6 +183,10 @@ export function SubscriptionProvider({
       closeUpgrade,
       upgradeOpen,
       upgradeFeature,
+      appTrial.active,
+      appTrial.daysLeft,
+      appTrial.ended,
+      featureCtx,
       purchasePro,
       restore,
       syncSubscription,
