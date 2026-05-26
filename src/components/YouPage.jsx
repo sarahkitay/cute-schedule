@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { HabitDirectionDot } from "../HabitIconPicker";
 import { DockNavIcon } from "../DockNavIcon";
 import { getDockNavAsset } from "../dockNavAssets";
+import { useIconStyle } from "../IconStyleContext";
+import { appIconUrl } from "../iconStyle";
 import {
   APP_MODULE_CATALOG,
   addModuleToNav,
@@ -28,6 +30,7 @@ export function YouPage({
   const [newHabitDir, setNewHabitDir] = useState("build");
   const [newRoutineLine, setNewRoutineLine] = useState("");
   const [nightRoutineLine, setNightRoutineLine] = useState("");
+  const { iconStyle } = useIconStyle();
 
   const allModules = APP_MODULE_CATALOG.filter((m) => m.id !== "today").map((mod) => {
     const asset = getDockNavAsset(mod.id);
@@ -215,7 +218,7 @@ export function YouPage({
     <div className="py-flex-col py-gap-5" style={{ padding: "0 4px" }}>
       {/* Profile header */}
       <div className="py-glass-card" style={{ padding: 20, textAlign: "center" }}>
-        <img src={`${import.meta.env.BASE_URL}pyiconnobubble.png`} alt="ProYou" style={{ width: 56, height: 56, borderRadius: 18, objectFit: "cover", margin: "0 auto 10px", display: "block" }} />
+        <img src={appIconUrl("brandLogo", iconStyle)} alt="ProYou" style={{ width: 56, height: 56, borderRadius: 18, objectFit: "cover", margin: "0 auto 10px", display: "block" }} />
         <div style={{ fontSize: 20, fontWeight: 600, color: "var(--py-ink)" }}>{profile.name || "Your Name"}</div>
         {profile.birthday && <div style={{ fontSize: 13, color: "var(--py-ink-tertiary)", marginTop: 2 }}>{profile.birthday}</div>}
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
@@ -241,7 +244,7 @@ export function YouPage({
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>Customize your nav bar</div>
         </button>
         <button type="button" onClick={onOpenSettings} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <img src={`${import.meta.env.BASE_URL}settings.png`} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
+          <img src={appIconUrl("settings", iconStyle)} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Settings</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>Theme, data, account</div>
         </button>

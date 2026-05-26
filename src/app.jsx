@@ -41,6 +41,14 @@ import { DEFAULT_HABIT_ICON, normalizeHabitIcon, suggestHabitIconFromLabel } fro
 import { WorkoutProgramPickerModal } from "./WorkoutProgramPickerModal";
 import { DockNavIcon } from "./DockNavIcon";
 import { dockNavAssetUrl, getDockNavAsset } from "./dockNavAssets";
+import { IconStyleProvider } from "./IconStyleContext";
+import {
+  ICON_STYLE_COLORFUL,
+  ICON_STYLE_OPTIONS,
+  appIconUrl,
+  normalizeIconStyle,
+  streakFlameIconUrl,
+} from "./iconStyle";
 import { HomeModuleTray } from "./HomeModuleTray";
 import {
   buildMainDockItems,
@@ -179,6 +187,23 @@ const STORAGE_KEY = "cute_schedule_v3";
 const COACH_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 const COACH_STORAGE_KEY = "cute_schedule_coach_meta_v1";
 const THEME_STORAGE_KEY = "cute_schedule_theme_v1";
+
+function normalizeThemeLoaded(raw) {
+  if (!raw || typeof raw !== "object") return THEMES["Classic Pink"];
+  if (raw.name && THEMES[raw.name]) return THEMES[raw.name];
+  const match = Object.values(THEMES).find((t) => t.name === raw.name);
+  return match || THEMES["Classic Pink"];
+}
+
+function loadThemeFromDisk() {
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    if (!saved) return THEMES["Classic Pink"];
+    return normalizeThemeLoaded(JSON.parse(saved));
+  } catch {
+    return THEMES["Classic Pink"];
+  }
+}
 /** Legacy payloads may include moodboard; we no longer persist custom background images. */
 const EMPTY_MOODBOARD = Object.freeze({ imageUrl: "", text: "" });
 const ACCOUNT_DELETE_CONFIRM_PHRASE = "DELETE";
@@ -434,6 +459,7 @@ function loadProfileFromDisk() {
     groceryKeywords: null,
     grocerySavedLists: [],
     logMissedTasksEod: true,
+    iconStyle: ICON_STYLE_COLORFUL,
   };
   try {
     const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
@@ -464,6 +490,7 @@ function loadProfileFromDisk() {
       groceryKeywords: gkw,
       grocerySavedLists: normalizeSavedGroceryLists(p.grocerySavedLists),
       logMissedTasksEod: typeof p.logMissedTasksEod === "boolean" ? p.logMissedTasksEod : true,
+      iconStyle: normalizeIconStyle(p.iconStyle),
     };
   } catch {
     return base;
@@ -514,6 +541,8 @@ function mergeCloudProfile(prev, incoming) {
       : normalizeSavedGroceryLists(base.grocerySavedLists || []),
     logMissedTasksEod:
       typeof inc.logMissedTasksEod === "boolean" ? inc.logMissedTasksEod : base.logMissedTasksEod !== false,
+    iconStyle:
+      typeof inc.iconStyle === "string" ? normalizeIconStyle(inc.iconStyle) : normalizeIconStyle(base.iconStyle),
   };
 }
 
@@ -2563,14 +2592,7 @@ export default function App() {
   const [routineSchedule, setRoutineSchedule] = useState(() => loadRoutineScheduleFromDisk());
 
   // Theme state
-  const [theme, setTheme] = useState(() => {
-    try {
-      const saved = localStorage.getItem(THEME_STORAGE_KEY);
-      return saved ? JSON.parse(saved) : THEMES["Classic Pink"];
-    } catch {
-      return THEMES["Classic Pink"];
-    }
-  });
+  const [theme, setTheme] = useState(() => loadThemeFromDisk());
 
   useEffect(() => {
     document.documentElement.style.setProperty("--moodboard-image", "none");
@@ -3283,7 +3305,7 @@ export default function App() {
         if (data.notes != null) setNotes(data.notes);
         if (data.finance != null) setFinance(normalizeFinanceLoaded(data.finance));
         if (data.profile != null) setProfile((prev) => mergeCloudProfile(prev, data.profile));
-        if (data.theme != null) setTheme(data.theme);
+        if (data.theme != null) setTheme(normalizeThemeLoaded(data.theme));
         if (data.routineTemplate != null) setRoutineTemplate(normalizeBedtimeRoutineTemplate(data.routineTemplate));
         if (data.morningRoutineTemplate != null) setMorningRoutineTemplate(data.morningRoutineTemplate);
         if (data.routineSchedule != null) setRoutineSchedule(data.routineSchedule);
@@ -3430,7 +3452,8 @@ export default function App() {
     const darkUi = theme?.name === "Midnight" || theme?.name === "Mocha";
     if (darkUi) document.documentElement.dataset.theme = "dark";
     else delete document.documentElement.dataset.theme;
-  }, [theme]);
+    document.documentElement.dataset.iconStyle = normalizeIconStyle(profile.iconStyle);
+  }, [theme, profile.iconStyle]);
 
   useEffect(() => {
     localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
@@ -6606,12 +6629,30 @@ export default function App() {
     setFeatureWalkthroughMode(null);
   }
 
+  const streakFlameSrc = useMemo(
+    () => streakFlameIconUrl(profile.iconStyle),
+    [profile.iconStyle]
+  );
+  const brandLogoSrc = useMemo(
+    () => appIconUrl("brandLogo", profile.iconStyle),
+    [profile.iconStyle]
+  );
+  const settingsIconSrc = useMemo(
+    () => appIconUrl("settings", profile.iconStyle),
+    [profile.iconStyle]
+  );
+  const coachHeroSrc = useMemo(
+    () => appIconUrl("coachLogo", profile.iconStyle),
+    [profile.iconStyle]
+  );
+
   return (
     <SubscriptionBridge
       firebaseUid={firebaseUser?.uid ?? null}
       enabledModules={enabledModules}
       routineTemplateCount={routineTemplateCount}
     >
+      <IconStyleProvider iconStyle={profile.iconStyle} theme={theme}>
       <ProUpgradeEventListener />
       <UpgradeProModal />
       <div className="app">
@@ -6642,7 +6683,7 @@ export default function App() {
                   {tab === "today" ? (
                     <div className="top-left-today">
                       <img
-                        src={`${import.meta.env.BASE_URL}pyiconnobubble.png`}
+                        src={brandLogoSrc}
                         alt=""
                         className="header-brand-py-logo"
                         width={40}
@@ -6718,7 +6759,7 @@ export default function App() {
                     aria-label="Settings"
                   >
                     <img
-                      src={dockNavAssetUrl("settings.png")}
+                      src={settingsIconSrc}
                       alt=""
                       className="header-settings-icon"
                       width={38}
@@ -7256,7 +7297,10 @@ export default function App() {
                   <span style={{ fontSize: 18, fontWeight: 700, color: "var(--py-ink)" }}>{prog.pct}%</span>
                 </div>
               </button>
-              <div className="py-glass-card py-streak-card" style={{ padding: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+              <div className="py-glass-card py-streak-card">
+                <span className="py-streak__flag" aria-hidden="true">
+                  Streak
+                </span>
                 <button
                   type="button"
                   className="py-streak-tap"
@@ -7269,18 +7313,15 @@ export default function App() {
                   }
                 >
                   <div className="py-streak">
-                    <div className="py-streak__stack">
-                      <span className="py-streak__flag">Streak</span>
-                      <div className="py-streak__main">
-                        <span className="py-streak__count" aria-hidden="true">
-                          {String(scheduleStreakStats.streak).split("").map((digit, i) => (
-                            <span key={i} className="py-streak__digit">
-                              {digit}
-                            </span>
-                          ))}
-                        </span>
-                        <img src={`${import.meta.env.BASE_URL}fireicon.png`} alt="" className="py-streak__flame-img" />
-                      </div>
+                    <div className="py-streak__main">
+                      <span className="py-streak__count" aria-hidden="true">
+                        {String(scheduleStreakStats.streak).split("").map((digit, i) => (
+                          <span key={i} className="py-streak__digit">
+                            {digit}
+                          </span>
+                        ))}
+                      </span>
+                      <img src={streakFlameSrc} alt="" className="py-streak__flame-img" />
                     </div>
                   </div>
                 </button>
@@ -7718,7 +7759,7 @@ export default function App() {
           <section className="panel pattern-insights-section coach-page scroll-reveal">
             <div className="coach-page-hero">
               <img
-                src={`${import.meta.env.BASE_URL}PYIcon.png`}
+                src={coachHeroSrc}
                 alt=""
                 className="coach-page-hero__icon"
                 width={96}
@@ -10481,6 +10522,24 @@ export default function App() {
                     );
                   })}
                 </div>
+                <label className="label" style={{ marginTop: 18 }}>Icon style</label>
+                <p className="settings-hint settings-priority-hint">
+                  Colorful artwork everywhere, or simple light icons on dark chips in the dock and home tray.
+                </p>
+                <div className="icon-style-picker" role="group" aria-label="Icon style">
+                  {ICON_STYLE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`icon-style-option ${normalizeIconStyle(profile.iconStyle) === opt.id ? "selected" : ""}`}
+                      onClick={() => setProfile((p) => ({ ...p, iconStyle: opt.id }))}
+                      aria-pressed={normalizeIconStyle(profile.iconStyle) === opt.id}
+                    >
+                      <span className="icon-style-option__label">{opt.label}</span>
+                      <span className="icon-style-option__desc">{opt.description}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="settings-section settings-section-priority settings-notifications-top">
@@ -11499,9 +11558,15 @@ export default function App() {
         {onboardingActive && !authWaiting && !showLoginGate && (
           <OnboardingV2
             profile={profile}
-            setProfile={setProfile}
+            theme={theme}
+            setTheme={setTheme}
             onComplete={(prefs) => {
-              setProfile((p) => ({ ...p, name: prefs.name || p.name }));
+              setProfile((p) => ({
+                ...p,
+                name: prefs.name || p.name,
+                iconStyle: prefs.iconStyle != null ? normalizeIconStyle(prefs.iconStyle) : p.iconStyle,
+              }));
+              if (prefs.theme) setTheme(prefs.theme);
               if (prefs.enabledModules) setEnabledModules(prefs.enabledModules);
               if (prefs.navOrder) setNavOrder(prefs.navOrder);
               if (prefs.coachingTone) setCoachingTone(prefs.coachingTone);
@@ -11642,6 +11707,7 @@ export default function App() {
         </>
       )}
     </div>
+      </IconStyleProvider>
     </SubscriptionBridge>
   );
 }

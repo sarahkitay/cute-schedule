@@ -11,6 +11,7 @@ import {
   TodayIcon,
 } from "./Icons";
 import { dockNavAssetUrl, getDockNavAsset, DOCK_NAV_SIZE } from "./dockNavAssets";
+import { useIconStyle } from "./IconStyleContext";
 
 function DockNavSvg({ tabId, isCenter }) {
   if (isCenter && tabId === "coach") return <CoachIcon />;
@@ -46,13 +47,22 @@ function DockNavSvg({ tabId, isCenter }) {
 }
 
 /**
- * Light mode: PNG artwork. Dark mode (Midnight/Mocha): theme-colored SVGs.
+ * Light mode: colorful PNG. Dark + colorful: colorful PNG. Dark + simple: light dm PNG on dark surfaces; SVG fallback when no dm asset.
  * @param {{ tabId: string, active?: boolean, variant?: "default" | "center", className?: string }} props
  */
 export function DockNavIcon({ tabId, active = false, variant = "default", className = "" }) {
+  const { useSimpleIcons: useSimple } = useIconStyle();
   const asset = getDockNavAsset(tabId);
   const isCenter = variant === "center" && asset.centerImage;
-  const src = dockNavAssetUrl(isCenter ? asset.centerImage : asset.image);
+  const simpleImage = asset.simpleDarkImage;
+  const showSimplePng = useSimple && Boolean(simpleImage);
+  const showSvgFallback = useSimple && !simpleImage;
+  const imageFile = showSimplePng
+    ? simpleImage
+    : isCenter
+      ? asset.centerImage
+      : asset.image;
+  const src = dockNavAssetUrl(imageFile);
   const size = isCenter ? asset.centerSize || 64 : asset.iconSize || DOCK_NAV_SIZE;
   const scale = isCenter ? 1 : asset.iconScale || 1;
 
@@ -63,6 +73,8 @@ export function DockNavIcon({ tabId, active = false, variant = "default", classN
         active ? "is-active" : "",
         isCenter ? "dock-nav-icon-wrap--center" : "",
         tabId === "coach" || tabId === "insights" ? "dock-nav-icon-wrap--insights" : "",
+        showSimplePng ? "dock-nav-icon-wrap--simple-png" : "",
+        showSvgFallback ? "dock-nav-icon-wrap--svg-fallback" : "",
         className,
       ]
         .filter(Boolean)
@@ -73,10 +85,18 @@ export function DockNavIcon({ tabId, active = false, variant = "default", classN
       }}
       aria-hidden
     >
-      <img src={src} alt="" className="dock-nav-icon-img dock-nav-icon-img--png" draggable={false} />
-      <span className="dock-nav-icon-svg" aria-hidden>
-        <DockNavSvg tabId={tabId} isCenter={isCenter} />
-      </span>
+      <img
+        key={src}
+        src={src}
+        alt=""
+        className="dock-nav-icon-img dock-nav-icon-img--png"
+        draggable={false}
+      />
+      {showSvgFallback ? (
+        <span className="dock-nav-icon-svg" aria-hidden>
+          <DockNavSvg tabId={tabId} isCenter={isCenter} />
+        </span>
+      ) : null}
     </span>
   );
 }

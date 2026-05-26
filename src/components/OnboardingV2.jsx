@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { PillButton } from "./PillButton";
 import { ModuleToggle } from "./ModuleToggle";
-import { NavIcons } from "./NavIcons";
+import { THEMES } from "../themes";
+import { ICON_STYLE_OPTIONS, ICON_STYLE_SIMPLE, normalizeIconStyle } from "../iconStyle";
+import { dockNavAssetUrl } from "../dockNavAssets";
 import { MODULE_REGISTRY, DEFAULT_ENABLED_MODULES, DEFAULT_NAV_ORDER } from "../modules/registry";
 
 const USE_CASES = [
@@ -41,27 +43,34 @@ const FALLOFF_REASONS = [
   { id: "schedule_shift", label: "Schedule disruption" },
 ];
 
-const TOTAL_STEPS = 7;
+const TOTAL_STEPS = 8;
 
-export function OnboardingV2({ onComplete, profile, setProfile }) {
+const ONBOARDING_THEME_PREVIEW = {
+  todayicondm: "todayicondm.png",
+  goalsicondm: "goalsicondm.png",
+};
+
+export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
   const [step, setStep] = useState(0);
-  const [name, setName] = useState(profile?.name || "");
+  const [name, setName] = useState(profile?.name || profile?.userName || "");
   const [useCases, setUseCases] = useState([]);
   const [enabledModules, setEnabledModules] = useState([...DEFAULT_ENABLED_MODULES]);
   const [peakTime, setPeakTime] = useState("");
   const [falloffReasons, setFalloffReasons] = useState([]);
   const [coachingTone, setCoachingTone] = useState("gentle");
+  const [onboardingTheme, setOnboardingTheme] = useState(() => theme || THEMES["Classic Pink"]);
+  const [iconStyle, setIconStyle] = useState(() => normalizeIconStyle(profile?.iconStyle));
 
   function toggleUseCase(id) {
-    setUseCases((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+    setUseCases((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   function toggleModule(id) {
-    setEnabledModules((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+    setEnabledModules((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   function toggleFalloff(id) {
-    setFalloffReasons((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+    setFalloffReasons((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   function finish() {
@@ -74,6 +83,8 @@ export function OnboardingV2({ onComplete, profile, setProfile }) {
       peakTime,
       falloffReasons,
       coachingTone,
+      theme: onboardingTheme,
+      iconStyle,
     });
   }
 
@@ -113,7 +124,7 @@ export function OnboardingV2({ onComplete, profile, setProfile }) {
         {step === 1 && (
           <>
             <h2 style={{ fontSize: "var(--py-text-title)", fontWeight: 600, color: "var(--py-ink)", marginBottom: "var(--py-space-2)" }}>
-              What's your name?
+              What&apos;s your name?
             </h2>
             <p className="py-onboarding__subtitle">So ProYou can greet you personally.</p>
             <input
@@ -241,6 +252,78 @@ export function OnboardingV2({ onComplete, profile, setProfile }) {
         {step === 6 && (
           <>
             <h2 style={{ fontSize: "var(--py-text-title)", fontWeight: 600, color: "var(--py-ink)", marginBottom: "var(--py-space-2)" }}>
+              Colors &amp; icons
+            </h2>
+            <p className="py-onboarding__subtitle">Pick your palette and how navigation icons should look.</p>
+            <p className="py-onboarding__subtitle" style={{ marginTop: "var(--py-space-3)", fontWeight: 600 }}>
+              Theme
+            </p>
+            <div className="onboarding-theme-picker">
+              {Object.entries(THEMES).map(([key, themeData]) => {
+                const swatchInk = themeData.name === "Midnight" || themeData.name === "Mocha" ? "#fafafa" : "#333";
+                const selected = onboardingTheme?.name === themeData.name;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`theme-option onboarding-theme-option ${selected ? "selected" : ""}`}
+                    onClick={() => {
+                      setOnboardingTheme(themeData);
+                      if (setTheme) setTheme(themeData);
+                    }}
+                    style={{
+                      background: themeData.gradient,
+                      border: selected ? `3px solid ${swatchInk}` : "2px solid transparent",
+                    }}
+                    title={themeData.name}
+                    aria-label={themeData.name}
+                    aria-pressed={selected}
+                  />
+                );
+              })}
+            </div>
+            <p className="py-onboarding__subtitle" style={{ marginTop: "var(--py-space-4)", fontWeight: 600 }}>
+              Icons
+            </p>
+            <div className="onboarding-icon-style-picker">
+              {ICON_STYLE_OPTIONS.map((opt) => {
+                const selected = iconStyle === opt.id;
+                const previewImg =
+                  opt.id === ICON_STYLE_SIMPLE
+                    ? ONBOARDING_THEME_PREVIEW.todayicondm
+                    : "homeicon.png";
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    className={`onboarding-icon-style-option ${selected ? "onboarding-icon-style-option--selected" : ""}`}
+                    onClick={() => setIconStyle(opt.id)}
+                    aria-pressed={selected}
+                  >
+                    <span
+                      className={`onboarding-icon-style-option__preview ${
+                        opt.id === ICON_STYLE_SIMPLE ? "onboarding-icon-style-option__preview--dark" : ""
+                      }`}
+                    >
+                      <img src={dockNavAssetUrl(previewImg)} alt="" draggable={false} />
+                    </span>
+                    <span className="onboarding-icon-style-option__label">{opt.label}</span>
+                    <span className="onboarding-icon-style-option__desc">{opt.description}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="py-onboarding__actions">
+              <PillButton variant="primary" size="lg" onClick={handleNext}>
+                Continue
+              </PillButton>
+            </div>
+          </>
+        )}
+
+        {step === 7 && (
+          <>
+            <h2 style={{ fontSize: "var(--py-text-title)", fontWeight: 600, color: "var(--py-ink)", marginBottom: "var(--py-space-2)" }}>
               How should ProYou coach you?
             </h2>
             <p className="py-onboarding__subtitle">Choose the tone that resonates with you.</p>
@@ -266,7 +349,6 @@ export function OnboardingV2({ onComplete, profile, setProfile }) {
           </>
         )}
 
-        {/* Progress dots */}
         {step > 0 && (
           <div className="py-onboarding__progress">
             {Array.from({ length: TOTAL_STEPS }, (_, i) => (

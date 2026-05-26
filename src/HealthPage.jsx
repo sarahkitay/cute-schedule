@@ -33,7 +33,8 @@ import {
   normalizeGroceryKeywordsFromProfile,
   normalizeSavedGroceryLists,
 } from "./groceryTaskCoachHelpers";
-import { dockNavAssetUrl } from "./dockNavAssets";
+import { dockNavAssetUrl, resolveDockNavImage } from "./dockNavAssets";
+import { useIconStyle } from "./IconStyleContext";
 
 function newId(prefix) {
   try {
@@ -296,6 +297,11 @@ export function HealthPage({
   const [goalLbStr, setGoalLbStr] = useState("");
   const [logWeightLbStr, setLogWeightLbStr] = useState("");
   const [healthTab, setHealthTab] = useState("workouts");
+  const { iconStyle } = useIconStyle();
+  const healthHeadIconSrc = useMemo(
+    () => dockNavAssetUrl(resolveDockNavImage("health", { iconStyle })),
+    [iconStyle]
+  );
 
   const [draftName, setDraftName] = useState("");
   const [draftExercises, setDraftExercises] = useState([]);
@@ -980,7 +986,7 @@ export function HealthPage({
       <div className="panel-top health-page-head">
         <div className="panel-title health-page-head-title">
           <img
-            src={dockNavAssetUrl("fitness.png")}
+            src={healthHeadIconSrc}
             alt=""
             className="health-page-head-icon"
             width={40}

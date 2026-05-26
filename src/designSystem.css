@@ -551,6 +551,35 @@
 /* ─── Streak Badge ─── */
 .py-streak-card {
   position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  min-height: 0;
+}
+.py-streak__flag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  pointer-events: none;
+  padding: 3px 8px;
+  font-family: var(--py-font-display);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--theme-accent);
+  background: color-mix(in srgb, var(--theme-accent) 12%, rgba(255, 255, 255, 0.95));
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 55%, transparent);
+  border-radius: 6px 6px 2px 6px;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--theme-accent) 18%, transparent);
+}
+html[data-theme="dark"] .py-streak__flag {
+  background: color-mix(in srgb, var(--theme-accent) 14%, rgba(255, 255, 255, 0.96));
+  color: color-mix(in srgb, var(--theme-accent) 88%, #0a0a0c);
 }
 .py-streak-tap {
   display: flex;
@@ -558,7 +587,7 @@
   justify-content: center;
   width: 100%;
   margin: 0;
-  padding: 4px 8px;
+  padding: 8px 4px 4px;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -581,49 +610,11 @@
 .py-streak-card .py-streak {
   margin-bottom: 0;
 }
-.py-streak__stack {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-.py-streak__flag {
-  position: relative;
-  display: inline-block;
-  padding: 3px 9px 5px;
-  font-family: var(--py-font-display);
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--theme-accent);
-  background: color-mix(in srgb, var(--theme-accent) 14%, rgba(255, 255, 255, 0.94));
-  border: 1.5px solid var(--theme-accent);
-  border-radius: 5px 5px 2px 2px;
-  box-shadow: 0 2px 6px color-mix(in srgb, var(--theme-accent) 22%, transparent);
-}
-.py-streak__flag::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: -5px;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 5px solid var(--theme-accent);
-}
 .py-streak__main {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--py-space-2);
-}
-html[data-theme="dark"] .py-streak__flag {
-  background: color-mix(in srgb, var(--theme-accent) 16%, rgba(255, 255, 255, 0.96));
-  color: color-mix(in srgb, var(--theme-accent) 88%, #0a0a0c);
 }
 .py-streak-tip {
   margin-top: 12px;
@@ -672,6 +663,13 @@ html[data-theme="dark"] .py-streak-tip__detail {
 html[data-theme="dark"] .py-streak-tap:hover {
   background: rgba(255, 255, 255, 0.5);
 }
+html[data-icon-style="simple"] .py-streak__flame-img {
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(12, 12, 14, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
 .py-streak__flame-img {
   width: 32px;
   height: 32px;
@@ -994,16 +992,27 @@ html[data-theme="dark"] .app .greeting-tagline {
 
 /* Header: match reference greeting style */
 .app .top.top-plain {
+  position: relative;
   background: transparent !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   border: none !important;
   box-shadow: none !important;
-  padding: max(16px, env(safe-area-inset-top)) 20px 8px !important;
+  padding: max(10px, env(safe-area-inset-top, 0px)) 20px 8px !important;
 }
 .app .top-inner {
   flex-direction: row;
-  align-items: center;
+  align-items: flex-start;
+  padding-right: 52px;
+}
+.app .top-actions {
+  position: absolute;
+  top: max(6px, env(safe-area-inset-top, 0px));
+  right: 20px;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 .app .top-left .brand-name {
   font-size: 11px !important;
@@ -1144,9 +1153,11 @@ html[data-theme="dark"] .app .greeting-tagline {
   text-align: center !important;
 }
 .app .quick-add-entry-mode-btn[aria-selected="true"] {
-  background: linear-gradient(140deg, #F4B8CA 0%, #E89AAE 50%, #D4708A 100%) !important;
+  background: var(--gradient-cta, var(--theme-gradient)) !important;
   color: #fff !important;
-  box-shadow: 0 6px 18px rgba(212, 112, 138, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+  box-shadow:
+    0 6px 18px color-mix(in srgb, var(--theme-accent) 35%, transparent),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1) !important;
   transform: scale(1.02) !important;
 }
@@ -1178,8 +1189,11 @@ html[data-theme="dark"] .app .greeting-tagline {
   min-width: 42px !important;
   padding: 0 !important;
   border-radius: 50% !important;
-  background: linear-gradient(140deg, #F4B8CA 0%, #E89AAE 50%, #D4708A 100%) !important;
-  box-shadow: 0 6px 18px rgba(212, 112, 138, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
+  background: var(--gradient-cta, var(--theme-gradient)) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 18%, rgba(255, 255, 255, 0.5)) !important;
+  box-shadow:
+    0 6px 18px color-mix(in srgb, var(--theme-accent) 35%, transparent),
+    inset 0 1px 1px rgba(255, 255, 255, 0.3) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -1250,8 +1264,8 @@ html[data-theme="dark"] .app .greeting-tagline {
   appearance: none !important;
 }
 .app .quick-add-details-form .input:focus {
-  border-color: rgba(212, 112, 138, 0.45) !important;
-  box-shadow: 0 0 0 3px rgba(232, 169, 183, 0.22) !important;
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent) 22%, transparent) !important;
   outline: none !important;
 }
 .app .quick-add-details-form .quick-detail-energy-row {
@@ -1282,10 +1296,10 @@ html[data-theme="dark"] .app .greeting-tagline {
   text-align: center !important;
 }
 .app .quick-add-details-form .quick-detail-energy-pill.active {
-  background: linear-gradient(140deg, #F4B8CA 0%, #E89AAE 50%, #D4708A 100%) !important;
+  background: var(--gradient-cta, var(--theme-gradient)) !important;
   border-color: transparent !important;
   color: #fff !important;
-  box-shadow: 0 4px 12px rgba(212, 112, 138, 0.28) !important;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--theme-accent) 28%, transparent) !important;
 }
 .app .quick-add-details-form .quick-detail-actions {
   display: flex !important;
@@ -1303,8 +1317,9 @@ html[data-theme="dark"] .app .greeting-tagline {
   border-radius: 999px !important;
   font-size: 15px !important;
   font-weight: 600 !important;
-  background: linear-gradient(140deg, #F4B8CA 0%, #E89AAE 50%, #D4708A 100%) !important;
-  box-shadow: 0 6px 18px rgba(212, 112, 138, 0.32) !important;
+  background: var(--gradient-cta, var(--theme-gradient)) !important;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 18%, rgba(255, 255, 255, 0.45)) !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--theme-accent) 32%, transparent) !important;
   color: #fff !important;
 }
 .app .quick-add-details-form .quick-details-past-btn {
@@ -1817,13 +1832,18 @@ html[data-theme="dark"] .app .notes-search-input {
   font-size: 14px !important;
 }
 
-/* Theme accent awareness: use CSS variables for accent-dependent elements */
+/* Theme accent awareness: primary CTAs follow chosen color scheme */
 .app .btn-primary,
 .app .quick-add-entry-mode-btn[aria-selected="true"],
 .app .quick-add-bar .btn-primary,
-.app .input-group .btn-primary {
-  background: linear-gradient(140deg, var(--theme-primary, #F4B8CA) 0%, var(--theme-secondary, #D4708A) 100%) !important;
-  box-shadow: 0 6px 18px color-mix(in srgb, var(--theme-accent, #D4708A) 30%, transparent) !important;
+.app .input-group .btn-primary,
+.app .quick-add-stack .quick-add-submit-btn,
+.app .quick-add-details-form .quick-details-submit,
+.app .daily-progress-chip.btn-primary {
+  background: var(--gradient-cta, var(--theme-gradient)) !important;
+  border-color: color-mix(in srgb, var(--theme-accent) 18%, rgba(255, 255, 255, 0.45)) !important;
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--theme-accent) 30%, transparent) !important;
+  color: #fff !important;
 }
 .app .bottom-nav .bottom-nav-item.active,
 .app .bottom-nav button[aria-current="page"] span {
@@ -1839,16 +1859,9 @@ html[data-theme="dark"] .app .notes-search-input {
   font-weight: 500 !important;
   transition: all 180ms ease !important;
 }
-.app .btn-primary {
-  background: linear-gradient(135deg, #E8A9B7 0%, #D4708A 100%) !important;
-  border: none !important;
-  color: #fff !important;
-  border-radius: 999px !important;
-  box-shadow: 0 4px 16px rgba(232, 169, 183, 0.3) !important;
-}
 .app .btn-primary:hover:not(:disabled) {
   transform: translateY(-1px) !important;
-  box-shadow: 0 6px 20px rgba(232, 169, 183, 0.4) !important;
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--theme-accent) 38%, transparent) !important;
 }
 
 /* ─── Toast: rounded glass ─── */
@@ -1977,7 +1990,11 @@ html[data-theme="dark"] .app .notes-search-input {
   gap: var(--py-space-4);
 }
 .today-focus-streak-row {
+  margin-top: 20px;
   margin-bottom: var(--py-space-4);
+}
+.app .today-focus-streak-row {
+  margin-top: 20px !important;
 }
 
 /* ─── Medication Item ─── */
