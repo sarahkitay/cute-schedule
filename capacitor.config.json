@@ -2,9 +2,22 @@
   "appId": "app.proyou.proyou",
   "appName": "PROYOU",
   "webDir": "dist",
-  "packageClassList": ["SignInWithApple", "FirebaseAuthenticationPlugin", "FirebaseMessagingPlugin", "LocalNotificationsPlugin", "AppPlugin"],
+  "packageClassList": [
+    "SignInWithApple",
+    "FirebaseAuthenticationPlugin",
+    "FirebaseMessagingPlugin",
+    "AppPlugin",
+    "LocalNotificationsPlugin",
+    "PurchasesPlugin",
+    "ProyouApnsPlugin",
+    "ProyouWidgetPlugin",
+    "ProyouMusicPickerPlugin",
+    "ProyouNutritionLabelPlugin",
+    "ProyouAlarmSoundPlugin"
+  ],
   "ios": {
-    "contentInset": "automatic"
+    "contentInset": "never",
+    "backgroundColor": "#fff8f7"
   },
   "server": {
     "androidScheme": "https",
@@ -20,11 +33,17 @@
   "plugins": {
     "FirebaseAuthentication": {
       "skipNativeAuth": false,
-      "providers": ["apple.com"],
+      "providers": [
+        "apple.com"
+      ],
       "authDomain": "cute-schedule.vercel.app"
     },
     "FirebaseMessaging": {
-      "presentationOptions": ["badge", "sound", "alert"]
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
     }
   }
 }

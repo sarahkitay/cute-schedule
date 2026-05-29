@@ -65,6 +65,31 @@ export function formatTimerDisplay(remainingMs) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Human label for a preset length (e.g. "25 min", "1 hr"). */
+export function formatTimerPresetLabel(ms) {
+  const mins = Math.max(1, Math.round((Number(ms) || 0) / 60000));
+  if (mins % 60 === 0 && mins >= 60) {
+    const hrs = mins / 60;
+    return hrs === 1 ? "1 hr" : `${hrs} hr`;
+  }
+  return `${mins} min`;
+}
+
+/** @param {object|null|undefined} raw */
+export function normalizeLinkedTask(raw) {
+  if (!raw || typeof raw !== "object" || raw.taskId == null) return null;
+  return {
+    taskId: String(raw.taskId),
+    dayKey: raw.dayKey != null ? String(raw.dayKey) : null,
+    hourKey: raw.hourKey != null ? String(raw.hourKey) : null,
+    category: raw.category != null ? String(raw.category) : null,
+    taskText:
+      typeof raw.taskText === "string" && raw.taskText.trim()
+        ? raw.taskText.trim().slice(0, 200)
+        : null,
+  };
+}
+
 const DEFAULT_PRESET_MS = 25 * 60 * 1000;
 
 /** @returns {import('./timers').ActiveTimerDraft} */
@@ -75,6 +100,7 @@ export function defaultActiveTimerDraft(presetMs = DEFAULT_PRESET_MS) {
     remainingMs: presetMs,
     running: false,
     endsAt: null,
+    linkedTask: null,
   };
 }
 
@@ -91,6 +117,7 @@ export function normalizeActiveTimer(raw) {
     remainingMs,
     running: running && endsAt != null,
     endsAt: running && endsAt != null ? endsAt : null,
+    linkedTask: normalizeLinkedTask(raw.linkedTask),
   };
 }
 
@@ -102,14 +129,17 @@ export function getActiveTimerRemaining(active) {
   return norm.remainingMs;
 }
 
-/** @param {object|null|undefined} active @param {{ remainingMs?: number, label?: string }} [opts] */
+/** @param {object|null|undefined} active @param {{ remainingMs?: number, label?: string, linkedTask?: object|null }} [opts] */
 export function startActiveTimer(active, opts = {}) {
   const base = normalizeActiveTimer(active) ?? defaultActiveTimerDraft();
   const remainingMs = opts.remainingMs ?? getActiveTimerRemaining(base);
   const ms = Math.max(0, remainingMs);
+  const linkedTask =
+    opts.linkedTask !== undefined ? normalizeLinkedTask(opts.linkedTask) : base.linkedTask;
   return {
     ...base,
     label: opts.label ?? base.label,
+    linkedTask,
     remainingMs: ms,
     running: true,
     endsAt: Date.now() + ms,
@@ -131,24 +161,33 @@ export function resetActiveTimer(active, presetMs) {
   return { ...base, selectedPresetMs: ms, remainingMs: ms, running: false, endsAt: null };
 }
 
-/** @param {object} active @param {Array} history */
-export function buildFocusTimerHistoryEntry(active) {
+/** @param {object} active @param {{ taskCompleted?: boolean }} [opts] */
+export function buildFocusTimerHistoryEntry(active, opts = {}) {
   const base = normalizeActiveTimer(active);
-  return {
+  const presetMs = base?.selectedPresetMs || base?.remainingMs || DEFAULT_PRESET_MS;
+  const entry = {
     id: Date.now(),
     label: base?.label || "Focus",
-    durationMs: base?.selectedPresetMs || base?.remainingMs || DEFAULT_PRESET_MS,
+    durationMs: presetMs,
+    presetMs,
     completedAt: Date.now(),
     type: TIMER_TYPES.FOCUS,
   };
+  if (base?.linkedTask) {
+    entry.linkedTask = { ...base.linkedTask };
+    entry.taskCompleted = !!opts.taskCompleted;
+  }
+  return entry;
 }
 
 /** If a running timer was stored past its end time, return updated state. */
-export function reconcileActiveTimerOnLoad(state) {
+export function reconcileActiveTimerOnLoad(state, opts = {}) {
   const active = normalizeActiveTimer(state?.activeTimer);
   if (!active?.running || !active.endsAt) return state;
   if (Date.now() < active.endsAt) return { ...state, activeTimer: active };
-  const entry = buildFocusTimerHistoryEntry(active);
+  const entry = buildFocusTimerHistoryEntry(active, {
+    taskCompleted: !!opts.resolveTaskDone?.(active),
+  });
   return {
     ...state,
     activeTimer: resetActiveTimer(active, active.selectedPresetMs),
@@ -156,11 +195,13 @@ export function reconcileActiveTimerOnLoad(state) {
   };
 }
 
-/** @param {object} state */
-export function completeActiveTimerState(state) {
+/** @param {object} state @param {{ resolveTaskDone?: (active: object) => boolean }} [opts] */
+export function completeActiveTimerState(state, opts = {}) {
   const active = normalizeActiveTimer(state?.activeTimer);
   if (!active?.running || !active.endsAt || Date.now() < active.endsAt) return state;
-  const entry = buildFocusTimerHistoryEntry(active);
+  const entry = buildFocusTimerHistoryEntry(active, {
+    taskCompleted: !!opts.resolveTaskDone?.(active),
+  });
   try {
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       new Notification("Timer complete", { body: `${active.label} timer finished!` });
@@ -193,6 +234,12 @@ export const ALARM_MODES = {
   MATH_DISMISS: "math_dismiss",
   ACTION_REQUIRED: "action_required",
 };
+
+/** True when the user chose a wake-up game (math or writing) for this alarm. */
+export function alarmRequiresWakeUpChallenge(alarm) {
+  const mode = alarm?.mode;
+  return mode === ALARM_MODES.MATH_DISMISS || mode === ALARM_MODES.ACTION_REQUIRED;
+}
 
 export { ALARM_SOUND_IDS, BUILTIN_ALARM_SOUNDS } from "../alarmSounds";
 

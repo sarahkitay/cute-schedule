@@ -9,7 +9,7 @@ const QUICK_SLIDES = [
   {
     title: "Plan & quick wins",
     body:
-      "**Plan** holds monthly objectives plus a scrollable task list for the day — great for checking things off without the full Today timeline. Bigger goals stay separate from your hourly schedule.",
+      "**Plan** holds monthly objectives plus a scrollable task list for the day: great for checking things off without the full Today timeline. Bigger goals stay separate from your hourly schedule.",
   },
   {
     title: "Coach, notes & money",
@@ -47,12 +47,12 @@ const FULL_SLIDES = [
   {
     title: "Plan tab",
     body:
-      "**Plan** combines **monthly objectives** with a **today's list** view — a flat checklist for the selected day, sorted with heavier-energy items first. Check off here and it stays in sync with Today, without repeating the full home timeline.",
+      "**Plan** combines **monthly objectives** with a **today's list** view: a flat checklist for the selected day, sorted with heavier-energy items first. Check off here and it stays in sync with Today, without repeating the full home timeline.",
   },
   {
     title: "Monthly objectives",
     body:
-      "In **Plan**, monthly objectives sit above your daily list — a few big outcomes that should not crowd your hourly schedule on Today.",
+      "In **Plan**, monthly objectives sit above your daily list: a few big outcomes that should not crowd your hourly schedule on Today.",
   },
   {
     title: "Coach",
@@ -67,7 +67,7 @@ const FULL_SLIDES = [
   {
     title: "Timers & alarms",
     body:
-      "**Timers** (when in your nav) covers focus presets and morning alarms. Built-in sounds are available, or import from Files or Apple Music — see **Instructions** on the Timers tab for import steps and how custom sounds behave on iPhone vs in the app.",
+      "**Timers** (when in your nav) covers focus presets and morning alarms. Built-in sounds are available, or import from Files or Apple Music; see **Instructions** on the Timers tab for import steps and how custom sounds behave on iPhone vs in the app.",
   },
   {
     title: "Habits & reminders",
@@ -92,12 +92,12 @@ const FULL_SLIDES = [
   {
     title: "You are ready",
     body:
-      "Use the bottom bar to jump between areas. Everything from first setup can be changed in **Settings**. Tap **Done** below to close this tour. You will not see this full tour again unless you clear app data or we add a replay option later.",
+      "Use the bottom bar to jump between areas. Everything from first setup can be changed in **Settings**. Tap **Done** below to close this tour — you can replay it anytime from **Settings → Guides & tours**.",
   },
 ];
 
 /**
- * One-time (or explicit) product tour after onboarding. `mode`: quick (4) vs full (12).
+ * One-time (or explicit) product tour after onboarding. `mode`: quick (4) vs full (14).
  */
 export function FeatureWalkthrough({ mode, onComplete, onDismiss }) {
   const slides = mode === "full" ? FULL_SLIDES : QUICK_SLIDES;

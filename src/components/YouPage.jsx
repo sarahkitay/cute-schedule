@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { FriendsHub } from "./social/FriendsHub.jsx";
+import { useSocial } from "../social/SocialContext.jsx";
 import { HabitDirectionDot } from "../HabitIconPicker";
 import { DockNavIcon } from "../DockNavIcon";
-import { getDockNavAsset } from "../dockNavAssets";
+import { dockNavAssetUrl, getDockNavAsset, resolveDockNavImage } from "../dockNavAssets";
 import { useIconStyle } from "../IconStyleContext";
 import { appIconUrl } from "../iconStyle";
 import {
@@ -24,13 +26,28 @@ export function YouPage({
   onNavPreferencesChange,
   coachingTone, setCoachingTone,
   onNavigateModule,
+  firebaseUser = null,
+  openAccountability = false,
+  onAccountabilityOpened,
 }) {
   const [section, setSection] = useState(null);
+  const social = useSocial();
   const [newHabitLabel, setNewHabitLabel] = useState("");
   const [newHabitDir, setNewHabitDir] = useState("build");
   const [newRoutineLine, setNewRoutineLine] = useState("");
   const [nightRoutineLine, setNightRoutineLine] = useState("");
   const { iconStyle } = useIconStyle();
+
+  useEffect(() => {
+    if (openAccountability) {
+      setSection("accountability");
+      onAccountabilityOpened?.();
+    }
+  }, [openAccountability, onAccountabilityOpened]);
+
+  const habitsIconSrc = dockNavAssetUrl(resolveDockNavImage("habits", { iconStyle }));
+  const navigationIconSrc = dockNavAssetUrl(resolveDockNavImage("nav", { iconStyle }));
+  const routinesIconSrc = dockNavAssetUrl(resolveDockNavImage("routines", { iconStyle }));
 
   const allModules = APP_MODULE_CATALOG.filter((m) => m.id !== "today").map((mod) => {
     const asset = getDockNavAsset(mod.id);
@@ -85,6 +102,15 @@ export function YouPage({
 
   function removeNightItem(id) {
     setRoutineTemplate(prev => prev.filter(r => r.id !== id));
+  }
+
+  if (section === "accountability") {
+    return (
+      <FriendsHub
+        firebaseUser={firebaseUser}
+        onBack={() => setSection(null)}
+      />
+    );
   }
 
   if (section === "habits") {
@@ -219,32 +245,53 @@ export function YouPage({
       {/* Profile header */}
       <div className="py-glass-card" style={{ padding: 20, textAlign: "center" }}>
         <img src={appIconUrl("brandLogo", iconStyle)} alt="ProYou" style={{ width: 56, height: 56, borderRadius: 18, objectFit: "cover", margin: "0 auto 10px", display: "block" }} />
-        <div style={{ fontSize: 20, fontWeight: 600, color: "var(--py-ink)" }}>{profile.name || "Your Name"}</div>
-        {profile.birthday && <div style={{ fontSize: 13, color: "var(--py-ink-tertiary)", marginTop: 2 }}>{profile.birthday}</div>}
+        <div style={{ fontSize: 20, fontWeight: 600, color: "var(--py-ink)" }}>{profile.userName?.trim() || "Your Name"}</div>
+        {profile.userBirthday ? (
+          <div style={{ fontSize: 13, color: "var(--py-ink-tertiary)", marginTop: 2 }}>
+            {(() => {
+              const d = String(profile.userBirthday).replace(/\D/g, "");
+              return d.length >= 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}` : d;
+            })()}
+          </div>
+        ) : null}
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
-          <input value={profile.name || ""} onChange={e => setProfile(p => ({ ...p, name: e.target.value }))} placeholder="Your name" className="py-input" style={{ maxWidth: 180, textAlign: "center", fontSize: 14 }} />
+          <input
+            value={profile.userName || ""}
+            onChange={(e) => setProfile((p) => ({ ...p, userName: e.target.value }))}
+            placeholder="Your name"
+            className="py-input"
+            style={{ maxWidth: 180, textAlign: "center", fontSize: 14 }}
+            aria-label="Your name"
+          />
         </div>
       </div>
 
       {/* Quick actions grid */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <button type="button" onClick={() => setSection("habits")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <img src={`${import.meta.env.BASE_URL}habit.png`} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
+          <img src={habitsIconSrc} alt="" className="you-page-action-icon you-page-action-icon--habits" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Habits</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{(habitTracker.habits || []).length} active</div>
         </button>
         <button type="button" onClick={() => setSection("routine")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <img src={`${import.meta.env.BASE_URL}sunIcon.png`} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
+          <img src={routinesIconSrc} alt="" className="you-page-action-icon you-page-action-icon--routines" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Routines</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>{morningRoutineTemplate.length} morning steps</div>
         </button>
         <button type="button" onClick={() => setSection("nav")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <img src={`${import.meta.env.BASE_URL}nav.png`} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
+          <img src={navigationIconSrc} alt="" className="you-page-action-icon" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Navigation</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>Customize your nav bar</div>
         </button>
+        <button type="button" onClick={() => setSection("accountability")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
+          <div style={{ fontSize: 28, marginBottom: 8 }} aria-hidden>🤝</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Accountability</div>
+          <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>
+            {social.friendUids?.length ? `${social.friendUids.length} friend(s)` : "Friends & shared tasks"}
+          </div>
+        </button>
         <button type="button" onClick={onOpenSettings} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <img src={appIconUrl("settings", iconStyle)} alt="" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
+          <img src={appIconUrl("settings", iconStyle)} alt="" className="you-page-action-icon you-page-action-icon--settings" style={{ width: 34, height: 34, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Settings</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>Theme, data, account</div>
         </button>
@@ -255,7 +302,12 @@ export function YouPage({
         <h3 style={{ fontSize: 16, fontWeight: 600, color: "var(--py-ink)", marginBottom: 12 }}>All Modules</h3>
         <div className="py-flex-col py-gap-3">
           {allModules.map(mod => (
-            <button key={mod.id} type="button" onClick={() => onNavigateModule(resolveTabId(mod.id))} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "rgba(255,255,255,0.55)", backdropFilter: "blur(16px)", border: "1px solid rgba(0,0,0,0.04)", borderRadius: 18, cursor: "pointer", textAlign: "left", boxShadow: "0 2px 10px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.5)" }}>
+            <button
+              key={mod.id}
+              type="button"
+              onClick={() => onNavigateModule(resolveTabId(mod.id), mod.id)}
+              style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 16px", background: "rgba(255,255,255,0.55)", backdropFilter: "blur(16px)", border: "1px solid rgba(0,0,0,0.04)", borderRadius: 18, cursor: "pointer", textAlign: "left", boxShadow: "0 2px 10px rgba(0,0,0,0.03), inset 0 1px 0 rgba(255,255,255,0.5)" }}
+            >
               <DockNavIcon tabId={mod.id} active={false} />
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 15, fontWeight: 500, color: "var(--py-ink)" }}>{mod.label}</div>

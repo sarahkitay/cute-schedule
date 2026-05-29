@@ -172,7 +172,7 @@ function lastObjectiveTouchDay(
 function suggestObjectiveAction(title: string): string {
   const t = String(title || "").trim();
   const short = t.length > 42 ? `${t.slice(0, 40)}…` : t;
-  return `Add a 30–45 minute block tied to "${short}" (one concrete deliverable: ship a small slice, outline the next step, or do outreach).`;
+  return `Add a 30-45 minute block tied to "${short}" (one concrete deliverable: ship a small slice, outline the next step, or do outreach).`;
 }
 
 export type BuildCoachContextInput = {

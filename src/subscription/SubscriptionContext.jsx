@@ -14,6 +14,7 @@ import {
   restorePurchases,
 } from "./revenueCatClient.js";
 import { setSubscriptionSnapshot, subscribeSubscriptionSnapshot } from "./subscriptionStore.js";
+import { mergeSubscriptionWithReferral, getReferralProGrant } from "../social/referralEntitlement.js";
 
 /** @typedef {import('./features.js').FeatureId} FeatureId */
 
@@ -37,6 +38,7 @@ export function SubscriptionProvider({
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [upgradeFeature, setUpgradeFeature] = useState(/** @type {FeatureId | null} */ (null));
   const [appTrial, setAppTrial] = useState(() => getAppTrialStatus());
+  const [referralProActive, setReferralProActive] = useState(() => getReferralProGrant().active);
 
   useEffect(() => {
     initAppTrialStart();
@@ -49,7 +51,10 @@ export function SubscriptionProvider({
   const syncSubscription = useCallback(async () => {
     setLoading(true);
     try {
-      const state = await refreshSubscriptionState(firebaseUid || undefined);
+      const raw = await refreshSubscriptionState(firebaseUid || undefined);
+      const state = mergeSubscriptionWithReferral(raw);
+      const referral = getReferralProGrant();
+      setReferralProActive(referral.active);
       setIsPro(state.isPro);
       setTrialActive(state.trialActive);
       setExpirationDate(state.expirationDate);
@@ -167,10 +172,13 @@ export function SubscriptionProvider({
       purchasePro,
       restorePurchases: restore,
       refreshSubscription: syncSubscription,
+      referralProActive,
+      referralProDaysLeft: getReferralProGrant().daysLeft,
     }),
     [
       loading,
       isPro,
+      referralProActive,
       trialActive,
       expirationDate,
       subscriptionExpired,

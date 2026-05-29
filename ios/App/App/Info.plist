@@ -78,5 +78,11 @@
 		<string>remote-notification</string>
 		<string>audio</string>
 	</array>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>PROYOU needs access to your music library so you can pick a song for your morning alarm.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>PROYOU uses the camera to scan nutrition labels for your macro tracker.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>PROYOU can read nutrition label photos you choose from your library.</string>
 </dict>
 </plist>

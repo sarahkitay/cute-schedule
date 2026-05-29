@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { PillButton } from "./PillButton";
 import { ModuleToggle } from "./ModuleToggle";
 import { THEMES } from "../themes";
-import { ICON_STYLE_OPTIONS, ICON_STYLE_SIMPLE, normalizeIconStyle } from "../iconStyle";
+import { ICON_STYLE_OPTIONS, ICON_STYLE_SIMPLE, iconStyleForTheme, normalizeIconStyle } from "../iconStyle";
 import { dockNavAssetUrl } from "../dockNavAssets";
 import { MODULE_REGISTRY, DEFAULT_ENABLED_MODULES, DEFAULT_NAV_ORDER } from "../modules/registry";
 
@@ -27,9 +27,9 @@ const COACHING_TONES = [
 ];
 
 const PEAK_TIMES = [
-  { id: "morning", label: "Morning", time: "6am–12pm" },
-  { id: "afternoon", label: "Afternoon", time: "12pm–5pm" },
-  { id: "evening", label: "Evening", time: "5pm–10pm" },
+  { id: "morning", label: "Morning", time: "6am to 12pm" },
+  { id: "afternoon", label: "Afternoon", time: "12pm to 5pm" },
+  { id: "evening", label: "Evening", time: "5pm to 10pm" },
   { id: "varies", label: "It varies", time: "" },
 ];
 
@@ -44,6 +44,7 @@ const FALLOFF_REASONS = [
 ];
 
 const TOTAL_STEPS = 8;
+const LAST_STEP = TOTAL_STEPS - 1;
 
 const ONBOARDING_THEME_PREVIEW = {
   todayicondm: "todayicondm.png",
@@ -73,7 +74,7 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
     setFalloffReasons((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
-  function finish() {
+  function finish(startTour = null) {
     const navOrder = DEFAULT_NAV_ORDER.filter((id) => enabledModules.includes(id));
     onComplete({
       name,
@@ -85,24 +86,52 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
       coachingTone,
       theme: onboardingTheme,
       iconStyle,
+      startTour,
     });
   }
 
   function handleNext() {
-    if (step >= TOTAL_STEPS - 1) {
+    if (step >= LAST_STEP) {
       finish();
       return;
     }
     setStep((s) => s + 1);
   }
 
+  function handleBack() {
+    setStep((s) => Math.max(0, s - 1));
+  }
+
   function handleSkip() {
     finish();
   }
 
+  const appearanceDark =
+    onboardingTheme?.name === "Midnight" || onboardingTheme?.name === "Mocha";
+
   return (
-    <div className="py-onboarding">
-      <div className="py-onboarding__card">
+    <div className="py-onboarding" role="dialog" aria-modal="true" aria-label="Set up ProYou">
+      {step > 0 && (
+        <div className="py-onboarding__nav">
+          <button
+            type="button"
+            className="py-onboarding__navbtn"
+            onClick={handleBack}
+            aria-label="Go back"
+          >
+            <span aria-hidden="true">‹</span> Back
+          </button>
+          <span className="py-onboarding__stepcount">{`Step ${step} of ${LAST_STEP}`}</span>
+          <button
+            type="button"
+            className="py-onboarding__navbtn py-onboarding__navbtn--muted"
+            onClick={handleSkip}
+          >
+            Skip
+          </button>
+        </div>
+      )}
+      <div className="py-onboarding__card" key={step}>
         {step === 0 && (
           <>
             <div className="py-onboarding__brand">ProYou</div>
@@ -132,6 +161,9 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
               placeholder="Your first name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleNext();
+              }}
               autoFocus
               style={{ marginBottom: "var(--py-space-5)" }}
             />
@@ -270,6 +302,7 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
                     onClick={() => {
                       setOnboardingTheme(themeData);
                       if (setTheme) setTheme(themeData);
+                      setIconStyle(iconStyleForTheme(themeData));
                     }}
                     style={{
                       background: themeData.gradient,
@@ -302,7 +335,11 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
                   >
                     <span
                       className={`onboarding-icon-style-option__preview ${
-                        opt.id === ICON_STYLE_SIMPLE ? "onboarding-icon-style-option__preview--dark" : ""
+                        opt.id === ICON_STYLE_SIMPLE
+                          ? appearanceDark
+                            ? "onboarding-icon-style-option__preview--dark"
+                            : "onboarding-icon-style-option__preview--theme"
+                          : ""
                       }`}
                     >
                       <img src={dockNavAssetUrl(previewImg)} alt="" draggable={false} />
@@ -342,10 +379,16 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
               ))}
             </div>
             <div className="py-onboarding__actions">
-              <PillButton variant="primary" size="lg" onClick={finish}>
-                Start using ProYou
+              <PillButton variant="primary" size="lg" onClick={() => finish("quick")}>
+                Take a quick tour
+              </PillButton>
+              <PillButton variant="ghost" onClick={() => finish(null)}>
+                Skip tour, start using ProYou
               </PillButton>
             </div>
+            <p className="py-onboarding__finehint">
+              You can replay the tour anytime from Settings.
+            </p>
           </>
         )}
 

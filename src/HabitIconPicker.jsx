@@ -23,8 +23,8 @@ export function HabitIconPicker({ value, onChange, compact = false, ariaLabel = 
           className={`habit-icon-option${selected === ic.id ? " is-selected" : ""}`}
           onClick={() => onChange(ic.id)}
         >
-          <span className="habit-icon-option-emoji" aria-hidden>
-            {ic.emoji}
+          <span className="habit-icon-option-abbr" aria-hidden>
+            {ic.abbr}
           </span>
         </button>
       ))}
@@ -32,14 +32,9 @@ export function HabitIconPicker({ value, onChange, compact = false, ariaLabel = 
   );
 }
 
-/** @param {{ iconId: string, className?: string }} props */
-export function HabitIconBadge({ iconId, className = "" }) {
-  const ic = HABIT_ICONS.find((i) => i.id === normalizeHabitIcon(iconId));
-  return (
-    <span className={`habit-icon-badge${className ? ` ${className}` : ""}`} title={ic?.label} aria-hidden>
-      {ic?.emoji || "⭐"}
-    </span>
-  );
+/** @deprecated Icons are not shown beside habit names in lists. */
+export function HabitIconBadge() {
+  return null;
 }
 
 /** Build = green dot; break = muted rose dot (no text label). */

@@ -118,7 +118,7 @@ export function fireAlarm(alarm, opts = {}) {
   if (!alarm?.enabled) return;
   if (isAlarmDismissedToday(alarm.id)) return;
   if (!opts.replayOnly) persistRingingAlarm(alarm);
-  playAlarmSound(alarm);
+  void playAlarmSound(alarm);
   notifyAlarm(alarm);
 }
 

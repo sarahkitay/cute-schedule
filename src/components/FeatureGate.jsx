@@ -3,7 +3,7 @@ import { useSubscription } from "../subscription/SubscriptionContext.jsx";
 import { isAppTrialGatedFeature } from "../subscription/appTrial.js";
 
 /**
- * Soft paywall wrapper — shows children dimmed with upgrade overlay when feature unavailable.
+ * Soft paywall wrapper ,  shows children dimmed with upgrade overlay when feature unavailable.
  * @param {{ feature: import('../subscription/features.js').FeatureId, children: React.ReactNode, fallback?: React.ReactNode, className?: string }} props
  */
 export function FeatureGate({ feature, children, fallback = null, className = "" }) {

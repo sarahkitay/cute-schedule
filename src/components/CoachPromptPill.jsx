@@ -1,7 +1,7 @@
 import React from "react";
 import { useSubscription } from "../subscription/SubscriptionContext.jsx";
 
-/** Coach tab — daily prompt allowance pill */
+/** Coach tab — daily prompt allowance; upgrade only when out of free prompts. */
 export function CoachPromptPill() {
   const { isPro, promptsRemainingToday, openUpgrade } = useSubscription();
 
@@ -15,16 +15,22 @@ export function CoachPromptPill() {
 
   const remaining = Number.isFinite(promptsRemainingToday) ? promptsRemainingToday : 0;
 
+  if (remaining <= 0) {
+    return (
+      <button
+        type="button"
+        className="pro-coach-prompts-pill pro-coach-prompts-pill--upgrade"
+        style={{ marginTop: 0, cursor: "pointer", border: "none", font: "inherit" }}
+        onClick={() => openUpgrade("coach_prompt")}
+      >
+        Daily limit reached · Upgrade for unlimited
+      </button>
+    );
+  }
+
   return (
-    <button
-      type="button"
-      className="pro-coach-prompts-pill"
-      style={{ marginTop: 0, cursor: "pointer", border: "none", font: "inherit" }}
-      onClick={() => openUpgrade("coach_prompt")}
-    >
-      {remaining > 0
-        ? `${remaining} free coach prompt${remaining === 1 ? "" : "s"} left today`
-        : "Daily limit reached · Upgrade for unlimited"}
-    </button>
+    <p className="pro-coach-prompts-pill pro-coach-prompts-pill--remaining" style={{ marginTop: 0 }}>
+      {remaining} free coach prompt{remaining === 1 ? "" : "s"} left today
+    </p>
   );
 }

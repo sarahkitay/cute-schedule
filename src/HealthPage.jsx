@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { CloseIcon, DumbbellIcon, MacroCalculatorIcon } from "./Icons";
+import { CloseIcon, MacroCalculatorIcon } from "./Icons";
 import {
   PROGRAM_LIBRARY,
   addDaysToDayKey,
@@ -8,6 +8,7 @@ import {
   collectShoppingLinesFromMealPlan,
   computeMacroTargetsFromProfile,
   computeWorkoutConsistency,
+  computeWorkoutOverviewStats,
   feetInchesToCm,
   formatExerciseBlockLine,
   formatWeightLbFromKg,
@@ -26,6 +27,13 @@ import {
   normalizeMacroDayEntry,
   suggestMealPlansForTargets,
   sumMacroDayTotals,
+  weeklyMenuDayLabels,
+  dayOfWeekIndexForDayKey,
+  getWeeklyMenuFollowStatus,
+  appendWeeklyMenuMealToMacroLog,
+  markWeeklyMenuMealSkipped,
+  normalizeWeeklyMenu,
+  appendMealPlanToWeeklyMenu,
 } from "./health/healthModel";
 import {
   buildGroceryListItems,
@@ -35,6 +43,9 @@ import {
 } from "./groceryTaskCoachHelpers";
 import { dockNavAssetUrl, resolveDockNavImage } from "./dockNavAssets";
 import { useIconStyle } from "./IconStyleContext";
+import { NutritionLabelScanner } from "./components/NutritionLabelScanner";
+import { AddWorkoutWeekModal } from "./components/AddWorkoutWeekModal.jsx";
+import { launchNutritionLabelScan } from "./nutritionLabelScanner";
 
 function newId(prefix) {
   try {
@@ -44,6 +55,7 @@ function newId(prefix) {
 }
 
 const MEAL_TYPE_OPTIONS = ["Breakfast", "Lunch", "Dinner", "Snack", "Other"];
+const MEAL_SERVING_OPTIONS = [0.5, 1, 1.5, 2, 3];
 
 function GuidedWorkoutOverlay({ session, health, setHealth, onClose, onMarkTaskDone }) {
   const h = useMemo(() => normalizeHealth(health), [health]);
@@ -288,6 +300,8 @@ export function HealthPage({
   onMarkGuidedTaskDone,
   /** Increment from parent to scroll the program builder into view (e.g. after adding a gym task). */
   scrollToProgramBuilderSignal = 0,
+  focusWeeklyMenuSignal = 0,
+  onAskCoachMealPlan = null,
 }) {
   const h = useMemo(() => normalizeHealth(health), [health]);
   const [macroDate, setMacroDate] = useState(() => realTodayKey);
@@ -310,21 +324,24 @@ export function HealthPage({
   const [draftExWeight, setDraftExWeight] = useState("");
   const [editingProgramId, setEditingProgramId] = useState(null);
   const [routineAddId, setRoutineAddId] = useState("");
+  const [bundleProgramName, setBundleProgramName] = useState("");
+  const [addWeekProgram, setAddWeekProgram] = useState(null);
   const [buildProgramOpen, setBuildProgramOpen] = useState(false);
   const [selectedProgramId, setSelectedProgramId] = useState("");
   const [programPickerOpen, setProgramPickerOpen] = useState(false);
   const [programsGalleryOpen, setProgramsGalleryOpen] = useState(false);
   const [programPickerSearch, setProgramPickerSearch] = useState("");
-  const [programDragOverId, setProgramDragOverId] = useState(null);
   const programPickerRef = useRef(null);
-  const programDragSourceRef = useRef(null);
   const [mealType, setMealType] = useState("");
   const [mealFood, setMealFood] = useState("");
   const [mealFoodPickerOpen, setMealFoodPickerOpen] = useState(false);
   const [selectedFoodMatchId, setSelectedFoodMatchId] = useState(null);
   const [macroManualEntry, setMacroManualEntry] = useState(false);
   const mealFoodPickerRef = useRef(null);
+  const mealLogSectionRef = useRef(null);
   const selectedFoodMatchIdRef = useRef(null);
+  const [mealServings, setMealServings] = useState(1);
+  const [mealMacroBase, setMealMacroBase] = useState(null);
   useEffect(() => {
     selectedFoodMatchIdRef.current = selectedFoodMatchId;
   }, [selectedFoodMatchId]);
@@ -335,9 +352,23 @@ export function HealthPage({
   const [mealFat, setMealFat] = useState("");
   const [mealCalories, setMealCalories] = useState("");
   const [macroOverviewOpen, setMacroOverviewOpen] = useState(false);
+  const [workoutOverviewOpen, setWorkoutOverviewOpen] = useState(false);
+  const [labelScannerOpen, setLabelScannerOpen] = useState(false);
+  const [labelScannerInitialOcr, setLabelScannerInitialOcr] = useState(null);
+  const [labelScanBusy, setLabelScanBusy] = useState(false);
   const [groceryListTitle, setGroceryListTitle] = useState("");
-  const [groceryListDraft, setGroceryListDraft] = useState("");
+  const [groceryDraftItems, setGroceryDraftItems] = useState([]);
+  const [groceryItemInput, setGroceryItemInput] = useState("");
   const [groceryPlanPickId, setGroceryPlanPickId] = useState("");
+  const [weeklyMenuEditDay, setWeeklyMenuEditDay] = useState(() => new Date().getDay());
+  const [weeklyMenuSlot, setWeeklyMenuSlot] = useState("Breakfast");
+  const [weeklyMenuFood, setWeeklyMenuFood] = useState("");
+  const [weeklyMenuProtein, setWeeklyMenuProtein] = useState("");
+  const [weeklyMenuCarbs, setWeeklyMenuCarbs] = useState("");
+  const [weeklyMenuFat, setWeeklyMenuFat] = useState("");
+  const [weeklyMenuCalories, setWeeklyMenuCalories] = useState("");
+  const [weeklyMenuLogServings, setWeeklyMenuLogServings] = useState({});
+  const [weeklyMenuPlanAddedKey, setWeeklyMenuPlanAddedKey] = useState(null);
   const macroTargetsApplied = !!(h.macroTargets?.calories);
   const [macroCalcExpanded, setMacroCalcExpanded] = useState(() => !macroTargetsApplied);
   const prevMacroTargetsRef = useRef(macroTargetsApplied);
@@ -367,6 +398,8 @@ export function HealthPage({
     setMealCarbs("");
     setMealFat("");
     setMealCalories("");
+    setMealServings(1);
+    setMealMacroBase(null);
     setMealPrepDayKeys([macroDate]);
   }, [macroDate]);
 
@@ -392,6 +425,18 @@ export function HealthPage({
     return () => cancelAnimationFrame(id);
   }, [healthTab, scrollToProgramBuilderSignal]);
 
+  const handledWeeklyMenuFocus = useRef(0);
+  useEffect(() => {
+    if (!focusWeeklyMenuSignal) return;
+    if (focusWeeklyMenuSignal <= handledWeeklyMenuFocus.current) return;
+    handledWeeklyMenuFocus.current = focusWeeklyMenuSignal;
+    setHealthTab("macros");
+    const id = requestAnimationFrame(() => {
+      document.querySelector(".health-weekly-menu-block")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [focusWeeklyMenuSignal]);
+
   useEffect(() => {
     const { feet, inches } = cmToFeetInches(h.profile.heightCm);
     setHeightFtStr(feet === "" ? "" : String(feet));
@@ -408,6 +453,11 @@ export function HealthPage({
 
   const consistency = useMemo(
     () => computeWorkoutConsistency(appState, realTodayKey, h),
+    [appState, realTodayKey, h]
+  );
+
+  const workoutOverview = useMemo(
+    () => computeWorkoutOverviewStats(appState, realTodayKey, h, 12),
     [appState, realTodayKey, h]
   );
 
@@ -597,7 +647,7 @@ export function HealthPage({
     const src = normalizeProgramRecord(lib);
     if (!src) return;
     const id = newId("prog");
-    const rec = normalizeProgramRecord({ id, name: `${src.name} (saved)`, exercises: [...src.exercises] });
+    const rec = normalizeProgramRecord({ id, name: src.name, exercises: [...src.exercises] });
     if (!rec) return;
     setHealth((prev) => {
       const base = normalizeHealth(prev);
@@ -608,25 +658,6 @@ export function HealthPage({
       );
       return { ...base, programs, programDisplayOrder: order };
     });
-  }
-
-  function reorderProgramsOnDrop(targetId) {
-    const src = programDragSourceRef.current;
-    if (!src || src === targetId) return;
-    setHealth((prev) => {
-      const base = normalizeHealth(prev);
-      const ids = listDisplayPrograms(base).map((p) => p.id);
-      const order = normalizeProgramDisplayOrder(base.programDisplayOrder, ids);
-      const from = order.indexOf(src);
-      const to = order.indexOf(targetId);
-      if (from < 0 || to < 0) return base;
-      const next = [...order];
-      next.splice(from, 1);
-      next.splice(to, 0, src);
-      return { ...base, programDisplayOrder: next };
-    });
-    programDragSourceRef.current = null;
-    setProgramDragOverId(null);
   }
 
   function selectProgram(p) {
@@ -676,36 +707,66 @@ export function HealthPage({
   }
 
   function saveWeekBundle() {
-    const name = draftName.trim();
+    const name = bundleProgramName.trim();
     if (!name) return;
     const ids = [...(h.weekRoutineProgramIds || [])];
     if (!ids.length) return;
-    const bundleExercises = [];
-    for (const pid of ids) {
+    setHealth((prev) => ({
+      ...normalizeHealth(prev),
+      weekRoutinePlanName: name,
+      weekRoutineProgramIds: ids,
+    }));
+    setBundleProgramName("");
+  }
+
+  function scheduleFullWeekInOrder(hourKey = "18:00") {
+    const ids = [...(h.weekRoutineProgramIds || [])];
+    if (!ids.length || typeof onScheduleWorkoutTask !== "function") return;
+    ids.forEach((pid, i) => {
       const p = selectable.find((x) => x.id === pid);
-      if (!p) continue;
-      for (const ex of p.exercises || []) {
-        const b = normalizeExerciseBlock(ex);
-        if (b) bundleExercises.push(b);
-      }
-    }
-    const id = newId("prog");
-    const rec = normalizeProgramRecord({ id, name: `${name} (week bundle)`, exercises: bundleExercises });
-    if (!rec) return;
-    setHealth((prev) => {
-      const base = normalizeHealth(prev);
-      return { ...base, programs: [...(base.programs || []), rec] };
+      if (!p) return;
+      const taskBody = (p.exercises || [])
+        .map((ex) => formatExerciseBlockLine(ex))
+        .filter(Boolean)
+        .join("\n");
+      onScheduleWorkoutTask({
+        title: `Workout · ${p.name}`,
+        details: taskBody,
+        dayKey: addDaysToDayKey(realTodayKey, i),
+        hourKey,
+        workoutProgramId: p.id,
+        workoutProgramMode: "specific",
+      });
     });
-    clearBuilder();
+  }
+
+  function confirmAddWeekProgram(payload) {
+    const p = addWeekProgram;
+    if (!p || typeof onScheduleWorkoutTask !== "function") return;
+    const taskBody = (p.exercises || [])
+      .map((ex) => formatExerciseBlockLine(ex))
+      .filter(Boolean)
+      .join("\n");
+    onScheduleWorkoutTask({
+      title: `Workout · ${p.name}`,
+      details: taskBody,
+      dayKey: payload.dayKey || realTodayKey,
+      hourKey: payload.hourKey || "18:00",
+      workoutProgramId: p.id,
+      workoutProgramMode: "specific",
+    });
+    setAddWeekProgram(null);
   }
 
   const targets = h.macroTargets;
   const macroDay = normalizeMacroDayEntry(h.macroLog[macroDate], macroDate);
   const macroTotals = sumMacroDayTotals(macroDay);
-  const macroMealPlanSuggestions = useMemo(
-    () => (targets?.calories ? suggestMealPlansForTargets(targets) : []),
-    [targets]
-  );
+  const macroMealPlanSuggestions = useMemo(() => {
+    if (!targets?.calories) return [];
+    const plans = suggestMealPlansForTargets(targets);
+    if (h.profile.dietaryStyle === "vegan") return plans.filter((p) => p.id === "plant_forward");
+    return plans;
+  }, [targets, h.profile.dietaryStyle]);
   const groceryKeywordsLabel = useMemo(
     () => normalizeGroceryKeywordsFromProfile(profile).join(", "),
     [profile]
@@ -764,7 +825,7 @@ export function HealthPage({
   useEffect(() => {
     if (!mealFoodPickerOpen) return;
     function onDocClick(e) {
-      if (mealFoodPickerRef.current && !mealFoodPickerRef.current.contains(e.target)) {
+      if (mealLogSectionRef.current && !mealLogSectionRef.current.contains(e.target)) {
         setMealFoodPickerOpen(false);
       }
     }
@@ -772,25 +833,28 @@ export function HealthPage({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [mealFoodPickerOpen]);
 
-  function applyMacroFill(s) {
-    setMealProtein(String(Math.round(Number(s.protein) || 0)));
-    setMealCarbs(String(Math.round(Number(s.carbs) || 0)));
-    setMealFat(String(Math.round(Number(s.fat) || 0)));
-    setMealCalories(String(Math.round(Number(s.calories) || 0)));
+  function applyMacroFill(s, servings = mealServings) {
+    const mult = Math.max(0.25, Math.min(4, Number(servings) || 1));
+    setMealProtein(String(Math.round((Number(s.protein) || 0) * mult)));
+    setMealCarbs(String(Math.round((Number(s.carbs) || 0) * mult)));
+    setMealFat(String(Math.round((Number(s.fat) || 0) * mult)));
+    setMealCalories(String(Math.round((Number(s.calories) || 0) * mult)));
   }
 
   function selectFoodAutocompleteItem(item) {
     if (!item?.macros) return;
-    applyMacroFill(item.macros);
+    setMealMacroBase({ ...item.macros });
+    applyMacroFill(item.macros, mealServings);
     setMealFood(item.label);
     setSelectedFoodMatchId(item.id);
     setMacroManualEntry(false);
-    setMealFoodPickerOpen(false);
+    if (foodAutocompleteItems.length > 0) setMealFoodPickerOpen(true);
   }
 
   function onMealFoodChange(next) {
     setMealFood(next);
     setSelectedFoodMatchId(null);
+    setMealMacroBase(null);
     setMacroManualEntry(false);
     setMealProtein("");
     setMealCarbs("");
@@ -802,7 +866,6 @@ export function HealthPage({
 
   function onMealFoodBlur() {
     window.setTimeout(() => {
-      setMealFoodPickerOpen(false);
       if (selectedFoodMatchIdRef.current) return;
       const q = mealFood.trim();
       if (q.length < 2) return;
@@ -810,6 +873,51 @@ export function HealthPage({
       const presets = filterMacroGenericPresets(q, 1);
       if (suggest || presets.length > 0) setMacroManualEntry(true);
     }, 180);
+  }
+
+  function onMealServingsChange(next) {
+    const n = Number(next);
+    if (!MEAL_SERVING_OPTIONS.includes(n)) return;
+    setMealServings(n);
+    if (mealMacroBase) applyMacroFill(mealMacroBase, n);
+  }
+
+  async function handleScanNutritionLabelClick() {
+    setLabelScanBusy(true);
+    try {
+      const ocr = await launchNutritionLabelScan();
+      setLabelScannerInitialOcr(ocr);
+      setLabelScannerOpen(true);
+    } catch (e) {
+      if (e?.code === "CANCELLED") return;
+      setLabelScannerInitialOcr({ error: e?.message || "Scan failed. Try again with even lighting." });
+      setLabelScannerOpen(true);
+    } finally {
+      setLabelScanBusy(false);
+    }
+  }
+
+  function closeLabelScanner() {
+    setLabelScannerOpen(false);
+    setLabelScannerInitialOcr(null);
+  }
+
+  function applyLabelScanToMeal({ food, protein, carbs, fat, calories }) {
+    setMealFood(food || "Scanned label");
+    setMealProtein(String(protein));
+    setMealCarbs(String(carbs));
+    setMealFat(String(fat));
+    setMealCalories(String(calories));
+    setMealMacroBase({
+      protein: Number(protein) || 0,
+      carbs: Number(carbs) || 0,
+      fat: Number(fat) || 0,
+      calories: Number(calories) || 0,
+    });
+    setMealServings(1);
+    setSelectedFoodMatchId(null);
+    setMacroManualEntry(true);
+    setMealFoodPickerOpen(false);
   }
 
   function toggleMealPrepDay(dayKey) {
@@ -830,6 +938,7 @@ export function HealthPage({
     if (protein + carbs + fat + calories <= 0) return;
     const food = mealFood.trim();
     const label = mealType || "Meal";
+    const servings = Math.max(0.25, Math.min(4, Number(mealServings) || 1));
     let days =
       mealPrepMode && mealPrepDayKeys.length > 0
         ? [...new Set(mealPrepDayKeys)].filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
@@ -852,6 +961,7 @@ export function HealthPage({
             carbs,
             fat,
             calories,
+            servings: servings !== 1 ? servings : undefined,
             savedAt,
           },
         ];
@@ -862,8 +972,10 @@ export function HealthPage({
     setMealType("");
     setMealFood("");
     setSelectedFoodMatchId(null);
+    setMealMacroBase(null);
     setMacroManualEntry(false);
     setMealFoodPickerOpen(false);
+    setMealServings(1);
     setMealProtein("");
     setMealCarbs("");
     setMealFat("");
@@ -918,7 +1030,8 @@ export function HealthPage({
     }));
     if (clearDraft) {
       setGroceryListTitle("");
-      setGroceryListDraft("");
+      setGroceryDraftItems([]);
+      setGroceryItemInput("");
     }
     return true;
   }
@@ -926,8 +1039,73 @@ export function HealthPage({
   function loadShoppingDraftFromLines(lines, titleHint = "") {
     const deduped = [...new Set(lines.map((l) => String(l).trim()).filter(Boolean))];
     if (!deduped.length) return;
-    setGroceryListDraft(deduped.join("\n"));
+    setGroceryDraftItems(deduped);
     if (titleHint && !groceryListTitle.trim()) setGroceryListTitle(titleHint);
+  }
+
+  function addGroceryDraftItem() {
+    const t = groceryItemInput.trim();
+    if (!t) return;
+    setGroceryDraftItems((prev) => (prev.some((x) => x.toLowerCase() === t.toLowerCase()) ? prev : [...prev, t]));
+    setGroceryItemInput("");
+  }
+
+  function removeGroceryDraftItem(idx) {
+    setGroceryDraftItems((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function addWeeklyMenuMeal() {
+    const protein = Math.round(Number(weeklyMenuProtein) || 0);
+    const carbs = Math.round(Number(weeklyMenuCarbs) || 0);
+    const fat = Math.round(Number(weeklyMenuFat) || 0);
+    const calories = Math.round(Number(weeklyMenuCalories) || 0);
+    const food = weeklyMenuFood.trim();
+    if (!food && protein + carbs + fat + calories <= 0) return;
+    const meal = {
+      id: newId("wmenu"),
+      slot: weeklyMenuSlot || "Meal",
+      food,
+      protein,
+      carbs,
+      fat,
+      calories,
+    };
+    setHealth((prev) => {
+      const base = normalizeHealth(prev);
+      const wm = normalizeWeeklyMenu(base.weeklyMenu);
+      const days = wm.days.map((d, i) => (i === weeklyMenuEditDay ? [...d, meal] : d));
+      return { ...base, weeklyMenu: { ...wm, days, showOnHome: true } };
+    });
+    setWeeklyMenuFood("");
+    setWeeklyMenuProtein("");
+    setWeeklyMenuCarbs("");
+    setWeeklyMenuFat("");
+    setWeeklyMenuCalories("");
+  }
+
+  function removeWeeklyMenuMeal(dayIdx, mealId) {
+    setHealth((prev) => {
+      const base = normalizeHealth(prev);
+      const wm = normalizeWeeklyMenu(base.weeklyMenu);
+      const days = wm.days.map((d, i) => (i === dayIdx ? d.filter((m) => m.id !== mealId) : d));
+      return { ...base, weeklyMenu: { ...wm, days } };
+    });
+  }
+
+  function logWeeklyMenuMealFromTracker(meal, servings) {
+    setHealth((prev) => appendWeeklyMenuMealToMacroLog(prev, macroDate, meal, servings));
+  }
+
+  function applyMealPlanToWeeklyMenu(plan) {
+    if (!plan?.meals?.length) return;
+    const dow = dayOfWeekIndexForDayKey(macroDate);
+    setHealth((prev) => appendMealPlanToWeeklyMenu(prev, macroDate, plan));
+    setWeeklyMenuEditDay(dow);
+    const addedKey = `${plan.id}:${macroDate}`;
+    setWeeklyMenuPlanAddedKey(addedKey);
+    window.setTimeout(() => {
+      setWeeklyMenuPlanAddedKey((cur) => (cur === addedKey ? null : cur));
+    }, 4000);
   }
 
   function removeSavedGroceryList(id) {
@@ -1031,9 +1209,14 @@ export function HealthPage({
               {editingProgramId ? "Edit program" : "Build a program"}
             </summary>
             <div className="health-build-program-panel">
-              <label className="quick-row">
+              <label className="quick-row health-field-stack">
                 <span className="label">Program name</span>
-                <input className="input" value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="e.g. Push day A" />
+                <input
+                  className="input health-input-constrained"
+                  value={draftName}
+                  onChange={(e) => setDraftName(e.target.value)}
+                  placeholder="e.g. Push day A"
+                />
               </label>
               <div className="health-draft-exercise-inputs surface-glass">
                 <label className="quick-row health-draft-ex-field">
@@ -1212,6 +1395,7 @@ export function HealthPage({
                 {selectedProgram ? (() => {
                   const p = selectedProgram;
                   const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
+                  const inWeekRoutine = (h.weekRoutineProgramIds || []).includes(p.id);
                   const moves = (p.exercises || []).map((ex) => normalizeExerciseBlock(ex)).filter(Boolean);
                   const previewMoves = moves.slice(0, 5);
                   const taskBody = moves.map((ex) => formatExerciseBlockLine(ex)).filter(Boolean).join("\n");
@@ -1227,7 +1411,6 @@ export function HealthPage({
                             {builtIn ? <span className="health-program-badge health-program-badge--sample">Sample</span> : null}
                           </div>
                         </div>
-                        <DumbbellIcon className="health-program-card-icon" aria-hidden />
                       </div>
                       {previewMoves.length > 0 ? (
                         <ol className="health-program-card-moves">
@@ -1267,9 +1450,22 @@ export function HealthPage({
                             type="button"
                             className="btn btn-sm"
                             disabled={!onScheduleWorkoutTask}
-                            onClick={() => onScheduleWorkoutTask(`Workout · ${p.name}`, taskBody)}
+                            onClick={() => {
+                              if (inWeekRoutine) {
+                                setAddWeekProgram(p);
+                                return;
+                              }
+                              onScheduleWorkoutTask({
+                                title: `Workout · ${p.name}`,
+                                details: taskBody,
+                                dayKey: realTodayKey,
+                                hourKey: "18:00",
+                                workoutProgramId: p.id,
+                                workoutProgramMode: "specific",
+                              });
+                            }}
                           >
-                            Add to Today
+                            {inWeekRoutine ? "Add to this week" : "Add to Today"}
                           </button>
                         </div>
                         <div className="health-program-card-actions-secondary">
@@ -1280,7 +1476,7 @@ export function HealthPage({
                           ) : null}
                           {builtIn ? (
                             <button type="button" className="btn btn-sm" onClick={() => saveLibraryCopy(p)}>
-                              Save copy
+                              Save
                             </button>
                           ) : (
                             <>
@@ -1339,62 +1535,6 @@ export function HealthPage({
                     </ul>
                   </div>
                 ) : null}
-
-                {displayPrograms.length > 1 ? (
-                  <details className="health-program-reorder-details">
-                    <summary className="health-program-reorder-summary">Change list order</summary>
-                    <ul className="health-program-reorder-list">
-                      {displayPrograms.map((p) => {
-                        const builtIn = PROGRAM_LIBRARY.some((lib) => lib.id === p.id);
-                        return (
-                          <li
-                            key={p.id}
-                            className={[
-                              "health-program-reorder-row",
-                              programDragOverId === p.id ? "health-program-reorder-row--drag-over" : "",
-                            ]
-                              .filter(Boolean)
-                              .join(" ")}
-                            draggable
-                            onDragStart={(e) => {
-                              programDragSourceRef.current = p.id;
-                              e.dataTransfer.effectAllowed = "move";
-                              try {
-                                e.dataTransfer.setData("text/plain", p.id);
-                              } catch {
-                                /* ignore */
-                              }
-                            }}
-                            onDragEnd={() => {
-                              programDragSourceRef.current = null;
-                              setProgramDragOverId(null);
-                            }}
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              e.dataTransfer.dropEffect = "move";
-                              setProgramDragOverId(p.id);
-                            }}
-                            onDragLeave={(e) => {
-                              if (!e.currentTarget.contains(e.relatedTarget)) setProgramDragOverId(null);
-                            }}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              reorderProgramsOnDrop(p.id);
-                            }}
-                          >
-                            <span className="health-program-drag-grip" aria-hidden>
-                              <span className="health-program-drag-grip-line" />
-                              <span className="health-program-drag-grip-line" />
-                              <span className="health-program-drag-grip-line" />
-                            </span>
-                            <span className="health-program-reorder-name">{p.name}</span>
-                            {builtIn ? <span className="health-program-badge health-program-badge--sample">Sample</span> : null}
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </details>
-                ) : null}
               </>
             )}
           </div>
@@ -1403,9 +1543,20 @@ export function HealthPage({
             <span className="title">Weekly routine order</span>
           </div>
           <p className="settings-hint health-week-routine-hint" style={{ marginBottom: 10 }}>
-            Stack programs below in the order you want. For gym tasks set to <strong>Auto</strong> or <strong>Next in weekly routine</strong>,{" "}
-            <strong>Begin workout</strong> opens the program at the current slot, then moves to the next (after the last, it wraps to the first).
+            Stack programs below in the order you want. <strong>Next in weekly routine</strong> uses this order when you add a gym task.{" "}
+            <strong>Auto-pick</strong> chooses a random program from My programs. <strong>Begin workout</strong> on a task opens the linked program.
           </p>
+          {h.weekRoutinePlanName && (h.weekRoutineProgramIds || []).length > 0 ? (
+            <div className="health-week-plan-saved surface-glass">
+              <p className="health-week-plan-saved-title">{h.weekRoutinePlanName}</p>
+              <ul className="health-week-plan-saved-programs">
+                {(h.weekRoutineProgramIds || []).map((pid) => {
+                  const prog = selectable.find((x) => x.id === pid);
+                  return <li key={pid}>{prog?.name || pid}</li>;
+                })}
+              </ul>
+            </div>
+          ) : null}
           <ul className="health-routine-chips">
             {(h.weekRoutineProgramIds || []).map((pid, i) => {
               const p = selectable.find((x) => x.id === pid);
@@ -1445,18 +1596,83 @@ export function HealthPage({
             <button type="button" className="btn btn-primary" disabled={!routineAddId} onClick={() => addProgramToRoutine(routineAddId)}>
               Add
             </button>
+            <button
+              type="button"
+              className="btn btn-sm"
+              disabled={!(h.weekRoutineProgramIds || []).length || !onScheduleWorkoutTask}
+              onClick={() => scheduleFullWeekInOrder()}
+            >
+              Add all to this week
+            </button>
           </div>
-          <div className="health-save-bundle-row">
-            <button type="button" className="btn btn-sm" disabled={!(h.weekRoutineProgramIds || []).length} onClick={saveWeekBundle}>
-              Save routine order as one named program (bundle)
+          <div className="health-save-bundle-row surface-glass">
+            <label className="quick-row health-field-stack health-save-bundle-name">
+              <span className="label">Bundle name</span>
+              <input
+                className="input health-input-constrained"
+                value={bundleProgramName}
+                onChange={(e) => setBundleProgramName(e.target.value)}
+                placeholder="e.g. Full week rotation"
+                aria-label="Name for combined routine program"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    saveWeekBundle();
+                  }
+                }}
+              />
+            </label>
+            <p className="settings-hint health-save-bundle-hint">
+              Saves a name for this rotation. Programs stay separate in My programs (not merged into one long list).
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary health-save-bundle-btn"
+              disabled={
+                !(h.weekRoutineProgramIds || []).length || !bundleProgramName.trim()
+              }
+              onClick={saveWeekBundle}
+            >
+              Save weekly plan name
             </button>
           </div>
 
-          <div className="health-consistency surface-glass health-consistency--after-program" style={{ marginTop: 24 }}>
+          <AddWorkoutWeekModal
+            open={!!addWeekProgram}
+            program={addWeekProgram}
+            weekProgramIds={h.weekRoutineProgramIds || []}
+            weekCursor={h.weekRoutineCursor}
+            startDayKey={realTodayKey}
+            onCancel={() => setAddWeekProgram(null)}
+            onConfirm={confirmAddWeekProgram}
+          />
+
+          <label className="quick-row health-field-stack health-weekly-target-row" style={{ marginTop: 20 }}>
+            <span className="label">Workouts per week (goal)</span>
+            <p className="health-subline health-field-descriptor">
+              Used for your progress ring and exercise overview. Counts gym tasks and tasks linked to a program.
+            </p>
+            <input
+              className="input health-input-constrained"
+              type="number"
+              min={1}
+              max={14}
+              value={h.profile.weeklyWorkoutTarget}
+              onChange={(e) =>
+                patchProfile({
+                  weeklyWorkoutTarget: Math.max(1, Math.min(14, Math.round(Number(e.target.value) || 3))),
+                })
+              }
+              aria-label="Weekly workout target"
+            />
+          </label>
+
+          <div className="health-consistency surface-glass health-consistency--after-program" style={{ marginTop: 16 }}>
             <div className="health-consistency-head">
               <span className="title">Workout rhythm this week</span>
               <span className="health-consistency-meta">
                 {consistency.scheduleDays}/7 days scheduled · {consistency.completed}/{consistency.target} completed
+                {workoutOverview.thisWeekMetGoal ? " · Goal met" : ""}
               </span>
             </div>
             <div className="health-progress-track" role="progressbar" aria-valuenow={consistency.blendPct} aria-valuemin={0} aria-valuemax={100}>
@@ -1496,7 +1712,7 @@ export function HealthPage({
                 })}
               </div>
             ) : null}
-            <div className="health-meal-log-section">
+            <div className="health-meal-log-section" ref={mealLogSectionRef}>
               <div className="health-meal-type-field">
                 <span className="label" id="health-meal-type-label">
                   Meal
@@ -1514,6 +1730,17 @@ export function HealthPage({
                     </button>
                   ))}
                 </div>
+              </div>
+              <div className="health-label-scan-row">
+                <button
+                  type="button"
+                  className="btn btn-primary health-label-scan-btn"
+                  disabled={labelScanBusy}
+                  onClick={handleScanNutritionLabelClick}
+                >
+                  {labelScanBusy ? "Reading label…" : "Scan nutrition label"}
+                </button>
+                <span className="health-subline health-label-scan-hint">Opens camera · reads P / C / F / calories</span>
               </div>
               <label className="quick-row health-meal-food-field">
                 <span className="label">What you ate</span>
@@ -1557,7 +1784,7 @@ export function HealthPage({
                 </div>
               </label>
               {hasFoodAutocomplete && !selectedFoodMatchId && !showMacroFields ? (
-                <p className="settings-hint health-meal-food-hint">Pick a match above, or tap away to enter macros manually.</p>
+                <p className="settings-hint health-meal-food-hint">Pick a match above, or tap outside this section to enter macros manually.</p>
               ) : null}
               <label className="health-meal-prep-toggle quick-row">
                 <span className="label">Meal prep mode</span>
@@ -1589,9 +1816,27 @@ export function HealthPage({
                   </div>
                 </div>
               ) : null}
+              <div className="health-meal-servings-field">
+                <span className="label" id="health-meal-servings-label">
+                  Servings
+                </span>
+                <div className="health-meal-servings-picker" role="group" aria-labelledby="health-meal-servings-label">
+                  {MEAL_SERVING_OPTIONS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      className={`health-meal-type-btn health-meal-serving-btn ${mealServings === n ? "is-selected" : ""}`}
+                      aria-pressed={mealServings === n}
+                      onClick={() => onMealServingsChange(n)}
+                    >
+                      {n === 0.5 ? "½" : n}
+                    </button>
+                  ))}
+                </div>
+              </div>
               {showMacroFields ? (
                 <>
-                  <div className="health-calc-grid" style={{ marginTop: 8 }}>
+                  <div className="health-calc-grid health-meal-macro-grid" style={{ marginTop: 8 }}>
                     {["protein", "carbs", "fat", "calories"].map((field) => (
                       <label key={field} className="quick-row">
                         <span className="label">{field === "calories" ? "Calories" : `${field} (g)`}</span>
@@ -1689,9 +1934,31 @@ export function HealthPage({
                         {plan.vsTargetsPct.carbs != null ? ` · C ${plan.vsTargetsPct.carbs}%` : ""}
                         {plan.vsTargetsPct.fat != null ? ` · F ${plan.vsTargetsPct.fat}%` : ""}
                       </p>
-                      <button type="button" className="btn btn-sm btn-primary" onClick={() => logSuggestedPlanToMacroDay(plan)}>
-                        Log this plan on {macroDate}
-                      </button>
+                      <div className="health-macro-meal-plan-actions">
+                        <button type="button" className="btn btn-sm btn-primary" onClick={() => logSuggestedPlanToMacroDay(plan)}>
+                          Log this plan on {macroDate}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-sm"
+                          onClick={() =>
+                            loadShoppingDraftFromLines(collectShoppingLinesFromMealPlan(plan), `${plan.name} groceries`)
+                          }
+                        >
+                          Add groceries to list
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm health-weekly-menu-add-plan-btn${weeklyMenuPlanAddedKey === `${plan.id}:${macroDate}` ? " health-weekly-menu-add-plan-btn--added" : ""}`}
+                          onClick={() => applyMealPlanToWeeklyMenu(plan)}
+                          disabled={weeklyMenuPlanAddedKey === `${plan.id}:${macroDate}`}
+                          aria-live="polite"
+                        >
+                          {weeklyMenuPlanAddedKey === `${plan.id}:${macroDate}`
+                            ? "Added"
+                            : `Add to weekly menu (${macroDate})`}
+                        </button>
+                      </div>
                     </div>
                   </details>
                 ))}
@@ -1817,7 +2084,55 @@ export function HealthPage({
                     <option value="1.725">Hard daily + training</option>
                   </select>
                 </label>
+                <label className="quick-row health-macro-calc-full">
+                  <span className="label">Dietary style (for Coach &amp; suggestions)</span>
+                  <select
+                    className="input"
+                    value={h.profile.dietaryStyle || "none"}
+                    onChange={(e) => patchProfile({ dietaryStyle: e.target.value })}
+                  >
+                    <option value="none">No preference set</option>
+                    <option value="vegan">Vegan</option>
+                    <option value="vegetarian">Vegetarian</option>
+                    <option value="pescatarian">Pescatarian</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label className="quick-row health-macro-calc-full">
+                  <span className="label">Dietary notes</span>
+                  <input
+                    className="input"
+                    value={h.profile.dietaryNotes || ""}
+                    onChange={(e) => patchProfile({ dietaryNotes: e.target.value })}
+                    placeholder="Allergies, foods to avoid, etc."
+                  />
+                </label>
               </div>
+              {onAskCoachMealPlan && targets?.calories ? (
+                <div className="health-coach-meal-plan-cta">
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-primary"
+                    onClick={() => {
+                      const p = h.profile;
+                      const bits = [];
+                      if (p.dietaryStyle && p.dietaryStyle !== "none") bits.push(`diet: ${p.dietaryStyle}`);
+                      if (p.dietaryNotes?.trim()) bits.push(p.dietaryNotes.trim());
+                      if (targets.proteinG) bits.push(`about ${targets.proteinG}g protein per day`);
+                      if (targets.calories) bits.push(`~${targets.calories} kcal per day`);
+                      const prefs = bits.length ? ` (${bits.join("; ")})` : "";
+                      onAskCoachMealPlan(
+                        `Make me a full weekly meal plan for this week${prefs}. Include tofu or other plant proteins if vegan. Give breakfast, lunch, dinner, and snacks for all 7 days with protein, carbs, fat, and calories on each meal, plus a grocery shopping list. I want to add it to my weekly menu and see meals on the home screen.`
+                      );
+                    }}
+                  >
+                    Ask Coach for weekly meal plan
+                  </button>
+                  <p className="health-subline health-coach-meal-plan-cta-hint">
+                    Coach drafts the week; you can add it as-is or edit under Weekly menu in Macros.
+                  </p>
+                </div>
+              ) : null}
               <button type="button" className="btn-primary" style={{ marginTop: 12 }} onClick={applyCalculator}>
                 Apply targets to tracker
               </button>
@@ -1830,55 +2145,45 @@ export function HealthPage({
             </div>
           </div>
 
-          <div className="health-macro-block surface-glass">
+          <div className="health-macro-block surface-glass health-weight-goal-block">
             <div className="panel-title" style={{ marginBottom: 8 }}>
               <span className="title">Weight &amp; goal</span>
             </div>
-            <label className="quick-row">
-              <span className="label">Goal weight (lb)</span>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                inputMode="decimal"
-                value={goalLbStr}
-                onChange={(e) => setGoalLbStr(e.target.value)}
-                onBlur={commitGoalLbProfile}
-                placeholder="e.g. 150"
-              />
-              {h.profile.goalWeightKg ? (
-                <span className="health-subline" style={{ marginTop: 6, display: "block" }}>
-                  ~{Math.round(h.profile.goalWeightKg * 10) / 10} kg stored
-                </span>
-              ) : null}
-            </label>
-            <label className="quick-row">
-              <span className="label">Weekly workout target (for progress ring)</span>
-              <input
-                className="input"
-                type="number"
-                min={1}
-                max={14}
-                value={h.profile.weeklyWorkoutTarget}
-                onChange={(e) =>
-                  patchProfile({
-                    weeklyWorkoutTarget: Math.max(1, Math.min(14, Math.round(Number(e.target.value) || 3))),
-                  })
-                }
-              />
-            </label>
-            <div className="health-weight-add">
-              <input
-                className="input"
-                type="number"
-                placeholder="Log weight (lb)"
-                value={logWeightLbStr}
-                onChange={(e) => setLogWeightLbStr(e.target.value)}
-                aria-label="Weight in pounds"
-              />
-              <button type="button" className="btn-primary" onClick={addWeight}>
-                Log weight
-              </button>
+            <div className="health-weight-goal-stack">
+              <label className="quick-row health-field-stack">
+                <span className="label">Goal weight (lb)</span>
+                <input
+                  className="input health-input-constrained"
+                  type="number"
+                  min={1}
+                  inputMode="decimal"
+                  value={goalLbStr}
+                  onChange={(e) => setGoalLbStr(e.target.value)}
+                  onBlur={commitGoalLbProfile}
+                  placeholder="e.g. 150"
+                />
+                {h.profile.goalWeightKg ? (
+                  <span className="health-subline">~{Math.round(h.profile.goalWeightKg * 10) / 10} kg stored</span>
+                ) : null}
+              </label>
+              <label className="quick-row health-field-stack">
+                <span className="label">Log weight (lb)</span>
+                <div className="health-weight-add">
+                  <input
+                    className="input health-input-constrained"
+                    type="number"
+                    min={1}
+                    inputMode="decimal"
+                    placeholder="e.g. 148"
+                    value={logWeightLbStr}
+                    onChange={(e) => setLogWeightLbStr(e.target.value)}
+                    aria-label="Weight in pounds"
+                  />
+                  <button type="button" className="btn-primary" onClick={addWeight}>
+                    Log weight
+                  </button>
+                </div>
+              </label>
             </div>
             {goalW != null && lastWeight != null ? (
               <div style={{ marginTop: 12 }}>
@@ -1959,36 +2264,63 @@ export function HealthPage({
               </div>
             </div>
 
-            <label className="quick-row" style={{ marginTop: 12 }}>
+            <label className="quick-row health-field-stack health-shopping-list-name" style={{ marginTop: 12 }}>
               <span className="label">List name</span>
               <input
-                className="input"
+                className="input health-input-constrained"
                 value={groceryListTitle}
                 onChange={(e) => setGroceryListTitle(e.target.value)}
                 placeholder="e.g. Weekly groceries"
               />
             </label>
-            <label className="quick-row">
-              <span className="label">Items (one per line)</span>
-              <textarea
-                className="input health-macro-shopping-textarea"
-                value={groceryListDraft}
-                onChange={(e) => setGroceryListDraft(e.target.value)}
-                placeholder={"Chicken breast\nBroccoli\nGreek yogurt"}
-                rows={5}
-              />
-            </label>
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              disabled={!groceryListDraft.trim()}
-              onClick={() => {
-                const lines = groceryListDraft.split(/\n+/).map((l) => l.trim()).filter(Boolean);
-                saveGroceryListFromLines(groceryListTitle, lines, { clearDraft: true });
-              }}
-            >
-              Save shopping list
-            </button>
+            <div className="health-grocery-add-block">
+              <label className="quick-row health-field-stack">
+                <span className="label">Add item</span>
+                <div className="health-grocery-add-row">
+                  <input
+                    className="input health-input-constrained"
+                    value={groceryItemInput}
+                    onChange={(e) => setGroceryItemInput(e.target.value)}
+                    placeholder="e.g. Broccoli"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addGroceryDraftItem();
+                      }
+                    }}
+                  />
+                  <button type="button" className="btn btn-primary btn-sm" onClick={addGroceryDraftItem}>
+                    Add to list
+                  </button>
+                </div>
+              </label>
+              {groceryDraftItems.length > 0 ? (
+                <ol className="health-draft-exercises health-grocery-draft-items">
+                  {groceryDraftItems.map((text, i) => (
+                    <li key={`${i}-${text}`} className="health-draft-exercise surface-glass">
+                      <div className="health-draft-exercise-text">
+                        <div className="health-draft-ex-line">{text}</div>
+                      </div>
+                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => removeGroceryDraftItem(i)}>
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="settings-hint health-grocery-empty-hint">Items appear here as you add them.</p>
+              )}
+            </div>
+            <div className="health-macro-actions-center">
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                disabled={!groceryDraftItems.length}
+                onClick={() => saveGroceryListFromLines(groceryListTitle, groceryDraftItems, { clearDraft: true })}
+              >
+                Save shopping list
+              </button>
+            </div>
 
             {grocerySavedLists.length > 0 ? (
               <ul className="health-macro-shopping-saved">
@@ -2033,14 +2365,242 @@ export function HealthPage({
               <p className="empty health-macro-shopping-empty">No saved lists yet.</p>
             )}
           </div>
+
+          <div className="health-macro-block surface-glass health-weekly-menu-block">
+            <div className="panel-title health-weekly-menu-head">
+              <span className="title">Weekly menu</span>
+              <label className="health-toggle-row health-weekly-menu-home-toggle">
+                <span className="label">View on home page</span>
+                <input
+                  type="checkbox"
+                  checked={normalizeWeeklyMenu(h.weeklyMenu).showOnHome}
+                  onChange={(e) =>
+                    setHealth((prev) => {
+                      const base = normalizeHealth(prev);
+                      const wm = normalizeWeeklyMenu(base.weeklyMenu);
+                      return { ...base, weeklyMenu: { ...wm, showOnHome: e.target.checked } };
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <p className="health-subline">
+              Plan meals for each day of the week. On Today, tap meals to log them to your macro tracker (choose a serving size for partial portions).
+            </p>
+            <div className="health-weekly-menu-day-tabs" role="tablist" aria-label="Weekday">
+              {weeklyMenuDayLabels().map((label, idx) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="tab"
+                  aria-selected={weeklyMenuEditDay === idx}
+                  className={`btn btn-sm health-meal-prep-chip ${weeklyMenuEditDay === idx ? "btn-primary" : ""}`}
+                  onClick={() => setWeeklyMenuEditDay(idx)}
+                >
+                  {label.slice(0, 3)}
+                </button>
+              ))}
+            </div>
+            <div className="health-weekly-menu-editor">
+              <label className="quick-row">
+                <span className="label">Meal slot</span>
+                <select className="input health-input-constrained" value={weeklyMenuSlot} onChange={(e) => setWeeklyMenuSlot(e.target.value)}>
+                  {MEAL_TYPE_OPTIONS.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="quick-row health-field-stack">
+                <span className="label">What you plan to eat</span>
+                <input
+                  className="input health-input-constrained"
+                  value={weeklyMenuFood}
+                  onChange={(e) => setWeeklyMenuFood(e.target.value)}
+                  placeholder="e.g. Tofu bowl with rice"
+                />
+              </label>
+              <div className="health-calc-grid health-meal-macro-grid health-weekly-menu-macro-grid">
+                {[
+                  ["protein", weeklyMenuProtein, setWeeklyMenuProtein],
+                  ["carbs", weeklyMenuCarbs, setWeeklyMenuCarbs],
+                  ["fat", weeklyMenuFat, setWeeklyMenuFat],
+                  ["calories", weeklyMenuCalories, setWeeklyMenuCalories],
+                ].map(([field, val, setVal]) => (
+                  <label key={field} className="quick-row">
+                    <span className="label">{field === "calories" ? "Calories" : `${field} (g)`}</span>
+                    <input className="input" type="number" min={0} value={val} onChange={(e) => setVal(e.target.value)} />
+                  </label>
+                ))}
+              </div>
+              <button type="button" className="btn btn-primary btn-sm" onClick={addWeeklyMenuMeal}>
+                Add meal to {weeklyMenuDayLabels()[weeklyMenuEditDay]}
+              </button>
+            </div>
+            {(normalizeWeeklyMenu(h.weeklyMenu).days[weeklyMenuEditDay] || []).length > 0 ? (
+              <ul className="health-weekly-menu-planned">
+                {(normalizeWeeklyMenu(h.weeklyMenu).days[weeklyMenuEditDay] || []).map((meal) => {
+                  const follow =
+                    macroDate === realTodayKey ? getWeeklyMenuFollowStatus(h, macroDate, meal.id) : null;
+                  const logServ = weeklyMenuLogServings[meal.id] ?? 1;
+                  return (
+                    <li key={meal.id} className="health-draft-exercise surface-glass health-weekly-menu-meal">
+                      <div className="health-draft-exercise-text">
+                        <div className="health-draft-ex-line">
+                          <strong>{meal.slot}</strong>
+                          {follow === "logged" ? <span className="health-weekly-menu-badge">Logged</span> : null}
+                          {follow === "skipped" ? <span className="health-weekly-menu-badge health-weekly-menu-badge--skip">Skipped</span> : null}
+                        </div>
+                        {meal.food ? <div className="health-subline">{meal.food}</div> : null}
+                        <div className="health-subline">
+                          P {meal.protein}g · C {meal.carbs}g · F {meal.fat}g · {meal.calories} kcal
+                        </div>
+                      </div>
+                      <div className="health-weekly-menu-meal-actions">
+                        {macroDate === realTodayKey ? (
+                          <>
+                            <select
+                              className="input health-weekly-menu-serving-pick"
+                              value={String(logServ)}
+                              onChange={(e) =>
+                                setWeeklyMenuLogServings((prev) => ({ ...prev, [meal.id]: Number(e.target.value) }))
+                              }
+                              aria-label="Servings"
+                            >
+                              {MEAL_SERVING_OPTIONS.map((n) => (
+                                <option key={n} value={n}>
+                                  {n === 0.5 ? "½ serving" : `${n} serving${n === 1 ? "" : "s"}`}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary"
+                              disabled={follow === "logged"}
+                              onClick={() => logWeeklyMenuMealFromTracker(meal, logServ)}
+                            >
+                              Log today
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-sm"
+                              onClick={() => setHealth((prev) => markWeeklyMenuMealSkipped(prev, macroDate, meal.id))}
+                            >
+                              Skip
+                            </button>
+                          </>
+                        ) : null}
+                        <button type="button" className="btn btn-sm btn-ghost" onClick={() => removeWeeklyMenuMeal(weeklyMenuEditDay, meal.id)}>
+                          Remove
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="settings-hint">No meals planned for {weeklyMenuDayLabels()[weeklyMenuEditDay]} yet.</p>
+            )}
+          </div>
         </>
       )}
 
-      <div className="health-page-bottom-bar surface-glass">
-        <button type="button" className="btn btn-primary health-overview-btn" onClick={() => setMacroOverviewOpen(true)}>
-          Macro overview
-        </button>
+      <div
+        className={`health-page-bottom-bar surface-glass health-macro-bottom-bar${healthTab === "workouts" ? " health-macro-bottom-bar--workouts" : ""}`}
+      >
+        {healthTab === "workouts" ? (
+          <>
+            <p className="health-overview-hint settings-hint">
+              Avg {workoutOverview.avgAddedPerWeek} added · {workoutOverview.avgCompletedPerWeek} completed per week · Goal hit{" "}
+              {workoutOverview.goalHitPct}% of last {workoutOverview.weeksTracked} weeks
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary health-overview-btn health-overview-btn--centered"
+              onClick={() => setWorkoutOverviewOpen(true)}
+            >
+              Exercise overview
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="btn btn-primary health-overview-btn health-overview-btn--centered"
+            onClick={() => setMacroOverviewOpen(true)}
+          >
+            Macro overview
+          </button>
+        )}
       </div>
+
+      {workoutOverviewOpen ? (
+        <div
+          className="modal-overlay health-workout-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="workout-ov-title"
+          onClick={() => setWorkoutOverviewOpen(false)}
+        >
+          <div className="modal health-overview-modal surface-glass" onClick={(e) => e.stopPropagation()}>
+            <div className="health-workout-sheet-head">
+              <h3 id="workout-ov-title" className="health-workout-sheet-title">
+                Exercise overview
+              </h3>
+              <button type="button" className="btn-icon" aria-label="Close" onClick={() => setWorkoutOverviewOpen(false)}>
+                <CloseIcon style={{ width: 22, height: 22 }} />
+              </button>
+            </div>
+            <p className="settings-hint health-overview-intro">
+              Tracks gym tasks and Today tasks linked to a workout program (added vs checked off). Your weekly goal is{" "}
+              <strong>{workoutOverview.target}</strong> completed workouts.
+            </p>
+            <div className="health-overview-stat-grid">
+              <div className="health-overview-stat">
+                <span className="health-overview-stat-value">{workoutOverview.thisWeekCompleted}</span>
+                <span className="health-overview-stat-label">Done this week</span>
+              </div>
+              <div className="health-overview-stat">
+                <span className="health-overview-stat-value">{workoutOverview.avgAddedPerWeek}</span>
+                <span className="health-overview-stat-label">Avg added / week</span>
+              </div>
+              <div className="health-overview-stat">
+                <span className="health-overview-stat-value">{workoutOverview.avgCompletedPerWeek}</span>
+                <span className="health-overview-stat-label">Avg completed / week</span>
+              </div>
+              <div className="health-overview-stat">
+                <span className="health-overview-stat-value">{workoutOverview.goalHitPct}%</span>
+                <span className="health-overview-stat-label">Weeks at goal ({workoutOverview.weeksMetGoal}/{workoutOverview.weeksTracked})</span>
+              </div>
+            </div>
+            <div className="health-overview-table-wrap">
+              <table className="health-overview-table">
+                <thead>
+                  <tr>
+                    <th>Week starting</th>
+                    <th>Added</th>
+                    <th>Completed</th>
+                    <th>Goal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {workoutOverview.recentWeeks.map((w) => (
+                    <tr key={w.weekMon}>
+                      <td>{w.weekMon}</td>
+                      <td>{w.added}</td>
+                      <td>{w.completed}</td>
+                      <td>{w.metGoal ? "Met" : w.added > 0 || w.completed > 0 ? "Missed" : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <button type="button" className="btn" style={{ marginTop: 14 }} onClick={() => setWorkoutOverviewOpen(false)}>
+              Close
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {macroOverviewOpen ? (
         <div
@@ -2095,6 +2655,13 @@ export function HealthPage({
           </div>
         </div>
       ) : null}
+
+      <NutritionLabelScanner
+        open={labelScannerOpen}
+        initialOcr={labelScannerInitialOcr}
+        onClose={closeLabelScanner}
+        onApply={applyLabelScanToMeal}
+      />
 
       {guidedSession && guidedSession.exercises?.length ? (
         <GuidedWorkoutOverlay

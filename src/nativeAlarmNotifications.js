@@ -109,7 +109,7 @@ export async function resyncAlarmNotifications(alarms) {
             id,
             title: alarm.label || "Morning alarm",
             body: isSnooze
-              ? "Alarm still ringing — tap to open PROYOU and complete your wake-up challenge."
+              ? "Alarm still ringing. Tap to open PROYOU and complete your wake-up challenge."
               : "Tap to open PROYOU and complete your wake-up challenge.",
             schedule: { at },
             sound: iosNotificationSoundForAlarm(alarm),

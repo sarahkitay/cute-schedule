@@ -21,8 +21,10 @@
   --py-mint: #A8DBC5;
   --py-ink: #2D2A32;
   --py-ink-secondary: #5C5660;
-  --py-ink-tertiary: #8A8490;
-  --py-ink-muted: #B0AAB5;
+  /* Tertiary/muted darkened for legible contrast on light + frosted surfaces
+     (was #8A8490 ≈3.5:1 and #B0AAB5 ≈2.4:1). */
+  --py-ink-tertiary: #6E6878;
+  --py-ink-muted: #837C8E;
   --py-border: rgba(0, 0, 0, 0.04);
   --py-border-accent: rgba(232, 169, 183, 0.3);
   --py-success: #5CB88A;
@@ -83,11 +85,12 @@
   --py-ease-out: cubic-bezier(0, 0, 0.2, 1);
 
   /* ─── Z-Index ─── */
-  --py-z-base: 1;
-  --py-z-elevated: 10;
-  --py-z-nav: 100;
-  --py-z-modal: 1000;
-  --py-z-toast: 2000;
+  /* Aliases onto the canonical z-index ladder defined in App.css :root. */
+  --py-z-base: var(--z-base, 0);
+  --py-z-elevated: var(--z-sticky, 10);
+  --py-z-nav: var(--z-dock, 200);
+  --py-z-modal: var(--z-modal, 1000);
+  --py-z-toast: var(--z-toast, 1100);
 }
 
 /* ─── Glass Card ─── */
@@ -663,7 +666,7 @@ html[data-theme="dark"] .py-streak-tip__detail {
 html[data-theme="dark"] .py-streak-tap:hover {
   background: rgba(255, 255, 255, 0.5);
 }
-html[data-icon-style="simple"] .py-streak__flame-img {
+html[data-icon-style="simple"][data-theme="dark"] .py-streak__flame-img {
   padding: 4px;
   border-radius: 12px;
   background: rgba(12, 12, 14, 0.92);
@@ -698,8 +701,9 @@ html[data-icon-style="simple"] .py-streak__flame-img {
   paint-order: stroke fill;
 }
 html[data-theme="dark"] .py-streak__digit {
-  color: color-mix(in srgb, var(--theme-accent) 12%, rgba(255, 255, 255, 0.96));
-  -webkit-text-stroke: 2.5px var(--theme-accent);
+  color: #0a0a0c !important;
+  -webkit-text-stroke: 0;
+  paint-order: normal;
 }
 .py-streak__label {
   font-size: var(--py-text-caption);
@@ -918,6 +922,120 @@ html[data-theme="dark"] .py-streak__digit {
   width: 100%;
 }
 
+/* Onboarding top navigation: back / step count / skip */
+.py-onboarding__nav {
+  position: absolute;
+  top: max(var(--py-space-4), env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--py-space-5);
+  max-width: 460px;
+  margin: 0 auto;
+}
+.py-onboarding__navbtn {
+  appearance: none;
+  border: none;
+  background: none;
+  font-size: var(--py-text-subhead);
+  font-weight: var(--py-weight-semibold);
+  color: var(--py-accent-deep);
+  cursor: pointer;
+  padding: var(--py-space-2) var(--py-space-2);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border-radius: var(--py-radius-pill);
+  transition: opacity var(--py-motion-fast);
+}
+.py-onboarding__navbtn span {
+  font-size: 1.4em;
+  line-height: 1;
+  margin-top: -2px;
+}
+.py-onboarding__navbtn--muted {
+  color: var(--py-ink-tertiary);
+  font-weight: var(--py-weight-medium);
+}
+.py-onboarding__navbtn:active {
+  opacity: 0.55;
+}
+.py-onboarding__stepcount {
+  font-size: var(--py-text-caption);
+  font-weight: var(--py-weight-medium);
+  color: var(--py-ink-tertiary);
+  letter-spacing: 0.02em;
+}
+.py-onboarding__finehint {
+  font-size: var(--py-text-caption);
+  color: var(--py-ink-tertiary);
+  text-align: center;
+  margin-top: var(--py-space-4);
+}
+
+/* Smooth step-to-step transition (card is keyed by step) */
+.py-onboarding__card {
+  animation: py-onboarding-step var(--py-motion-base) var(--py-ease-out);
+}
+@keyframes py-onboarding-step {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .py-onboarding__card {
+    animation: none;
+  }
+}
+
+/* ─── Minimum 44pt touch targets (Apple HIG) ───
+   Keeps the visual size of compact controls but expands the tappable
+   region to 44×44 via an invisible centered pseudo-element. No layout shift. */
+.app .btn-icon,
+.app .input-group .btn-primary,
+.app .quick-add-bar .btn-primary,
+.app .quick-add-stack .quick-add-submit-btn,
+.app .coach-input-wrap .btn-primary,
+.app .coach-send-btn,
+.item-action-btn,
+.py-habit-row__action,
+.py-med-reminder-remove-time,
+.timers-sound-preview-btn,
+.timers-day-pill {
+  position: relative;
+}
+.app .btn-icon::after,
+.app .input-group .btn-primary::after,
+.app .quick-add-bar .btn-primary::after,
+.app .quick-add-stack .quick-add-submit-btn::after,
+.app .coach-input-wrap .btn-primary::after,
+.app .coach-send-btn::after,
+.item-action-btn::after,
+.py-habit-row__action::after,
+.py-med-reminder-remove-time::after,
+.timers-sound-preview-btn::after,
+.timers-day-pill::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  transform: translate(-50%, -50%);
+  border-radius: inherit;
+  pointer-events: auto;
+}
+
 /* ─── App Background ─── */
 .py-app-bg {
   min-height: 100vh;
@@ -927,7 +1045,7 @@ html[data-theme="dark"] .py-streak__digit {
 }
 
 /* ═══════════════════════════════════════════════
-   FULL APP RESTYLE — iOS Native Override
+   FULL APP RESTYLE ,  iOS Native Override
    Match reference: soft glass, generous spacing
    ═══════════════════════════════════════════════ */
 
@@ -937,57 +1055,132 @@ html[data-theme="dark"] .py-streak__digit {
   font-weight: 400;
   color: var(--py-ink-tertiary);
 }
+.app .top-left {
+  flex: 1;
+  min-width: 0;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 12px;
+}
 .app .top-left-today {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 14px;
   flex: 1;
   min-width: 0;
 }
 .app .header-brand-py-logo {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   display: block;
-  margin-top: 2px;
+  margin-top: 0;
+}
+.app .top-left-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
 }
 .app .top-left-greeting {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 2px;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  margin: 0;
   flex: 1;
   min-width: 0;
 }
-.app .top-left-greeting .today-greeting-title {
+.app .top-left-greeting--today {
+  padding-top: 4px;
+}
+.app .top-left-greeting--no-name .today-greeting-salutation {
   font-size: 24px;
   font-weight: 600;
+  color: var(--py-ink);
+  letter-spacing: -0.03em;
+}
+.app .today-greeting-line {
   margin: 0;
+  padding: 0;
+  line-height: 1.2;
   letter-spacing: -0.02em;
 }
-html[data-theme="dark"] .app .top-left-greeting .today-greeting-title,
+.app .today-greeting-salutation {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--py-ink-secondary);
+}
+.app .today-greeting-name {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--py-ink);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app .header-right-actions {
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+.morning-greeting-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  line-height: 1.2;
+}
+.morning-greeting-heading .today-greeting-name {
+  white-space: nowrap;
+}
+html[data-theme="dark"] .app .today-greeting-name,
 html[data-theme="dark"] .app .top-left-greeting .h1-banner-date {
   color: #fafafa !important;
 }
-html[data-theme="dark"] .app .top-left-greeting .greeting-tagline {
+html[data-theme="dark"] .app .today-greeting-salutation {
+  color: rgba(250, 250, 250, 0.82) !important;
+}
+html[data-theme="dark"] .app .top-left-greeting--no-name .today-greeting-salutation {
   color: #fafafa !important;
-  opacity: 0.92;
 }
 html[data-theme="dark"] .app .greeting-tagline {
   color: #fafafa !important;
 }
 
-/* Keep original rich gradient background — do NOT override .app-bg */
+/* Keep original rich gradient background ,  do NOT override .app-bg */
 /* The original SVG texture + radial glow background gives the warm, dimensional feel */
 .app-bg-texture {
   opacity: 0.4 !important;
   filter: blur(1px) brightness(1.02) !important;
 }
 
-/* Shell override */
+/* Shell override ,  content clears fixed bottom nav */
 .app .shell {
-  padding-bottom: 88px;
+  padding-bottom: 0 !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+.app .shell-scroll {
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: auto !important;
+  background: transparent !important;
+}
+
+.app .shell-main {
+  flex: 0 0 auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  background: transparent !important;
 }
 
 /* Header: match reference greeting style */
@@ -998,21 +1191,25 @@ html[data-theme="dark"] .app .greeting-tagline {
   -webkit-backdrop-filter: none !important;
   border: none !important;
   box-shadow: none !important;
-  padding: max(10px, env(safe-area-inset-top, 0px)) 20px 8px !important;
+  padding: calc(env(safe-area-inset-top, 0px) + 22px) 20px 18px !important;
 }
 .app .top-inner {
   flex-direction: row;
   align-items: flex-start;
-  padding-right: 52px;
+  justify-content: space-between;
+  gap: 20px;
+  padding-right: 0;
 }
 .app .top-actions {
-  position: absolute;
-  top: max(6px, env(safe-area-inset-top, 0px));
-  right: 20px;
+  position: static;
+  top: auto;
+  right: auto;
   z-index: 3;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: 10px;
+  flex-shrink: 0;
+  margin-top: 4px;
 }
 .app .top-left .brand-name {
   font-size: 11px !important;
@@ -1048,7 +1245,7 @@ html[data-theme="dark"] .app .greeting-tagline {
 }
 
 /* ─── Bottom Nav: iOS-native floating dock with filled icons ─── */
-.app .bottom-nav.surface-dock {
+.app .bottom-nav.surface-dock:not(.bottom-nav--with-center) {
   position: fixed !important;
   bottom: 0 !important;
   left: 0 !important;
@@ -1056,8 +1253,7 @@ html[data-theme="dark"] .app .greeting-tagline {
   display: flex !important;
   align-items: flex-end !important;
   justify-content: space-around !important;
-  padding: 10px 12px !important;
-  padding-bottom: max(14px, env(safe-area-inset-bottom)) !important;
+  padding: var(--nav-top-padding, 16px) 12px env(safe-area-inset-bottom, 0px) !important;
   background: rgba(255, 250, 248, 0.92) !important;
   backdrop-filter: blur(40px) saturate(1.6) !important;
   -webkit-backdrop-filter: blur(40px) saturate(1.6) !important;
@@ -1065,7 +1261,7 @@ html[data-theme="dark"] .app .greeting-tagline {
   border: none !important;
   border-top: none !important;
   box-shadow: 0 -2px 24px rgba(0, 0, 0, 0.04) !important;
-  z-index: 100 !important;
+  z-index: var(--z-dock) !important;
 }
 
 .app .bottom-nav.bottom-nav--with-center.surface-dock {
@@ -1073,6 +1269,8 @@ html[data-theme="dark"] .app .greeting-tagline {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   box-shadow: none !important;
+  padding-top: var(--nav-top-padding, 16px) !important;
+  padding-bottom: env(safe-area-inset-bottom, 0px) !important;
 }
 .app .bottom-nav-item {
   display: flex !important;
@@ -1118,6 +1316,7 @@ html[data-theme="dark"] .app .greeting-tagline {
 /* ─── Quick Add Stack: match reference segmented + input ─── */
 .app .quick-add-stack {
   padding: 0 !important;
+  margin-top: 6px !important;
   margin-bottom: 20px !important;
   width: 100% !important;
   max-width: 100% !important;
@@ -1350,13 +1549,27 @@ html[data-theme="dark"] .app .greeting-tagline {
 
 /* ─── Sitewide spacing audit ─── */
 .app .shell-main {
-  padding: 0 20px !important;
-  gap: 20px !important;
-  padding-bottom: 24px !important;
+  padding: 0 var(--py-space-5, 20px) !important;
+  gap: var(--py-space-5, 20px) !important;
+  padding-bottom: calc(
+    env(safe-area-inset-bottom, 0px) + var(--bottom-nav-clearance, 88px) + var(--py-space-2, 8px)
+  ) !important;
 }
 .app .shell-main > section,
 .app .shell-main > div {
   margin-bottom: 0 !important;
+}
+.app .shell-main .page-stack,
+.app .shell-main .timers-page,
+.app .shell-main .py-flex-col.py-gap-5 {
+  gap: var(--py-space-5, 20px) !important;
+}
+.app .shell-main .py-section-header {
+  margin-bottom: var(--py-space-4, 16px) !important;
+}
+.app .shell-main .segmented-control,
+.app .shell-main .py-segmented-control {
+  margin-bottom: var(--py-space-2, 8px) !important;
 }
 .app .empty-big {
   padding: 32px 0 60px !important;
@@ -1499,24 +1712,93 @@ html[data-theme="dark"] .app .morning-routine-item {
 .app .list-section .list-row,
 .app .notes-section .note-row {
   padding: 14px 16px !important;
-  margin-bottom: 8px !important;
-  background: rgba(255, 255, 255, 0.5) !important;
-  border: 1px solid rgba(0, 0, 0, 0.03) !important;
-  border-radius: 18px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+  margin-bottom: 10px !important;
+  background: var(--task-bubble-bg) !important;
+  border: 1px solid var(--task-bubble-border) !important;
+  border-radius: var(--task-bubble-radius) !important;
+  box-shadow: var(--task-bubble-shadow) !important;
 }
 .app .list-section .list-row:hover,
 .app .notes-section .note-row:hover {
-  background: rgba(255, 245, 248, 0.6) !important;
+  background: var(--task-bubble-bg-hover) !important;
+  box-shadow: var(--task-bubble-shadow-hover) !important;
 }
 .app .notes-section .note-card,
 .app .notes-section .note-item {
-  background: rgba(255, 255, 255, 0.5) !important;
-  border: 1px solid rgba(0, 0, 0, 0.03) !important;
-  border-radius: 18px !important;
-  padding: 16px !important;
+  background: var(--task-bubble-bg) !important;
+  border: 1px solid var(--task-bubble-border) !important;
+  border-radius: var(--task-bubble-radius) !important;
+  padding: 16px 18px !important;
   margin-bottom: 10px !important;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02), inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
+  box-shadow: var(--task-bubble-shadow) !important;
+}
+
+/* Today / Plan / List / Goals monthly — soft pink task bubbles */
+.app .timeline-wrap .list .item,
+.app .list .item,
+.app .list-page-list > .list-row,
+.app .list-section .list-row,
+.app .notes-list-page > .note-list-row,
+.app .monthly-objectives-list > .monthly-list-row {
+  background: var(--task-bubble-bg) !important;
+  border: 1px solid var(--task-bubble-border) !important;
+  border-radius: var(--task-bubble-radius) !important;
+  box-shadow: var(--task-bubble-shadow) !important;
+  margin-bottom: 10px !important;
+}
+.app .timeline-wrap .list .item:hover,
+.app .list .item:hover,
+.app .list-page-list > .list-row:hover,
+.app .list-section .list-row:hover,
+.app .notes-list-page > .note-list-row:hover,
+.app .monthly-objectives-list > .monthly-list-row:hover {
+  background: var(--task-bubble-bg-hover) !important;
+  border-color: rgba(255, 188, 205, 0.48) !important;
+  box-shadow: var(--task-bubble-shadow-hover) !important;
+}
+.app .list-page-list > .list-row .checkmark,
+.app .notes-list-page > .note-list-row .checkmark,
+.app .monthly-objectives-list > .monthly-list-row .checkmark,
+.app .list .item .checkmark {
+  border-radius: 50% !important;
+  border-width: 1.5px !important;
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent) !important;
+  background: color-mix(in srgb, var(--surface-solid) 88%, var(--theme-accent) 4%) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+}
+.app .list-page-list > .list-row input[type="checkbox"]:checked + .checkmark,
+.app .notes-list-page > .note-list-row input[type="checkbox"]:checked + .checkmark,
+.app .monthly-objectives-list > .monthly-list-row input[type="checkbox"]:checked + .checkmark,
+.app .list .item input[type="checkbox"]:checked + .checkmark {
+  background: color-mix(in srgb, var(--theme-accent, #e8a9b7) 88%, #fff) !important;
+  border-color: color-mix(in srgb, var(--theme-accent, #d87890) 70%, transparent) !important;
+}
+.app .list .item .task-meta-chip {
+  border-radius: 999px !important;
+  padding: 4px 10px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  background: rgba(255, 240, 244, 0.55) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+.app .list .item .task-meta-chip--letter {
+  padding: 0 !important;
+  min-width: 1.35rem !important;
+  width: 1.35rem !important;
+  height: 1.35rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  text-transform: none !important;
+}
+.app .list .item .item-actions-trailing {
+  background: rgba(255, 255, 255, 0.45) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+  border-radius: 14px !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
 }
 .app .coach-section,
 .app .pattern-insights-section {
@@ -1707,9 +1989,16 @@ html[data-theme="dark"] .app .notes-section .note-textarea {
 }
 html[data-theme="dark"] .app .notes-section .note-card,
 html[data-theme="dark"] .app .notes-section .note-row,
-html[data-theme="dark"] .app .note-item {
-  background: rgba(30, 28, 35, 0.6) !important;
-  border-color: rgba(255, 255, 255, 0.06) !important;
+html[data-theme="dark"] .app .note-item,
+html[data-theme="dark"] .app .timeline-wrap .list .item,
+html[data-theme="dark"] .app .list .item,
+html[data-theme="dark"] .app .list-page-list > .list-row,
+html[data-theme="dark"] .app .notes-list-page > .note-list-row,
+html[data-theme="dark"] .app .monthly-objectives-list > .monthly-list-row {
+  background: linear-gradient(160deg, rgba(255, 253, 252, 0.96), rgba(255, 236, 244, 0.82)) !important;
+  border-color: rgba(255, 188, 205, 0.42) !important;
+  box-shadow: 0 6px 22px rgba(232, 150, 170, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.94) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .notes-section .health-segment-toggle,
 html[data-theme="dark"] .app .notes-segment-toggle {
@@ -1911,6 +2200,28 @@ html[data-theme="dark"] .app .notes-search-input {
   box-shadow: 0 2px 8px rgba(232, 169, 183, 0.2) !important;
 }
 
+html[data-theme="dark"] .app .capacity-selector button,
+html[data-theme="dark"] .app .capacity-pill {
+  background: rgba(255, 255, 255, 0.18) !important;
+  border: 1px solid var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .app .capacity-selector button:hover,
+html[data-theme="dark"] .app .capacity-pill:hover {
+  background: rgba(255, 255, 255, 0.28) !important;
+  color: var(--ink-strong, #0a0a0c) !important;
+}
+
+html[data-theme="dark"] .app .capacity-selector button.active,
+html[data-theme="dark"] .app .capacity-pill.active {
+  background: rgba(255, 255, 255, 0.32) !important;
+  border: 2px solid #0a0a0c !important;
+  color: var(--ink-strong, #0a0a0c) !important;
+  box-shadow: none !important;
+}
+
 /* ─── Layout Shell ─── */
 .py-shell {
   display: flex;
@@ -2034,6 +2345,108 @@ html[data-theme="dark"] .app .notes-search-input {
   display: flex;
   gap: var(--py-space-2);
 }
+.py-med-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: var(--py-radius-md);
+  overflow: hidden;
+  border: 1px solid var(--py-border);
+  background: var(--py-surface);
+}
+.py-med-card .py-med-item {
+  border: none;
+  border-radius: 0;
+}
+.py-med-reminder {
+  padding: var(--py-space-3) var(--py-space-4);
+  border-top: 1px solid var(--py-border);
+  background: color-mix(in srgb, var(--py-lavender) 12%, var(--py-surface));
+}
+.py-med-reminder--compact {
+  padding: var(--py-space-2) var(--py-space-4) var(--py-space-3);
+}
+.py-med-reminder-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--py-text-caption);
+  font-weight: 600;
+  color: var(--py-ink-secondary);
+  cursor: pointer;
+}
+.py-med-reminder-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--py-accent);
+}
+.py-med-reminder-times {
+  margin-top: var(--py-space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--py-space-2);
+}
+.py-med-reminder-times-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--py-ink-tertiary);
+}
+.py-med-reminder-time-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.py-med-reminder-time-input {
+  flex: 1;
+  max-width: 160px;
+  min-height: 40px;
+}
+.py-med-reminder-remove-time {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--py-border);
+  background: var(--py-surface);
+  color: var(--py-ink-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.py-med-reminder-add-time {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: var(--py-text-caption);
+  font-weight: 600;
+  color: var(--py-accent-deep);
+  cursor: pointer;
+}
+
+.py-med-disclaimer-footer {
+  margin-top: var(--py-space-2);
+  padding: var(--py-space-4);
+  border-radius: var(--py-radius-md);
+  border: 1px solid color-mix(in srgb, var(--py-ink) 10%, transparent);
+  background: color-mix(in srgb, var(--py-lavender) 10%, var(--py-surface));
+  text-align: center;
+}
+.py-med-disclaimer-footer p {
+  margin: 0;
+  font-size: var(--py-text-caption);
+  line-height: 1.5;
+  color: var(--py-ink-tertiary);
+}
+.py-med-disclaimer-footer p + p {
+  margin-top: 8px;
+}
+.py-med-disclaimer-footer__lead {
+  font-weight: 600;
+  color: var(--py-ink-secondary);
+}
 
 /* ─── Timer Display ─── */
 .py-timer {
@@ -2060,11 +2473,11 @@ html[data-theme="dark"] .app .notes-search-input {
 }
 
 /* ═══════════════════════════════════════════════
-   DARK MODE: Midnight / Mocha — high-contrast frosted UI
+   DARK MODE: Midnight / Mocha ,  high-contrast frosted UI
    Light panels + dark ink (boyish / readable variant)
    ═══════════════════════════════════════════════ */
 html[data-theme="dark"] .app .top-left .brand-name {
-  color: #52525b !important;
+  color: #fafafa !important;
 }
 html[data-theme="dark"] .app .top-left:not(.top-left-greeting) .h1.h1-banner-date,
 html[data-theme="dark"] .app .top-left:not(.top-left-greeting) h1 {
@@ -2111,11 +2524,17 @@ html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock {
   background: transparent !important;
   box-shadow: none !important;
 }
+html[data-theme="dark"] {
+  --dock-bar-bg: rgba(255, 255, 255, 0.98);
+}
 html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock::before {
-  background: rgba(255, 255, 255, 0.98) !important;
+  background: var(--dock-bar-bg) !important;
   border: none !important;
   border-top: 1px solid var(--ink-border-soft, rgba(10, 10, 12, 0.28)) !important;
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.1) !important;
+}
+html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock::after {
+  background: var(--dock-bar-bg) !important;
 }
 html[data-theme="dark"] .app .bottom-nav button span[style] {
   background: rgba(255, 255, 255, 0.88) !important;
@@ -2130,27 +2549,42 @@ html[data-theme="dark"] .app .bottom-nav button[aria-current="page"] span[style]
 }
 
 /* Dark mode: page/module PNGs only (header + dock use SVG) */
-html[data-theme="dark"] .app img[src*="icon"]:not(.header-brand-py-logo),
-html[data-theme="dark"] .app img[src*="Icon"]:not(.header-brand-py-logo),
-html[data-theme="dark"] .app img[src*="fire"],
-html[data-theme="dark"] .app img[src*="water"],
-html[data-theme="dark"] .app img[src*="sun"],
-html[data-theme="dark"] .app img[src*="fork"],
-html[data-theme="dark"] .app img[src*="fitness"],
-html[data-theme="dark"] .app img[src*="meds"],
-html[data-theme="dark"] .app img[src*="finance"],
-html[data-theme="dark"] .app img[src*="notes"],
-html[data-theme="dark"] .app img[src*="timer"],
-html[data-theme="dark"] .app img[src*="monthly"],
-html[data-theme="dark"] .app img[src*="task"],
-html[data-theme="dark"] .app img[src*="habit"],
-html[data-theme="dark"] .app img[src*="nav"] {
+html[data-theme="dark"] .app img[src*="icon"]:not([src*="icondm"]):not([src*="dm.png"]):not(.header-brand-py-logo),
+html[data-theme="dark"] .app img[src*="Icon"]:not([src*="icondm"]):not([src*="dm.png"]):not(.header-brand-py-logo),
+html[data-theme="dark"] .app img[src*="fire"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="water"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="sun"]:not([src*="icondm"]):not([src*="dm.png"]):not([src*="suniconnobubble"]),
+html[data-theme="dark"] .app img[src*="fork"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="fitness"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="meds"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="finance"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="notes"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="timer"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="monthly"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="task"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="habit"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="nav"]:not([src*="icondm"]):not([src*="dm.png"]) {
   filter: brightness(0.92) saturate(0.85) contrast(1.05) !important;
+}
+
+html[data-theme="dark"] .app .section-health.panel,
+html[data-theme="dark"] .app .section-health.surface-glass,
+html[data-theme="dark"] .app .health-panel {
+  box-shadow:
+    0 4px 20px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.42) !important;
 }
 
 /* Dark mode text: default dark ink on frosted surfaces */
 html[data-theme="dark"] .app {
   color: var(--ink-strong, #0a0a0c) !important;
+}
+/* Dark themes render content on bright frosted cards, so muted ink can go
+   a touch darker for crisp metadata contrast. */
+html[data-theme="dark"] {
+  --py-ink-tertiary: #635D6E;
+  --py-ink-muted: #756E80;
 }
 html[data-theme="dark"] .app .panel-title .title,
 html[data-theme="dark"] .app .panel-top .title,
@@ -2216,7 +2650,7 @@ html[data-theme="dark"] .app .progress-fill {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
 }
 
-/* Today's Focus progress — white bubble in dark mode */
+/* Today's Focus progress ,  white bubble in dark mode */
 #today-tasks-section {
   scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 64px);
 }
@@ -2282,7 +2716,7 @@ html[data-theme="dark"] .today-focus-progress__bubble {
     0 0 0 1px rgba(10, 10, 12, 0.1) !important;
 }
 
-/* Center PY bubble in dark mode — keep accent bubble on white nav */
+/* Center PY bubble in dark mode ,  keep accent bubble on white nav */
 html[data-theme="dark"] .app .bottom-nav-item--center .dock-nav-icon-wrap--center,
 html[data-theme="dark"] .app .bottom-nav button[aria-label="Coach"] .dock-nav-icon-wrap--center {
   background: radial-gradient(
@@ -2337,6 +2771,21 @@ html[data-theme="dark"] .app .btn {
 html[data-theme="dark"] .app .btn-primary {
   color: #fff !important;
 }
+html[data-theme="dark"] .app .btn.settings-logout-btn {
+  background: color-mix(in srgb, #3a2224 85%, #1a1012) !important;
+  border-color: color-mix(in srgb, #e88 35%, transparent) !important;
+  color: #fafafa !important;
+  box-shadow: 0 4px 14px color-mix(in srgb, #c44 22%, transparent) !important;
+}
+html[data-theme="dark"] .app .btn.settings-logout-btn:hover:not(:disabled),
+html[data-theme="dark"] .app .btn.settings-logout-btn:focus-visible {
+  background: color-mix(in srgb, #4a2a2e 82%, #1a1012) !important;
+  color: #fafafa !important;
+}
+html[data-theme="dark"] body,
+html[data-theme="dark"] .app-bg {
+  background: var(--theme-bg-gradient) !important;
+}
 html[data-theme="dark"] .app .item-text-done {
   color: #71717a !important;
 }
@@ -2358,7 +2807,7 @@ html[data-theme="dark"] .app .notes-section .note-date {
    RESPONSIVE: iPad, Mac, larger screens
    ═══════════════════════════════════════════════ */
 
-/* Tablet (iPad) — content width only; header stays full bleed */
+/* Tablet (iPad) ,  content width only; header stays full bleed */
 @media (min-width: 768px) {
   .app .shell-main {
     max-width: var(--app-content-max, 600px) !important;

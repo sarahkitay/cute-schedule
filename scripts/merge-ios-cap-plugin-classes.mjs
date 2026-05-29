@@ -10,7 +10,15 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const CAP_FILE = path.join(ROOT, "ios", "App", "App", "capacitor.config.json");
 
 /** @type {string[]} - @objc(…) names of CAPBridgedPlugin classes compiled into the App target */
-const EXTRA_IOS_PACKAGE_CLASSES = [];
+const EXTRA_IOS_PACKAGE_CLASSES = [
+  "ProyouApnsPlugin",
+  "ProyouWidgetPlugin",
+  "ProyouMusicPickerPlugin",
+  "ProyouNutritionLabelPlugin",
+  "ProyouAlarmSoundPlugin",
+];
+
+const ROOT_CAP_FILE = path.join(ROOT, "capacitor.config.json");
 
 function main() {
   if (!fs.existsSync(CAP_FILE)) {
@@ -23,7 +31,16 @@ function main() {
   const merged = [...new Set([...existing, ...EXTRA_IOS_PACKAGE_CLASSES])];
   json.packageClassList = merged;
   fs.writeFileSync(CAP_FILE, `${JSON.stringify(json, null, "\t")}\n`, "utf8");
-  console.log("[merge-ios-cap-plugin-classes] packageClassList:", merged.join(", "));
+  console.log("[merge-ios-cap-plugin-classes] ios packageClassList:", merged.join(", "));
+
+  if (fs.existsSync(ROOT_CAP_FILE)) {
+    const rootRaw = fs.readFileSync(ROOT_CAP_FILE, "utf8");
+    const rootJson = JSON.parse(rootRaw);
+    const rootExisting = Array.isArray(rootJson.packageClassList) ? rootJson.packageClassList : [];
+    rootJson.packageClassList = [...new Set([...rootExisting, ...EXTRA_IOS_PACKAGE_CLASSES])];
+    fs.writeFileSync(ROOT_CAP_FILE, `${JSON.stringify(rootJson, null, 2)}\n`, "utf8");
+    console.log("[merge-ios-cap-plugin-classes] root packageClassList:", rootJson.packageClassList.join(", "));
+  }
 }
 
 main();

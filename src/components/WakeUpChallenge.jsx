@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ALARM_MODES } from "../modules/timers";
-import { playAlarmSoundForAlarm } from "../alarmSounds";
+import { ALARM_MODES, alarmRequiresWakeUpChallenge } from "../modules/timers";
+import { playAlarmSoundForAlarm, stopAlarmSoundPlayback } from "../alarmSounds";
 
 const WRITING_PROMPTS = [
   "I am awake and ready",
   "Good morning world",
   "Today is a fresh start",
   "Rise and shine",
+  "I choose to wake up now",
+  "My brain is turned on",
 ];
+
+const MATH_ROUNDS_EASY = 3;
+const MATH_ROUNDS_HARD = 4;
+const WRITING_ROUNDS = 2;
 
 function buildMathProblem(difficulty = "easy") {
   if (difficulty === "hard") {
@@ -28,6 +34,16 @@ function buildMathProblem(difficulty = "easy") {
   return { prompt: `${hi} - ${lo} = ?`, answer: String(hi - lo) };
 }
 
+function pickWritingPrompts(count) {
+  const pool = [...WRITING_PROMPTS];
+  const out = [];
+  while (out.length < count && pool.length) {
+    const i = Math.floor(Math.random() * pool.length);
+    out.push(pool.splice(i, 1)[0]);
+  }
+  return out;
+}
+
 /**
  * Full-screen wake-up challenge shown when an alarm rings.
  * Alarm sound loops until onDismiss (after challenge or standard dismiss).
@@ -35,18 +51,27 @@ function buildMathProblem(difficulty = "easy") {
 export function WakeUpChallenge({ alarm, onDismiss }) {
   const needsMath = alarm?.mode === ALARM_MODES.MATH_DISMISS;
   const needsWriting = alarm?.mode === ALARM_MODES.ACTION_REQUIRED;
-  const needsChallenge = needsMath || needsWriting;
+  const needsChallenge = alarmRequiresWakeUpChallenge(alarm);
 
+  const mathTotal = needsMath ? (alarm?.mathDifficulty === "hard" ? MATH_ROUNDS_HARD : MATH_ROUNDS_EASY) : 0;
+  const writingTotal = needsWriting ? WRITING_ROUNDS : 0;
+  const totalRounds = mathTotal || writingTotal || 1;
+
+  const writingQueue = useMemo(
+    () => (needsWriting ? pickWritingPrompts(writingTotal) : []),
+    [needsWriting, writingTotal, alarm?.id]
+  );
+
+  const [round, setRound] = useState(0);
   const [math, setMath] = useState(() =>
     needsMath ? buildMathProblem(alarm?.mathDifficulty || "easy") : null
   );
-  const writingPrompt = useMemo(
-    () => (needsWriting ? WRITING_PROMPTS[Math.floor(Math.random() * WRITING_PROMPTS.length)] : null),
-    [needsWriting, alarm?.id]
-  );
-
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState("");
+  const [streak, setStreak] = useState(0);
+
+  const writingPrompt = needsWriting ? writingQueue[round] : null;
+  const roundLabel = needsChallenge ? `${Math.min(round + 1, totalRounds)} of ${totalRounds}` : null;
 
   useEffect(() => {
     if (!alarm) return;
@@ -54,6 +79,9 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
     try {
       navigator.vibrate?.([300, 120, 300, 120, 300]);
     } catch {}
+    return () => {
+      stopAlarmSoundPlayback();
+    };
   }, [alarm]);
 
   useEffect(() => {
@@ -81,6 +109,20 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [alarm]);
 
+  function advanceOrFinish() {
+    const nextRound = round + 1;
+    if (nextRound >= totalRounds) {
+      onDismiss();
+      return;
+    }
+    setRound(nextRound);
+    setAnswer("");
+    setError("");
+    if (needsMath) {
+      setMath(buildMathProblem(alarm?.mathDifficulty || "easy"));
+    }
+  }
+
   function tryDismiss() {
     if (!needsChallenge) {
       onDismiss();
@@ -88,24 +130,28 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
     }
     if (needsMath && math) {
       if (answer.trim() === math.answer) {
-        onDismiss();
+        setStreak((s) => s + 1);
+        advanceOrFinish();
         return;
       }
-      setError("Not quite — try again to wake up your brain.");
+      setError(`Wrong answer. Stay with it. ${roundLabel || ""}`);
       setMath(buildMathProblem(alarm?.mathDifficulty || "easy"));
       setAnswer("");
+      setStreak(0);
       try {
-        navigator.vibrate?.([120, 80, 120]);
+        navigator.vibrate?.([120, 80, 120, 80, 120]);
       } catch {}
       return;
     }
-    if (needsWriting) {
+    if (needsWriting && writingPrompt) {
       if (answer.trim().toLowerCase() === writingPrompt.toLowerCase()) {
-        onDismiss();
+        setStreak((s) => s + 1);
+        advanceOrFinish();
         return;
       }
-      setError("Type the phrase exactly to dismiss.");
+      setError(`Type it exactly, including spaces. ${roundLabel || ""}`);
       setAnswer("");
+      setStreak(0);
     }
   }
 
@@ -126,11 +172,18 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
         </h2>
         <p className="wake-challenge-sub">
           {needsMath
-            ? "Solve this to turn off your alarm. It keeps ringing until you finish."
+            ? `Solve ${mathTotal} quick problems to turn off your alarm. It keeps ringing until you finish.`
             : needsWriting
-              ? "Type the phrase below to turn off your alarm. It keeps ringing until you finish."
+              ? `Type ${writingTotal} phrases exactly to turn off your alarm. It keeps ringing until you finish.`
               : "Your alarm is ringing. Tap dismiss when you're ready to start the day."}
         </p>
+
+        {needsChallenge && roundLabel ? (
+          <p className="wake-challenge-progress" aria-live="polite">
+            Step {roundLabel}
+            {streak > 0 ? ` · ${streak} correct in a row` : ""}
+          </p>
+        ) : null}
 
         {needsMath ? <div className="wake-challenge-problem">{math?.prompt}</div> : null}
         {needsWriting ? <p className="wake-challenge-phrase">&ldquo;{writingPrompt}&rdquo;</p> : null}
@@ -157,7 +210,7 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
 
         <div className="wake-challenge-actions">
           <button type="button" className="btn btn-primary wake-challenge-btn" onClick={tryDismiss}>
-            {needsChallenge ? "I'm awake" : "Dismiss alarm"}
+            {needsChallenge ? "Check answer" : "Dismiss alarm"}
           </button>
         </div>
       </div>

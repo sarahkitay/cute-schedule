@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import ReactDOM, { flushSync } from "react-dom";
 import { 
-  StarIcon, StarEmptyIcon, TrashIcon, SparkleIcon, MoonIcon, WindDownIcon,
+  StarIcon, StarEmptyIcon, SparkleIcon, MoonIcon, WindDownIcon,
   CloseIcon, ChevronLeftIcon, ChevronRightIcon, RepeatIcon, CalendarIcon,
   LightEnergyIcon, MediumEnergyIcon, HeavyEnergyIcon, GoodFeelingIcon, NeutralFeelingIcon, HardFeelingIcon, DumbbellIcon, MenuIcon,
   CheckIcon, FinanceIcon, BulletIcon
@@ -31,21 +31,21 @@ import {
 } from "./gentleAnchor";
 import cloudStorage from "./cloudStorage";
 import { THEMES } from "./themes";
-import { OnboardingFlow } from "./OnboardingFlow";
 import { OnboardingV2 } from "./components/OnboardingV2";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
 import { HealthPage } from "./HealthPage";
 import { PageInstructions } from "./PageInstructions";
-import { HabitIconPicker, HabitIconBadge, HabitDirectionDot } from "./HabitIconPicker";
+import { HabitIconPicker, HabitDirectionDot } from "./HabitIconPicker";
 import { DEFAULT_HABIT_ICON, normalizeHabitIcon, suggestHabitIconFromLabel } from "./habitIcons";
 import { WorkoutProgramPickerModal } from "./WorkoutProgramPickerModal";
 import { DockNavIcon } from "./DockNavIcon";
-import { dockNavAssetUrl, getDockNavAsset } from "./dockNavAssets";
+import { dockNavAssetUrl, getDockNavAsset, resolveDockNavImage } from "./dockNavAssets";
 import { IconStyleProvider } from "./IconStyleContext";
 import {
   ICON_STYLE_COLORFUL,
   ICON_STYLE_OPTIONS,
   appIconUrl,
+  iconStyleForTheme,
   normalizeIconStyle,
   streakFlameIconUrl,
 } from "./iconStyle";
@@ -57,15 +57,20 @@ import {
   syncNavVisibilityFromModules,
   DEFAULT_ENABLED_MODULES as APP_DEFAULT_ENABLED_MODULES,
   DEFAULT_NAV_ORDER as APP_DEFAULT_NAV_ORDER,
+  moduleIdForTab,
 } from "./appNavModel";
+import { ModuleNavBarPrompt } from "./components/ModuleNavBarPrompt";
 import { GlassCard } from "./components/GlassCard";
 import { PillButton } from "./components/PillButton";
 import { SegmentedControl } from "./components/SegmentedControl";
 import { SoftInput } from "./components/SoftInput";
-import { CoachSuggestionCard } from "./components/CoachSuggestionCard";
 import { InsightCard } from "./components/InsightCard";
 import { InsightsPage } from "./components/InsightsPage";
 import { MedicationsPage } from "./components/MedicationsPage";
+import { RowMoreMenu, DeleteTextButton } from "./components/RowMoreMenu";
+import { FinanceDashboard } from "./components/FinanceDashboard";
+import { guessExpenseCategory } from "./financeDashboardHelpers";
+import { computeDropdownPosition } from "./dropdownPosition";
 import { TimersPage } from "./components/TimersPage";
 import { WakeUpChallenge } from "./components/WakeUpChallenge";
 import { FeatureGate } from "./components/FeatureGate.jsx";
@@ -92,7 +97,7 @@ import {
   leaveMonthlyObjectiveInPriorMonth,
   completeMonthlyObjectiveUnmarked,
 } from "./monthlyObjectivesModel.js";
-import { startAlarmWatcher, requestAlarmPermissions } from "./alarmScheduler";
+import { startAlarmWatcher, requestAlarmPermissions, stopAlarmSound } from "./alarmScheduler";
 import {
   fireAlarm,
   dismissActiveAlarm,
@@ -109,13 +114,46 @@ import {
   defaultMedicationsState,
   getMedicationStatus,
   logMedicationAction,
+  normalizeMedication,
+  buildMedicationPushReminderEntries,
+  formatMedReminderTimes,
 } from "./modules/medications";
-import { loadTimersFromDisk, saveTimersToDisk, defaultTimersState, loadAlarmsFromDisk, saveAlarmsToDisk, defaultAlarmsState, completeActiveTimerState } from "./modules/timers";
+import {
+  loadTimersFromDisk,
+  saveTimersToDisk,
+  defaultTimersState,
+  loadAlarmsFromDisk,
+  saveAlarmsToDisk,
+  defaultAlarmsState,
+  completeActiveTimerState,
+  startActiveTimer,
+  defaultActiveTimerDraft,
+} from "./modules/timers";
 import { YouPage } from "./components/YouPage";
+import { buildShareInputFromApp } from "./social/buildShareInputFromApp.js";
+import { TodayWeeklyMenu } from "./components/TodayWeeklyMenu";
+import { RepeatWeekdayModal } from "./components/RepeatWeekdayModal";
+import {
+  REPEAT_WEEKDAY_LABELS,
+  weekdayIndexForDayKey,
+  createRepeatSeriesFromTask,
+  updateRepeatSeriesWeekdays,
+  addSkippedRepeatDay,
+  removeRepeatSeries,
+  syncRepeatSeriesIntoAppState,
+  clearRepeatSeriesFromAppState,
+  getRepeatableSeriesTemplates,
+  loadRepeatSeries,
+  addDaysKey as repeatAddDaysKey,
+} from "./taskRepeatSeries";
 import {
   bumpWeekRoutineCursor,
+  applyCoachWeeklyMealPlanToHealth,
+  collectGroceryLinesFromCoachMealPlan,
   formatHealthForCoach,
   healthProfileComplete,
+  sumCoachMealDayProtein,
+  weeklyMenuDayLabels,
   listSelectablePrograms,
   normalizeHealth,
   normalizeNavVisibility,
@@ -164,6 +202,7 @@ import {
   processMissedEndOfDayBacklog,
   subscribeTaskBehaviorDirty,
   summarizeTaskBehaviorForHome,
+  summarizeHabitBehaviorForHome,
   normalizeGroceryKeywordsFromProfile,
   taskMatchesGroceryKeywords,
 } from "./groceryTaskCoachHelpers.js";
@@ -352,6 +391,7 @@ const HEALTH_STORAGE_KEY = "cute_schedule_health_v1";
 const NOTIFICATION_PREFS_DEFAULTS = Object.freeze({
   taskPushEnabled: true,
   habitPushEnabled: true,
+  medicationPushEnabled: true,
   taskRemindBeforeEnabled: true,
   taskRemindAtStartEnabled: true,
   taskRemindBeforeMinutes: 5,
@@ -383,6 +423,10 @@ function normalizeNotificationPrefs(raw) {
   return {
     taskPushEnabled: typeof o.taskPushEnabled === "boolean" ? o.taskPushEnabled : NOTIFICATION_PREFS_DEFAULTS.taskPushEnabled,
     habitPushEnabled: typeof o.habitPushEnabled === "boolean" ? o.habitPushEnabled : NOTIFICATION_PREFS_DEFAULTS.habitPushEnabled,
+    medicationPushEnabled:
+      typeof o.medicationPushEnabled === "boolean"
+        ? o.medicationPushEnabled
+        : NOTIFICATION_PREFS_DEFAULTS.medicationPushEnabled,
     taskRemindBeforeEnabled:
       typeof o.taskRemindBeforeEnabled === "boolean" ? o.taskRemindBeforeEnabled : NOTIFICATION_PREFS_DEFAULTS.taskRemindBeforeEnabled,
     taskRemindAtStartEnabled:
@@ -471,9 +515,17 @@ function loadProfileFromDisk() {
       ? /** @type {'supportive' | 'matter-of-fact' | 'funny' | 'harsh'} */ (toneRaw)
       : PROFILE_COMPLETION_DEFAULTS.completionAffirmationTone;
     const gkw = normalizeGroceryKeywordArray(p.groceryKeywords);
+    const legacyName = typeof p.name === "string" ? p.name : "";
+    const legacyBirthday = typeof p.birthday === "string" ? p.birthday : "";
     return {
-      userName: typeof p.userName === "string" ? p.userName : "",
-      userBirthday: typeof p.userBirthday === "string" ? p.userBirthday : "",
+      userName:
+        typeof p.userName === "string" && p.userName.trim()
+          ? p.userName
+          : legacyName,
+      userBirthday:
+        typeof p.userBirthday === "string" && p.userBirthday.trim()
+          ? p.userBirthday
+          : legacyBirthday.replace(/\D/g, "").slice(0, 4),
       defaultTaskRemindersOn: p.defaultTaskRemindersOn !== false,
       defaultRemindBeforeMinutes:
         typeof p.defaultRemindBeforeMinutes === "number" &&
@@ -507,8 +559,18 @@ function mergeCloudProfile(prev, incoming) {
       ? /** @type {'supportive' | 'matter-of-fact' | 'funny' | 'harsh'} */ (base.completionAffirmationTone)
       : PROFILE_COMPLETION_DEFAULTS.completionAffirmationTone;
   return {
-    userName: typeof inc.userName === "string" ? inc.userName : base.userName,
-    userBirthday: typeof inc.userBirthday === "string" ? inc.userBirthday : base.userBirthday,
+    userName:
+      typeof inc.userName === "string" && inc.userName.trim()
+        ? inc.userName
+        : typeof inc.name === "string" && inc.name.trim()
+          ? inc.name
+          : base.userName,
+    userBirthday:
+      typeof inc.userBirthday === "string" && inc.userBirthday.trim()
+        ? inc.userBirthday
+        : typeof inc.birthday === "string" && inc.birthday.trim()
+          ? String(inc.birthday).replace(/\D/g, "").slice(0, 4)
+          : base.userBirthday,
     defaultTaskRemindersOn:
       typeof inc.defaultTaskRemindersOn === "boolean" ? inc.defaultTaskRemindersOn : base.defaultTaskRemindersOn,
     defaultRemindBeforeMinutes:
@@ -655,6 +717,44 @@ function todayKey(d = new Date()) {
   return `${y}-${m}-${day}`;
 }
 
+function trimTaskNote(note) {
+  if (note == null) return "";
+  return String(note).trim();
+}
+
+function TaskNoteSubtitle({ note, className = "" }) {
+  const text = trimTaskNote(note);
+  if (!text) return null;
+  return (
+    <span className={["task-note-subtitle", className].filter(Boolean).join(" ")}>
+      {text}
+    </span>
+  );
+}
+
+/** Time / category / energy chips and note above ⋯ and expand on task rows */
+function TaskMetaAboveActions({ hourKey, category, energyLevel, note, showTime = false }) {
+  const hasChips = showTime || category || energyLevel;
+  const hasNote = !!trimTaskNote(note);
+  if (!hasChips && !hasNote) return null;
+  return (
+    <div className="task-meta-above-actions">
+      {hasChips ? (
+        <TaskMetaChips
+          hourKey={hourKey}
+          category={category}
+          energyLevel={energyLevel}
+          mode="details"
+          showTime={showTime}
+          showEnergy
+          size="tiny"
+        />
+      ) : null}
+      {hasNote ? <TaskNoteSubtitle note={note} className="task-meta-above-actions-note" /> : null}
+    </div>
+  );
+}
+
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
 }
@@ -672,6 +772,15 @@ function taskHasWorkoutProgramAttachment(t) {
 function taskHasAssociatedGroceryList(t) {
   if (!t?.groceryList || typeof t.groceryList !== "object") return false;
   return Array.isArray(t.groceryList.items);
+}
+
+/** Show shopping-list entry points (type, saved list, or keyword match). */
+function taskShouldShowShoppingList(t, groceryTextMatchFn) {
+  if (!t || t.done) return false;
+  if (t.taskType === "shopping") return true;
+  if (taskHasAssociatedGroceryList(t)) return true;
+  if (typeof groceryTextMatchFn === "function" && groceryTextMatchFn(t.text)) return true;
+  return false;
 }
 
 function sumSavingsAccounts(accounts) {
@@ -726,6 +835,15 @@ function normalizeFinanceLoaded(raw) {
     typeof data.financeActiveMonthKey === "string" && /^\d{4}-\d{2}$/.test(data.financeActiveMonthKey)
       ? data.financeActiveMonthKey
       : null;
+  const budgets = Array.isArray(data.budgets)
+    ? data.budgets
+        .map((b) => ({
+          id: b.id || uid(),
+          category: String(b.category || "other").trim() || "other",
+          limit: Math.max(0, Number(b.limit) || 0),
+        }))
+        .filter((b) => b.limit > 0)
+    : [];
   return {
     incomeEntries,
     expenseEntries,
@@ -742,6 +860,7 @@ function normalizeFinanceLoaded(raw) {
     debtPayments,
     creditScoreEntries,
     financeActiveMonthKey,
+    budgets,
   };
 }
 
@@ -971,6 +1090,14 @@ function to12Hour(time24) {
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
+/** Single-letter category pill on Today type rows (e.g. Work → W). */
+function taskMetaCategoryLabel(category, compact) {
+  const s = String(category || "").trim();
+  if (!s) return "";
+  if (!compact) return s;
+  return s.charAt(0).toUpperCase();
+}
+
 /** Compact time for chips, e.g. "9 am" */
 function toShort12Hour(time24) {
   const [h, m] = time24.split(":").map(Number);
@@ -981,26 +1108,62 @@ function toShort12Hour(time24) {
   return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
-function TaskMetaChips({ hourKey, category, energyLevel, mode = "type", showTime = false, showEnergy = true, inline = false, size = "default" }) {
+function TaskMetaChips({
+  hourKey,
+  category,
+  energyLevel,
+  mode = "type",
+  showTime = false,
+  showEnergy = true,
+  inline = false,
+  size = "default",
+  underTitle = false,
+}) {
   const energy = ENERGY_LEVELS[energyLevel || "MEDIUM"];
   const energyKey = (energyLevel || "MEDIUM").toLowerCase();
-  const isTiny = size === "tiny";
+  const isTiny = size === "tiny" && !underTitle;
   const chips = [];
-  if (showTime && hourKey) {
+  if (showTime && hourKey && (mode === "details" || underTitle)) {
     chips.push(
       <span key="time" className="task-meta-chip task-meta-chip--time">{toShort12Hour(hourKey)}</span>
     );
   }
+  const compactMeta = underTitle || isTiny;
   if (category) {
+    const catText = taskMetaCategoryLabel(category, compactMeta);
     chips.push(
-      <span key="cat" className="task-meta-chip task-meta-chip--category">{category}</span>
+      <span
+        key="cat"
+        className={[
+          "task-meta-chip",
+          "task-meta-chip--category",
+          compactMeta ? "task-meta-chip--letter" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        title={compactMeta ? category : undefined}
+      >
+        {catText}
+      </span>
     );
   }
-  if (showEnergy && mode === "details") {
+  if (showEnergy && (mode === "details" || underTitle)) {
+    const energyText = compactMeta ? energy.label.slice(0, 1).toUpperCase() : energy.label;
     chips.push(
-      <span key="energy" className={`task-meta-chip task-meta-chip--energy task-meta-chip--energy-${energyKey}`}>
-        {!isTiny ? React.createElement(energy.icon, { className: "task-meta-chip-icon", "aria-hidden": true }) : null}
-        {isTiny ? energy.label.slice(0, 1) : energy.label}
+      <span
+        key="energy"
+        className={[
+          "task-meta-chip",
+          "task-meta-chip--energy",
+          `task-meta-chip--energy-${energyKey}`,
+          compactMeta ? "task-meta-chip--letter" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        title={compactMeta ? energy.label : undefined}
+      >
+        {!compactMeta ? React.createElement(energy.icon, { className: "task-meta-chip-icon", "aria-hidden": true }) : null}
+        {energyText}
       </span>
     );
   }
@@ -1011,6 +1174,7 @@ function TaskMetaChips({ hourKey, category, energyLevel, mode = "type", showTime
         "task-meta-chips",
         inline ? "task-meta-chips--inline" : "",
         isTiny ? "task-meta-chips--tiny" : "",
+        underTitle ? "task-meta-chips--under-title" : "",
       ].filter(Boolean).join(" ")}
     >
       {chips.map((chip, i) => (
@@ -1172,46 +1336,6 @@ function habitReminderPushEntries(habits, dayKeyToday, nowMs, maxAtMs, notificat
     }
   }
   return out;
-}
-
-/** Viewport-safe fixed position for task / list dropdowns. Returns `top` (below anchor) or `bottom` (above anchor), never both. */
-function computeDropdownPosition(rect, opts = {}) {
-  const pad = 16;
-  const vv = typeof window !== "undefined" ? window.visualViewport : null;
-  const vw =
-    typeof window !== "undefined" ? Math.min(vv?.width ?? window.innerWidth, window.innerWidth) : 400;
-  const vh =
-    typeof window !== "undefined" ? Math.min(vv?.height ?? window.innerHeight, window.innerHeight) : 700;
-  const maxH = opts.maxHeight ?? 280;
-  const panelW = Math.min(opts.panelWidth ?? 200, vw - pad * 2);
-  /** Prefer right edge of anchor (kebab) so the panel extends left - avoids clipping on the right. */
-  let left = rect.right - panelW;
-  const minLeft = pad;
-  const maxLeft = vw - pad - panelW;
-  if (left < minLeft) {
-    left = Math.min(Math.max(rect.left, minLeft), maxLeft);
-  }
-  if (left > maxLeft) left = maxLeft;
-  left = Math.max(minLeft, Math.min(left, maxLeft));
-  /** Nudge slightly left when there is room (keeps bubble off the physical edge / safe area). */
-  const leftNudge = opts.leftNudge ?? 12;
-  if (left > minLeft && leftNudge > 0) left = Math.max(minLeft, left - leftNudge);
-  /** Keep entire panel inside horizontal viewport after nudge (avoids right-edge clip). */
-  left = Math.max(minLeft, Math.min(left, vw - pad - panelW));
-
-  const gap = 6;
-  const topBelow = rect.bottom + gap;
-  let top;
-  let bottom;
-  /** Flip above only when the max plausible height would not fit below (conservative). */
-  if (topBelow + maxH > vh - pad) {
-    /** Anchor the panel’s bottom edge to `rect.top - gap`; do not assume height `maxH`
-     *  (actual menu is shorter, so `rect.top - maxH` left a large gap above the task). */
-    bottom = vh - rect.top + gap;
-  } else {
-    top = Math.max(pad, Math.min(topBelow, vh - pad - 48));
-  }
-  return { left, top, bottom, width: panelW };
 }
 
 function isSameDayKey(a, b) {
@@ -1725,7 +1849,8 @@ function HourCard({
   dayKey,
   onPatchTaskReminder,
   onPatchTaskFields,
-  onEnsureOptionalRepeat,
+  onOpenRepeatWeekdayPicker,
+  onStopRepeatSeries,
   groceryTextMatch,
   onBeginWorkout,
   /** First incomplete task this day (chronological); gets scroll anchor + highlight */
@@ -1776,8 +1901,8 @@ function HourCard({
         </button>
 
         {mode === "details" && (
-          <button type="button" className="icon-btn danger" title="Remove this hour" onClick={() => onDeleteHour(hourKey)}>
-            <CloseIcon />
+          <button type="button" className="btn btn-ghost btn-sm row-delete-btn" title="Remove this hour" onClick={() => onDeleteHour(hourKey)}>
+            Remove hour
           </button>
         )}
       </div>
@@ -1804,6 +1929,20 @@ function HourCard({
                     <span className="checkmark" />
                     <span className="item-body">
                       <span className={`item-text ${t.done ? "item-text-done" : ""}`}>{t.text}</span>
+                      {!t.done && taskHasWorkoutProgramAttachment(t) && typeof onBeginWorkout === "function" ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary item-begin-workout-btn"
+                          title="Open guided workout on Health"
+                          aria-label="Begin workout for this task"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onBeginWorkout(dayKey, hourKey, t.category, t);
+                          }}
+                        >
+                          Begin workout
+                        </button>
+                      ) : null}
                     </span>
                   </label>
 
@@ -1826,24 +1965,12 @@ function HourCard({
                         {React.createElement(ENERGY_LEVELS[t.energyLevel || "MEDIUM"].icon)}
                       </button>
 
-                      <button 
-                        type="button" 
-                        className="icon-btn" 
-                        title="Delete task" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteTask(hourKey, t.category, t.id);
-                        }}
-                      >
-                        <TrashIcon />
-                      </button>
                     </>
                   )}
                   
                   {!t.done &&
                     typeof onOpenGroceryList === "function" &&
-                    (taskHasAssociatedGroceryList(t) ||
-                      (typeof groceryTextMatch === "function" && groceryTextMatch(t.text))) && (
+                    taskShouldShowShoppingList(t, groceryTextMatch) && (
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm grocery-list-btn"
@@ -1857,26 +1984,13 @@ function HourCard({
                       {taskHasAssociatedGroceryList(t) ? "View list" : "List"}
                     </button>
                   )}
-                  {!t.done && taskHasWorkoutProgramAttachment(t) && typeof onBeginWorkout === "function" ? (
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm grocery-list-btn"
-                      title="Open guided workout on Health"
-                      aria-label="Begin workout for this task"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onBeginWorkout(dayKey, hourKey, t.category, t);
-                      }}
-                    >
-                      Begin workout
-                    </button>
-                  ) : null}
                   <div className="item-actions-stack">
-                    <TaskMetaChips
+                    <TaskMetaAboveActions
+                      hourKey={hourKey}
                       category={t.category}
                       energyLevel={t.energyLevel}
-                      mode={mode}
-                      size="tiny"
+                      note={t.taskNote}
+                      showTime={false}
                     />
                     <div className="item-actions-trailing">
                     <button
@@ -1924,7 +2038,7 @@ function HourCard({
                         category={t.category}
                         energyLevel={t.energyLevel}
                         mode={mode}
-                        showTime
+                        showTime={mode === "details"}
                         inline
                       />
                       <p className="item-detail-title">{t.text}</p>
@@ -1993,38 +2107,59 @@ function HourCard({
                           placeholder="Private note…"
                           aria-label="Notes for this task"
                         />
-                        {(t.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.NONE && typeof onEnsureOptionalRepeat === "function" ? (
+                        {!t.repeatSeriesId &&
+                        (t.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.NONE &&
+                        typeof onOpenRepeatWeekdayPicker === "function" ? (
                           <button
                             type="button"
-                            className="btn btn-sm item-detail-repeat-btn"
-                            onClick={() => onEnsureOptionalRepeat(dayKey, hourKey, t.category, t.id)}
+                            className="btn btn-sm item-detail-repeat-btn btn-with-leading-icon"
+                            onClick={() => onOpenRepeatWeekdayPicker(dayKey, hourKey, t.category, t.id)}
                           >
-                            <RepeatIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: "middle" }} />
-                            Add to Past tasks (optional repeat)
+                            <RepeatIcon className="btn-leading-icon" aria-hidden />
+                            <span>Make repeat task</span>
                           </button>
+                        ) : t.repeatSeriesId ? (
+                          <div className="item-detail-repeat-series">
+                            <span className="item-detail-repeat-hint">
+                              Repeats weekly
+                              {Array.isArray(t.repeatWeekdays) && t.repeatWeekdays.length
+                                ? `: ${t.repeatWeekdays.map((d) => REPEAT_WEEKDAY_LABELS[d]?.slice(0, 3) || "").filter(Boolean).join(", ")}`
+                                : ""}
+                            </span>
+                            <div className="item-detail-repeat-series-actions">
+                              <button
+                                type="button"
+                                className="btn btn-sm btn-with-leading-icon"
+                                onClick={() => onOpenRepeatWeekdayPicker(dayKey, hourKey, t.category, t.id, t.repeatSeriesId)}
+                              >
+                                <RepeatIcon className="btn-leading-icon" aria-hidden />
+                                <span>Edit repeat days</span>
+                              </button>
+                              {typeof onStopRepeatSeries === "function" ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-sm btn-ghost"
+                                  onClick={() => onStopRepeatSeries(t.repeatSeriesId)}
+                                >
+                                  Stop repeating
+                                </button>
+                              ) : null}
+                            </div>
+                            <p className="settings-hint item-detail-repeat-delete-hint">
+                              Delete removes only this day. Use Stop repeating to end the series.
+                            </p>
+                          </div>
                         ) : (t.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
-                          <span className="item-detail-repeat-hint">In Past tasks</span>
+                          <span className="item-detail-repeat-hint">Legacy repeat template</span>
                         ) : null}
                       </div>
                     ) : null}
                     <div className="item-detail-actions item-detail-actions-spaced">
-                      {taskHasWorkoutProgramAttachment(t) && onBeginWorkout ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary"
-                          onClick={() => {
-                            onBeginWorkout(dayKey, hourKey, t.category, t);
-                            onExpandTask(null);
-                          }}
-                        >
-                          Begin workout
-                        </button>
-                      ) : null}
                       <button type="button" className="btn btn-sm" onClick={() => { onMoveToTomorrow(hourKey, t.category, t.id); onExpandTask(null); }}>
                         <CalendarIcon style={{ width: 14, height: 14, marginRight: 4 }} /> Move to tomorrow
                       </button>
-                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => { onDeleteTask(hourKey, t.category, t.id); onExpandTask(null); }}>
-                        <TrashIcon style={{ width: 14, height: 14, marginRight: 4 }} /> Delete
+                      <button type="button" className="btn btn-sm btn-ghost row-delete-btn" onClick={() => { onDeleteTask(hourKey, t.category, t.id); onExpandTask(null); }}>
+                        Delete
                       </button>
                     </div>
                   </div>
@@ -2110,7 +2245,18 @@ function BedtimeRoutine({ routine, onToggle, allTasksDone }) {
   );
 }
 
-function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, onNextMonth, categories = DEFAULT_CATEGORIES }) {
+function formatScheduleDayLabel(dayKey, realTodayKey) {
+  if (isSameDayKey(dayKey, realTodayKey)) return "today";
+  const yesterday = addDaysKey(realTodayKey, -1);
+  if (isSameDayKey(dayKey, yesterday)) return "yesterday";
+  return new Date(dayKey + "T12:00:00").toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, onNextMonth, categories = DEFAULT_CATEGORIES, selectedDayKey = null }) {
   const dayKeys = getDayKeysInMonth(year, month);
   const firstWeekday = getFirstWeekday(year, month);
   const padding = Array(firstWeekday).fill(null);
@@ -2146,13 +2292,22 @@ function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, on
           const total = tasks.length;
           const done = tasks.filter((t) => t.done).length;
           const isToday = dayKey === todayKey(new Date());
+          const isSelected = selectedDayKey === dayKey;
           return (
             <button
               key={dayKey}
               type="button"
-              className={`month-calendar-day ${total > 0 ? "has-tasks" : ""} ${isToday ? "is-today" : ""}`}
+              className={[
+                "month-calendar-day",
+                total > 0 ? "has-tasks" : "",
+                isToday ? "is-today" : "",
+                isSelected ? "is-selected" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               onClick={() => onSelectDay(dayKey)}
               aria-label={`${dayKey}, ${total} tasks`}
+              aria-current={isSelected ? "date" : undefined}
             >
               <span className="month-calendar-day-num">{new Date(dayKey + "T12:00:00").getDate()}</span>
               {total > 0 && (
@@ -2184,7 +2339,7 @@ function ProUpgradeEventListener() {
   return null;
 }
 
-/** Full-screen sign-in — optional; app works locally without an account. */
+/** Full-screen sign-in ,  optional; app works locally without an account. */
 function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError, onContinueFree }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -2210,7 +2365,7 @@ function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError, onCon
         <p className="login-gate-brand">PROYOU</p>
         <h1 className="login-gate-title">Welcome</h1>
         <p className="login-gate-sub">
-          Start free with planner, tasks, habits, and notes. Sign in anytime to sync — Pro unlocks cloud backup and more.
+          Start free with planner, tasks, habits, and notes. Sign in anytime to sync; Pro unlocks cloud backup and more.
         </p>
 
         <button
@@ -2360,7 +2515,7 @@ const DOCK_EDITOR_ICON_BY_ID = {
 const DOCK_FALLBACK_COPY = {
   plan: {
     title: "Plan",
-    body: "Monthly objectives and a focused task list for the day — without the full Today timeline.",
+    body: "Monthly objectives and a focused task list for the day, without the full Today timeline.",
     btn: "Open Plan",
   },
   coach: {
@@ -2392,7 +2547,9 @@ const COACH_SECTION_MODES = {
 };
 
 /** ====== Main App ====== **/
-export default function App() {
+const BOOT_LOGO_SRC = `${import.meta.env.BASE_URL}pyiconnobubble.png`;
+
+export default function App({ onAppReady }) {
   const [tab, setTab] = useState("today");
   const realTodayKey = todayKey();
   const [selectedDayKey, setSelectedDayKey] = useState(realTodayKey);
@@ -2401,6 +2558,10 @@ export default function App() {
   const [showMonthCalendar, setShowMonthCalendar] = useState(false);
   const [monthCalendarMonth, setMonthCalendarMonth] = useState(() => {
     const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const [homeCalendarMonth, setHomeCalendarMonth] = useState(() => {
+    const d = new Date(realTodayKey + "T12:00:00");
     return { year: d.getFullYear(), month: d.getMonth() };
   });
 
@@ -2470,7 +2631,6 @@ export default function App() {
     if (!alarm?.enabled) return;
     fireAlarm(alarm);
     setRingingAlarm(alarm);
-    setTab("timers");
   }, []);
 
   useEffect(() => {
@@ -2484,6 +2644,7 @@ export default function App() {
   const dismissRingingAlarm = useCallback(async () => {
     if (!ringingAlarm) return;
     const id = ringingAlarm.id;
+    stopAlarmSound();
     await dismissActiveAlarm(id);
     setRingingAlarm(null);
   }, [ringingAlarm]);
@@ -2519,7 +2680,7 @@ export default function App() {
     const active = timersState.activeTimer;
     if (!active?.running || !active?.endsAt) return;
     const check = () => {
-      setTimersState((prev) => completeActiveTimerState(prev));
+      setTimersState((prev) => completeActiveTimerState(prev, { resolveTaskDone: resolveLinkedTaskDone }));
     };
     check();
     const id = setInterval(check, 500);
@@ -2830,6 +2991,10 @@ export default function App() {
   const [deleteAccountError, setDeleteAccountError] = useState("");
   const [habitTracker, setHabitTracker] = useState(() => loadHabitTrackerFromDisk());
   const [groceryListModal, setGroceryListModal] = useState(null);
+  /** Last task completed on Plan list page; undo until user leaves Plan tab. */
+  const [planListUndo, setPlanListUndo] = useState(null);
+  /** Last checklist line toggled in grocery modal; undo until modal closes. */
+  const [groceryChecklistUndo, setGroceryChecklistUndo] = useState(null);
   const [groceryListPrompt, setGroceryListPrompt] = useState(null);
   const [groceryNewItem, setGroceryNewItem] = useState("");
   const [groceryLoadListId, setGroceryLoadListId] = useState("");
@@ -2845,10 +3010,34 @@ export default function App() {
   /** `habitId` → draft `HH:mm` for "Add time" in settings */
   const [habitReminderDraft, setHabitReminderDraft] = useState({});
   const habitReminderFiredRef = useRef(new Set());
+  const medReminderFiredRef = useRef(new Set());
   const [newTypeName, setNewTypeName] = useState("");
   const [dockNavEditorMenuId, setDockNavEditorMenuId] = useState(null);
   const [dockNavDragOverId, setDockNavDragOverId] = useState(null);
   const dockNavDragSourceRef = useRef(null);
+  const [repeatWeekdayModal, setRepeatWeekdayModal] = useState(null);
+  /** Module id opened from You → show “add to nav bar” prompt on that tab. */
+  const [youOpenedModuleId, setYouOpenedModuleId] = useState(null);
+  const [youOpenAccountability, setYouOpenAccountability] = useState(false);
+
+  const goToTab = useCallback((nextTab) => {
+    setYouOpenedModuleId(null);
+    setTab(nextTab);
+    if (nextTab === "today") setShowMonthCalendar(false);
+  }, []);
+
+  const syncRepeatSeriesWindow = useCallback(
+    (state) => {
+      const from = repeatAddDaysKey(realTodayKey, -14);
+      const to = repeatAddDaysKey(realTodayKey, 84);
+      return syncRepeatSeriesIntoAppState(state, customCategories, from, to);
+    },
+    [realTodayKey, customCategories],
+  );
+
+  useEffect(() => {
+    setAppState((prev) => syncRepeatSeriesWindow(prev));
+  }, [syncRepeatSeriesWindow]);
 
   useEffect(() => {
     if (!showSettings) setDockNavEditorMenuId(null);
@@ -2894,6 +3083,8 @@ export default function App() {
   }, []);
   const [morningGreeting, setMorningGreeting] = useState(false);
   const [taskDropdown, setTaskDropdown] = useState(null); // "hourKey-category-id"
+  const [taskTimerSetupKey, setTaskTimerSetupKey] = useState(null);
+  const [taskTimerMinutes, setTaskTimerMinutes] = useState("25");
   const [dropdownAnchorRect, setDropdownAnchorRect] = useState(null); // { top, left, bottom, right } for portal
   const [taskMenuNoteDraft, setTaskMenuNoteDraft] = useState("");
   const taskMenuNoteDraftRef = useRef("");
@@ -3021,6 +3212,19 @@ export default function App() {
       }
     }
     list.push(...habitReminderPushEntries(habitTracker.habits, today, now, maxAt, profile.notificationPrefs));
+    if (normalizeNotificationPrefs(profile.notificationPrefs).medicationPushEnabled !== false) {
+      for (const row of buildMedicationPushReminderEntries(
+        medicationsState.medications,
+        today,
+        now,
+        maxAt
+      )) {
+        if (row.tag && !seenTags.has(row.tag)) {
+          seenTags.add(row.tag);
+          list.push(row);
+        }
+      }
+    }
     return list;
   }, [
     realTodayKey,
@@ -3029,6 +3233,7 @@ export default function App() {
     appState.days,
     customCategories,
     habitTracker.habits,
+    medicationsState.medications,
     profile,
   ]);
 
@@ -3075,6 +3280,8 @@ export default function App() {
   /** Last ask-coach trace: mode, pacing, specificity audit (dev / ?coachDebug=1). */
   const [coachTrace, setCoachTrace] = useState(null);
   const [coachQuestion, setCoachQuestion] = useState("");
+  const [healthFocusWeeklyMenuSignal, setHealthFocusWeeklyMenuSignal] = useState(0);
+  const pendingCoachMealPlanAskRef = useRef(null);
   const [coachConversation, setCoachConversation] = useState([]);
   const [coachMode, setCoachMode] = useState("schedule"); // schedule | fitness | finance
   const [coachUserProfile, setCoachUserProfile] = useState(() => {
@@ -3100,6 +3307,7 @@ export default function App() {
   const coachProfileSaveCloseTimerRef = useRef(null);
   const coachResultRef = useRef(null);
   const todayTasksSectionRef = useRef(null);
+  const shellMainRef = useRef(null);
   /** Prevents double-apply (double tap / duplicate program rows) while a coach card is committing. */
   const coachAcceptBusyRef = useRef(false);
   const [sprintEndsAt, setSprintEndsAt] = useState(null); // timestamp; when set, 10-min sprint is active
@@ -3456,6 +3664,14 @@ export default function App() {
   }, [theme, profile.iconStyle]);
 
   useEffect(() => {
+    const want = iconStyleForTheme(theme);
+    setProfile((p) => {
+      if (normalizeIconStyle(p.iconStyle) === want) return p;
+      return { ...p, iconStyle: want };
+    });
+  }, [theme?.name]);
+
+  useEffect(() => {
     localStorage.setItem(NOTES_STORAGE_KEY, JSON.stringify(notes));
   }, [notes]);
 
@@ -3494,6 +3710,7 @@ export default function App() {
         if (cancelled) return;
         listener = await App.addListener("resume", () => {
           void refreshNativeNotificationDiagnostics();
+          void resyncAlarmNotifications(alarmsRef.current);
           const active = resolveActiveRingingAlarm(alarmsRef.current);
           if (active && ringAlarmRef.current) ringAlarmRef.current(active);
           void syncWidgetFromDisk();
@@ -3655,6 +3872,40 @@ export default function App() {
     return () => clearInterval(id);
   }, [habitTracker.habits, realTodayKey, profile.notificationPrefs]);
 
+  // In-app medication reminders at each med's chosen daily time(s).
+  useEffect(() => {
+    const maybeNotify = async () => {
+      await notificationService.checkPermission();
+      if (notificationService.permission !== "granted") return;
+      const prefs = normalizeNotificationPrefs(profile.notificationPrefs);
+      if (prefs.medicationPushEnabled === false) return;
+      const now = new Date();
+      const slot = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      const dayKey = realTodayKey;
+      for (const raw of medicationsState.medications || []) {
+        const med = normalizeMedication(raw);
+        if (!med || med.archived || !med.reminderEnabled) continue;
+        if (!med.reminderTimes.includes(slot)) continue;
+        const tag = `med-live-${med.id}-${dayKey}-${slot}`;
+        if (medReminderFiredRef.current.has(tag)) continue;
+        medReminderFiredRef.current.add(tag);
+        const dosePart = med.dose ? ` (${med.dose})` : "";
+        notificationService.showNotification(`Medication: ${med.name}`, {
+          body: `Time to take ${med.name}${dosePart}`,
+          tag,
+          requireInteraction: false,
+          preferWebNotificationOnNative: true,
+        });
+      }
+      if (medReminderFiredRef.current.size > 400) {
+        medReminderFiredRef.current = new Set();
+      }
+    };
+    const id = setInterval(maybeNotify, 20_000);
+    maybeNotify();
+    return () => clearInterval(id);
+  }, [medicationsState.medications, realTodayKey, profile.notificationPrefs]);
+
   // Close dropdowns when clicking outside (portal or trigger)
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -3663,6 +3914,7 @@ export default function App() {
         setTaskDropdown(null);
         setDropdownAnchorRect(null);
         setTaskMenuNoteDraft("");
+        setTaskTimerSetupKey(null);
       }
       if (secondaryListMenu && !e.target.closest('.task-dropdown-portal') && !e.target.closest('[data-list-menu-trigger]')) {
         setSecondaryListMenu(null);
@@ -3683,17 +3935,27 @@ export default function App() {
       if (n) setDropdownAnchorRect(n.getBoundingClientRect());
     };
     tick();
+    const scrollRoot = shellMainRef.current;
+    scrollRoot?.addEventListener("scroll", tick, { passive: true });
     window.addEventListener("scroll", tick, true);
     window.addEventListener("resize", tick);
     return () => {
+      scrollRoot?.removeEventListener("scroll", tick);
       window.removeEventListener("scroll", tick, true);
       window.removeEventListener("resize", tick);
     };
   }, [taskDropdown]);
 
   useEffect(() => {
-    if (!groceryListModal) setSecondaryListMenu(null);
+    if (!groceryListModal) {
+      setSecondaryListMenu(null);
+      setGroceryChecklistUndo(null);
+    }
   }, [groceryListModal]);
+
+  useEffect(() => {
+    if (tab !== "plan") setPlanListUndo(null);
+  }, [tab]);
 
   // ESC closes calendar sheet
   useEffect(() => {
@@ -3705,7 +3967,7 @@ export default function App() {
 
   // Scroll to top when switching tabs; close list menus; re-flush reveals after DOM swap
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: "instant" });
+    shellMainRef.current?.scrollTo({ top: 0, behavior: "instant" });
     setSecondaryListMenu(null);
     requestAnimationFrame(() => {
       flushScrollRevealsInViewport();
@@ -4027,13 +4289,19 @@ export default function App() {
     const firstOpenToday = coachMeta.lastAutoDayKey !== realTodayKey;
     const stuck = Date.now() - coachMeta.lastProgressAt > 3 * 60 * 60 * 1000 && prog.total > 0 && prog.done < prog.total;
 
-    if ((firstOpenToday || stuck) && !coachLocked && tab === "today") {
+    if ((firstOpenToday || stuck) && !coachLocked && tab === "coach") {
       setCoachMeta((prev) => ({ ...prev, lastAutoDayKey: realTodayKey, lastCoachAt: Date.now() }));
-      setCoachOpen(true);
       askCoach();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tKey, realTodayKey, prog.total, prog.done, tab]);
+
+  useEffect(() => {
+    const pending = pendingCoachMealPlanAskRef.current;
+    if (tab !== "coach" || !pending) return;
+    pendingCoachMealPlanAskRef.current = null;
+    askCoach(pending);
+  }, [tab]);
 
   function patchTaskReminderFields(dayKey, hourKey, category, taskId, partial) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dayKey || "").trim())) return;
@@ -4069,32 +4337,100 @@ export default function App() {
     });
   }
 
-  function ensureTaskOptionalRepeat(dayKey, hourKey, category, taskId) {
+  function openRepeatWeekdayPicker(dayKey, hourKey, category, taskId, editingSeriesId = null) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dayKey || "").trim())) return;
-    setAppState((prev) => {
-      const day = prev.days[dayKey];
-      if (!day?.hours) return prev;
-      const hours = { ...day.hours };
-      const byCat = { ...(hours[hourKey] || {}) };
-      const list = (byCat[category] || []).map((t) => {
-        if (t.id !== taskId) return t;
-        const r = t.repeat ?? REPEAT_OPTIONS.NONE;
-        if (r !== REPEAT_OPTIONS.NONE) return t;
-        return { ...t, repeat: REPEAT_OPTIONS.OPTIONAL, repeatUntil: null };
-      });
-      const updated = list.find((t) => t.id === taskId);
-      hours[hourKey] = { ...byCat, [category]: list };
-      if (updated && updated.repeat === REPEAT_OPTIONS.OPTIONAL) {
-        try {
-          const repeatedTasks = JSON.parse(localStorage.getItem("repeatedTasks") || "[]");
-          const nextStore = [...repeatedTasks.filter((x) => x.id !== taskId), { ...updated, category, hour: hourKey }];
-          localStorage.setItem("repeatedTasks", JSON.stringify(nextStore));
-        } catch {
-          /* ignore */
-        }
-      }
-      return { ...prev, days: { ...prev.days, [dayKey]: { ...day, hours } } };
+    const found = findTaskInAppState(appStateRef.current, dayKey, hourKey, category, taskId);
+    if (!found?.task) return;
+    let initialWeekdays = [weekdayIndexForDayKey(dayKey)];
+    if (editingSeriesId) {
+      const series = loadRepeatSeries().find((s) => s.id === editingSeriesId);
+      if (series?.repeatWeekdays?.length) initialWeekdays = [...series.repeatWeekdays];
+    }
+    setRepeatWeekdayModal({
+      dayKey,
+      hourKey,
+      category,
+      taskId,
+      editingSeriesId: editingSeriesId || found.task.repeatSeriesId || null,
+      initialWeekdays,
     });
+  }
+
+  function confirmRepeatWeekdayPicker(weekdays) {
+    const modal = repeatWeekdayModal;
+    if (!modal || !weekdays.length) return;
+    const { dayKey, hourKey, category, taskId, editingSeriesId } = modal;
+    const found = findTaskInAppState(appStateRef.current, dayKey, hourKey, category, taskId);
+    if (!found?.task) {
+      setRepeatWeekdayModal(null);
+      return;
+    }
+    const task = found.task;
+
+    if (editingSeriesId) {
+      updateRepeatSeriesWeekdays(editingSeriesId, weekdays);
+      setAppState((prev) => {
+        let next = { ...prev };
+        const days = { ...next.days };
+        for (const dk of Object.keys(days)) {
+          const day = days[dk];
+          if (!day?.hours) continue;
+          const hours = { ...day.hours };
+          let dayChanged = false;
+          for (const hk of Object.keys(hours)) {
+            const byCat = { ...hours[hk] };
+            let hourChanged = false;
+            for (const cat of Object.keys(byCat)) {
+              const list = (byCat[cat] || []).map((t) => {
+                if (t.repeatSeriesId !== editingSeriesId) return t;
+                hourChanged = true;
+                return { ...t, repeat: REPEAT_OPTIONS.WEEKLY, repeatWeekdays: [...weekdays] };
+              });
+              if (hourChanged) byCat[cat] = list;
+            }
+            if (hourChanged) {
+              hours[hk] = byCat;
+              dayChanged = true;
+            }
+          }
+          if (dayChanged) days[dk] = { ...day, hours };
+        }
+        next = { ...next, days };
+        return syncRepeatSeriesWindow(next);
+      });
+    } else {
+      const series = createRepeatSeriesFromTask(task, dayKey, hourKey, category, weekdays);
+      setAppState((prev) => {
+        const day = prev.days[dayKey];
+        if (!day?.hours) return syncRepeatSeriesWindow(prev);
+        const hours = { ...day.hours };
+        const byCat = { ...(hours[hourKey] || {}) };
+        const list = (byCat[category] || []).map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                repeat: REPEAT_OPTIONS.WEEKLY,
+                repeatUntil: null,
+                repeatSeriesId: series.id,
+                repeatWeekdays: [...series.repeatWeekdays],
+              }
+            : t
+        );
+        hours[hourKey] = { ...byCat, [category]: list };
+        const next = {
+          ...prev,
+          days: { ...prev.days, [dayKey]: { ...day, hours } },
+        };
+        return syncRepeatSeriesWindow(next);
+      });
+    }
+    setRepeatWeekdayModal(null);
+  }
+
+  function stopTaskRepeatSeries(seriesId) {
+    if (!seriesId) return;
+    removeRepeatSeries(seriesId);
+    setAppState((prev) => clearRepeatSeriesFromAppState(prev, seriesId));
   }
 
   function flushTaskMenuNoteForKey(key) {
@@ -4105,19 +4441,36 @@ export default function App() {
     const category = parts[1];
     const id = parts.slice(2).join("-") || parts[2];
     const next = String(taskMenuNoteDraftRef.current || "").trim();
+    const taskBefore = findTaskInAppState(appStateRef.current, tKey, hourKey, category, id);
+    if (!taskBefore) return;
+    const prevNote = trimTaskNote(taskBefore.taskNote);
+    if (next === prevNote) return;
     setAppState((prev) => {
       const day = prev.days[tKey];
       if (!day?.hours) return prev;
-      const task = findTaskInAppState(prev, tKey, hourKey, category, id);
-      if (!task) return prev;
-      const prevNote = task.taskNote != null ? String(task.taskNote).trim() : "";
-      if (next === prevNote) return prev;
       const hours = { ...day.hours };
       const byCat = { ...(hours[hourKey] || {}) };
-      const list = (byCat[category] || []).map((t) => (t.id !== id ? t : { ...t, taskNote: next }));
+      const list = (byCat[category] || []).map((t) => (t.id !== id ? t : { ...t, taskNote: next || undefined }));
       hours[hourKey] = { ...byCat, [category]: list };
       return { ...prev, days: { ...prev.days, [tKey]: { ...day, hours } } };
     });
+    const taskText = String(taskBefore.text || "").trim();
+    if (!taskText) return;
+    const message = next ? (prevNote ? "Note updated" : "Note added") : "Note removed";
+    if (toastDismissTimerRef.current) {
+      clearTimeout(toastDismissTimerRef.current);
+      toastDismissTimerRef.current = null;
+    }
+    setToastNotification({
+      message,
+      taskText,
+      taskNote: next || undefined,
+      type: "added",
+    });
+    toastDismissTimerRef.current = window.setTimeout(() => {
+      setToastNotification(null);
+      toastDismissTimerRef.current = null;
+    }, 2800);
   }
   flushTaskMenuNoteForKeyRef.current = flushTaskMenuNoteForKey;
 
@@ -4129,8 +4482,10 @@ export default function App() {
     if (!key) {
       setEditingTaskKey(null);
       setTaskMenuNoteDraft("");
+      setTaskTimerSetupKey(null);
       return;
     }
+    if (key !== taskTimerSetupKey) setTaskTimerSetupKey(null);
     const parts = key.split("-");
     if (parts.length >= 3) {
       const hourKey = parts[0];
@@ -4147,6 +4502,44 @@ export default function App() {
     setDropdownAnchorRect(null);
     setTaskMenuNoteDraft("");
     setEditingTaskKey(null);
+    setTaskTimerSetupKey(null);
+  }
+
+  const TASK_TIMER_PRESETS = [5, 10, 15, 25, 30, 45, 60];
+
+  function resolveLinkedTaskDone(active) {
+    const linked = active?.linkedTask;
+    if (!linked?.taskId || !linked.hourKey || !linked.category) return false;
+    const dayKey = linked.dayKey || tKey;
+    const task = findTaskInAppState(appStateRef.current, dayKey, linked.hourKey, linked.category, linked.taskId);
+    return !!task?.done;
+  }
+
+  function startTimerForTask(taskRef, minutesRaw) {
+    const mins = Math.max(1, Math.min(180, Math.round(Number(minutesRaw) || 25)));
+    const ms = mins * 60 * 1000;
+    const label = String(taskRef?.text || "Task").trim().slice(0, 80) || "Task";
+    const linkedTask =
+      taskRef?.id && taskRef?.hourKey && taskRef?.category
+        ? {
+            taskId: taskRef.id,
+            dayKey: taskRef.dayKey || tKey,
+            hourKey: taskRef.hourKey,
+            category: taskRef.category,
+            taskText: label,
+          }
+        : null;
+    setTimersState((prev) => ({
+      ...prev,
+      activeTimer: startActiveTimer(defaultActiveTimerDraft(ms), {
+        remainingMs: ms,
+        label,
+        linkedTask,
+      }),
+    }));
+    setTaskTimerSetupKey(null);
+    dismissTaskDropdownOnly();
+    setTab("timers");
   }
 
   function openTaskEditor(task, hourKey, category, editKey) {
@@ -4155,7 +4548,12 @@ export default function App() {
       hourKey,
       category,
       energyLevel: task?.energyLevel === "LIGHT" || task?.energyLevel === "HEAVY" ? task.energyLevel : "MEDIUM",
-      taskKind: task?.taskType === "workout" ? "workout" : "default",
+      taskKind:
+        task?.taskType === "workout"
+          ? "workout"
+          : task?.taskType === "shopping"
+            ? "shopping"
+            : "default",
     });
     setEditingTaskKey(editKey);
   }
@@ -4189,6 +4587,16 @@ export default function App() {
           taskType: "workout",
           workoutProgramMode: updated.workoutProgramMode || "auto",
         };
+      } else if (draft.taskKind === "shopping") {
+        const gl =
+          updated.groceryList && typeof updated.groceryList === "object"
+            ? updated.groceryList
+            : { items: [] };
+        updated = {
+          ...updated,
+          taskType: "shopping",
+          groceryList: Array.isArray(gl.items) ? gl : { items: [] },
+        };
       } else {
         const { taskType, workoutProgramMode, workoutProgramId, ...rest } = updated;
         updated = rest;
@@ -4220,6 +4628,16 @@ export default function App() {
           titleSnippet: String(existing.text || ""),
         })
       );
+    }
+    if (draft.taskKind === "shopping") {
+      const hadList = taskHasAssociatedGroceryList(existing) && (existing.groceryList.items || []).length > 0;
+      if (!hadList) {
+        const destHour = normalizeTimeKey(draft.hourKey);
+        const destCat = String(draft.category || "").trim() || originalCategory;
+        queueMicrotask(() =>
+          setGroceryListModal({ dayKey: tKey, hourKey: destHour, category: destCat, taskId })
+        );
+      }
     }
     dismissTaskDropdownOnly();
   }
@@ -4295,6 +4713,7 @@ export default function App() {
           ? { workoutProgramMode: ex.workoutProgramMode }
           : {}),
         ...(ex.workoutProgramId ? { workoutProgramId: String(ex.workoutProgramId) } : {}),
+        ...(trimTaskNote(ex.taskNote) ? { taskNote: trimTaskNote(ex.taskNote) } : {}),
         ...(() => {
           const remOn = profile.defaultTaskRemindersOn !== false;
           const before =
@@ -4321,8 +4740,7 @@ export default function App() {
 
       hours[hourKey] = nextByCat;
       
-      // Save to repeated tasks if marked for repetition (must not throw; would block React state update)
-      if (repeatType !== REPEAT_OPTIONS.NONE) {
+      if (repeatType !== REPEAT_OPTIONS.NONE && !nextTask.repeatSeriesId) {
         try {
           const repeatedTasks = JSON.parse(localStorage.getItem("repeatedTasks") || "[]");
           repeatedTasks.push({
@@ -4346,14 +4764,44 @@ export default function App() {
     });
   }
 
-  // Get repeatable tasks (optional repeats that can be added)
   function getRepeatableTasks() {
+    const fromSeries = getRepeatableSeriesTemplates().map((s) => ({
+      id: s.templateTaskId,
+      text: s.text,
+      category: s.category,
+      hour: s.hour,
+      repeat: REPEAT_OPTIONS.WEEKLY,
+      repeatSeriesId: s.id,
+      repeatWeekdays: s.repeatWeekdays,
+    }));
     try {
-      const repeatedTasks = JSON.parse(localStorage.getItem('repeatedTasks') || '[]');
-      return repeatedTasks.filter(task => task.repeat === REPEAT_OPTIONS.OPTIONAL);
+      const repeatedTasks = JSON.parse(localStorage.getItem("repeatedTasks") || "[]");
+      const legacy = repeatedTasks.filter((task) => task.repeat === REPEAT_OPTIONS.OPTIONAL);
+      return [...fromSeries, ...legacy];
     } catch {
-      return [];
+      return fromSeries;
     }
+  }
+
+  function undoPlanListComplete() {
+    if (!planListUndo) return;
+    const u = planListUndo;
+    setPlanListUndo(null);
+    toggleTask(u.hourKey, u.category, u.taskId);
+  }
+
+  function completeTaskFromPlanList(hourKey, category, taskId, text) {
+    const flat = allTasksInDay(todayHours, customCategories);
+    const prior = flat.find((x) => x.id === taskId && x.hour === hourKey && x.category === category);
+    if (!prior || prior.done) return;
+    toggleTask(hourKey, category, taskId);
+    setPlanListUndo({
+      dayKey: tKey,
+      hourKey,
+      category,
+      taskId,
+      text: String(text || "").trim().slice(0, 80),
+    });
   }
 
   function toggleTask(hourKey, category, taskId) {
@@ -4634,6 +5082,7 @@ export default function App() {
       dateISO,
       ...(o.billId ? { billId: String(o.billId) } : {}),
       ...(o.billDueDate ? { billDueDate: String(o.billDueDate) } : {}),
+      ...(type === "expense" ? { category: o.category || guessExpenseCategory(label) } : {}),
     };
     if (type === "income") {
       setFinance((prev) => ({ ...prev, incomeEntries: [entry, ...(prev.incomeEntries || [])].slice(0, 200) }));
@@ -4707,6 +5156,7 @@ export default function App() {
         dateISO: `${day}T12:00:00.000Z`,
         billId,
         billDueDate: b.dueDate,
+        category: guessExpenseCategory(b.name),
       };
       return { ...prev, expenseEntries: [entry, ...expenses].slice(0, 200) };
     });
@@ -4801,6 +5251,9 @@ export default function App() {
         taskId,
         textSnippet: String(priorTask.text || ""),
       });
+    }
+    if (priorTask?.repeatSeriesId) {
+      addSkippedRepeatDay(priorTask.repeatSeriesId, tKey);
     }
     setAppState((prev) => {
       const day = prev.days[tKey];
@@ -5039,6 +5492,9 @@ export default function App() {
   const [monthlyText, setMonthlyText] = useState("");
   const [editingMonthlyId, setEditingMonthlyId] = useState(null);
   const [editingMonthlyText, setEditingMonthlyText] = useState("");
+  const [monthlyMenuNoteDraft, setMonthlyMenuNoteDraft] = useState("");
+  const monthlyMenuNoteDraftRef = useRef("");
+  monthlyMenuNoteDraftRef.current = monthlyMenuNoteDraft;
   function addMonthly(e) {
     e.preventDefault();
     const clean = normalizeText(monthlyText);
@@ -5097,6 +5553,43 @@ export default function App() {
     setAppState((prev) => ({ ...prev, monthly: prev.monthly.map((m) => (m.id === id ? { ...m, text: clean } : m)) }));
     setEditingMonthlyId(null);
     setEditingMonthlyText("");
+  }
+
+  function flushMonthlyMenuNote(id) {
+    if (!id) return;
+    const row = (appStateRef.current.monthly || []).find((m) => m.id === id);
+    if (!row) return;
+    const next = trimTaskNote(monthlyMenuNoteDraftRef.current);
+    const prev = trimTaskNote(row.note);
+    if (next === prev) return;
+    setAppState((prevState) => ({
+      ...prevState,
+      monthly: prevState.monthly.map((m) =>
+        m.id === id ? { ...m, note: next || undefined } : m
+      ),
+    }));
+  }
+
+  function openMonthlyListMenu(id, rect) {
+    dismissTaskDropdownOnly();
+    setSecondaryListMenu((prev) => {
+      if (prev?.kind === "monthly" && prev.id === id) {
+        flushMonthlyMenuNote(id);
+        setMonthlyMenuNoteDraft("");
+        return null;
+      }
+      const row = (appStateRef.current.monthly || []).find((m) => m.id === id);
+      setMonthlyMenuNoteDraft(row?.note != null ? String(row.note) : "");
+      return { kind: "monthly", id, rect };
+    });
+  }
+
+  function closeSecondaryListMenu() {
+    setSecondaryListMenu((prev) => {
+      if (prev?.kind === "monthly") flushMonthlyMenuNote(prev.id);
+      return null;
+    });
+    setMonthlyMenuNoteDraft("");
   }
 
   function toggleBedtime(id) {
@@ -5360,6 +5853,7 @@ export default function App() {
           text: m.text,
           done: m.done,
           monthKey: m.monthKey,
+          note: trimTaskNote(m.note) || undefined,
           carryResolved: m.carryResolved,
           carryOutcome: m.carryOutcome,
         })),
@@ -5481,9 +5975,11 @@ export default function App() {
               : "Daily coach limit reached. Upgrade to Pro for unlimited prompts."
             : res.status === 429
             ? `Too many coach requests. Try again in about ${Number(data?.retryAfterSec) || 60} seconds.`
-            : typeof data?.error === "string"
+            : import.meta.env?.DEV && typeof data?.error === "string"
               ? data.error
-              : String(data?.detail || data?.hint || `Coach request failed (${res.status}).`);
+              : import.meta.env?.DEV
+                ? String(data?.detail || data?.hint || `Coach request failed (${res.status}).`)
+                : "Coach is offline right now — here's a grounded summary from your schedule instead.";
         if (res.status === 402) dispatchProUpgrade("coach_prompt");
         setCoachError(hint);
         const localResponse = guardCoachResult(applyCoachSpecificityToResult(fallbackPayload(), coachContext));
@@ -5683,6 +6179,7 @@ export default function App() {
     const t = String(s.type || "");
     if (t === "ADD_WISH") return !!(normalizeText(s.title || s.label) || normalizeText(s.wishLabel));
     if (t === "WISH_CONTRIBUTION") return Number(s.amount) > 0;
+    if (t === "ADD_WEEKLY_MEAL_PLAN") return !!(s.weeklyMealPlan?.days?.some((d) => d?.length));
     if (t === "BREAK") return true;
     if (t === "SPLIT_TASK") return false;
     if (t === "ADD_TASK") {
@@ -5715,12 +6212,15 @@ export default function App() {
         <div className="coach-v2-suggest-list">
           {suggestions.map((s) => {
             const isWorkoutProgram = s.type === "ADD_WORKOUT_PROGRAM";
+            const isWeeklyMealPlan = s.type === "ADD_WEEKLY_MEAL_PLAN";
+            const mealPlan = s.weeklyMealPlan;
             const isWishAdd = s.type === "ADD_WISH";
             const isWishContrib = s.type === "WISH_CONTRIBUTION";
             const bundledWp = coachSuggestionBundledWorkout(s);
             const isBundledWorkoutTask = Boolean(bundledWp?.exerciseLines?.length);
             const canAuto =
               isWorkoutProgram ||
+              isWeeklyMealPlan ||
               isWishAdd ||
               isWishContrib ||
               isBundledWorkoutTask ||
@@ -5731,7 +6231,9 @@ export default function App() {
               ? "Wish list · new goal"
               : isWishContrib
                 ? `Wish list · save $${Number(s.amount || 0).toFixed(0)}`
-                : isWorkoutProgram
+                : isWeeklyMealPlan
+                  ? "Weekly meal plan · Macros + home"
+                  : isWorkoutProgram
               ? "Workout program (saves to Health)"
               : isBundledWorkoutTask
                 ? "Workout + program (choose below)"
@@ -5745,7 +6247,7 @@ export default function App() {
                   {whenLine}
                   {!isWorkoutProgram && planDayLine ? <span className="coach-v2-plan-day"> · {planDayLine}</span> : null}
                 </div>
-                {!isWorkoutProgram && !isBundledWorkoutTask && !isWishAdd && !isWishContrib ? (
+                {!isWorkoutProgram && !isWeeklyMealPlan && !isBundledWorkoutTask && !isWishAdd && !isWishContrib ? (
                   <div className="coach-v2-card-top">
                     <span className="coach-v2-meta">
                       <Pill label={s.category} />
@@ -5775,6 +6277,21 @@ export default function App() {
                   </div>
                 )}
                 <div className="coach-v2-card-title">{s.title || s.label || s.wishLabel}</div>
+                {isWeeklyMealPlan && mealPlan?.days?.length ? (
+                  <ul className="settings-hint coach-meal-plan-preview" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                    {weeklyMenuDayLabels().map((label, idx) => {
+                      const dayMeals = mealPlan.days[idx] || [];
+                      if (!dayMeals.length) return null;
+                      const dayProtein = sumCoachMealDayProtein(dayMeals);
+                      return (
+                        <li key={label}>
+                          <strong>{label.slice(0, 3)}</strong>: {dayMeals.length} meal{dayMeals.length === 1 ? "" : "s"}
+                          {dayProtein > 0 ? ` · ~${dayProtein}g protein` : ""}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : null}
                 {isWorkoutProgram && s.workoutProgram?.exerciseLines?.length ? (
                   <ul className="settings-hint" style={{ margin: "8px 0 0", paddingLeft: 18 }}>
                     {s.workoutProgram.exerciseLines.slice(0, 6).map((line, i) => (
@@ -5821,7 +6338,13 @@ export default function App() {
                       </>
                     ) : (
                         <button type="button" className="btn btn-primary" onClick={() => acceptCoachSuggestion(s)}>
-                          {isWishAdd ? "Add to wish list" : isWishContrib ? "Log savings" : "Approve"}
+                          {isWishAdd
+                            ? "Add to wish list"
+                            : isWishContrib
+                              ? "Log savings"
+                              : isWeeklyMealPlan
+                                ? "Add to weekly menu"
+                                : "Approve"}
                         </button>
                     )
                   ) : (
@@ -5829,7 +6352,20 @@ export default function App() {
                       Not auto-applied
                     </button>
                   )}
-                  {canAuto && !isWorkoutProgram ? (
+                  {canAuto && isWeeklyMealPlan ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        removeCoachSuggestionById(s.id);
+                        setHealthFocusWeeklyMenuSignal((n) => n + 1);
+                        setTab("health");
+                      }}
+                    >
+                      Edit in Macros
+                    </button>
+                  ) : null}
+                  {canAuto && !isWorkoutProgram && !isWeeklyMealPlan ? (
                     <button
                       type="button"
                       className="btn"
@@ -5934,6 +6470,33 @@ export default function App() {
         }
         toast({ text: "Could not match that wish item.", kind: "info" });
         return false;
+      }
+      if (s.type === "ADD_WEEKLY_MEAL_PLAN" && s.weeklyMealPlan?.days?.some((d) => d?.length)) {
+        setHealth((prev) => applyCoachWeeklyMealPlanToHealth(prev, { weeklyMealPlan: s.weeklyMealPlan }));
+        const grocery = collectGroceryLinesFromCoachMealPlan(s.weeklyMealPlan);
+        setCoachLearning((prev) =>
+          recordSuggestionAccepted(prev, {
+            type: s.type,
+            category: "Health",
+            energyLevel: "MEDIUM",
+            edited: false,
+            titleLower: (s.title || s.weeklyMealPlan?.name || "meal plan").toLowerCase(),
+          })
+        );
+        removeCoachSuggestionById(s.id);
+        const detailBits = [s.weeklyMealPlan?.name || s.title];
+        if (s.weeklyMealPlan?.proteinTargetGPerDay) {
+          detailBits.push(`~${s.weeklyMealPlan.proteinTargetGPerDay}g protein/day target`);
+        }
+        if (grocery.length) detailBits.push(`${grocery.length} grocery items in Macros shopping`);
+        toast({
+          text: "Weekly menu added",
+          detail: `${detailBits.filter(Boolean).join(" · ")}. See Today’s menu on home.`,
+          kind: "ok",
+        });
+        goTab("health");
+        setHealthFocusWeeklyMenuSignal((n) => n + 1);
+        return true;
       }
       if (s.type === "ADD_WORKOUT_PROGRAM" && s.workoutProgram?.name && s.workoutProgram?.exerciseLines?.length) {
         const saved = saveCoachDraftWorkoutProgram(s.workoutProgram);
@@ -6156,6 +6719,7 @@ export default function App() {
 
       const allTasks = allTasksInDay(todayHours, customCategories);
       const tasksForApi = allTasks.map((t) => ({ id: t.id, text: t.text, hour: t.hour, category: t.category, done: t.done }));
+      const coachQ = normalizeText(coachQuestion);
       const payload = {
         dayKey: tKey,
         realTodayKey,
@@ -6163,6 +6727,7 @@ export default function App() {
         coachContext,
         coachReasoningMode,
         coachContextNarrative,
+        userQuestion: coachQ || null,
         today: todayHours,
         tasks: tasksForApi,
         schedule: todayHours,
@@ -6229,21 +6794,30 @@ export default function App() {
         );
         return;
       }
-      setCoachStructuredResult({
-        summary: data.summary || data.message || "",
-        followUp: data.followUp || null,
-        actions: Array.isArray(data.actions) ? data.actions : [],
-        suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+      const adhdShaped = parseCoachApiPayload(
+        {
+          message: data.summary || data.message || "",
+          followUp: data.followUp || null,
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        },
+        customCategories,
+        todayHours
+      );
+      const guardedSuggestions = applyLiveDaySuggestionGuards(adhdShaped.suggestions, todayHours, {
+        coachViewDayKey: tKey,
+        realTodayKey,
+        localNowHHMM,
       });
-      if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
-        const guarded = applyLiveDaySuggestionGuards(data.suggestions, todayHours, {
-          coachViewDayKey: tKey,
-          realTodayKey,
-          localNowHHMM,
-        });
+      setCoachStructuredResult({
+        summary: adhdShaped.message || data.summary || "",
+        followUp: adhdShaped.followUp || data.followUp || null,
+        actions: Array.isArray(data.actions) ? data.actions : [],
+        suggestions: guardedSuggestions,
+      });
+      if (guardedSuggestions.length > 0) {
         setCoachResult({
-          message: data.summary || "",
-          suggestions: guarded,
+          message: adhdShaped.message || data.summary || "",
+          suggestions: guardedSuggestions,
         });
       } else {
         setCoachResult(null);
@@ -6364,6 +6938,29 @@ export default function App() {
     void taskLogRev;
     return summarizeTaskBehaviorForHome(realTodayKey);
   }, [realTodayKey, taskLogRev]);
+
+  const habitDispositionStats = useMemo(
+    () => summarizeHabitBehaviorForHome(habitTracker, realTodayKey),
+    [habitTracker, realTodayKey]
+  );
+
+  const shiftScheduleDay = useCallback(
+    (delta) => {
+      const next = addDaysKey(tKey, delta);
+      if (delta > 0 && next > realTodayKey) return;
+      setSelectedDayKey(next);
+      const d = new Date(next + "T12:00:00");
+      setHomeCalendarMonth({ year: d.getFullYear(), month: d.getMonth() });
+    },
+    [tKey, realTodayKey]
+  );
+
+  useEffect(() => {
+    if (tab !== "today" && tab !== "plan") return;
+    const d = new Date(tKey + "T12:00:00");
+    if (Number.isNaN(d.getTime())) return;
+    setHomeCalendarMonth({ year: d.getFullYear(), month: d.getMonth() });
+  }, [tab, tKey]);
 
   const scheduleStreakStats = useMemo(
     () => ({
@@ -6495,21 +7092,31 @@ export default function App() {
   }, []);
 
   const scheduleWorkoutFromHealth = useCallback(
-    (title, details) => {
+    (titleOrPayload, details, legacyOpts) => {
+      const payload =
+        titleOrPayload && typeof titleOrPayload === "object"
+          ? titleOrPayload
+          : {
+              title: titleOrPayload,
+              details,
+              ...(legacyOpts && typeof legacyOpts === "object" ? legacyOpts : {}),
+            };
       setTab("today");
       const cat =
         (customCategories && customCategories.length && customCategories[0]) || "Personal";
-      const hour = "18:00";
-      ensureHour(hour, realTodayKey);
-      const body = [title, details].filter(Boolean).join("\n").trim();
-      if (body) {
-        addTask(hour, cat, body, REPEAT_OPTIONS.NONE, null, {
-          taskType: "workout",
-          workoutProgramMode: "auto",
-          targetDayKey: realTodayKey,
-          energyLevel: "MEDIUM",
-        });
-      }
+      const hourKey = payload.hourKey || "18:00";
+      const dayKey = payload.dayKey || realTodayKey;
+      ensureHour(hourKey, dayKey);
+      const body = [payload.title, payload.details].filter(Boolean).join("\n").trim();
+      if (!body) return;
+      const extras = {
+        taskType: "workout",
+        workoutProgramMode: payload.workoutProgramMode || "auto",
+        targetDayKey: dayKey,
+        energyLevel: "MEDIUM",
+      };
+      if (payload.workoutProgramId) extras.workoutProgramId = String(payload.workoutProgramId);
+      addTask(hourKey, cat, body, REPEAT_OPTIONS.NONE, null, extras);
     },
     [customCategories, realTodayKey],
   );
@@ -6551,12 +7158,17 @@ export default function App() {
   const authWaiting = firebaseOn && !firebaseAuthResolved;
   const showLoginGate = firebaseOn && firebaseAuthResolved && !firebaseUser && !loginSkipped;
 
+  useEffect(() => {
+    if (!authWaiting) onAppReady?.();
+  }, [authWaiting, onAppReady]);
+
   const routineTemplateCount = useMemo(
     () => Math.max(routineTemplate?.length || 0, morningRoutineTemplate?.length || 0),
     [routineTemplate, morningRoutineTemplate]
   );
 
   function dispatchProUpgrade(feature = "coach_prompt") {
+    if (feature === "coach_prompt" && tab !== "coach") return;
     window.dispatchEvent(new CustomEvent("proyou:upgrade", { detail: { feature } }));
   }
 
@@ -6633,6 +7245,12 @@ export default function App() {
     () => streakFlameIconUrl(profile.iconStyle),
     [profile.iconStyle]
   );
+  const todayGreetingName = useMemo(() => {
+    const fromProfile = String(profile.userName || profile.name || "").trim();
+    if (fromProfile) return fromProfile;
+    return String(firebaseUser?.displayName || "").trim();
+  }, [profile.userName, profile.name, firebaseUser?.displayName]);
+
   const brandLogoSrc = useMemo(
     () => appIconUrl("brandLogo", profile.iconStyle),
     [profile.iconStyle]
@@ -6641,9 +7259,28 @@ export default function App() {
     () => appIconUrl("settings", profile.iconStyle),
     [profile.iconStyle]
   );
+  const planCalendarIconSrc = useMemo(
+    () => dockNavAssetUrl(resolveDockNavImage("plan", { iconStyle: profile.iconStyle })),
+    [profile.iconStyle]
+  );
   const coachHeroSrc = useMemo(
     () => appIconUrl("coachLogo", profile.iconStyle),
     [profile.iconStyle]
+  );
+  const monthlyPageIconSrc = useMemo(
+    () => dockNavAssetUrl(resolveDockNavImage("monthly", { iconStyle: profile.iconStyle })),
+    [profile.iconStyle]
+  );
+
+  const getShareSnapshotInput = useCallback(
+    () =>
+      buildShareInputFromApp({
+        displayName: profile.userName || profile.name || firebaseUser?.displayName || "",
+        realTodayKey,
+        appState,
+        habitTracker,
+      }),
+    [profile.userName, profile.name, firebaseUser?.displayName, realTodayKey, appState, habitTracker],
   );
 
   return (
@@ -6651,17 +7288,24 @@ export default function App() {
       firebaseUid={firebaseUser?.uid ?? null}
       enabledModules={enabledModules}
       routineTemplateCount={routineTemplateCount}
+      socialDisplayName={profile.userName || profile.name || firebaseUser?.displayName || ""}
+      getShareSnapshotInput={getShareSnapshotInput}
     >
       <IconStyleProvider iconStyle={profile.iconStyle} theme={theme}>
       <ProUpgradeEventListener />
       <UpgradeProModal />
+      <RepeatWeekdayModal
+        open={Boolean(repeatWeekdayModal)}
+        title={repeatWeekdayModal?.editingSeriesId ? "Edit repeat days" : "Make repeat task"}
+        subtitle="Choose which days each week this task should appear on your schedule."
+        initialWeekdays={repeatWeekdayModal?.initialWeekdays || []}
+        onClose={() => setRepeatWeekdayModal(null)}
+        onConfirm={confirmRepeatWeekdayPicker}
+      />
       <div className="app">
       {authWaiting && (
-        <div className="login-gate login-gate-loading" aria-busy="true" aria-live="polite">
-          <div className="login-gate-card surface-glass login-gate-loading-inner">
-            <p className="login-gate-brand">PROYOU</p>
-            <p className="login-gate-sub">Loading…</p>
-          </div>
+        <div className="app-boot-splash" aria-busy="true" aria-live="polite">
+          <img src={BOOT_LOGO_SRC} alt="PROYOU" className="app-boot-splash__logo" width={96} height={96} />
         </div>
       )}
       {showLoginGate && (
@@ -6677,6 +7321,7 @@ export default function App() {
             className="shell"
             data-mood={tab === "today" && isSameDayKey(tKey, realTodayKey) ? (appState.days?.[tKey]?.dailyMood || "") : ""}
           >
+            <div className="shell-scroll" ref={shellMainRef}>
             <header className="top top-plain">
               <div className="top-inner">
                 <div className="top-left">
@@ -6684,69 +7329,62 @@ export default function App() {
                     <div className="top-left-today">
                       <img
                         src={brandLogoSrc}
-                        alt=""
+                        alt="PROYOU"
                         className="header-brand-py-logo"
-                        width={40}
-                        height={40}
+                        width={48}
+                        height={48}
                       />
-                    <div className="top-left-greeting top-left-greeting--today">
-                      <span className="brand-name">PROYOU</span>
-                      <h1 className="h1 h1-banner-date today-greeting-title">
-                        Good{" "}
-                        {getTimeOfDay() === "morning"
-                          ? "morning"
-                          : getTimeOfDay() === "evening"
-                            ? "evening"
-                            : "afternoon"}
-                        {(profile.userName || profile.name)
-                          ? `, ${profile.userName || profile.name}`
-                          : ""}
-                      </h1>
-                      <span className="greeting-tagline">
-                        {new Date(realTodayKey + "T12:00:00").toLocaleDateString(undefined, {
-                          weekday: "long",
-                          month: "long",
-                          day: "numeric",
-                        })}
-                      </span>
-                    </div>
+                      <div
+                        className={[
+                          "top-left-greeting",
+                          "top-left-greeting--today",
+                          todayGreetingName ? "" : "top-left-greeting--no-name",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      >
+                        <p className="today-greeting-line today-greeting-salutation">
+                          Good{" "}
+                          {getTimeOfDay() === "morning"
+                            ? "morning"
+                            : getTimeOfDay() === "evening"
+                              ? "evening"
+                              : "afternoon"}
+                          {!todayGreetingName ? "," : null}
+                        </p>
+                        {todayGreetingName ? (
+                          <p className="today-greeting-line today-greeting-name">{todayGreetingName}</p>
+                        ) : null}
+                      </div>
                     </div>
                   ) : (
-                    <>
+                    <div className="top-left-title">
                       <span className="brand-name">PROYOU</span>
                       <h1 className="h1 h1-banner-date" style={{ fontSize: "var(--text-display)", fontWeight: 700 }}>
                         {headerTitle}
                       </h1>
-                    </>
+                    </div>
                   )}
                 </div>
 
-                <div className="tabs" aria-hidden="true">
-                  {mainDockItems.map((item) => (
-                    <TabButton key={item.id} active={tab === item.id} onClick={() => setTab(item.id)}>
-                      {item.headerLabel}
-                    </TabButton>
-                  ))}
-                </div>
-
-                <div className="top-actions">
-                  {tab === "plan" && (
+                <div className="top-actions header-right-actions">
+                  {tab === "today" ? (
                     <button
                       type="button"
-                      className="btn-icon"
-                      onClick={() => {
-                        setShowMonthCalendar(true);
-                        setMonthCalendarMonth({
-                          year: new Date(selectedDayKey + "T12:00:00").getFullYear(),
-                          month: new Date(selectedDayKey + "T12:00:00").getMonth(),
-                        });
-                      }}
+                      className="btn-icon header-plan-calendar-btn"
+                      onClick={() => setTab("plan")}
                       title="Calendar"
                       aria-label="Open calendar"
                     >
-                      <CalendarIcon style={{ width: 22, height: 22 }} />
+                      <img
+                        src={planCalendarIconSrc}
+                        alt=""
+                        className="header-plan-calendar-icon"
+                        width={40}
+                        height={40}
+                      />
                     </button>
-                  )}
+                  ) : null}
                   <button
                     type="button"
                     id="settings-open"
@@ -6762,82 +7400,21 @@ export default function App() {
                       src={settingsIconSrc}
                       alt=""
                       className="header-settings-icon"
-                      width={38}
-                      height={38}
+                      width={40}
+                      height={40}
                     />
                   </button>
                 </div>
+
+                <div className="tabs" aria-hidden="true">
+                  {mainDockItems.map((item) => (
+                    <TabButton key={item.id} active={tab === item.id} onClick={() => setTab(item.id)}>
+                      {item.headerLabel}
+                    </TabButton>
+                  ))}
+                </div>
               </div>
             </header>
-
-            {/* Bottom navigation: PNG dock icons */}
-            <nav
-              className={[
-                "bottom-nav",
-                "surface-dock",
-                "bottom-nav--png",
-                "bottom-nav--with-center",
-                mainDockItems.length >= 5 ? "bottom-nav--compact" : "",
-                navLabelsVisible ? "" : "bottom-nav--hide-labels",
-              ].filter(Boolean).join(" ")}
-              aria-label="Main"
-              style={{ "--dock-count": mainDockItems.length }}
-            >
-              {(() => {
-                const coachItem = mainDockItems.find(
-                  (item) => item.centerAction || item.id === "coach" || item.moduleId === "coach",
-                );
-                const sideItems = coachItem
-                  ? mainDockItems.filter((item) => item.id !== coachItem.id)
-                  : mainDockItems;
-                const centerSplit = Math.floor(sideItems.length / 2);
-                const beforeCenter = sideItems.slice(0, centerSplit);
-                const afterCenter = sideItems.slice(centerSplit);
-
-                const renderDockButton = (item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className={`bottom-nav-item ${tab === item.id ? "active" : ""}`}
-                    onClick={() => {
-                      setTab(item.id);
-                      if (item.id === "today") setShowMonthCalendar(false);
-                    }}
-                    aria-current={tab === item.id ? "page" : undefined}
-                  >
-                    <DockNavIcon tabId={item.moduleId || item.id} active={tab === item.id} />
-                    <span className="bottom-nav-label">{item.label}</span>
-                  </button>
-                );
-
-                if (!coachItem) {
-                  return sideItems.map(renderDockButton);
-                }
-
-                return (
-                  <>
-                    <div className="bottom-nav-side bottom-nav-side--start">
-                      {beforeCenter.map(renderDockButton)}
-                    </div>
-                    <div className="bottom-nav-center">
-                      <button
-                        key={coachItem.id}
-                        type="button"
-                        className={`bottom-nav-item bottom-nav-item--center ${tab === coachItem.id ? "active" : ""}`}
-                        onClick={() => setTab(coachItem.id)}
-                        aria-label={coachItem.label || "Coach"}
-                        aria-current={tab === coachItem.id ? "page" : undefined}
-                      >
-                        <DockNavIcon tabId={coachItem.moduleId || coachItem.id} active={tab === coachItem.id} variant="center" />
-                      </button>
-                    </div>
-                    <div className="bottom-nav-side bottom-nav-side--end">
-                      {afterCenter.map(renderDockButton)}
-                    </div>
-                  </>
-                );
-              })()}
-            </nav>
 
             {/* Sprint countdown bar */}
             {sprintActive && (
@@ -6858,6 +7435,16 @@ export default function App() {
             )}
 
             <main className="shell-main">
+              {tab !== "today" && tab !== "you" ? (
+                <ModuleNavBarPrompt
+                  moduleId={moduleIdForTab(tab)}
+                  promptModuleId={youOpenedModuleId}
+                  navOrder={navOrder}
+                  enabledModules={enabledModules}
+                  onNavPreferencesChange={applyNavPreferences}
+                  onDismiss={() => setYouOpenedModuleId(null)}
+                />
+              ) : null}
               {tab === "today" ? (
           <>
             {/* Add bar: Type (natural language) vs Details (time, category, repeat, energy); above the add field */}
@@ -7016,12 +7603,13 @@ export default function App() {
                       className="btn quick-details-past-btn"
                       onClick={() => setShowPastRepeats(!showPastRepeats)}
                     >
-                      <RepeatIcon /> Past tasks
+                      <RepeatIcon className="btn-leading-icon" aria-hidden />
+                      <span>Repeat tasks</span>
                     </button>
                   </div>
                   {showPastRepeats && (
                     <div className="past-repeats-list quick-add-past-repeats">
-                      <div className="past-repeats-list-title">Tasks you marked &quot;Option to repeat&quot;</div>
+                      <div className="past-repeats-list-title">Weekly repeat tasks</div>
                       <div className="quick-row" style={{ marginBottom: 12 }}>
                         <label className="label" htmlFor="quick-past-repeat-hour">
                           Add at time
@@ -7036,7 +7624,7 @@ export default function App() {
                         />
                       </div>
                       {getRepeatableTasks().length === 0 ? (
-                        <div className="past-repeats-empty">No repeatable tasks yet. Mark a task as &quot;Option to repeat&quot; to see it here.</div>
+                        <div className="past-repeats-empty">No repeat tasks yet. Use Make repeat task on a task to pick weekly days.</div>
                       ) : (
                         <div className="past-repeats-items">
                           {getRepeatableTasks().map((task, idx) => (
@@ -7044,7 +7632,7 @@ export default function App() {
                               key={idx}
                               className="past-repeat-row"
                               onClick={() => {
-                                addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
+                                addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.NONE, task.id);
                                 setShowPastRepeats(false);
                               }}
                             >
@@ -7055,15 +7643,15 @@ export default function App() {
                                 </div>
                               </div>
                               <button
-                                className="btn"
+                                className="btn btn-with-leading-icon past-repeat-row-add"
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.OPTIONAL, task.id);
+                                  addTask(pastRepeatAddHour, task.category, task.text, REPEAT_OPTIONS.NONE, task.id);
                                   setShowPastRepeats(false);
                                 }}
                               >
-                                Add
+                                <span>Add</span>
                               </button>
                             </div>
                           ))}
@@ -7076,52 +7664,94 @@ export default function App() {
               )}
             </div>
 
-            {tab === "today" && isSameDayKey(tKey, realTodayKey) && (habitTracker.habits || []).length > 0 && (
+            {tab === "today" && (habitTracker.habits || []).length > 0 && (
               <section className="panel habit-daily-card surface-glass scroll-reveal today-section--habits">
-                <div className="panel-title">
-                  <span className="title">Habits · today</span>
+                <div className="panel-title habit-daily-card-head">
+                  <div className="habit-daily-card-title-row">
+                    <button
+                      type="button"
+                      className="btn-icon habit-day-nav-btn"
+                      aria-label="Previous day"
+                      onClick={() => shiftScheduleDay(-1)}
+                    >
+                      <ChevronLeftIcon style={{ width: 20, height: 20 }} />
+                    </button>
+                    <span className="title">Habits · {formatScheduleDayLabel(tKey, realTodayKey)}</span>
+                    <button
+                      type="button"
+                      className="btn-icon habit-day-nav-btn"
+                      aria-label="Next day"
+                      disabled={isSameDayKey(tKey, realTodayKey)}
+                      onClick={() => shiftScheduleDay(1)}
+                    >
+                      <ChevronRightIcon style={{ width: 20, height: 20 }} />
+                    </button>
+                  </div>
+                  {!isSameDayKey(tKey, realTodayKey) ? (
+                    <button type="button" className="btn btn-sm btn-ghost habit-jump-today-btn" onClick={() => setSelectedDayKey(realTodayKey)}>
+                      Back to today
+                    </button>
+                  ) : null}
                 </div>
                 <ul className="list habit-checkin-list">
                   {(habitTracker.habits || []).map((h) => {
-                    const v = (habitTracker.log[realTodayKey] || {})[h.id];
+                    const v = (habitTracker.log[tKey] || {})[h.id];
                     return (
                       <li key={h.id} className="habit-checkin-row">
                         <div className="habit-checkin-label">
-                          <HabitIconBadge iconId={h.icon} className="habit-checkin-icon" />
                           <span className="habit-checkin-name">{h.label}</span>
                           <HabitDirectionDot direction={h.direction} />
                         </div>
                         <div className="habit-checkin-actions">
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${v === "yes" ? "btn-primary" : ""}`}
-                            onClick={() =>
-                              setHabitTracker((prev) => ({
-                                ...prev,
-                                log: {
-                                  ...prev.log,
-                                  [realTodayKey]: { ...(prev.log[realTodayKey] || {}), [h.id]: "yes" },
-                                },
-                              }))
-                            }
-                          >
-                            {h.direction === "break" ? "Avoided" : "Did it"}
-                          </button>
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${v === "no" ? "btn-primary" : ""}`}
-                            onClick={() =>
-                              setHabitTracker((prev) => ({
-                                ...prev,
-                                log: {
-                                  ...prev.log,
-                                  [realTodayKey]: { ...(prev.log[realTodayKey] || {}), [h.id]: "no" },
-                                },
-                              }))
-                            }
-                          >
-                            {h.direction === "break" ? "Slip" : "Not today"}
-                          </button>
+                          {v === "yes" ? (
+                            <button
+                              type="button"
+                              className="btn btn-sm btn-primary habit-checkin-logged-btn"
+                              aria-label={`${h.label} logged, tap to change`}
+                              onClick={() =>
+                                setHabitTracker((prev) => {
+                                  const dayLog = { ...(prev.log[tKey] || {}) };
+                                  delete dayLog[h.id];
+                                  return { ...prev, log: { ...prev.log, [tKey]: dayLog } };
+                                })
+                              }
+                            >
+                              Logged
+                            </button>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-sm"
+                                onClick={() =>
+                                  setHabitTracker((prev) => ({
+                                    ...prev,
+                                    log: {
+                                      ...prev.log,
+                                      [tKey]: { ...(prev.log[tKey] || {}), [h.id]: "yes" },
+                                    },
+                                  }))
+                                }
+                              >
+                                {h.direction === "break" ? "Avoided" : "Did it"}
+                              </button>
+                              <button
+                                type="button"
+                                className={`btn btn-sm ${v === "no" ? "btn-primary" : ""}`}
+                                onClick={() =>
+                                  setHabitTracker((prev) => ({
+                                    ...prev,
+                                    log: {
+                                      ...prev.log,
+                                      [tKey]: { ...(prev.log[tKey] || {}), [h.id]: "no" },
+                                    },
+                                  }))
+                                }
+                              >
+                                {h.direction === "break" ? "Slip" : "Not today"}
+                              </button>
+                            </>
+                          )}
                         </div>
                       </li>
                     );
@@ -7136,16 +7766,20 @@ export default function App() {
                   <span className="title">Meds · today</span>
                 </div>
                 <ul className="list home-meds-list">
-                  {pendingMedsToday.map((med) => (
+                  {pendingMedsToday.map((raw) => {
+                    const med = normalizeMedication(raw);
+                    const reminderLabel = med.reminderEnabled ? formatMedReminderTimes(med.reminderTimes) : "";
+                    return (
                     <li key={med.id} className="py-med-item home-meds-row">
                       <img src={`${import.meta.env.BASE_URL}meds.png`} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "contain" }} />
                       <div className="py-med-item__info">
                         <div className="py-med-item__name">{med.name}</div>
-                        {(med.dose || med.schedule?.length > 0) && (
+                        {(med.dose || med.schedule?.length > 0 || reminderLabel) && (
                           <div className="py-med-item__dose">
                             {med.dose && `${med.dose}`}
                             {med.dose && med.schedule?.length > 0 ? " · " : ""}
                             {med.schedule?.join(", ")}
+                            {reminderLabel ? `${med.dose || med.schedule?.length ? " · " : ""}Remind ${reminderLabel}` : ""}
                           </div>
                         )}
                       </div>
@@ -7158,7 +7792,8 @@ export default function App() {
                         <NavIcons name="check" size={14} />
                       </button>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </section>
             )}
@@ -7208,7 +7843,8 @@ export default function App() {
                           dayKey={tKey}
                           onPatchTaskReminder={patchTaskReminderFields}
                           onPatchTaskFields={patchTaskFields}
-                          onEnsureOptionalRepeat={ensureTaskOptionalRepeat}
+                          onOpenRepeatWeekdayPicker={openRepeatWeekdayPicker}
+                          onStopRepeatSeries={stopTaskRepeatSeries}
                           onBeginWorkout={beginWorkoutFromTask}
                           highlightItemKey={firstIncompleteTaskKeyToday}
                           forceHourOpen={
@@ -7273,7 +7909,7 @@ export default function App() {
               )}
             </section>
 
-            {/* Today's Focus + Streak — below daily progress, above module nav */}
+            {/* Today's Focus + Streak ,  below daily progress, above module nav */}
             <div className="py-card-grid today-focus-streak-row scroll-reveal">
               <button
                 type="button"
@@ -7329,7 +7965,7 @@ export default function App() {
                   <div className="py-streak-tip" role="status">
                     <p className="py-streak-tip__text">
                       {scheduleStreakStats.streak > 0
-                        ? `${scheduleStreakStats.streak} day${scheduleStreakStats.streak === 1 ? "" : "s"} — all tasks completed`
+                        ? `${scheduleStreakStats.streak} day${scheduleStreakStats.streak === 1 ? "" : "s"}: all tasks completed`
                         : "No active streak"}
                     </p>
                     <p className="py-streak-tip__detail">
@@ -7341,6 +7977,15 @@ export default function App() {
                 ) : null}
               </div>
             </div>
+
+            {tab === "today" && isSameDayKey(tKey, realTodayKey) ? (
+              <TodayWeeklyMenu
+                health={health}
+                setHealth={setHealth}
+                dayKey={realTodayKey}
+                onOpenMacros={() => setTab("health")}
+              />
+            ) : null}
 
             {tab === "today" ? (
               <HomeModuleTray
@@ -7441,7 +8086,8 @@ export default function App() {
                     {taskAveragesOpen ? "Close averages" : "Open averages"}
                   </button>
                   {taskAveragesOpen ? (
-                    <div className="task-averages-panel surface-glass" role="region" aria-label="Task action averages">
+                    <div className="task-averages-panel surface-glass" role="region" aria-label="Task and habit averages">
+                      <p className="task-averages-section-label">Tasks</p>
                       {scheduleStreakStats.weekPerfect ? (
                         <div className="task-averages-congrats" role="status">
                           <strong>PROYOU:</strong> You cleared every scheduled day in your last seven days - that&apos;s a full week of follow-through. Seriously impressive.
@@ -7556,6 +8202,56 @@ export default function App() {
                       ) : (
                         <p className="settings-hint task-averages-empty">Not enough logged actions yet - check off a few tasks and come back.</p>
                       )}
+
+                      {habitDispositionStats ? (
+                        <>
+                          <p className="task-averages-section-label task-averages-section-label--habits">Habits</p>
+                          {habitDispositionStats.weekBarFracs ? (
+                            <>
+                              <div className="task-averages-stacked-wrap">
+                                <div className="task-averages-stacked" aria-label="Habit check-ins this week">
+                                  <span
+                                    className="task-averages-stacked-seg task-averages-stacked-seg--habit-positive"
+                                    style={{ width: `${Math.round(habitDispositionStats.weekBarFracs.positive * 100)}%` }}
+                                  />
+                                  <span
+                                    className="task-averages-stacked-seg task-averages-stacked-seg--habit-slip"
+                                    style={{ width: `${Math.round(habitDispositionStats.weekBarFracs.slip * 100)}%` }}
+                                  />
+                                  <span
+                                    className="task-averages-stacked-seg task-averages-stacked-seg--habit-unset"
+                                    style={{ width: `${Math.round(habitDispositionStats.weekBarFracs.unset * 100)}%` }}
+                                  />
+                                </div>
+                                <ul className="task-averages-legend">
+                                  <li>
+                                    <span className="task-averages-dot task-averages-dot--habit-positive" /> Positive / on track{" "}
+                                    {habitDispositionStats.pctPositiveShare != null ? `${habitDispositionStats.pctPositiveShare}%` : "-"}
+                                  </li>
+                                  <li>
+                                    <span className="task-averages-dot task-averages-dot--habit-slip" /> Slip / missed{" "}
+                                    {habitDispositionStats.pctSlip != null ? `${habitDispositionStats.pctSlip}%` : "-"}
+                                  </li>
+                                  <li>
+                                    <span className="task-averages-dot task-averages-dot--habit-unset" /> Not logged{" "}
+                                    {habitDispositionStats.pctUnsetWeek != null ? `${habitDispositionStats.pctUnsetWeek}%` : "-"}
+                                  </li>
+                                </ul>
+                              </div>
+                              <p className="task-averages-subline settings-hint">
+                                Habit check-ins (last 7 days):{" "}
+                                {habitDispositionStats.weekPositivePct != null ? `${habitDispositionStats.weekPositivePct}%` : "-"} positive when logged · All-time:{" "}
+                                {habitDispositionStats.allPositivePct != null ? `${habitDispositionStats.allPositivePct}%` : "-"}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="settings-hint task-averages-empty">
+                              Log habits with the arrows above the list (today or yesterday) to see your rates here.
+                            </p>
+                          )}
+                        </>
+                      ) : null}
+
                       <div className="task-averages-streak-row">
                         <span className="task-averages-streak-label">All-done streak</span>
                         <span className="task-averages-streak-value">
@@ -7582,6 +8278,17 @@ export default function App() {
               ) : null}
             </div>
 
+            {planListUndo && planListUndo.dayKey === tKey ? (
+              <div className="list-page-undo-bar" role="status">
+                <span className="list-page-undo-label">
+                  Completed: <strong>{planListUndo.text || "Task"}</strong>
+                </span>
+                <button type="button" className="btn btn-sm list-page-undo-btn" onClick={undoPlanListComplete}>
+                  Undo
+                </button>
+              </div>
+            ) : null}
+
             {incompleteTasks.length === 0 ? (
               <div className="empty">All tasks complete!</div>
             ) : (
@@ -7601,14 +8308,18 @@ export default function App() {
                     >
                       <div className="list-row-body list-row-body-task">
                         <label className="list-row-main check" onClick={(e) => e.stopPropagation()}>
-                          <input type="checkbox" checked={!!t.done} onChange={() => toggleTask(t.hour, t.category, t.id)} />
+                          <input
+                            type="checkbox"
+                            checked={!!t.done}
+                            onChange={() => completeTaskFromPlanList(t.hour, t.category, t.id, t.text)}
+                          />
                           <span className="checkmark" />
                           <span className="list-row-content">
                             <span className={`list-row-title ${t.done ? "item-text-done" : ""}`}>{t.text}</span>
                           </span>
                         </label>
                         <div className="list-row-actions">
-                        {(taskHasAssociatedGroceryList(t) || groceryTextMatch(t.text)) && (
+                        {taskShouldShowShoppingList(t, groceryTextMatch) && (
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm list-row-grocery"
@@ -7635,13 +8346,12 @@ export default function App() {
                           </button>
                         ) : null}
                         <div className="list-row-actions-stack">
-                          <TaskMetaChips
+                          <TaskMetaAboveActions
                             hourKey={t.hour}
                             category={t.category}
                             energyLevel={t.energyLevel}
-                            mode="details"
+                            note={t.taskNote}
                             showTime
-                            size="tiny"
                           />
                           <button
                             type="button"
@@ -7671,13 +8381,46 @@ export default function App() {
             )}
             </div>
 
+            <section className="plan-month-calendar-section surface-glass scroll-reveal" aria-label="Month calendar">
+              <div className="panel month-calendar-wrap plan-month-calendar-wrap">
+                <MonthCalendar
+                  days={appState.days || {}}
+                  year={homeCalendarMonth.year}
+                  month={homeCalendarMonth.month}
+                  categories={customCategories}
+                  selectedDayKey={tKey}
+                  onSelectDay={(dayKey) => {
+                    setSelectedDayKey(dayKey);
+                    const d = new Date(dayKey + "T12:00:00");
+                    setHomeCalendarMonth({ year: d.getFullYear(), month: d.getMonth() });
+                  }}
+                  onBack={() => {
+                    setSelectedDayKey(realTodayKey);
+                    const d = new Date(realTodayKey + "T12:00:00");
+                    setHomeCalendarMonth({ year: d.getFullYear(), month: d.getMonth() });
+                  }}
+                  onPrevMonth={() =>
+                    setHomeCalendarMonth((prev) => {
+                      const d = new Date(prev.year, prev.month - 1, 1);
+                      return { year: d.getFullYear(), month: d.getMonth() };
+                    })
+                  }
+                  onNextMonth={() =>
+                    setHomeCalendarMonth((prev) => {
+                      const d = new Date(prev.year, prev.month + 1, 1);
+                      return { year: d.getFullYear(), month: d.getMonth() };
+                    })
+                  }
+                />
+              </div>
+            </section>
           </section>
         ) : tab === "monthly" ? (
           <section className="panel monthly-page scroll-reveal">
             <div className="plan-section plan-section-monthly monthly-objectives-section">
               <div className="panel-top monthly-page-header">
                 <div className="panel-title">
-                  <img src={`${import.meta.env.BASE_URL}monthly.png`} alt="" className="monthly-page-icon" width={40} height={40} />
+                  <img src={monthlyPageIconSrc} alt="" className="monthly-page-icon" width={40} height={40} />
                   <div className="title">Monthly objectives</div>
                 </div>
               </div>
@@ -7723,7 +8466,10 @@ export default function App() {
                           <label className="list-row-main check monthly-list-check" onClick={(e) => e.stopPropagation()}>
                             <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
                             <span className="checkmark" />
-                            <span className={`list-row-title ${m.done ? "item-text-done" : ""}`}>{m.text}</span>
+                            <span className="list-row-content">
+                              <span className={`list-row-title ${m.done ? "item-text-done" : ""}`}>{m.text}</span>
+                              <TaskNoteSubtitle note={m.note} />
+                            </span>
                           </label>
                           <div className="list-row-actions">
                             <button
@@ -7736,11 +8482,7 @@ export default function App() {
                                 e.stopPropagation();
                                 const anchorEl = e.currentTarget;
                                 if (!anchorEl) return;
-                                const rect = anchorEl.getBoundingClientRect();
-                                dismissTaskDropdownOnly();
-                                setSecondaryListMenu((prev) =>
-                                  prev?.kind === "monthly" && prev.id === m.id ? null : { kind: "monthly", id: m.id, rect }
-                                );
+                                openMonthlyListMenu(m.id, anchorEl.getBoundingClientRect());
                               }}
                             >
                               <MenuIcon style={{ width: 18, height: 18 }} />
@@ -7992,7 +8734,7 @@ export default function App() {
 
             {!coachResult && !coachError && !coachLoading && coachConversation.length === 0 && !coachStructuredResult && (
               <div className="empty">
-                Pick Schedule, Fitness, or Finance above, then tap the big coach button — or ask a question below.
+                Pick Schedule, Fitness, or Finance above, then tap the big coach button, or ask a question below.
                 <br />
                 <br />
                 <small style={{ opacity: 0.7 }}>
@@ -8001,8 +8743,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Structured result when there is no chat thread (general check-in) */}
-            {coachResult && coachConversation.length === 0 && (
+            {/* Structured result when there is no chat thread (general check-in).
+                Suppressed when a section-mode structured card is already shown to avoid duplicate output. */}
+            {coachResult && coachConversation.length === 0 && !coachStructuredResult && (
               <div className="coach-body coach-body-v2">
                 {coachResult.message ? <div className="coach-message">{coachResult.message}</div> : null}
 
@@ -8213,6 +8956,15 @@ export default function App() {
             onClearGuidedSession={() => setGuidedWorkoutSession(null)}
             onMarkGuidedTaskDone={markGuidedTaskDone}
             scrollToProgramBuilderSignal={healthProgramBuilderScroll}
+            focusWeeklyMenuSignal={healthFocusWeeklyMenuSignal}
+            onAskCoachMealPlan={(prompt) => {
+              setCoachMode("fitness");
+              setCoachQuestion(prompt);
+              setCoachStructuredResult(null);
+              setCoachResult(null);
+              pendingCoachMealPlanAskRef.current = prompt;
+              setTab("coach");
+            }}
           />
           </FeatureGate>
         ) : tab === "finance" ? (
@@ -8222,22 +8974,6 @@ export default function App() {
                 <DockNavIcon tabId="finance" active />
                 <div className="title">Finance</div>
               </div>
-            </div>
-
-            <div className="health-nav-toggle surface-glass finance-nav-toggle">
-              <label className="health-toggle-row">
-                <input
-                  type="checkbox"
-                  checked={normalizeNavVisibility(profile.navVisibility).finance === true}
-                  onChange={(e) =>
-                    setProfile((p) => ({
-                      ...p,
-                      navVisibility: { ...normalizeNavVisibility(p.navVisibility), finance: e.target.checked },
-                    }))
-                  }
-                />
-                <span>Show <strong>Finance</strong> in bottom navigation</span>
-              </label>
             </div>
 
             <form className="input-group finance-quick-add" onSubmit={(e) => {
@@ -8259,50 +8995,11 @@ export default function App() {
               <button type="submit" className="btn-primary" disabled={!financeQuickInput.trim()}>Add</button>
             </form>
 
-            <div className="finance-month-snapshot surface-glass">
-              <div className="finance-month-stat finance-month-stat--income">
-                <span className="finance-month-stat-label">Income (this month)</span>
-                <span className="finance-month-stat-value">
-                  +${(finance.incomeEntries || []).reduce((sum, e) => {
-                    const d = new Date(e.dateISO);
-                    const n = new Date();
-                    if (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) return sum + (e.amount || 0);
-                    return sum;
-                  }, 0).toFixed(2)}
-                </span>
-              </div>
-              <div className="finance-month-stat finance-month-stat--expense">
-                <span className="finance-month-stat-label">Spent (this month)</span>
-                <span className="finance-month-stat-value">
-                  -${(finance.expenseEntries || []).reduce((sum, e) => {
-                    const d = new Date(e.dateISO);
-                    const n = new Date();
-                    if (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) return sum + (e.amount || 0);
-                    return sum;
-                  }, 0).toFixed(2)}
-                </span>
-              </div>
-              <div className="finance-month-stat finance-month-stat--net">
-                <span className="finance-month-stat-label">Net (this month)</span>
-                <span className="finance-month-stat-value">
-                  ${(() => {
-                    const income = (finance.incomeEntries || []).reduce((sum, e) => {
-                      const d = new Date(e.dateISO);
-                      const n = new Date();
-                      if (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) return sum + (e.amount || 0);
-                      return sum;
-                    }, 0);
-                    const spent = (finance.expenseEntries || []).reduce((sum, e) => {
-                      const d = new Date(e.dateISO);
-                      const n = new Date();
-                      if (d.getMonth() === n.getMonth() && d.getFullYear() === n.getFullYear()) return sum + (e.amount || 0);
-                      return sum;
-                    }, 0);
-                    return (income - spent).toFixed(2);
-                  })()}
-                </span>
-              </div>
-            </div>
+            <FinanceDashboard
+              finance={finance}
+              onRemoveEntry={removeFinanceEntry}
+              onUpdateBudgets={(budgets) => setFinance((prev) => ({ ...prev, budgets }))}
+            />
 
             <details className="finance-details-block surface-glass">
               <summary className="finance-details-summary">Savings, debt &amp; liquidity</summary>
@@ -8346,19 +9043,16 @@ export default function App() {
                         placeholder="0"
                         aria-label="Balance"
                       />
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        onClick={() => {
+                      <RowMoreMenu
+                        ariaLabel={`Options for ${a.label || "savings account"}`}
+                        deleteLabel="Delete account"
+                        onDelete={() => {
                           setFinance((prev) => {
                             const next = (prev.savingsAccounts || []).filter((x) => x.id !== a.id);
                             return { ...prev, savingsAccounts: next, totalSavings: sumSavingsAccounts(next) };
                           });
                         }}
-                        aria-label="Remove account"
-                      >
-                        <TrashIcon />
-                      </button>
+                      />
                     </li>
                   ))}
                 </ul>
@@ -8428,19 +9122,16 @@ export default function App() {
                           placeholder="0"
                           aria-label="Amount owed"
                         />
-                        <button
-                          type="button"
-                          className="icon-btn"
-                          onClick={() => {
+                        <RowMoreMenu
+                          ariaLabel={`Options for ${a.label || "debt"}`}
+                          deleteLabel="Delete"
+                          onDelete={() => {
                             setFinance((prev) => {
                               const next = (prev.debtAccounts || []).filter((x) => x.id !== a.id);
                               return { ...prev, debtAccounts: next, totalDebt: sumDebtAccounts(next) };
                             });
                           }}
-                          aria-label="Remove debt"
-                        >
-                          <TrashIcon />
-                        </button>
+                        />
                         <div className="finance-inline-form" style={{ width: "100%", marginTop: 8, flexWrap: "wrap" }}>
                           <span className="finance-meta" style={{ flex: "1 1 140px", marginRight: 8 }}>
                             Pay-down logged: ${paidSum.toFixed(2)}
@@ -8559,17 +9250,16 @@ export default function App() {
                   <li key={e.id} className="finance-list-item">
                     <span className="finance-label">{String(e.dateISO || "").slice(0, 10)}</span>
                     <span className="finance-amount">{e.score}</span>
-                    <button
-                      type="button"
-                      className="icon-btn"
-                      onClick={() => setFinance((prev) => ({
-                        ...prev,
-                        creditScoreEntries: (prev.creditScoreEntries || []).filter((x) => x.id !== e.id),
-                      }))}
-                      aria-label="Remove credit entry"
-                    >
-                      <TrashIcon />
-                    </button>
+                    <RowMoreMenu
+                      ariaLabel="Credit score entry options"
+                      deleteLabel="Delete"
+                      onDelete={() =>
+                        setFinance((prev) => ({
+                          ...prev,
+                          creditScoreEntries: (prev.creditScoreEntries || []).filter((x) => x.id !== e.id),
+                        }))
+                      }
+                    />
                   </li>
                 ))}
               </ul>
@@ -8585,7 +9275,7 @@ export default function App() {
                     <span className="finance-meta finance-entry-date">{String(e.dateISO || "").slice(0, 10)}</span>
                     {e.label && <span className="finance-label">{e.label}</span>}
                     <span className="finance-amount">+${Number(e.amount).toFixed(2)}</span>
-                    <button type="button" className="icon-btn" onClick={() => removeFinanceEntry("income", e.id)} aria-label="Remove"><TrashIcon /></button>
+                    <RowMoreMenu ariaLabel="Income entry options" deleteLabel="Delete" onDelete={() => removeFinanceEntry("income", e.id)} />
                   </li>
                 ))}
                 {(finance.incomeEntries || []).length === 0 && <li className="finance-list-empty">No income logged yet. Try +500</li>}
@@ -8602,7 +9292,7 @@ export default function App() {
                     <span className="finance-meta finance-entry-date">{String(e.dateISO || "").slice(0, 10)}</span>
                     {e.label && <span className="finance-label">{e.label}</span>}
                     <span className="finance-amount">-${Number(e.amount).toFixed(2)}</span>
-                    <button type="button" className="icon-btn" onClick={() => removeFinanceEntry("expense", e.id)} aria-label="Remove"><TrashIcon /></button>
+                    <RowMoreMenu ariaLabel="Expense entry options" deleteLabel="Delete" onDelete={() => removeFinanceEntry("expense", e.id)} />
                   </li>
                 ))}
                 {(finance.expenseEntries || []).length === 0 && <li className="finance-list-empty">No spending logged yet. Try -200 or &quot;50 coffee&quot;</li>}
@@ -8638,7 +9328,7 @@ export default function App() {
                     <span className="finance-label">{s.name}</span>
                     <span className="finance-amount">${Number(s.amount).toFixed(2)}/{s.cycle === "yearly" ? "yr" : "mo"}</span>
                     {s.dueDay != null && <span className="finance-meta">Due day {s.dueDay}</span>}
-                    <button type="button" className="icon-btn" onClick={() => removeSubscription(s.id)} aria-label="Remove"><TrashIcon /></button>
+                    <RowMoreMenu ariaLabel={`${s.name} options`} deleteLabel="Delete" onDelete={() => removeSubscription(s.id)} />
                   </li>
                 ))}
               </ul>
@@ -8672,9 +9362,7 @@ export default function App() {
                       <button type="button" className="btn btn-sm btn-primary" onClick={() => handleMarkBillPaid(b.id)}>
                         Mark paid
                       </button>
-                      <button type="button" className="icon-btn" onClick={() => removeBill(b.id)} aria-label="Remove">
-                        <TrashIcon />
-                      </button>
+                      <RowMoreMenu ariaLabel={`${b.name} options`} deleteLabel="Delete" onDelete={() => removeBill(b.id)} />
                     </div>
                   </li>
                 ))}
@@ -8745,7 +9433,7 @@ export default function App() {
                           </button>
                         </form>
                       </details>
-                      <button type="button" className="icon-btn" onClick={() => removeWishItem(w.id)} aria-label="Remove"><TrashIcon /></button>
+                      <RowMoreMenu ariaLabel={`${w.label} options`} deleteLabel="Delete" onDelete={() => removeWishItem(w.id)} />
                     </li>
                   );
                 })}
@@ -9201,6 +9889,17 @@ export default function App() {
               onUpdateTimers={setTimersState}
               alarmsState={alarmsState}
               onUpdateAlarms={setAlarmsState}
+              resolveTimerHistoryTask={(entry) => {
+                const linked = entry?.linkedTask;
+                if (!linked?.taskId || !linked.hourKey || !linked.category) return null;
+                const dayKey = linked.dayKey || tKey;
+                const task = findTaskInAppState(appState, dayKey, linked.hourKey, linked.category, linked.taskId);
+                return {
+                  text: task?.text || linked.taskText || entry.label || "Task",
+                  done: task ? !!task.done : !!entry.taskCompleted,
+                  found: !!task,
+                };
+              }}
             />
           </section>
         ) : null}
@@ -9224,7 +9923,13 @@ export default function App() {
               onNavPreferencesChange={applyNavPreferences}
               coachingTone={coachingTone}
               setCoachingTone={setCoachingTone}
-              onNavigateModule={(id) => setTab(id)}
+              firebaseUser={firebaseUser}
+              openAccountability={youOpenAccountability}
+              onAccountabilityOpened={() => setYouOpenAccountability(false)}
+              onNavigateModule={(tabId, moduleId) => {
+                setYouOpenedModuleId(moduleId || moduleIdForTab(tabId));
+                setTab(tabId);
+              }}
             />
           </section>
         ) : null}
@@ -9232,6 +9937,74 @@ export default function App() {
         <PageInstructions tab={tab} />
 
         </main>
+            </div>
+
+            {/* Bottom navigation: PNG dock icons */}
+            <nav
+              className={[
+                "bottom-nav",
+                "surface-dock",
+                "bottom-nav--png",
+                "bottom-nav--with-center",
+                mainDockItems.length >= 5 ? "bottom-nav--compact" : "",
+                navLabelsVisible ? "" : "bottom-nav--hide-labels",
+              ].filter(Boolean).join(" ")}
+              aria-label="Main"
+              style={{ "--dock-count": mainDockItems.length }}
+            >
+              {(() => {
+                const coachItem = mainDockItems.find(
+                  (item) => item.centerAction || item.id === "coach" || item.moduleId === "coach",
+                );
+                const sideItems = coachItem
+                  ? mainDockItems.filter((item) => item.id !== coachItem.id)
+                  : mainDockItems;
+                const centerSplit = Math.floor(sideItems.length / 2);
+                const beforeCenter = sideItems.slice(0, centerSplit);
+                const afterCenter = sideItems.slice(centerSplit);
+
+                const renderDockButton = (item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`bottom-nav-item ${tab === item.id ? "active" : ""}`}
+                    onClick={() => goToTab(item.id)}
+                    aria-current={tab === item.id ? "page" : undefined}
+                  >
+                    <DockNavIcon tabId={item.moduleId || item.id} active={tab === item.id} />
+                    <span className="bottom-nav-label">{item.label}</span>
+                  </button>
+                );
+
+                if (!coachItem) {
+                  return sideItems.map(renderDockButton);
+                }
+
+                return (
+                  <>
+                    <div className="bottom-nav-side bottom-nav-side--start">
+                      {beforeCenter.map(renderDockButton)}
+                    </div>
+                    <div className="bottom-nav-center">
+                      <button
+                        key={coachItem.id}
+                        type="button"
+                        className={`bottom-nav-item bottom-nav-item--center ${tab === coachItem.id ? "active" : ""}`}
+                        onClick={() => goToTab(coachItem.id)}
+                        aria-label={coachItem.label || "Coach"}
+                        aria-current={tab === coachItem.id ? "page" : undefined}
+                      >
+                        <DockNavIcon tabId={coachItem.moduleId || coachItem.id} active={tab === coachItem.id} variant="center" />
+                      </button>
+                    </div>
+                    <div className="bottom-nav-side bottom-nav-side--end">
+                      {afterCenter.map(renderDockButton)}
+                    </div>
+                  </>
+                );
+              })()}
+            </nav>
+
         <aside className="shell-rail" aria-hidden="true" />
 
         {taskDropdown && dropdownAnchorRect && ReactDOM.createPortal(
@@ -9243,7 +10016,8 @@ export default function App() {
             const editKey = `${hourKey}-${category}-${id}`;
             const isEditing = editingTaskKey === editKey;
             const closeDropdown = () => handleTaskMenuOpen(null, null);
-            const dropdownMaxHeight = isEditing ? 560 : 440;
+            const showTaskTimerSetup = !isEditing && taskTimerSetupKey === taskDropdown;
+            const dropdownMaxHeight = isEditing ? 560 : showTaskTimerSetup ? 520 : 440;
             const vv = typeof window !== "undefined" ? window.visualViewport : null;
             const vwForPanel =
               typeof window !== "undefined"
@@ -9253,8 +10027,11 @@ export default function App() {
               ? Math.max(280, Math.min(400, vwForPanel - 32))
               : Math.max(260, Math.min(320, vwForPanel - 24));
             const taskNodeForMenu = findTaskInAppState(appState, tKey, hourKey, category, id);
-            const showOptionalRepeatBtn =
-              taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.NONE;
+            const showMakeRepeatableBtn =
+              taskNodeForMenu &&
+              !taskNodeForMenu.repeatSeriesId &&
+              (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.NONE;
+            const showRepeatSeriesControls = Boolean(taskNodeForMenu?.repeatSeriesId);
             const rect = dropdownAnchorRect;
             const { left, top, bottom, width } = computeDropdownPosition(rect, {
               panelWidth,
@@ -9285,7 +10062,7 @@ export default function App() {
                         category={category}
                         energyLevel={taskNodeForMenu?.energyLevel}
                         mode="details"
-                        showTime
+                        showTime={tab === "plan"}
                         inline
                       />
                       {taskNodeForMenu?.text ? (
@@ -9303,7 +10080,7 @@ export default function App() {
                         <span className="task-edit-label">Time</span>
                         <input
                           type="time"
-                          className="input task-edit-input"
+                          className="input task-edit-input task-edit-input--time"
                           value={editTaskDraft.hourKey}
                           onChange={(e) => setEditTaskDraft((d) => ({ ...d, hourKey: e.target.value }))}
                           aria-label="Task time"
@@ -9348,19 +10125,34 @@ export default function App() {
                           ))}
                         </div>
                       </div>
-                      {healthProfileComplete(health) ? (
-                        <label className="task-edit-row">
-                          <span className="task-edit-label">Task type</span>
-                          <select
-                            className="input task-edit-input"
-                            value={editTaskDraft.taskKind}
-                            onChange={(e) => setEditTaskDraft((d) => ({ ...d, taskKind: e.target.value }))}
-                            aria-label="Task type"
-                          >
-                            <option value="default">Normal</option>
+                      <label className="task-edit-row">
+                        <span className="task-edit-label">Task type</span>
+                        <select
+                          className="input task-edit-input"
+                          value={editTaskDraft.taskKind}
+                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, taskKind: e.target.value }))}
+                          aria-label="Task type"
+                        >
+                          <option value="default">Normal</option>
+                          <option value="shopping">Shopping</option>
+                          {healthProfileComplete(health) ? (
                             <option value="workout">Workout</option>
-                          </select>
-                        </label>
+                          ) : null}
+                        </select>
+                      </label>
+                      {editTaskDraft.taskKind === "shopping" ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm task-edit-shopping-list-btn"
+                          onClick={() => {
+                            setGroceryListModal({ dayKey: tKey, hourKey, category, taskId: id });
+                          }}
+                        >
+                          {taskHasAssociatedGroceryList(taskNodeForMenu) &&
+                          (taskNodeForMenu.groceryList?.items || []).length > 0
+                            ? "Edit shopping list"
+                            : "Add shopping list"}
+                        </button>
                       ) : null}
                       <div className="task-edit-actions">
                         <button
@@ -9384,62 +10176,140 @@ export default function App() {
                     </div>
                   ) : (
                     <>
-                      {tab !== "today" ? (
-                        <div className="task-dropdown-note-section">
-                          <label className="task-dropdown-section-label" htmlFor="task-menu-note">
-                            Notes (this task)
-                          </label>
-                          <textarea
-                            id="task-menu-note"
-                            className="input task-dropdown-note-input"
-                            rows={3}
-                            value={taskMenuNoteDraft}
-                            onChange={(e) => setTaskMenuNoteDraft(e.target.value)}
-                            onBlur={() => patchTaskFields(tKey, hourKey, category, id, { taskNote: taskMenuNoteDraft.trim() })}
-                            placeholder="Private note for this task…"
-                            aria-label="Notes for this task"
-                          />
-                          {showOptionalRepeatBtn ? (
+                      <div className="task-dropdown-note-section">
+                        <label className="task-dropdown-section-label" htmlFor="task-menu-note">
+                          Notes (this task)
+                        </label>
+                        <textarea
+                          id="task-menu-note"
+                          className="input task-dropdown-note-input"
+                          rows={3}
+                          value={taskMenuNoteDraft}
+                          onChange={(e) => setTaskMenuNoteDraft(e.target.value)}
+                          onBlur={() => flushTaskMenuNoteForKey(`${hourKey}-${category}-${id}`)}
+                          placeholder="Private note for this task…"
+                          aria-label="Notes for this task"
+                        />
+                        {showMakeRepeatableBtn ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm task-dropdown-repeat-btn btn-with-leading-icon"
+                            onClick={() => {
+                              openRepeatWeekdayPicker(tKey, hourKey, category, id);
+                            }}
+                          >
+                            <RepeatIcon className="btn-leading-icon" aria-hidden />
+                            <span>Make repeat task</span>
+                          </button>
+                        ) : showRepeatSeriesControls ? (
+                          <div className="task-dropdown-repeat-series">
+                            <p className="task-dropdown-repeat-hint">
+                              Repeats weekly
+                              {Array.isArray(taskNodeForMenu.repeatWeekdays) && taskNodeForMenu.repeatWeekdays.length
+                                ? `: ${taskNodeForMenu.repeatWeekdays.map((d) => REPEAT_WEEKDAY_LABELS[d]?.slice(0, 3) || "").filter(Boolean).join(", ")}`
+                                : ""}
+                            </p>
                             <button
                               type="button"
-                              className="btn btn-sm task-dropdown-repeat-btn"
-                              onClick={() => {
-                                ensureTaskOptionalRepeat(tKey, hourKey, category, id);
-                              }}
+                              className="btn btn-sm btn-with-leading-icon"
+                              onClick={() =>
+                                openRepeatWeekdayPicker(tKey, hourKey, category, id, taskNodeForMenu.repeatSeriesId)
+                              }
                             >
-                              <RepeatIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: "middle" }} />
-                              Add to Past tasks (optional repeat)
+                              <RepeatIcon className="btn-leading-icon" aria-hidden />
+                              <span>Edit repeat days</span>
                             </button>
-                          ) : taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
-                            <p className="task-dropdown-repeat-hint">Saved for Past tasks</p>
-                          ) : null}
-                        </div>
-                      ) : showOptionalRepeatBtn || (taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL) ? (
-                        <div className="task-dropdown-note-section">
-                          {showOptionalRepeatBtn ? (
                             <button
                               type="button"
-                              className="btn btn-sm task-dropdown-repeat-btn"
-                              onClick={() => {
-                                ensureTaskOptionalRepeat(tKey, hourKey, category, id);
-                              }}
+                              className="btn btn-sm btn-ghost"
+                              onClick={() => stopTaskRepeatSeries(taskNodeForMenu.repeatSeriesId)}
                             >
-                              <RepeatIcon style={{ width: 14, height: 14, marginRight: 6, verticalAlign: "middle" }} />
-                              Add to Past tasks (optional repeat)
+                              Stop repeating
                             </button>
-                          ) : taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
-                            <p className="task-dropdown-repeat-hint">Saved for Past tasks</p>
-                          ) : null}
-                        </div>
-                      ) : null}
+                            <p className="settings-hint task-dropdown-repeat-delete-hint">
+                              Delete removes only this day.
+                            </p>
+                          </div>
+                        ) : taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
+                          <p className="task-dropdown-repeat-hint">Legacy repeat template</p>
+                        ) : null}
+                      </div>
                       <div className="task-dropdown-actions-block">
+                        {showTaskTimerSetup ? (
+                          <div className="task-dropdown-timer-section">
+                            <span className="task-dropdown-section-label">Timer for this task</span>
+                            <div className="task-dropdown-timer-presets" role="group" aria-label="Timer length">
+                              {TASK_TIMER_PRESETS.map((m) => (
+                                <button
+                                  key={m}
+                                  type="button"
+                                  className={`btn btn-sm task-dropdown-timer-preset ${Number(taskTimerMinutes) === m ? "btn-primary" : ""}`}
+                                  onClick={() => setTaskTimerMinutes(String(m))}
+                                >
+                                  {m}m
+                                </button>
+                              ))}
+                            </div>
+                            <label className="task-dropdown-timer-custom">
+                              <span className="health-subline">Minutes</span>
+                              <input
+                                type="number"
+                                className="input"
+                                min={1}
+                                max={180}
+                                inputMode="numeric"
+                                value={taskTimerMinutes}
+                                onChange={(e) => setTaskTimerMinutes(e.target.value)}
+                                aria-label="Timer minutes"
+                              />
+                            </label>
+                            <div className="task-dropdown-timer-actions">
+                              <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={() =>
+                                  startTimerForTask(
+                                    {
+                                      text: taskNodeForMenu?.text,
+                                      id,
+                                      hourKey,
+                                      category,
+                                      dayKey: tKey,
+                                    },
+                                    taskTimerMinutes
+                                  )
+                                }
+                              >
+                                Start timer
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-sm"
+                                onClick={() => setTaskTimerSetupKey(null)}
+                              >
+                                Back
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="dropdown-item"
+                            onClick={() => {
+                              setTaskTimerSetupKey(taskDropdown);
+                              setTaskTimerMinutes("25");
+                            }}
+                          >
+                            Start timer
+                          </button>
+                        )}
                         <button type="button" className="dropdown-item task-dropdown-move-item" onClick={() => { moveTaskToTomorrow(hourKey, category, id); closeDropdown(); }}>
                           <CalendarIcon style={{ marginRight: '8px' }} />
                           Move to tomorrow
                         </button>
                         {(() => {
                           const taskNode = findTaskInAppState(appState, tKey, hourKey, category, id);
-                          return taskNode && groceryTextMatch(taskNode.text) ? (
+                          return taskNode && taskShouldShowShoppingList(taskNode, groceryTextMatch) ? (
                             <button
                               type="button"
                               className="dropdown-item"
@@ -9484,7 +10354,6 @@ export default function App() {
                             closeDropdown();
                           }}
                         >
-                          <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
                           Delete task
                         </button>
                       </div>
@@ -9503,7 +10372,7 @@ export default function App() {
             const dropdownMaxHeight = 220;
             const panelWidth = 216;
             const { left, top, bottom, width } = computeDropdownPosition(rect, { panelWidth, maxHeight: dropdownMaxHeight });
-            const closeSecondary = () => setSecondaryListMenu(null);
+            const closeSecondary = () => closeSecondaryListMenu();
             return (
               <div
                 className="task-dropdown-portal"
@@ -9521,10 +10390,26 @@ export default function App() {
                 <div className="task-dropdown">
                   {secondaryListMenu.kind === "monthly" && (
                     <>
+                      <div className="task-dropdown-note-section" onClick={(e) => e.stopPropagation()}>
+                        <label className="task-dropdown-section-label" htmlFor="monthly-menu-note">
+                          Notes (this objective)
+                        </label>
+                        <textarea
+                          id="monthly-menu-note"
+                          className="input task-dropdown-note-input"
+                          rows={3}
+                          value={monthlyMenuNoteDraft}
+                          onChange={(e) => setMonthlyMenuNoteDraft(e.target.value)}
+                          onBlur={() => flushMonthlyMenuNote(secondaryListMenu.id)}
+                          placeholder="Private note for this objective…"
+                          aria-label="Notes for this monthly objective"
+                        />
+                      </div>
                       <button
                         type="button"
                         className="dropdown-item"
                         onClick={() => {
+                          flushMonthlyMenuNote(secondaryListMenu.id);
                           const row = appState.monthly.find((x) => x.id === secondaryListMenu.id);
                           if (row) {
                             setEditingMonthlyId(row.id);
@@ -9539,11 +10424,11 @@ export default function App() {
                         type="button"
                         className="dropdown-item dropdown-item-danger"
                         onClick={() => {
+                          flushMonthlyMenuNote(secondaryListMenu.id);
                           deleteMonthly(secondaryListMenu.id);
                           closeSecondary();
                         }}
                       >
-                        <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
                         Delete
                       </button>
                     </>
@@ -9628,7 +10513,6 @@ export default function App() {
                             closeSecondary();
                           }}
                         >
-                          <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
                           Delete
                         </button>
                       </>
@@ -9647,7 +10531,6 @@ export default function App() {
                         closeSecondary();
                       }}
                     >
-                      <TrashIcon style={{ width: 16, height: 16, marginRight: 8, verticalAlign: "middle" }} />
                       Remove line
                     </button>
                   )}
@@ -9662,6 +10545,7 @@ export default function App() {
           open={!!workoutProgramPicker}
           taskPreview={workoutProgramPicker?.text || ""}
           programs={listSelectablePrograms(health)}
+          hasWeeklyRoutine={(normalizeHealth(health).weekRoutineProgramIds || []).length > 0}
           onCancel={() => setWorkoutProgramPicker(null)}
           onConfirm={confirmWorkoutProgramPick}
         />
@@ -9774,6 +10658,31 @@ export default function App() {
                 <p className="finance-meta" style={{ marginTop: 8 }}>
                   {task.text}
                 </p>
+                {groceryChecklistUndo &&
+                groceryChecklistUndo.dayKey === dayKey &&
+                groceryChecklistUndo.taskId === taskId ? (
+                  <div className="list-page-undo-bar grocery-checklist-undo-bar" role="status">
+                    <span className="list-page-undo-label">
+                      {groceryChecklistUndo.previousDone ? "Unchecked" : "Checked off"}:{" "}
+                      <strong>{groceryChecklistUndo.text || "Item"}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-sm list-page-undo-btn"
+                      onClick={() => {
+                        const u = groceryChecklistUndo;
+                        if (!u) return;
+                        setGroceryChecklistUndo(null);
+                        updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
+                          ...gl,
+                          items: gl.items.map((x) => (x.id === u.itemId ? { ...x, done: u.previousDone } : x)),
+                        }));
+                      }}
+                    >
+                      Undo
+                    </button>
+                  </div>
+                ) : null}
                 <ul className="grocery-modal-items">
                   {items.length === 0 ? (
                     <li className="empty grocery-checklist-empty" style={{ listStyle: "none", padding: "8px 0" }}>
@@ -9787,12 +10696,22 @@ export default function App() {
                             <input
                               type="checkbox"
                               checked={!!it.done}
-                              onChange={() =>
+                              onChange={() => {
+                                const previousDone = !!it.done;
                                 updateTaskGroceryList(dayKey, hourKey, category, taskId, (gl) => ({
                                   ...gl,
                                   items: gl.items.map((x) => (x.id === it.id ? { ...x, done: !x.done } : x)),
-                                }))
-                              }
+                                }));
+                                setGroceryChecklistUndo({
+                                  dayKey,
+                                  hourKey,
+                                  category,
+                                  taskId,
+                                  itemId: it.id,
+                                  text: String(it.text || "").trim().slice(0, 80),
+                                  previousDone,
+                                });
+                              }}
                             />
                             <span className="checkmark" />
                             <span className={`list-row-title grocery-checklist-text ${it.done ? "item-text-done" : ""}`}>{it.text}</span>
@@ -9963,8 +10882,11 @@ export default function App() {
                   year={monthCalendarMonth.year}
                   month={monthCalendarMonth.month}
                   categories={customCategories}
+                  selectedDayKey={tKey}
                   onSelectDay={(dayKey) => {
                     setSelectedDayKey(dayKey);
+                    const d = new Date(dayKey + "T12:00:00");
+                    setHomeCalendarMonth({ year: d.getFullYear(), month: d.getMonth() });
                     setShowMonthCalendar(false);
                   }}
                   onBack={() => setShowMonthCalendar(false)}
@@ -10180,6 +11102,22 @@ export default function App() {
                     />
                     <span>Habit reminder nudges</span>
                   </label>
+                  <label className="settings-toggle-row" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={normalizeNotificationPrefs(profile.notificationPrefs).medicationPushEnabled !== false}
+                      onChange={(e) =>
+                        setProfile((p) => ({
+                          ...p,
+                          notificationPrefs: {
+                            ...normalizeNotificationPrefs(p.notificationPrefs),
+                            medicationPushEnabled: e.target.checked,
+                          },
+                        }))
+                      }
+                    />
+                    <span>Medication reminders (per-med times on Meds tab)</span>
+                  </label>
                 </div>
 
                 <div className="settings-subsection" style={{ marginTop: 16 }}>
@@ -10267,7 +11205,7 @@ export default function App() {
                   </label>
                   <div className="settings-inline-row" style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginTop: 8, opacity: normalizeNotificationPrefs(profile.notificationPrefs).taskRemindBeforeEnabled === false ? 0.45 : 1 }}>
                     <label className="label" htmlFor="notif-task-before-mins" style={{ fontSize: 12 }}>
-                      Minutes before (1–120)
+                      Minutes before (1-120)
                     </label>
                     <input
                       id="notif-task-before-mins"
@@ -10497,6 +11435,24 @@ export default function App() {
               ) : (
               <>
               <SettingsProSection />
+              <div className="settings-section">
+                <label className="label">Accountability</label>
+                <p className="settings-hint">
+                  Invite friends, share progress you choose, and build routines together. Nothing is shared by default.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  style={{ marginTop: 8 }}
+                  onClick={() => {
+                    setShowSettings(false);
+                    setTab("you");
+                    setYouOpenAccountability(true);
+                  }}
+                >
+                  Friends, shared tasks &amp; privacy
+                </button>
+              </div>
               <div className="settings-section settings-section-priority settings-theme-top">
                 <label className="label">Theme color</label>
                 <p className="settings-hint settings-priority-hint">Pick the palette for the whole app.</p>
@@ -10524,7 +11480,7 @@ export default function App() {
                 </div>
                 <label className="label" style={{ marginTop: 18 }}>Icon style</label>
                 <p className="settings-hint settings-priority-hint">
-                  Colorful artwork everywhere, or simple light icons on dark chips in the dock and home tray.
+                  Colorful artwork on light themes; metallic icons use your theme colors (dark chips on Midnight &amp; Mocha).
                 </p>
                 <div className="icon-style-picker" role="group" aria-label="Icon style">
                   {ICON_STYLE_OPTIONS.map((opt) => (
@@ -10574,14 +11530,13 @@ export default function App() {
                       <li key={row.id} className="habit-settings-card">
                         <div className="habit-settings-card-head">
                           <div className="habit-settings-card-title">
-                            <HabitIconBadge iconId={row.icon} className="habit-settings-card-icon" />
                             <span className="habit-settings-card-title-text">{row.label}</span>
                             <HabitDirectionDot direction={row.direction} />
                           </div>
-                          <button
-                            type="button"
-                            className="btn btn-ghost btn-sm routine-template-remove"
-                            onClick={() =>
+                          <RowMoreMenu
+                            ariaLabel={`${row.label} options`}
+                            deleteLabel="Delete habit"
+                            onDelete={() =>
                               setHabitTracker((prev) => ({
                                 habits: (prev.habits || []).filter((x) => x.id !== row.id),
                                 log: Object.fromEntries(
@@ -10594,10 +11549,7 @@ export default function App() {
                                 ),
                               }))
                             }
-                            aria-label={`Remove habit ${row.label}`}
-                          >
-                            <TrashIcon style={{ width: 14, height: 14 }} />
-                          </button>
+                          />
                         </div>
                         <HabitIconPicker
                           compact
@@ -10950,9 +11902,7 @@ export default function App() {
                         onChange={(e) => setMorningRoutineTemplate((prev) => prev.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
                         aria-label={`Morning step ${idx + 1}`}
                       />
-                      <button type="button" className="btn btn-ghost btn-sm routine-template-remove" onClick={() => setMorningRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))} aria-label="Remove step">
-                        <TrashIcon style={{ width: 14, height: 14 }} />
-                      </button>
+                      <DeleteTextButton onClick={() => setMorningRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))} ariaLabel="Remove step" />
                     </li>
                   ))}
                 </ul>
@@ -11008,14 +11958,7 @@ export default function App() {
                         onChange={(e) => setRoutineTemplate((prev) => prev.map((x, i) => i === idx ? { ...x, text: e.target.value } : x))}
                         aria-label={`Step ${idx + 1}`}
                       />
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm routine-template-remove"
-                        onClick={() => setRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))}
-                        aria-label="Remove step"
-                      >
-                        <TrashIcon style={{ width: 14, height: 14 }} />
-                      </button>
+                      <DeleteTextButton onClick={() => setRoutineTemplate((prev) => prev.filter((_, i) => i !== idx))} ariaLabel="Remove step" />
                     </li>
                   ))}
                 </ul>
@@ -11058,18 +12001,14 @@ export default function App() {
                   {customCategories.map((cat) => (
                     <li key={cat} className="routine-template-item">
                       <span className="routine-template-input" style={{ flex: 1 }}>{cat}</span>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm routine-template-remove"
+                      <DeleteTextButton
                         onClick={() => {
                           if (customCategories.length <= 1) return;
                           setCustomCategories((prev) => prev.filter((c) => c !== cat));
                         }}
                         disabled={customCategories.length <= 1}
-                        aria-label={`Remove type ${cat}`}
-                      >
-                        <TrashIcon style={{ width: 14, height: 14 }} />
-                      </button>
+                        ariaLabel={`Remove type ${cat}`}
+                      />
                     </li>
                   ))}
                 </ul>
@@ -11150,19 +12089,16 @@ export default function App() {
                       <span className="routine-template-input" style={{ flex: 1 }}>
                         {l.title} <span className="settings-item-meta">({(l.items || []).length} lines)</span>
                       </span>
-                      <button
-                        type="button"
-                        className="btn btn-ghost btn-sm routine-template-remove"
-                        onClick={() =>
+                      <RowMoreMenu
+                        ariaLabel={`${l.title} options`}
+                        deleteLabel="Delete"
+                        onDelete={() =>
                           setProfile((p) => ({
                             ...p,
                             grocerySavedLists: (p.grocerySavedLists || []).filter((x) => x.id !== l.id),
                           }))
                         }
-                        aria-label={`Remove saved list ${l.title}`}
-                      >
-                        <TrashIcon style={{ width: 14, height: 14 }} />
-                      </button>
+                      />
                     </li>
                   ))}
                 </ul>
@@ -11429,6 +12365,7 @@ export default function App() {
                 <div className="inapp-banner-inner">
                   <span className="inapp-banner-title">Next up</span>
                   <span className="inapp-banner-task">{taskBanner.task.text}</span>
+                  <TaskNoteSubtitle note={taskBanner.task.taskNote} className="inapp-banner-task-note" />
                   <div className="inapp-banner-actions" onClick={(e) => e.stopPropagation()}>
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => goToTaskFromBannerAndDismiss()}>
                       Start
@@ -11504,7 +12441,12 @@ export default function App() {
                       toPct={toastNotification.progressTo ?? 0}
                     />
                   ) : toastNotification.taskText ? (
-                    <div className="toast-task">{toastNotification.taskText}</div>
+                    <>
+                      <div className="toast-task">{toastNotification.taskText}</div>
+                      {toastNotification.taskNote ? (
+                        <div className="toast-task-note">{toastNotification.taskNote}</div>
+                      ) : null}
+                    </>
                   ) : null}
                 </div>
               </div>
@@ -11521,11 +12463,12 @@ export default function App() {
                 const monthDay = `${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
                 const birthInput = (profile.userBirthday || "").replace(/\D/g, "").padStart(4, "0").slice(-4);
                 const isBirthday = birthInput.length === 4 && birthInput === monthDay;
-                const displayName = (profile.userName || "").trim() || "you";
+                const displayName = todayGreetingName || "you";
                 return (
                   <div className="celebration-modal-inner">
-                    <h3 style={{ fontSize: "24px", marginBottom: "8px" }}>
-                      Good morning, {displayName}
+                    <h3 className="morning-greeting-heading" style={{ fontSize: "24px", marginBottom: "8px" }}>
+                      <span className="today-greeting-salutation">Good morning,</span>
+                      <span className="today-greeting-name">{displayName}</span>
                     </h3>
                     {isBirthday && (
                       <p className="celebration-task" style={{ fontSize: "18px", fontWeight: 600, marginBottom: "16px", color: "var(--theme-accent)" }}>
@@ -11561,16 +12504,20 @@ export default function App() {
             theme={theme}
             setTheme={setTheme}
             onComplete={(prefs) => {
+              const nextName = String(prefs.name || prefs.userName || "").trim();
               setProfile((p) => ({
                 ...p,
-                name: prefs.name || p.name,
+                userName: nextName || p.userName,
                 iconStyle: prefs.iconStyle != null ? normalizeIconStyle(prefs.iconStyle) : p.iconStyle,
+                onboardingUseCases: Array.isArray(prefs.useCases) ? prefs.useCases : p.onboardingUseCases,
+                peakTime: prefs.peakTime || p.peakTime,
+                falloffReasons: Array.isArray(prefs.falloffReasons) ? prefs.falloffReasons : p.falloffReasons,
               }));
               if (prefs.theme) setTheme(prefs.theme);
               if (prefs.enabledModules) setEnabledModules(prefs.enabledModules);
               if (prefs.navOrder) setNavOrder(prefs.navOrder);
               if (prefs.coachingTone) setCoachingTone(prefs.coachingTone);
-              finishOnboardingWizard(null);
+              finishOnboardingWizard(prefs.startTour || null);
             }}
           />
         )}

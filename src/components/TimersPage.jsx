@@ -8,6 +8,7 @@ import {
   ALARM_MODES,
   createAlarm,
   formatTimerDisplay,
+  formatTimerPresetLabel,
   formatAlarmTimeDisplay,
   getNextAlarmTime,
   defaultActiveTimerDraft,
@@ -18,6 +19,11 @@ import {
   resetActiveTimer,
 } from "../modules/timers";
 import { requestAlarmPermissions } from "../alarmScheduler";
+import {
+  isAppleMusicLibraryPickerAvailable,
+  pickSongFromAppleMusicLibrary,
+} from "../alarmMusicPicker";
+import { Capacitor } from "@capacitor/core";
 import {
   ALARM_SOUND_IDS,
   BUILTIN_ALARM_SOUNDS,
@@ -38,13 +44,19 @@ const PRESETS = [
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const ALARM_MODE_OPTIONS = [
-  { value: ALARM_MODES.STANDARD, label: "Standard", desc: "Sound + notification" },
+  { value: ALARM_MODES.STANDARD, label: "Standard", desc: "Sound + one-tap dismiss" },
   { value: ALARM_MODES.GENTLE, label: "Gentle", desc: "Softer tones" },
-  { value: ALARM_MODES.MATH_DISMISS, label: "Math wake-up", desc: "Solve a quick problem" },
-  { value: ALARM_MODES.ACTION_REQUIRED, label: "Writing wake-up", desc: "Type a phrase to dismiss" },
+  { value: ALARM_MODES.MATH_DISMISS, label: "Math wake-up", desc: "Optional game: solve to turn off" },
+  { value: ALARM_MODES.ACTION_REQUIRED, label: "Writing wake-up", desc: "Optional game: type phrase to turn off" },
 ];
 
-export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateAlarms }) {
+export function TimersPage({
+  timersState,
+  onUpdateTimers,
+  alarmsState,
+  onUpdateAlarms,
+  resolveTimerHistoryTask,
+}) {
   const [section, setSection] = useState("timer");
   const [tick, setTick] = useState(() => Date.now());
 
@@ -68,6 +80,7 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
   const [soundImportError, setSoundImportError] = useState("");
   const [soundImporting, setSoundImporting] = useState(false);
   const musicInputRef = useRef(null);
+  const appleMusicPickerAvailable = isAppleMusicLibraryPickerAvailable();
 
   const alarms = alarmsState?.alarms || [];
   const history = timersState?.history || [];
@@ -135,7 +148,7 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
     setSoundImportError("");
   }
 
-  async function handleMusicFile(file) {
+  async function importAlarmMusicFile(file, displayName, { manageLoading = true } = {}) {
     if (!file) return;
     setSoundImportError("");
     if (!file.type.startsWith("audio/") && !/\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(file.name)) {
@@ -143,25 +156,54 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
       return;
     }
     if (file.size > 15 * 1024 * 1024) {
-      setSoundImportError("File is too large — try a shorter clip under 15 MB.");
+      setSoundImportError("File is too large. Try a shorter clip under 15 MB.");
+      return;
+    }
+    if (manageLoading) setSoundImporting(true);
+    try {
+      const id = `custom_${Date.now().toString(36)}`;
+      const name = displayName || file.name.replace(/\.[^.]+$/, "");
+      await saveCustomAlarmSound(id, name, file);
+      setNewAlarmSound(ALARM_SOUND_IDS.CUSTOM);
+      setNewAlarmCustomSoundId(id);
+      setNewAlarmCustomSoundName(name);
+    } catch {
+      setSoundImportError("Could not save that file. Try a different clip.");
+    } finally {
+      if (manageLoading) setSoundImporting(false);
+    }
+  }
+
+  async function handleMusicFile(file) {
+    await importAlarmMusicFile(file);
+  }
+
+  async function handlePickFromAppleMusic() {
+    setSoundImportError("");
+    setNewAlarmSound(ALARM_SOUND_IDS.CUSTOM);
+    if (!appleMusicPickerAvailable) {
+      setSoundImportError(
+        Capacitor.getPlatform() === "ios"
+          ? "Rebuild the app from Xcode on a real iPhone to use the music library picker. Or use Choose from Files."
+          : "On iPhone: open Music → song → Share → Save to Files, then tap Choose from Files here. On Mac/web, use Choose from Files."
+      );
       return;
     }
     setSoundImporting(true);
     try {
-      const id = `custom_${Date.now().toString(36)}`;
-      await saveCustomAlarmSound(id, file.name.replace(/\.[^.]+$/, ""), file);
-      setNewAlarmSound(ALARM_SOUND_IDS.CUSTOM);
-      setNewAlarmCustomSoundId(id);
-      setNewAlarmCustomSoundName(file.name.replace(/\.[^.]+$/, ""));
-    } catch {
-      setSoundImportError("Could not save that file. Try a different clip.");
+      const { file, title } = await pickSongFromAppleMusicLibrary();
+      await importAlarmMusicFile(file, title, { manageLoading: false });
+    } catch (e) {
+      const msg = e?.message || "";
+      if (e?.code === "CANCELLED" || /cancel/i.test(msg)) return;
+      setSoundImportError(msg || "Could not import that song.");
     } finally {
       setSoundImporting(false);
     }
   }
 
   function previewSound(soundId, customId = null) {
-    previewAlarmSound(soundId, customId);
+    void previewAlarmSound(soundId, customId);
   }
 
   function toggleAlarmEnabled(id) {
@@ -179,7 +221,7 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
   }
 
   return (
-    <div className="py-flex-col py-gap-5 timers-page">
+    <div className="py-flex-col py-gap-5 timers-page page-stack">
       <div className="py-section-header">
         <div className="py-section-header__title-row">
           <DockNavIcon tabId="timers" active />
@@ -239,7 +281,12 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
         <FeatureGate feature="advanced_alarms">
         <>
           <div className="timers-alarm-toolbar">
-            <PillButton variant="primary" size="sm" onClick={() => setShowAddAlarm((v) => !v)}>
+            <PillButton
+              variant="primary"
+              size="md"
+              className="timers-alarm-add-btn"
+              onClick={() => setShowAddAlarm((v) => !v)}
+            >
               {showAddAlarm ? "Cancel" : "+ Morning alarm"}
             </PillButton>
           </div>
@@ -306,25 +353,27 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
                     >
                       <span className="timers-alarm-mode-label">Your music</span>
                       <span className="timers-alarm-mode-desc">
-                        {newAlarmCustomSoundName || "Import from Files, Apple Music, or your device"}
+                        {newAlarmCustomSoundName || "Pick from your library or a file on your device"}
                       </span>
                     </button>
                     <div className="timers-sound-custom-actions">
+                      {appleMusicPickerAvailable ? (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-primary"
+                          disabled={soundImporting}
+                          onClick={() => void handlePickFromAppleMusic()}
+                        >
+                          {soundImporting ? "Saving…" : "Apple Music library"}
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className="btn btn-sm"
                         disabled={soundImporting}
                         onClick={() => musicInputRef.current?.click()}
                       >
-                        {soundImporting ? "Saving…" : newAlarmCustomSoundName ? "Change file" : "Choose file"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-ghost"
-                        disabled={soundImporting}
-                        onClick={() => musicInputRef.current?.click()}
-                      >
-                        Apple Music
+                        {soundImporting ? "Saving…" : newAlarmCustomSoundName ? "Change file" : "Choose from Files"}
                       </button>
                       {newAlarmCustomSoundId ? (
                         <button
@@ -350,6 +399,11 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
                     />
                   </div>
                   {soundImportError ? <p className="timers-sound-error">{soundImportError}</p> : null}
+                  <p className="timers-sound-import-hint">
+                    {appleMusicPickerAvailable
+                      ? "Apple Music library opens your on-device songs (download a track in Music first if it’s streaming-only). Files works for MP3/M4A in iCloud or On My iPhone."
+                      : "On iPhone without a native build: Music → song → Share → Save to Files, then Choose from Files. Built-in alarm sounds work everywhere."}
+                  </p>
                 </div>
                 <div className="timers-field">
                   <span className="timers-field-label">Repeat</span>
@@ -427,12 +481,39 @@ export function TimersPage({ timersState, onUpdateTimers, alarmsState, onUpdateA
             </div>
           ) : (
             <ul className="timers-history-list">
-              {history.map((h) => (
-                <li key={h.id} className="timers-history-item">
-                  <span>{h.label || "Focus"}</span>
-                  <span className="timers-history-duration">{formatTimerDisplay(h.durationMs || 0)}</span>
-                </li>
-              ))}
+              {history.map((h) => {
+                const presetMs = h.presetMs ?? h.durationMs ?? 0;
+                const linked = h.linkedTask;
+                const taskInfo = linked && resolveTimerHistoryTask ? resolveTimerHistoryTask(h) : null;
+                const title = linked
+                  ? taskInfo?.text || linked.taskText || h.label || "Task"
+                  : h.label || "Focus";
+                return (
+                  <li key={h.id} className="timers-history-item">
+                    <div className="timers-history-main">
+                      <span className="timers-history-title">{title}</span>
+                      {linked ? (
+                        <span className="timers-history-meta">
+                          <span
+                            className={
+                              taskInfo?.done || h.taskCompleted
+                                ? "timers-history-task-status is-done"
+                                : "timers-history-task-status"
+                            }
+                          >
+                            {taskInfo?.done || h.taskCompleted ? "Task completed" : "Task not completed"}
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="timers-history-meta">Focus session</span>
+                      )}
+                    </div>
+                    <span className="timers-history-duration" title="Timer length">
+                      {formatTimerPresetLabel(presetMs)}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </GlassCard>

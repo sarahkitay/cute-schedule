@@ -12,7 +12,7 @@ export const ICON_STYLE_OPTIONS = [
   {
     id: ICON_STYLE_SIMPLE,
     label: "Simple",
-    description: "Light metallic icons on dark chips.",
+    description: "Light metallic icons on theme-colored chips (dark chips in Midnight & Mocha).",
   },
 ];
 
@@ -29,7 +29,12 @@ export function isDarkTheme(theme) {
   return false;
 }
 
-/** User chose simple (light metallic) dock icons — shown on dark icon chips in any theme. */
+/** Dark themes use simple metallic nav icons; light themes use colorful. */
+export function iconStyleForTheme(theme) {
+  return isDarkTheme(theme) ? ICON_STYLE_SIMPLE : ICON_STYLE_COLORFUL;
+}
+
+/** User chose simple (light metallic) dock icons ,  shown on dark icon chips in any theme. */
 export function useSimpleIcons(iconStyle) {
   return normalizeIconStyle(iconStyle) === ICON_STYLE_SIMPLE;
 }
@@ -54,6 +59,10 @@ export const APP_ICON_ASSETS = {
   brandLogo: { colorful: "pyiconnobubble.png", simpleDark: "logodm.png" },
   settings: { colorful: "settings.png", simpleDark: "settingsdm.png" },
   coachLogo: { colorful: "PYIcon.png", simpleDark: "logodm.png" },
+  youHabits: { colorful: "habit.png", simpleDark: "habiticondm.png" },
+  youNavigation: { colorful: "nav.png", simpleDark: "navicondm.png" },
+  youRoutines: { colorful: "suniconnobubble.png", simpleDark: "todayicondm.png" },
+  youProfile: { colorful: "YouIcon.png", simpleDark: "youdm.png" },
 };
 
 export function appIconUrl(assetKey, iconStyle) {

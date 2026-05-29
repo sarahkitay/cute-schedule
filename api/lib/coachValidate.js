@@ -358,7 +358,7 @@ export function validateCoachSpecificity(parsed, opts) {
     return {
       type: "ADD_TASK",
       title,
-      description: "Warm up 5–10 min, then run your saved program or approve the coach draft below.",
+      description: "Warm up 5-10 min, then run your saved program or approve the coach draft below.",
       reason: "Your coach reply mentioned adding a workout block; this is a concrete calendar slot you can approve.",
       category: cat,
       energyLevel: "HEAVY",
@@ -403,7 +403,7 @@ export function validateCoachSpecificity(parsed, opts) {
     if (y) msg += ` ${y}`;
     if (neglectedTitle) {
       const nextAct =
-        String(neglected?.suggestedNextAction || "").trim() || `Add a 30–40 minute block on "${neglectedTitle}".`;
+        String(neglected?.suggestedNextAction || "").trim() || `Add a 30-40 minute block on "${neglectedTitle}".`;
       msg += ` What looks missing is direct movement on "${neglectedTitle}". I do not see a task tied to that monthly objective today, so a useful add would be ${nextAct}`;
     } else {
       msg +=

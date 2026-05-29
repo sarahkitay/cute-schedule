@@ -414,6 +414,82 @@ export function summarizeTaskBehaviorForHome(dayKey) {
   };
 }
 
+function habitEntryClass(habit, value) {
+  if (value !== "yes" && value !== "no") return "unset";
+  if (value === "yes") return "positive";
+  return "slip";
+}
+
+/**
+ * Habit check-in rates for home averages (last 7 days ending `endDayKey`).
+ * @param {{ habits?: { id: string, direction?: string }[], log?: Record<string, Record<string, string>> }} tracker
+ * @param {string} endDayKey YYYY-MM-DD
+ */
+export function summarizeHabitBehaviorForHome(tracker, endDayKey) {
+  const habits = (tracker?.habits || []).filter((h) => h && h.id);
+  const log = tracker?.log && typeof tracker.log === "object" ? tracker.log : {};
+  if (!habits.length || !/^\d{4}-\d{2}-\d{2}$/.test(String(endDayKey || ""))) return null;
+
+  const weekKeys = [];
+  for (let i = 0; i < 7; i++) weekKeys.push(addDaysKeyStr(endDayKey, -i));
+
+  let weekPos = 0;
+  let weekSlip = 0;
+  let weekUnset = 0;
+  let allPos = 0;
+  let allSlip = 0;
+
+  for (const dk of weekKeys) {
+    const dayLog = log[dk] || {};
+    for (const h of habits) {
+      const c = habitEntryClass(h, dayLog[h.id]);
+      if (c === "positive") weekPos++;
+      else if (c === "slip") weekSlip++;
+      else weekUnset++;
+    }
+  }
+
+  for (const dk of Object.keys(log)) {
+    const dayLog = log[dk];
+    if (!dayLog || typeof dayLog !== "object") continue;
+    for (const h of habits) {
+      const c = habitEntryClass(h, dayLog[h.id]);
+      if (c === "positive") allPos++;
+      else if (c === "slip") allSlip++;
+    }
+  }
+
+  const weekLogged = weekPos + weekSlip;
+  const weekTotal = habits.length * 7;
+  const allLogged = allPos + allSlip;
+
+  return {
+    habitCount: habits.length,
+    weekPositivePct: weekLogged > 0 ? Math.round((weekPos / weekLogged) * 100) : null,
+    allPositivePct: allLogged > 0 ? Math.round((allPos / allLogged) * 100) : null,
+    pctPositiveShare: weekLogged > 0 ? Math.round((weekPos / weekLogged) * 100) : null,
+    pctSlip: weekLogged > 0 ? Math.round((weekSlip / weekLogged) * 100) : null,
+    pctUnsetWeek: weekTotal > 0 ? Math.round((weekUnset / weekTotal) * 100) : null,
+    n: weekLogged,
+    weekBarFracs:
+      weekTotal > 0
+        ? {
+            positive: weekPos / weekTotal,
+            slip: weekSlip / weekTotal,
+            unset: weekUnset / weekTotal,
+          }
+        : null,
+    barFracs:
+      weekLogged > 0
+        ? {
+            positive: weekPos / weekLogged,
+            slip: weekSlip / weekLogged,
+            unset: 0,
+          }
+        : null,
+  };
+}
+
 export function formatTaskBehaviorForCoach(dayKey) {
   const s = summarizeTaskBehaviorForHome(dayKey);
   const lines = [

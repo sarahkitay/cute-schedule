@@ -1,4 +1,5 @@
-import { COACH_SUGGESTION_SOURCE, type CoachEnergy, type CoachSuggestionType, type CoachSuggestionV2, type CoachWorkoutProgramDraft, type NormalizedCoachResult } from "./types";
+import { normalizeCoachWeeklyMealPlan } from "../health/healthModel";
+import { COACH_SUGGESTION_SOURCE, type CoachEnergy, type CoachSuggestionType, type CoachSuggestionV2, type CoachWorkoutProgramDraft, type CoachWeeklyMealPlanDraft, type NormalizedCoachResult } from "./types";
 import { addMinutes, normalizeTimeKey, pickInsertionHourKey, taskCountInHour } from "./taskInsertion";
 import { formatExerciseBlockLine, normalizeExerciseBlock } from "../health/healthModel";
 
@@ -6,6 +7,7 @@ const ENERGIES: CoachEnergy[] = ["LIGHT", "MEDIUM", "HEAVY"];
 const TYPES: CoachSuggestionType[] = [
   "ADD_TASK",
   "ADD_WORKOUT_PROGRAM",
+  "ADD_WEEKLY_MEAL_PLAN",
   "REORDER",
   "TIMEBOX",
   "BREAK",
@@ -47,7 +49,7 @@ function adjustSuggestionForLiveCalendarDay(
 ): CoachSuggestionV2 {
   const day = s.targetDayKey || opts.coachViewDayKey;
   if (day !== opts.realTodayKey) return s;
-  if (s.type === "ADD_WORKOUT_PROGRAM") return s;
+  if (s.type === "ADD_WORKOUT_PROGRAM" || s.type === "ADD_WEEKLY_MEAL_PLAN") return s;
   if (s.type !== "ADD_TASK" && s.type !== "BREAK") return s;
 
   const nowM = timeToMinutes(opts.localNowHHMM);
@@ -147,6 +149,41 @@ export function normalizeRawSuggestion(
     .trim()
     .toUpperCase()
     .replace(/-/g, "_");
+  if (rawTypeUpper === "ADD_WEEKLY_MEAL_PLAN") {
+    const plan = normalizeCoachWeeklyMealPlan(row);
+    if (!plan) return null;
+    const start = normalizeTimeKey("09:00");
+    const duration = 15;
+    const weeklyMealPlan: CoachWeeklyMealPlanDraft = plan;
+    return {
+      id: String(row.id || newId()),
+      type: "ADD_WEEKLY_MEAL_PLAN",
+      title: String(row.title || plan.name || "Weekly meal plan").slice(0, 120),
+      description: row.description != null ? String(row.description).slice(0, 400) : null,
+      reason: String(
+        row.reason ||
+          row.why ||
+          "Coach drafted a full week of meals for your macro tracker and home menu."
+      ).slice(0, 500),
+      category: categories[0] || "Health",
+      energyLevel: "MEDIUM",
+      start,
+      end: addMinutes(start, duration),
+      durationMinutes: duration,
+      recurring: false,
+      recurrencePattern: null,
+      targetDayKey: null,
+      weekPlanLabel: null,
+      confidence: clamp01(coerceNumber(row.confidence, 0.82)),
+      requiresApproval: coerceBool(row.requiresApproval, true),
+      source: COACH_SUGGESTION_SOURCE,
+      hour: pickInsertionHourKey(start, todayHours),
+      targetTaskId: null,
+      workoutProgram: null,
+      weeklyMealPlan,
+    };
+  }
+
   if (rawTypeUpper === "ADD_WORKOUT_PROGRAM") {
     let name = String(row.name || row.title || row.programName || "")
       .trim()

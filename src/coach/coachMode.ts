@@ -3,6 +3,7 @@ export type CoachReasoningMode =
   | "missing_from_schedule"
   | "monthly_objective_alignment"
   | "health_programming"
+  | "meal_planning"
   | "momentum_recovery"
   | "overwhelm_prevention"
   | "daily_planning"
@@ -19,6 +20,14 @@ export function inferCoachReasoningMode(userQuestion: string | null | undefined)
     .toLowerCase();
   if (!q) return "general_coaching";
 
+  if (
+    /\b(meal plan|meal prep|weekly menu|what to eat|menu for the week|grocery list|shopping list)\b/.test(q) ||
+    (/\b(vegan|vegetarian|plant[- ]?based|macros?|protein)\b/.test(q) &&
+      /\b(meal|eat|food|tofu|breakfast|lunch|dinner|snack|week)\b/.test(q)) ||
+    /\b(\d+\s*g(?:rams?)?\s*(?:of\s*)?protein|protein\s*(?:per|a)\s*day)\b/.test(q)
+  ) {
+    return "meal_planning";
+  }
   if (/\b(week|weekly|last seven|7 days|seven days)\b/.test(q) && /\b(review|retro|look back)\b/.test(q)) return "weekly_review";
   if (/\b(last few days|past few days|recently|lately|this week|few days)\b/.test(q) && /\b(missing|lack|absent|haven't|have not|gone|where)\b/.test(q))
     return "missing_from_schedule";

@@ -13,7 +13,7 @@ const INSTRUCTIONS = {
         <strong>Navigation:</strong> Use the <strong>Navigation</strong> section to choose what appears in the bottom nav bar vs on Home only. Drag between sections, tap × to remove from the nav, or tap <strong>Add to nav</strong>. Toggle <strong>Nav labels</strong> to show or hide names under dock icons.
       </p>
       <p>
-        When you open Today, the schedule scrolls to your <strong>next incomplete</strong> task and highlights it. Habits, routines, and dock cards stay above the timeline. To jump to another date, use the <strong>Plan</strong> tab and the calendar icon in the header.
+        When you open Today, the schedule scrolls to your <strong>next incomplete</strong> task and highlights it. Habits, routines, and dock cards stay above the timeline. Tap the <strong>Plan</strong> icon under Settings (top right) or the Plan tab to open the calendar and pick another day.
       </p>
       <p>
         <strong>Today’s Capacity bars:</strong> Percentages reflect completes, moved to tomorrow, deletes, unchecking, and (if enabled) missed-at-day-end logs, plus your all-done streak and whether your last seven scheduled days were all finished.
@@ -23,10 +23,10 @@ const INSTRUCTIONS = {
   plan: (
     <>
       <p>
-        <strong>Monthly objectives</strong> sit at the top — month-level goals that stay out of your hourly timeline until you turn them into tasks.
+        <strong>Monthly objectives</strong> sit at the top: month-level goals that stay out of your hourly timeline until you turn them into tasks.
       </p>
       <p>
-        <strong>Today&apos;s list</strong> (or the day you pick on the calendar) is a flat checklist of incomplete tasks, sorted with heavier energy first. No timeline or quick-add here — that lives on Today. Use <strong>⋯</strong> for options; open the calendar in the header to change days.
+        <strong>Today&apos;s list</strong> (or the day you pick in the calendar below) is a flat checklist of incomplete tasks, sorted with heavier energy first. No timeline or quick-add here; that lives on Today. Use <strong>⋯</strong> for options; tap a date on the calendar to change days.
       </p>
     </>
   ),
@@ -53,10 +53,10 @@ const INSTRUCTIONS = {
   timers: (
     <>
       <p>
-        <strong>Focus timer:</strong> Choose a preset, start a session, and pause or reset anytime. Completed sessions appear under <strong>History</strong>.
+        <strong>Focus timer:</strong> Choose a preset, start a session, and pause or reset anytime. From a task’s <strong>⋯</strong> menu, <strong>Start timer</strong> links the session to that task. Completed sessions appear under <strong>History</strong> with the task name, whether you checked the task off, and how long the timer was set for.
       </p>
       <p>
-        <strong>Alarms:</strong> Pick a built-in sound or import music from Files or Apple Music. On iPhone: Music → song → Share → Save to Files, then tap <strong>Apple Music</strong> or <strong>Choose file</strong> in the alarm form.
+        <strong>Alarms:</strong> Pick a built-in sound or your own music. On the iPhone app, tap <strong>Apple Music library</strong> to pick from songs on your device (download in Music first if it’s streaming-only). <strong>Choose from Files</strong> works for MP3/M4A in Files or iCloud. On web/Android: use Choose from Files, or in Music → Share → Save to Files, then import.
       </p>
       <p>
         When an alarm fires, PROYOU opens to a full-screen wake-up screen. <strong>Math wake-up</strong> and <strong>Writing wake-up</strong> keep the alarm sounding until you complete the challenge. Standard and Gentle can be dismissed with one tap once the app is open. Tap the notification to open PROYOU if the app was in the background.
@@ -75,7 +75,7 @@ const INSTRUCTIONS = {
         <strong>Savings &amp; debt:</strong> totals are the sum of listed accounts; update balances when you pay debt down. <strong>Credit score</strong> log is optional.
       </p>
       <p>
-        <strong>Subscriptions:</strong> due day 1–31 surfaces a pay reminder on your schedule that day each month. <strong>Bills:</strong> due date drives the reminder.
+        <strong>Subscriptions:</strong> due day 1-31 surfaces a pay reminder on your schedule that day each month. <strong>Bills:</strong> due date drives the reminder.
       </p>
       <p>
         <strong>Bank / statement notes</strong> give Coach context for patterns. When the calendar month rolls over, last month&apos;s income and spending roll into a saved overview.
@@ -85,14 +85,13 @@ const INSTRUCTIONS = {
   health: (
     <>
       <p>
-        <strong>Programs:</strong> Open <em>Build a program</em> to add exercises and save to My programs. Use the <strong>My programs</strong> dropdown to pick one program at a time (search inside the menu). Open <strong>Change list order</strong> to drag rows by the grip and set the order they appear in the dropdown. Under <strong>Weekly routine order</strong>, list programs top-to-bottom: that order is the rotation. When a gym task uses <strong>Auto</strong> or <strong>Next in weekly routine</strong>,{" "}
-        <strong>Begin workout</strong> picks the current slot, then advances to the next (wrapping after the last). Coach can suggest a program; approve in the Coach tab and it appears here.
+        <strong>Programs:</strong> Open <em>Build a program</em> to add exercises and save to My programs. Use the <strong>My programs</strong> dropdown to pick one program at a time (search inside the menu). Under <strong>Weekly routine order</strong>, stack programs for rotation; saving a plan keeps them as separate programs (not one merged list). Programs in your weekly order use <strong>Add to this week</strong> to schedule on the calendar. Gym tasks: <strong>Next in weekly routine</strong> follows that order; <strong>Auto-pick</strong> picks a random program. <strong>Begin workout</strong> sits under the task on Today. Coach can suggest a program; approve in the Coach tab and it appears here.
       </p>
       <p>
-        <strong>Macros:</strong> Set age, height, and weight, then use the calculator (Mifflin–St Jeor × activity, adjusted for goal) and <strong>Apply</strong> for tracker bars. Log meals per day; <strong>Meal prep mode</strong> copies one meal to the week days you select. At the bottom of Macros, <strong>Shopping lists</strong> can auto-fill from logged meals or suggested day plans; saved lists appear when you add grocery-type tasks.
+        <strong>Macros:</strong> Set age, height, and weight, then use the calculator (Mifflin-St Jeor × activity, adjusted for goal) and <strong>Apply</strong> for tracker bars. Log meals per day; <strong>Meal prep mode</strong> copies one meal to the week days you select. <strong>Weekly menu</strong> plans meals for each weekday; turn on <strong>View on home page</strong> to see today&apos;s menu on Today and log servings there. <strong>Ask Coach for weekly meal plan</strong> (in the calculator) sends your diet and protein targets to Coach; approve <strong>Add to weekly menu</strong> or <strong>Edit in Macros</strong>. <strong>Shopping lists</strong> can auto-fill from logged meals, suggested day plans, or coach grocery lines.
       </p>
       <p>
-        <strong>Macro overview</strong> sums all meals saved per day. Pick a day at the top of Macros to log or edit that date. Fill profile fields to unlock <strong>Workout</strong> in Today&apos;s quick-add Details.
+        <strong>Exercise overview</strong> (Workouts tab) tracks gym and program-linked tasks you add and complete vs your weekly goal. <strong>Macro overview</strong> (Macros tab) sums meals per day. Set <strong>Workouts per week</strong> under Programs. Pick a day at the top of Macros to log or edit that date.
       </p>
     </>
   ),

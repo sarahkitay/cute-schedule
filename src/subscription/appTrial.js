@@ -1,7 +1,12 @@
 import { APP_TRIAL_DAYS, APP_TRIAL_START_KEY } from "./constants.js";
 
 /** Features free for the first 30 days after first app open, then Pro. */
-export const APP_TRIAL_FEATURE_IDS = new Set(["medications", "health", "advanced_alarms"]);
+export const APP_TRIAL_FEATURE_IDS = new Set([
+  "medications",
+  "health",
+  "insights",
+  "advanced_alarms",
+]);
 
 /** @returns {boolean} */
 export function isAppTrialGatedFeature(featureId) {

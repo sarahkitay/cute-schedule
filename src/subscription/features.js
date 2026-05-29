@@ -20,7 +20,7 @@ export const FREE_MODULE_IDS = new Set([
   MODULE_IDS.PROFILE,
 ]);
 
-/** Pro-only modules (some unlocked during first 30-day app trial — see appTrial.js) */
+/** Pro-only modules (some unlocked during first 30-day app trial ,  see appTrial.js) */
 export const PRO_MODULE_IDS = new Set([
   MODULE_IDS.MEDICATIONS,
   MODULE_IDS.INSIGHTS,
@@ -38,21 +38,24 @@ export const FEATURE_COPY = {
   },
   medications: {
     title: "Medication tracking is Pro",
-    trialTitle: "Medications — included for now",
+    trialTitle: "Medications included for now",
     trialBody:
       "Free for your first 30 days with ProYou. After that, medication tracking and reminders are part of ProYou Pro.",
     body: "Your first 30 days of meds tracking have ended. Subscribe to ProYou Pro to keep doses and reminders.",
   },
   health: {
     title: "Fitness & training is Pro",
-    trialTitle: "Health & training — included for now",
+    trialTitle: "Health and training included for now",
     trialBody:
       "Free for your first 30 days with ProYou. After that, workouts, macros, and programs are part of ProYou Pro.",
     body: "Your first 30 days of fitness access have ended. Subscribe to ProYou Pro to keep training and macros.",
   },
   insights: {
     title: "Insights are Pro",
-    body: "See patterns, trends, and analytics with ProYou Pro.",
+    trialTitle: "Insights included for now",
+    trialBody:
+      "Free for your first 30 days with ProYou. After that, patterns, trends, and analytics are part of ProYou Pro.",
+    body: "Your first 30 days of insights have ended. Subscribe to ProYou Pro to keep patterns and trends.",
   },
   cloud_sync: {
     title: "Cloud backup is Pro",
@@ -68,7 +71,7 @@ export const FEATURE_COPY = {
   },
   advanced_alarms: {
     title: "Alarms are Pro",
-    trialTitle: "Alarms — included for now",
+    trialTitle: "Alarms included for now",
     trialBody:
       "Free for your first 30 days with ProYou. After that, advanced alarms and wake-up challenges are part of ProYou Pro.",
     body: "Your first 30 days of alarm access have ended. Subscribe to ProYou Pro for advanced alarms.",

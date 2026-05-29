@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { PRO_PRODUCT_ID } from "../subscription/constants.js";
+import { PRO_PRODUCT_DISPLAY_NAME } from "../subscription/constants.js";
 import { useSubscription } from "../subscription/SubscriptionContext.jsx";
 
 /**
- * Upgrade to Pro modal — 30-day trial, $4.99/mo, restore purchases.
+ * Upgrade to Pro modal ,  30-day trial, $4.99/mo, restore purchases.
  */
 export function UpgradeProModal() {
   const {
@@ -76,7 +76,7 @@ export function UpgradeProModal() {
               <span className="pro-upgrade-period">/ month after trial</span>
             </div>
             <p className="pro-upgrade-trial">30-day free trial · Cancel anytime</p>
-            <p className="pro-upgrade-product-id">{PRO_PRODUCT_ID}</p>
+            <p className="pro-upgrade-product-id">{PRO_PRODUCT_DISPLAY_NAME}</p>
 
             {Number.isFinite(promptsRemainingToday) ? (
               <p className="pro-upgrade-free-hint">

@@ -1,6 +1,6 @@
 import React, { startTransition, useEffect, useMemo, useState } from "react";
 import { CheckIcon } from "./Icons";
-import { HabitIconPicker, HabitIconBadge } from "./HabitIconPicker";
+import { HabitIconPicker } from "./HabitIconPicker";
 import { DEFAULT_HABIT_ICON, suggestHabitIconFromLabel } from "./habitIcons";
 
 function rid() {
@@ -226,7 +226,6 @@ export function OnboardingFlow({
             <ul className="onboarding-habit-list">
               {(habitTracker.habits || []).map((h) => (
                 <li key={h.id} className="onboarding-habit-item">
-                  <HabitIconBadge iconId={h.icon} />
                   <span>{h.label}</span>
                   <span className="onboarding-habit-meta">{h.direction === "break" ? "Break" : "Build"}</span>
                   <button

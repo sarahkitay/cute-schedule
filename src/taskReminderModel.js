@@ -41,7 +41,9 @@ export function buildTaskPushReminderEntriesForTask({ task, dayKey, hourKey, now
   if (!remindersEnabled) return [];
 
   const title = "PROYOU";
-  const bodyBase = String(task.text || "Task").trim() || "Task";
+  const taskTitle = String(task.text || "Task").trim() || "Task";
+  const taskNote = task.taskNote != null ? String(task.taskNote).trim() : "";
+  const bodyBase = taskNote ? `${taskTitle}\n${taskNote}` : taskTitle;
   const taskId = String(task.id || "");
 
   const start = new Date(`${dayKey}T${hourKey}:00`);

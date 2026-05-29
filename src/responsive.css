@@ -4,12 +4,15 @@
  */
 
 @supports (min-height: 100dvh) {
-  body,
-  #root,
   .app,
   .shell,
   .login-gate {
     min-height: 100dvh;
+    height: 100dvh;
+  }
+  .app-bg {
+    min-height: 100dvh;
+    height: 100dvh;
   }
 }
 
@@ -64,7 +67,7 @@
     border: none !important;
     box-shadow: none !important;
     --nav-safe-bottom: max(12px, env(safe-area-inset-bottom, 0px));
-    padding-top: var(--nav-coach-peek, 6px) !important;
+    padding-top: var(--nav-coach-peek, var(--nav-top-padding, 16px)) !important;
     padding-left: 14px !important;
     padding-right: 14px !important;
     padding-bottom: var(--nav-safe-bottom) !important;
@@ -130,7 +133,7 @@
 @media (min-width: 1024px) {
   :root {
     --app-content-max: 680px;
-    --bottom-nav-clearance: 110px;
+    --bottom-nav-clearance: 106px;
     --screen-margin: clamp(24px, 4vw, 40px);
   }
 
@@ -153,7 +156,7 @@
   .app .bottom-nav.bottom-nav--with-center.surface-dock,
   .app .bottom-nav.bottom-nav--with-center.surface-dock.bottom-nav--png {
     --nav-safe-bottom: max(14px, env(safe-area-inset-bottom, 0px));
-    padding-top: var(--nav-coach-peek, 6px) !important;
+    padding-top: var(--nav-coach-peek, var(--nav-top-padding, 16px)) !important;
     padding-left: 20px !important;
     padding-right: 20px !important;
     padding-bottom: var(--nav-safe-bottom) !important;
@@ -189,7 +192,7 @@
 @media (min-width: 1280px) {
   :root {
     --app-content-max: 720px;
-    --bottom-nav-clearance: 112px;
+    --bottom-nav-clearance: 108px;
   }
 
   .app .bottom-nav.surface-dock,

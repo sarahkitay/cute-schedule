@@ -3,7 +3,7 @@
 .pro-upgrade-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 12000;
+  z-index: var(--z-paywall, 1300);
   display: flex;
   align-items: flex-end;
   justify-content: center;

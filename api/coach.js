@@ -1,6 +1,6 @@
 import { applyApiCors } from "./lib/cors.js";
 import { assertCoachRateLimit } from "./lib/coachRateLimit.js";
-import { assertCoachEntitlement } from "./lib/coachEntitlement.js";
+import { assertCoachEntitlement, consumeCoachPrompt } from "./lib/coachEntitlement.js";
 import { buildProgramDraftDetectionText, userWantsWorkoutProgramDraft, validateCoachSpecificity } from "./lib/coachValidate.js";
 import { clientSafeDetail, logServerError } from "./lib/safeJsonError.js";
 
@@ -44,7 +44,8 @@ export default async function handler(req, res) {
     });
   }
 
-  // TODO(security): Verify Firebase ID token + RevenueCat entitlement server-side for isPro.
+  // Pro is verified server-side (Firebase ID token + RevenueCat) in assertCoachEntitlement.
+  // Free-tier quota is consumed only on a successful response (see consumeCoachPrompt calls below).
 
   try {
     const key = process.env.OPENAI_API_KEY;
@@ -127,12 +128,26 @@ Help plan and organize the schedule. Date: ${dayKey}. Current schedule (time -> 
 Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences", "followUp": "one optional question or null", "actions": [ { "type": "TIMEBOX", "taskId": "...", "start": "HH:MM", "end": "HH:MM" }, { "type": "REORDER", "taskIds": ["id1","id2"] }, { "type": "BREAK", "start": "HH:MM", "end": "HH:MM", "label": "Short break" } ], "suggestions": [] }. Use only taskIds that exist in the input.`;
       } else if (mode === "fitness") {
         const healthNote = String(healthSummary || "").trim()
-          ? ` Health / training: ${String(healthSummary).slice(0, 1400)}`
+          ? ` Health / training / macros: ${String(healthSummary).slice(0, 1600)}`
           : "";
-        userContent = `Tone: practical training partner; concrete lifts and sessions, no medical claims.
+        const userQ = String(req.body.userQuestion || "").trim();
+        const mealPlanCue =
+          /\b(meal plan|meal prep|weekly menu|what to eat|menu for the week|grocery|shopping list|vegan|vegetarian|plant[- ]?based|macros?|protein|tofu|breakfast|lunch|dinner)\b/i.test(
+            userQ
+          );
+        userContent = userQ
+          ? `Tone: practical coach for training AND nutrition when asked; no medical claims.
+
+User request: ${userQ}
+Date: ${dayKey}. Schedule: ${JSON.stringify(scheduleData)}.${healthNote}${habitBlock}
+
+If they want meals / a weekly menu / meal plan / grocery list, return ADD_WEEKLY_MEAL_PLAN with weeklyMealPlan.days length 7 (Sun–Sat), 3-5 meals per day, macros on each meal, groceryLines, and proteinTargetGPerDay when they gave a protein target.
+If they want workouts / programs, return ADD_WORKOUT_PROGRAM or ADD_TASK with workoutProgram as in training mode.
+Return JSON: { "summary": "2-5 sentences", "followUp": null, "actions": [], "suggestions": [ ... ] }. requiresApproval true on every suggestion.`
+          : `Tone: practical training partner; concrete lifts and sessions, no medical claims.
 
 Coach fitness and training. Date: ${dayKey}. Schedule: ${JSON.stringify(scheduleData)}.${healthNote}${habitBlock}
-Return JSON: { "summary": "2-4 sentences on training focus", "followUp": null, "actions": [], "suggestions": [ { "type": "ADD_WORKOUT_PROGRAM", "title": "short name", "reason": "why this fits", "workoutProgram": { "name": "...", "exerciseLines": ["Lift 3x10", "..."] }, "requiresApproval": true }, { "type": "ADD_TASK", "title": "Workout label", "category": "...", "energyLevel": "HEAVY", "start": "HH:MM", "reason": "...", "workoutProgram": { "name": "...", "exerciseLines": ["..."] }, "requiresApproval": true } ] }. Prefer ADD_WORKOUT_PROGRAM when they need a saved program; ADD_TASK only when a calendar slot is clear. Honor saved programs uniqueness.`;
+Return JSON: { "summary": "2-4 sentences on training focus", "followUp": null, "actions": [], "suggestions": [ { "type": "ADD_WORKOUT_PROGRAM", "title": "short name", "reason": "why this fits", "workoutProgram": { "name": "...", "exerciseLines": ["Lift 3x10", "..."] }, "requiresApproval": true }, { "type": "ADD_TASK", "title": "Workout label", "category": "...", "energyLevel": "HEAVY", "start": "HH:MM", "reason": "...", "workoutProgram": { "name": "...", "exerciseLines": ["..."] }, "requiresApproval": true }${mealPlanCue ? ', { "type": "ADD_WEEKLY_MEAL_PLAN", "title": "...", "reason": "...", "weeklyMealPlan": { "name": "...", "days": [] }, "requiresApproval": true }' : ""} ] }. Prefer ADD_WORKOUT_PROGRAM when they need a saved program; ADD_TASK only when a calendar slot is clear. Use ADD_WEEKLY_MEAL_PLAN when they ask for nutrition planning. Honor saved programs uniqueness.`;
       } else if (mode === "finance") {
         const financeNote = finance && (finance.incomeThisMonth > 0 || finance.spentThisMonth > 0 || (finance.totalSavings || 0) > 0 || (finance.totalDebt || 0) > 0)
           ? ` Finance: income this month $${(finance.incomeThisMonth || 0).toFixed(2)}, spent $${(finance.spentThisMonth || 0).toFixed(2)}, savings $${(finance.totalSavings || 0).toFixed(2)}, debt $${(finance.totalDebt || 0).toFixed(2)}.${wishListNote}`
@@ -176,6 +191,7 @@ Return JSON: { "summary": "2-4 sentences", "followUp": null, "actions": [], "sug
           isProd ? { error: "Coach response was invalid." } : { error: "Model did not return valid JSON", raw: cleaned }
         );
       }
+      await consumeCoachPrompt(entitlement);
       return res.status(200).json({
         summary: parsed.summary || "",
         followUp: parsed.followUp || null,
@@ -206,7 +222,7 @@ Return JSON: { "summary": "2-4 sentences", "followUp": null, "actions": [], "sug
 
     const clientPersona = String(systemPrompt || "").trim();
     const financeLayer = hasFinance
-      ? " You may also comment gently on money when finance data is present: 1–2 observations and one small next step. Never shame or lecture."
+      ? " You may also comment gently on money when finance data is present: 1-2 observations and one small next step. Never shame or lecture."
       : "";
 
     const antiGeneric = `
@@ -220,22 +236,26 @@ When the user asks for advice:
 
 Sleep / waking / fatigue:
 - Assume structure may be the cause, not only "habits." Scan for heavy tasks too late, missing low-effort final block, unresolved items carried into night.
-- Reframe the last 1–2 hours of the day; focus on lowering mental activation, not generic sleep hygiene.
+- Reframe the last 1-2 hours of the day; focus on lowering mental activation, not generic sleep hygiene.
 - Avoid: "create a routine", "try to relax", "consider…", "calming activities" without a named task.
 
 Banned sentence openers (do not start the message with these): "To help you", "You can try", "Consider", "It's important to", "In order to".
 
 Start the message with an observation about their data OR a reframing, not a preamble about helping.
 
-Suggestions (Coach V2): When a concrete move fits, return 0–12 items in "suggestions" (use up to 12 when the user lists many separate to-dos for one day; otherwise prefer a tight 0–6). Each item uses ONE of these shapes:
+Suggestions (Coach V2): When a concrete move fits, return 0-12 items in "suggestions" (use up to 12 when the user lists many separate to-dos for one day; otherwise prefer a tight 0-6). Each item uses ONE of these shapes:
 
 (A) Calendar block: { "type":"ADD_TASK"|"BREAK"|"SPLIT_TASK"|"DEFER"|"REORDER"|"TIMEBOX", "title":"short label", "description":"optional detail", "reason":"one sentence tied to THIS user's data", "category":"one of their categories", "energyLevel":"LIGHT"|"MEDIUM"|"HEAVY", "start":"HH:MM", "end":"HH:MM or null", "durationMinutes": number, "recurring": false, "recurrencePattern":"none"|"daily"|"weekly", "targetDayKey":"YYYY-MM-DD or null (which calendar day to place the block; default the request dayKey)", "weekPlanLabel":"short UI label e.g. Wed 7:30p", "confidence": 0.0-1.0, "requiresApproval": true, "targetTaskId": "existing id or null" }. If the block is a gym / strength / leg day / training / HIIT session (not errands), also include "workoutProgram": { "name": "short title", "exerciseLines": ["Lift + sets 3x8", "...5-8 lines"] } so Approve can save to Health and link the calendar task. Never return a gym-style ADD_TASK without workoutProgram.
 
 (B) Saved workout program (Health → My programs): { "type":"ADD_WORKOUT_PROGRAM", "name":"Short title", "reason":"why this split fits them", "exercises": ["Exercise one 3x10", "Exercise two 3x12", "...4-8 lines total, each a real lift + sets/reps"], "requiresApproval": true, "confidence": 0.8 }. No "start"/hour on this row - it is not a calendar block until they schedule it.
 
+(C) Weekly meal plan (Health → Macros weekly menu + Today home menu): { "type":"ADD_WEEKLY_MEAL_PLAN", "title":"short plan name", "reason":"why this fits their diet and protein target", "requiresApproval": true, "confidence": 0.85, "weeklyMealPlan": { "name":"...", "proteinTargetGPerDay": number or null, "groceryLines": ["item 1", "item 2", "...8-20 shopping lines"], "days": [ [ { "slot":"Breakfast|Lunch|Dinner|Snack", "lines": ["food detail", "..."], "protein": number, "carbs": number, "fat": number, "calories": number } ], ... ] } }. "days" MUST be length 7: index 0 = Sunday through index 6 = Saturday. Each day should have 3-5 meals with realistic macros; honor dietaryStyle, dietary notes, and any daily protein target the user asked for (e.g. 150g protein). Use concrete foods they requested (e.g. tofu). Sum each day's protein near their target when specified.
+
+Use ADD_WEEKLY_MEAL_PLAN when they ask for a meal plan, weekly menu, what to eat this week, vegan/vegetarian week, macro-aligned meals, or grocery list for the week. COMMITMENT_RULE for meal plans: if "message" says you will draft/build a meal plan, you MUST include ADD_WEEKLY_MEAL_PLAN in "suggestions" with a full 7-day "days" array.
+
 UNIQUENESS: COACH_CONTEXT may include saved_program_uniqueness_guard with fingerprints of programs already in Health. New exercise lineups must not duplicate those fingerprints (different movements; not the same session reordered). Honor the user's specific training cues from their message and health_training.
 
-Use ADD_TASK or BREAK for new calendar items. Use ADD_WORKOUT_PROGRAM when they ask you to write/build/draft a program, routine, or exercise list (e.g. glute day, leg day). Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply; requiresApproval is always true. Use [] only when nothing concrete fits.
+Use ADD_TASK or BREAK for new calendar items. Use ADD_WORKOUT_PROGRAM when they ask you to write/build/draft a program, routine, or exercise list (e.g. glute day, leg day). Use ADD_WEEKLY_MEAL_PLAN for full-week nutrition plans. Use SPLIT_TASK/DEFER/REORDER/TIMEBOX only when grounded in listed tasks (include targetTaskId). Never auto-apply; requiresApproval is always true. Use [] only when nothing concrete fits.
 
 COMMITMENT_RULE: If "message" says you will add, schedule, save, or draft a workout block, gym block, or workout/leg day program (e.g. "let's add a leg day program"), you MUST include matching ADD_TASK and/or ADD_WORKOUT_PROGRAM rows in "suggestions" with requiresApproval true. Never promise those adds in prose while leaving "suggestions" empty or omitting the program row.
 
@@ -618,6 +638,7 @@ Return JSON EXACTLY in this schema (Coach V2). When you propose a full workout t
       });
     }
 
+    await consumeCoachPrompt(entitlement);
     return res.status(200).json(patchedParsed);
   } catch (e) {
     logServerError("Coach handler", e);

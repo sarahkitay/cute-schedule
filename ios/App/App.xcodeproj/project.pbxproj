@@ -22,6 +22,9 @@
 		A1WGT0101FED79650016851F /* ProyouWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1WGT00A1FED79650016851F /* ProyouWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B04EC31B1FED79650016851F /* ProyouApnsTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3191FED79650016851F /* ProyouApnsTokenStore.swift */; };
 		B04EC31C1FED79650016851F /* ProyouApnsPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC31A1FED79650016851F /* ProyouApnsPlugin.swift */; };
+		B04EC32E1FED79650016851F /* ProyouMusicPickerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC32D1FED79650016851F /* ProyouMusicPickerPlugin.swift */; };
+		B04EC3301FED79650016851F /* ProyouNutritionLabelPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC32F1FED79650016851F /* ProyouNutritionLabelPlugin.swift */; };
+		B04EC3311FED79650016851F /* ProyouAlarmSoundPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3321FED79650016851F /* ProyouAlarmSoundPlugin.swift */; };
 		C94B20032FA1000100CAFE01 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = C94B20022FA1000100CAFE01 /* GoogleService-Info.plist */; };
 		E04EC3181FED79650016851F /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04EC3171FED79650016851F /* SceneDelegate.swift */; };
 /* End PBXBuildFile section */
@@ -71,6 +74,9 @@
 		AF51FD2D460BCFE21FA515B2 /* Pods-App.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.release.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.release.xcconfig"; sourceTree = "<group>"; };
 		B04EC3191FED79650016851F /* ProyouApnsTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouApnsTokenStore.swift; sourceTree = "<group>"; };
 		B04EC31A1FED79650016851F /* ProyouApnsPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouApnsPlugin.swift; sourceTree = "<group>"; };
+		B04EC32D1FED79650016851F /* ProyouMusicPickerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouMusicPickerPlugin.swift; sourceTree = "<group>"; };
+		B04EC32F1FED79650016851F /* ProyouNutritionLabelPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouNutritionLabelPlugin.swift; sourceTree = "<group>"; };
+		B04EC3321FED79650016851F /* ProyouAlarmSoundPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouAlarmSoundPlugin.swift; sourceTree = "<group>"; };
 		C94B20022FA1000100CAFE01 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		E04EC3171FED79650016851F /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
@@ -134,6 +140,9 @@
 				E04EC3171FED79650016851F /* SceneDelegate.swift */,
 				B04EC3191FED79650016851F /* ProyouApnsTokenStore.swift */,
 				B04EC31A1FED79650016851F /* ProyouApnsPlugin.swift */,
+				B04EC32D1FED79650016851F /* ProyouMusicPickerPlugin.swift */,
+				B04EC32F1FED79650016851F /* ProyouNutritionLabelPlugin.swift */,
+				B04EC3321FED79650016851F /* ProyouAlarmSoundPlugin.swift */,
 				A1WGT0041FED79650016851F /* ProyouWidgetPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
 				504EC30E1FED79650016851F /* Assets.xcassets */,
@@ -180,6 +189,7 @@
 			buildConfigurationList = 504EC3161FED79650016851F /* Build configuration list for PBXNativeTarget "App" */;
 			buildPhases = (
 				6634F4EFEBD30273BCE97C65 /* [CP] Check Pods Manifest.lock */,
+				B04EC3401FED79650016851F /* Merge Capacitor iOS plugins */,
 				504EC3001FED79650016851F /* Sources */,
 				504EC3011FED79650016851F /* Frameworks */,
 				504EC3021FED79650016851F /* Resources */,
@@ -279,6 +289,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		B04EC3401FED79650016851F /* Merge Capacitor iOS plugins */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${SRCROOT}/../../scripts/merge-ios-cap-plugin-classes.mjs",
+				"${SRCROOT}/../../capacitor.config.json",
+			);
+			name = "Merge Capacitor iOS plugins";
+			outputPaths = (
+				"${SRCROOT}/App/capacitor.config.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"\nREPO_ROOT=\"${SRCROOT}/../..\"\ncd \"${REPO_ROOT}\"\nif ! command -v node >/dev/null 2>&1; then\n  echo \"error: node not found. Install Node.js or add it to PATH for Xcode builds.\" >&2\n  exit 1\nfi\nnode scripts/merge-ios-cap-plugin-classes.mjs\n";
+			showEnvVarsInLog = 0;
+		};
 		6634F4EFEBD30273BCE97C65 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -324,6 +353,9 @@
 				E04EC3181FED79650016851F /* SceneDelegate.swift in Sources */,
 				B04EC31B1FED79650016851F /* ProyouApnsTokenStore.swift in Sources */,
 				B04EC31C1FED79650016851F /* ProyouApnsPlugin.swift in Sources */,
+				B04EC32E1FED79650016851F /* ProyouMusicPickerPlugin.swift in Sources */,
+				B04EC3301FED79650016851F /* ProyouNutritionLabelPlugin.swift in Sources */,
+				B04EC3311FED79650016851F /* ProyouAlarmSoundPlugin.swift in Sources */,
 				A1WGT0021FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */,
 				A1WGT0051FED79650016851F /* ProyouWidgetPlugin.swift in Sources */,
 			);

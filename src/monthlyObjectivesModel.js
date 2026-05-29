@@ -24,12 +24,21 @@ export function formatObjectiveMonthLabel(monthKey) {
   return new Date(y, m - 1, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
 }
 
+export function trimMonthlyObjectiveNote(note) {
+  if (note == null) return "";
+  return String(note).trim();
+}
+
 export function normalizeMonthlyList(monthly, currentMonthKey) {
   if (!Array.isArray(monthly)) return [];
-  return monthly.map((row) => ({
-    ...row,
-    monthKey: row.monthKey || currentMonthKey,
-  }));
+  return monthly.map((row) => {
+    const note = trimMonthlyObjectiveNote(row.note);
+    return {
+      ...row,
+      monthKey: row.monthKey || currentMonthKey,
+      ...(note ? { note } : {}),
+    };
+  });
 }
 
 export function isPendingCarryObjective(row, priorMonthKey) {
@@ -69,6 +78,7 @@ export function carryMonthlyObjective(monthly, id, currentMonthKey, newId) {
       done: false,
       monthKey: currentMonthKey,
       carriedFromId: id,
+      ...(trimMonthlyObjectiveNote(source.note) ? { note: trimMonthlyObjectiveNote(source.note) } : {}),
     },
   ];
 }

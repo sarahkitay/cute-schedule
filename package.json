@@ -12,10 +12,13 @@
     "lint": "eslint .",
     "test:coach": "node --test api/lib/coachValidate.test.mjs",
     "test:monthly": "node --test src/monthlyObjectivesModel.test.mjs",
+    "test:nutrition-label": "node --test src/nutritionLabelParser.test.mjs",
     "preview": "vite preview",
     "trigger-deploy": "sh -c 'if [ -z \"$VERCEL_DEPLOY_HOOK_URL\" ]; then echo \"Set VERCEL_DEPLOY_HOOK_URL to your Vercel deploy hook (Dashboard → Project → Settings → Git → Deploy Hooks).\" >&2; exit 1; fi; curl -s -X POST \"$VERCEL_DEPLOY_HOOK_URL\"'",
-    "cap:sync": "npm run build && npx cap sync && node scripts/merge-ios-cap-plugin-classes.mjs",
-    "cap:sync:ios": "npm run build && npx cap sync ios && node scripts/merge-ios-cap-plugin-classes.mjs",
+    "capacitor:sync:after": "node scripts/merge-ios-cap-plugin-classes.mjs",
+    "cap:sync": "npm run build && npx cap sync",
+    "cap:sync:ios": "npm run build && npx cap sync ios",
+    "cap:merge-ios-plugins": "node scripts/merge-ios-cap-plugin-classes.mjs",
     "cap:ios": "npx cap open ios"
   },
   "dependencies": {
@@ -32,6 +35,7 @@
     "firebase-admin": "^13.9.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "tesseract.js": "^5.1.1",
     "web-push": "^3.6.7"
   },
   "devDependencies": {

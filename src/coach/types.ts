@@ -5,11 +5,29 @@ export type CoachEnergy = "LIGHT" | "MEDIUM" | "HEAVY";
 export type CoachSuggestionType =
   | "ADD_TASK"
   | "ADD_WORKOUT_PROGRAM"
+  | "ADD_WEEKLY_MEAL_PLAN"
   | "REORDER"
   | "TIMEBOX"
   | "BREAK"
   | "SPLIT_TASK"
   | "DEFER";
+
+export type CoachWeeklyMealPlanDayMeal = {
+  slot: string;
+  lines: string[];
+  food: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  calories: number;
+};
+
+export type CoachWeeklyMealPlanDraft = {
+  name: string;
+  proteinTargetGPerDay: number | null;
+  groceryLines: string[];
+  days: CoachWeeklyMealPlanDayMeal[][];
+};
 
 /** When type is ADD_WORKOUT_PROGRAM, Approve saves to Health → My programs. */
 export type CoachWorkoutProgramDraft = {
@@ -45,6 +63,7 @@ export interface CoachSuggestionV2 {
   hour: string;
   targetTaskId?: string | null;
   workoutProgram?: CoachWorkoutProgramDraft | null;
+  weeklyMealPlan?: CoachWeeklyMealPlanDraft | null;
 }
 
 export interface NormalizedCoachResult {

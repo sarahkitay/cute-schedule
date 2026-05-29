@@ -49,7 +49,7 @@ struct ProyouTasksWidgetView: View {
                     .foregroundColor(widgetPink)
             }
             if tasks.isEmpty {
-                Text("No tasks yet — open PROYOU to plan your day.")
+                Text("No tasks yet. Open PROYOU to plan your day.")
                     .font(.caption)
                     .foregroundColor(widgetMuted)
             } else {

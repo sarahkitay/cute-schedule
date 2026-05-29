@@ -60,6 +60,7 @@ export const DOCK_NAV_ASSETS = {
   notes: {
     label: "Notes",
     image: "notes.png",
+    simpleDarkImage: "list icondm.png",
     iconSize: DOCK_NAV_SIZE,
     iconScale: 1.2,
   },
@@ -75,10 +76,30 @@ export const DOCK_NAV_ASSETS = {
     simpleDarkImage: "timericondm.png",
     iconSize: DOCK_NAV_SIZE,
   },
+  habits: {
+    label: "Habits",
+    image: "habit.png",
+    simpleDarkImage: "habiticondm.png",
+    iconSize: DOCK_NAV_SIZE,
+    iconScale: 1.32,
+  },
+  routines: {
+    label: "Routines",
+    image: "suniconnobubble.png",
+    simpleDarkImage: "todayicondm.png",
+    iconSize: DOCK_NAV_SIZE,
+    iconScale: 1.14,
+  },
+  nav: {
+    label: "Navigation",
+    image: "nav.png",
+    simpleDarkImage: "navicondm.png",
+    iconSize: DOCK_NAV_SIZE,
+  },
   you: {
     label: "You",
     image: "YouIcon.png",
-    simpleDarkImage: "navicondm.png",
+    simpleDarkImage: "youdm.png",
     iconSize: DOCK_NAV_SIZE,
   },
 };

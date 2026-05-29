@@ -10,6 +10,14 @@ export function resolveTabId(moduleId) {
   return TAB_ID_ALIASES[id] || id;
 }
 
+/** Catalog module id for the active app tab (e.g. plan, health). */
+export function moduleIdForTab(tab) {
+  const t = String(tab || "").trim();
+  if (!t || t === "today") return null;
+  const mod = APP_MODULE_CATALOG.find((m) => m.tab === t);
+  return mod ? mod.id : TAB_ID_ALIASES[t] || t;
+}
+
 /** All modules users can open or pin to the dock. */
 export const APP_MODULE_CATALOG = Object.freeze([
   { id: "today", tab: "today", alwaysNav: true, canUnpin: false },

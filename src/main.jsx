@@ -10,7 +10,10 @@ import './subscription/subscription.css'
 import App from './app.jsx'
 import { initSubscriptionSnapshotFromStorage } from './subscription/subscriptionStore.js'
 import { initAppTrialStart } from './subscription/appTrial.js'
+import { captureReferralFromUrl } from './social/socialModel.js'
+import './social/social.css'
 
+captureReferralFromUrl()
 initAppTrialStart()
 initSubscriptionSnapshotFromStorage()
 
@@ -46,6 +49,11 @@ class ErrorBoundary extends Component {
   }
 }
 
+function dismissHtmlBootSplash() {
+  const el = document.getElementById('boot-splash')
+  if (el) el.remove()
+}
+
 const rootElement = document.getElementById('root')
 if (!rootElement) {
   document.body.innerHTML = '<p style="padding:24px;font-family:system-ui">Root element not found.</p>'
@@ -61,7 +69,7 @@ if (!rootElement) {
               className="app-bg-texture"
               aria-hidden
             />
-            <App />
+            <App onAppReady={dismissHtmlBootSplash} />
           </div>
         </ErrorBoundary>
       </StrictMode>,

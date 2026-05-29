@@ -2,17 +2,24 @@ import React, { useEffect, useState } from "react";
 import { CloseIcon } from "./Icons";
 
 /**
- * @param {{ open: boolean, taskPreview: string, programs: { id: string, name: string, exercises?: string[] }[], onCancel: () => void, onConfirm: (pick: { workoutProgramMode: 'specific'|'queue'|'auto', workoutProgramId?: string, openHealthProgramBuilder?: boolean }) => void }} props
+ * @param {{ open: boolean, taskPreview: string, programs: { id: string, name: string, exercises?: string[] }[], hasWeeklyRoutine?: boolean, onCancel: () => void, onConfirm: (pick: { workoutProgramMode: 'specific'|'queue'|'auto', workoutProgramId?: string, openHealthProgramBuilder?: boolean }) => void }} props
  */
-export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCancel, onConfirm }) {
+export function WorkoutProgramPickerModal({
+  open,
+  taskPreview,
+  programs,
+  hasWeeklyRoutine = false,
+  onCancel,
+  onConfirm,
+}) {
   const [mode, setMode] = useState("auto");
   const [programId, setProgramId] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setMode("auto");
+    setMode(hasWeeklyRoutine ? "queue" : "auto");
     setProgramId("");
-  }, [open]);
+  }, [open, hasWeeklyRoutine]);
 
   if (!open) return null;
 
@@ -29,9 +36,12 @@ export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCance
     onConfirm({ workoutProgramMode: "auto" });
   }
 
-  /** Add the task with auto-linking; optionally jump to Health to build a program first. */
+  /** Add the task; use weekly routine when set, otherwise random auto-pick. */
   function confirmAuto(openHealthProgramBuilder) {
-    onConfirm({ workoutProgramMode: "auto", openHealthProgramBuilder: openHealthProgramBuilder === true });
+    onConfirm({
+      workoutProgramMode: hasWeeklyRoutine ? "queue" : "auto",
+      openHealthProgramBuilder: openHealthProgramBuilder === true,
+    });
   }
 
   const specificOk = mode !== "specific" || !!programId;
@@ -68,11 +78,14 @@ export function WorkoutProgramPickerModal({ open, taskPreview, programs, onCance
           </label>
           <label className="workout-picker-radio">
             <input type="radio" name="wkpm" checked={mode === "queue"} onChange={() => setMode("queue")} />
-            <span>Next in my weekly routine (order in Health)</span>
+            <span>
+              Next in my weekly routine
+              {hasWeeklyRoutine ? " (uses your order in Health)" : " (set a weekly order in Health first)"}
+            </span>
           </label>
           <label className="workout-picker-radio">
             <input type="radio" name="wkpm" checked={mode === "auto"} onChange={() => setMode("auto")} />
-            <span>Auto-pick (routine if set, otherwise your first saved program or a built-in template)</span>
+            <span>Auto-pick (random program from My programs)</span>
           </label>
         </div>
         {mode === "specific" ? (

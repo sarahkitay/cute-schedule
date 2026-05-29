@@ -8,6 +8,16 @@ import { registerIosLocalTaskNotifDebugReporter } from "./nativeTaskLocalNotific
 
 export { resyncIosTaskLocalNotifications } from "./nativeTaskLocalNotifications.js";
 
+/** Task title plus optional private note for push / system notification body. */
+export function formatTaskNotificationBody(task, category) {
+  const title = String(task?.text || "").trim();
+  const note = task?.taskNote != null ? String(task.taskNote).trim() : "";
+  if (!title && !note) return category ? String(category) : "";
+  if (!note) return category ? `${title} (${category})` : title;
+  if (!title) return note;
+  return category ? `${title} (${category})\n${note}` : `${title}\n${note}`;
+}
+
 /** @type {Set<(s: Record<string, unknown>) => void>} */
 const nativeDebugSubscribers = new Set();
 
@@ -355,7 +365,7 @@ async function persistNativeFcmTokenFromRaw(rawToken) {
   if (platform === "ios") {
     if (!isValidFcmRegistrationToken(raw)) {
       const msg = raw
-        ? `Invalid FCM registration token from FirebaseMessaging (expected 32–4096 chars after trim; got ${raw.length}).`
+        ? `Invalid FCM registration token from FirebaseMessaging (expected 32-4096 chars after trim; got ${raw.length}).`
         : "Missing FCM registration token (FirebaseMessaging.getToken returned empty).";
       nativePushDebug.lastRegistrationError = msg;
       emitNativeDebug();
@@ -746,7 +756,7 @@ class NotificationService {
           }
 
           this.showNotification(reminderText, {
-            body: `${task.text} (${category})`,
+            body: formatTaskNotificationBody(task, category),
             tag: `reminder-${task.id}`,
             requireInteraction: false,
           });
@@ -762,7 +772,7 @@ class NotificationService {
 
   notifyTaskComplete(task, _category) {
     this.showNotification("Done.", {
-      body: `${task.text}`,
+      body: formatTaskNotificationBody(task, null),
       tag: `complete-${task.id}`,
       requireInteraction: false,
       preferWebNotificationOnNative: true,
@@ -786,10 +796,12 @@ class NotificationService {
       if (wrapUpDelay > 0 && wrapUpDelay < 24 * 60 * 60 * 1000) {
         setTimeout(() => {
           let wrapUpMessage = "Time to wrap up.";
-          let wrapUpBody = currentTask ? `Finishing up: ${currentTask.text}` : "Wrapping up current task";
+          let wrapUpBody = currentTask
+            ? `Finishing up: ${formatTaskNotificationBody(currentTask, null)}`
+            : "Wrapping up current task";
 
           if (nextTask) {
-            wrapUpBody += `\nNext: ${nextTask.text} at ${hour}`;
+            wrapUpBody += `\nNext: ${formatTaskNotificationBody(nextTask, null)} at ${hour}`;
           }
 
           this.showNotification(wrapUpMessage, {
@@ -804,7 +816,7 @@ class NotificationService {
       if (nextTaskDelay > 0 && nextTaskDelay < 24 * 60 * 60 * 1000) {
         setTimeout(() => {
           this.showNotification("Next task starting", {
-            body: `${nextTask.text}${_category ? ` (${_category})` : ""}`,
+            body: formatTaskNotificationBody(nextTask, _category),
             tag: `next-${nextTask.id}`,
             requireInteraction: false,
           });
