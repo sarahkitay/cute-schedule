@@ -52,9 +52,10 @@ export async function assertCoachEntitlement(req, body) {
   const uid = idToken ? await verifyFirebaseIdToken(idToken) : null;
   const subject = subjectKey(req, body, uid);
   const isPro = await resolveIsPro(uid, body);
+  const appTrialActive = Boolean(body?.subscription?.appTrialActive);
 
-  if (isPro) {
-    return { ok: true, uid, isPro: true, subject };
+  if (isPro || appTrialActive) {
+    return { ok: true, uid, isPro: isPro || false, appTrialActive, subject };
   }
 
   if (!kv) {
@@ -88,7 +89,7 @@ export async function assertCoachEntitlement(req, body) {
  * @param {{ isPro?: boolean, key?: string } | null | undefined} entitlement
  */
 export async function consumeCoachPrompt(entitlement) {
-  if (!entitlement || entitlement.isPro || !entitlement.key || !kv) return;
+  if (!entitlement || entitlement.isPro || entitlement.appTrialActive || !entitlement.key || !kv) return;
   try {
     const count = await kv.incr(entitlement.key);
     if (count === 1) {

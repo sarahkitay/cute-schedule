@@ -13,7 +13,8 @@
     "ProyouWidgetPlugin",
     "ProyouMusicPickerPlugin",
     "ProyouNutritionLabelPlugin",
-    "ProyouAlarmSoundPlugin"
+    "ProyouAlarmSoundPlugin",
+    "ProyouAlarmKitPlugin"
   ],
   "ios": {
     "contentInset": "never",

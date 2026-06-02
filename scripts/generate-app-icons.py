@@ -6,7 +6,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC_PATH = ROOT / "public/PYIcon.png"
-FILL_RATIO = 0.96  # icon fills ~96% of square — minimal white margin
+FILL_RATIO = 0.96  # icon fills ~96% of square - minimal white margin
 
 
 def build_master_square() -> Image.Image:

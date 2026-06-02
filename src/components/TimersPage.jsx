@@ -19,11 +19,12 @@ import {
   resetActiveTimer,
 } from "../modules/timers";
 import { requestAlarmPermissions } from "../alarmScheduler";
+import { cancelTaskFocusTimerNotification } from "../taskTimerNotify.js";
 import {
-  isAppleMusicLibraryPickerAvailable,
-  pickSongFromAppleMusicLibrary,
-} from "../alarmMusicPicker";
-import { Capacitor } from "@capacitor/core";
+  getAlarmKitAuthorizationState,
+  isAlarmKitAvailable,
+  installCustomSoundForAlarmKit,
+} from "../nativeAlarmKit.js";
 import {
   ALARM_SOUND_IDS,
   BUILTIN_ALARM_SOUNDS,
@@ -70,6 +71,22 @@ export function TimersPage({
   }, [tick, activeTimer, selectedPreset]);
 
   const [showAddAlarm, setShowAddAlarm] = useState(false);
+  const [alarmKitAuth, setAlarmKitAuth] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!(await isAlarmKitAvailable())) {
+        if (!cancelled) setAlarmKitAuth("unavailable");
+        return;
+      }
+      const state = await getAlarmKitAuthorizationState();
+      if (!cancelled) setAlarmKitAuth(state);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [newAlarmTime, setNewAlarmTime] = useState("07:00");
   const [newAlarmLabel, setNewAlarmLabel] = useState("Morning alarm");
   const [newAlarmMode, setNewAlarmMode] = useState(ALARM_MODES.STANDARD);
@@ -80,7 +97,6 @@ export function TimersPage({
   const [soundImportError, setSoundImportError] = useState("");
   const [soundImporting, setSoundImporting] = useState(false);
   const musicInputRef = useRef(null);
-  const appleMusicPickerAvailable = isAppleMusicLibraryPickerAvailable();
 
   const alarms = alarmsState?.alarms || [];
   const history = timersState?.history || [];
@@ -114,11 +130,21 @@ export function TimersPage({
   }
 
   function resetTimer() {
-    patchActiveTimer(resetActiveTimer(activeTimer, selectedPreset));
+    onUpdateTimers?.((prev) => {
+      const current = normalizeActiveTimer(prev.activeTimer);
+      const presetMs = current?.selectedPresetMs ?? selectedPreset;
+      return { ...prev, activeTimer: resetActiveTimer(prev.activeTimer, presetMs) };
+    });
+    void cancelTaskFocusTimerNotification();
+    setTick(Date.now());
   }
 
   function selectPreset(ms) {
-    patchActiveTimer(resetActiveTimer(activeTimer ?? defaultActiveTimerDraft(ms), ms));
+    onUpdateTimers?.((prev) => ({
+      ...prev,
+      activeTimer: resetActiveTimer(prev.activeTimer ?? defaultActiveTimerDraft(ms), ms),
+    }));
+    setTick(Date.now());
   }
 
   function toggleAlarmDay(day) {
@@ -164,6 +190,7 @@ export function TimersPage({
       const id = `custom_${Date.now().toString(36)}`;
       const name = displayName || file.name.replace(/\.[^.]+$/, "");
       await saveCustomAlarmSound(id, name, file);
+      await installCustomSoundForAlarmKit(id, { file });
       setNewAlarmSound(ALARM_SOUND_IDS.CUSTOM);
       setNewAlarmCustomSoundId(id);
       setNewAlarmCustomSoundName(name);
@@ -176,30 +203,6 @@ export function TimersPage({
 
   async function handleMusicFile(file) {
     await importAlarmMusicFile(file);
-  }
-
-  async function handlePickFromAppleMusic() {
-    setSoundImportError("");
-    setNewAlarmSound(ALARM_SOUND_IDS.CUSTOM);
-    if (!appleMusicPickerAvailable) {
-      setSoundImportError(
-        Capacitor.getPlatform() === "ios"
-          ? "Rebuild the app from Xcode on a real iPhone to use the music library picker. Or use Choose from Files."
-          : "On iPhone: open Music → song → Share → Save to Files, then tap Choose from Files here. On Mac/web, use Choose from Files."
-      );
-      return;
-    }
-    setSoundImporting(true);
-    try {
-      const { file, title } = await pickSongFromAppleMusicLibrary();
-      await importAlarmMusicFile(file, title, { manageLoading: false });
-    } catch (e) {
-      const msg = e?.message || "";
-      if (e?.code === "CANCELLED" || /cancel/i.test(msg)) return;
-      setSoundImportError(msg || "Could not import that song.");
-    } finally {
-      setSoundImporting(false);
-    }
   }
 
   function previewSound(soundId, customId = null) {
@@ -290,6 +293,18 @@ export function TimersPage({
               {showAddAlarm ? "Cancel" : "+ Morning alarm"}
             </PillButton>
           </div>
+          <p className="health-subline timers-alarm-system-hint" style={{ margin: "0 0 12px" }}>
+            On iPhone with iOS 26+, alarms can ring like the Clock app when you allow system alarms for PROYOU. Older iOS uses notifications.
+            {alarmKitAuth === "denied" ? (
+              <span className="timers-alarm-auth-warn">
+                {" "}
+                System alarm access is off. Open Settings → PROYOU and allow alarms, then return here.
+              </span>
+            ) : null}
+            {alarmKitAuth === "authorized" ? (
+              <span className="timers-alarm-auth-ok"> System alarms are enabled.</span>
+            ) : null}
+          </p>
 
           {showAddAlarm ? (
             <GlassCard className="timers-alarm-form-card">
@@ -353,23 +368,13 @@ export function TimersPage({
                     >
                       <span className="timers-alarm-mode-label">Your music</span>
                       <span className="timers-alarm-mode-desc">
-                        {newAlarmCustomSoundName || "Pick from your library or a file on your device"}
+                        {newAlarmCustomSoundName || "Import an MP3 or M4A from Files"}
                       </span>
                     </button>
                     <div className="timers-sound-custom-actions">
-                      {appleMusicPickerAvailable ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm btn-primary"
-                          disabled={soundImporting}
-                          onClick={() => void handlePickFromAppleMusic()}
-                        >
-                          {soundImporting ? "Saving…" : "Apple Music library"}
-                        </button>
-                      ) : null}
                       <button
                         type="button"
-                        className="btn btn-sm"
+                        className="btn btn-sm btn-primary"
                         disabled={soundImporting}
                         onClick={() => musicInputRef.current?.click()}
                       >
@@ -400,9 +405,7 @@ export function TimersPage({
                   </div>
                   {soundImportError ? <p className="timers-sound-error">{soundImportError}</p> : null}
                   <p className="timers-sound-import-hint">
-                    {appleMusicPickerAvailable
-                      ? "Apple Music library opens your on-device songs (download a track in Music first if it’s streaming-only). Files works for MP3/M4A in iCloud or On My iPhone."
-                      : "On iPhone without a native build: Music → song → Share → Save to Files, then Choose from Files. Built-in alarm sounds work everywhere."}
+                    Use an MP3 or M4A you own (Music → Share → Save to Files works for many tracks). Re-save the alarm after changing sound so the lock-screen alarm uses your file. Built-in tones work everywhere.
                   </p>
                 </div>
                 <div className="timers-field">

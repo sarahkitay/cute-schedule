@@ -2,6 +2,8 @@
  * Alarm sound catalog, built-in Web Audio tones, and custom audio (IndexedDB).
  */
 
+import { getMelodyVariant, melodyDurationSec } from "./alarmBuiltinMelodies.js";
+
 export const ALARM_SOUND_IDS = Object.freeze({
   DEFAULT: "default",
   CHIME: "chime",
@@ -9,17 +11,21 @@ export const ALARM_SOUND_IDS = Object.freeze({
   DIGITAL: "digital",
   BIRDS: "birds",
   PIANO: "piano",
+  SPARKLE: "sparkle",
+  MUSICBOX: "musicbox",
   CUSTOM: "custom",
 });
 
 export const BUILTIN_ALARM_SOUNDS = Object.freeze([
-  { id: ALARM_SOUND_IDS.DEFAULT, label: "Classic", desc: "Warm ascending tone" },
+  { id: ALARM_SOUND_IDS.DEFAULT, label: "Sunrise", desc: "Soft ascending wake-up" },
+  { id: ALARM_SOUND_IDS.SPARKLE, label: "Sparkle", desc: "Twinkly high notes" },
+  { id: ALARM_SOUND_IDS.MUSICBOX, label: "Music box", desc: "Gentle plucked melody" },
   { id: ALARM_SOUND_IDS.CHIME, label: "Soft chime", desc: "Light glass bells" },
-  { id: ALARM_SOUND_IDS.BELLS, label: "Morning bells", desc: "Cheerful ring" },
-  { id: ALARM_SOUND_IDS.DIGITAL, label: "Digital", desc: "Clear beeps" },
-  { id: ALARM_SOUND_IDS.BIRDS, label: "Birdsong", desc: "Gentle nature chirps" },
-  { id: ALARM_SOUND_IDS.PIANO, label: "Piano", desc: "Simple melody notes" },
-  { id: ALARM_SOUND_IDS.CUSTOM, label: "Your music", desc: "Apple Music library or Files (iOS)" },
+  { id: ALARM_SOUND_IDS.BELLS, label: "Morning bells", desc: "Cheerful ring pattern" },
+  { id: ALARM_SOUND_IDS.PIANO, label: "Piano", desc: "Warm key notes" },
+  { id: ALARM_SOUND_IDS.BIRDS, label: "Birdsong", desc: "Playful chirps" },
+  { id: ALARM_SOUND_IDS.DIGITAL, label: "Pixel pop", desc: "Cute retro beeps" },
+  { id: ALARM_SOUND_IDS.CUSTOM, label: "Your music", desc: "MP3 or M4A from Files (iOS)" },
 ]);
 
 const CUSTOM_DB = "cute_schedule_alarm_audio_v1";
@@ -27,6 +33,7 @@ const CUSTOM_STORE = "sounds";
 
 let audioCtx = null;
 let loopTimer = null;
+let loopVariant = 0;
 let previewTimer = null;
 /** @type {HTMLAudioElement | null} */
 let customAudioEl = null;
@@ -86,32 +93,19 @@ function tone(ctx, freq, start, dur, type = "sine", vol = 0.12) {
   osc.stop(start + dur + 0.05);
 }
 
-async function playBuiltinBurst(soundId, gentle = false) {
+/**
+ * @param {string} soundId
+ * @param {boolean} [gentle]
+ * @param {number} [variant]
+ */
+async function playBuiltinBurst(soundId, gentle = false, variant = 0) {
   const ctx = await getCtx();
   if (!ctx) return;
   const t = ctx.currentTime;
-  const vol = gentle ? 0.08 : 0.13;
-
-  switch (soundId) {
-    case ALARM_SOUND_IDS.CHIME:
-      [880, 1108, 1318].forEach((f, i) => tone(ctx, f, t + i * 0.22, 0.55, "sine", vol * 0.9));
-      break;
-    case ALARM_SOUND_IDS.BELLS:
-      [523, 659, 784, 659, 523].forEach((f, i) => tone(ctx, f, t + i * 0.18, 0.4, "triangle", vol));
-      break;
-    case ALARM_SOUND_IDS.DIGITAL:
-      for (let i = 0; i < 4; i++) tone(ctx, 880, t + i * 0.2, 0.12, "square", vol * 0.7);
-      break;
-    case ALARM_SOUND_IDS.BIRDS:
-      [1800, 2100, 2400, 2000, 2300].forEach((f, i) => tone(ctx, f, t + i * 0.12, 0.08, "sine", vol * 0.6));
-      break;
-    case ALARM_SOUND_IDS.PIANO:
-      [262, 330, 392, 523].forEach((f, i) => tone(ctx, f, t + i * 0.25, 0.45, "triangle", vol));
-      break;
-    case ALARM_SOUND_IDS.DEFAULT:
-    default:
-      [440, 554, 659, 880].forEach((f, i) => tone(ctx, f, t + i * 0.16, 0.35, "sine", vol));
-      break;
+  const volScale = gentle ? 0.72 : 1;
+  const notes = getMelodyVariant(soundId, variant);
+  for (const n of notes) {
+    tone(ctx, n.freq, t + n.at, n.dur, n.type || "sine", (n.vol ?? 0.12) * volScale);
   }
 }
 
@@ -168,11 +162,11 @@ export async function deleteCustomAlarmSound(id) {
 }
 
 export function getAlarmSoundLabel(alarm) {
-  if (!alarm) return "Classic";
+  if (!alarm) return "Sunrise";
   if (alarm.sound === ALARM_SOUND_IDS.CUSTOM) {
     return alarm.customSoundName || "Your music";
   }
-  return BUILTIN_ALARM_SOUNDS.find((s) => s.id === alarm.sound)?.label || "Classic";
+  return BUILTIN_ALARM_SOUNDS.find((s) => s.id === alarm.sound)?.label || "Sunrise";
 }
 
 export function normalizeAlarmSound(sound) {
@@ -192,6 +186,7 @@ function stopCustomAudio() {
 }
 
 export function stopAlarmSoundPlayback() {
+  loopVariant = 0;
   if (loopTimer) {
     clearInterval(loopTimer);
     loopTimer = null;
@@ -237,13 +232,17 @@ export async function playAlarmSoundForAlarm(alarm) {
     if (ok) return;
   }
 
-  await playBuiltinBurst(soundId, gentle);
+  const notes = getMelodyVariant(soundId, 0);
+  const loopMs = Math.round(melodyDurationSec(notes) * 1000) + (gentle ? 900 : 600);
+
+  await playBuiltinBurst(soundId, gentle, loopVariant);
   loopTimer = setInterval(() => {
-    void playBuiltinBurst(soundId, gentle);
+    loopVariant = (loopVariant + 1) % 3;
+    void playBuiltinBurst(soundId, gentle, loopVariant);
     try {
       navigator.vibrate?.([200, 100, 200]);
     } catch {}
-  }, gentle ? 2200 : 1400);
+  }, loopMs);
 }
 
 /** Preview a sound for ~2.5s (built-in or custom). */
@@ -278,8 +277,9 @@ export async function previewAlarmSound(soundId, customSoundId = null) {
     return;
   }
 
-  await playBuiltinBurst(id, false);
-  previewTimer = setTimeout(() => stopAlarmSoundPlayback(), 2500);
+  loopVariant = 0;
+  await playBuiltinBurst(id, false, 0);
+  previewTimer = setTimeout(() => stopAlarmSoundPlayback(), 3200);
 }
 
 /** iOS local notification sound name (bundled sounds only; custom falls back). */

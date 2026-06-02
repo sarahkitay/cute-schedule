@@ -3,7 +3,7 @@ import { useSubscription } from "../subscription/SubscriptionContext.jsx";
 import { isAppTrialGatedFeature } from "../subscription/appTrial.js";
 
 /**
- * Soft paywall wrapper ,  shows children dimmed with upgrade overlay when feature unavailable.
+ * Soft paywall wrapper; shows children dimmed with upgrade overlay when feature unavailable.
  * @param {{ feature: import('../subscription/features.js').FeatureId, children: React.ReactNode, fallback?: React.ReactNode, className?: string }} props
  */
 export function FeatureGate({ feature, children, fallback = null, className = "" }) {
@@ -15,7 +15,7 @@ export function FeatureGate({ feature, children, fallback = null, className = ""
     const showBanner =
       !isPro && appTrialActive && isAppTrialGatedFeature(feature) && gateCopy.showTrialBanner;
     return (
-      <div className={className}>
+      <div className={["feature-gate-wrap", className].filter(Boolean).join(" ")}>
         {showBanner ? (
           <p className="pro-trial-banner" role="status">
             {gateCopy.trialBanner || gateCopy.body}
@@ -27,11 +27,11 @@ export function FeatureGate({ feature, children, fallback = null, className = ""
   }
 
   if (fallback) {
-    return <div className={className}>{fallback}</div>;
+    return <div className={["feature-gate-wrap", className].filter(Boolean).join(" ")}>{fallback}</div>;
   }
 
   return (
-    <div className={`pro-feature-gate ${className}`.trim()}>
+    <div className={["pro-feature-gate", "feature-gate-wrap", className].filter(Boolean).join(" ")}>
       <div className="pro-feature-gate__content pro-feature-gate__content--dimmed" aria-hidden>
         {children}
       </div>

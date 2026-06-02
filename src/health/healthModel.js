@@ -533,7 +533,7 @@ function coachMealRowsToWeeklyMenuMeals(rows) {
 }
 
 /**
- * Normalize coach weekly meal plan payload (7 days, Sun–Sat).
+ * Normalize coach weekly meal plan payload (7 days, Sun-Sat).
  * @param {unknown} raw
  * @returns {{ name: string, proteinTargetGPerDay: number | null, groceryLines: string[], days: { slot: string, lines: string[], food: string, protein: number, carbs: number, fat: number, calories: number }[][] } | null}
  */

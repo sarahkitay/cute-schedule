@@ -16,10 +16,18 @@ public struct ProyouWidgetSnapshot: Codable {
         public let todayStatus: String?
     }
 
+    public struct ActiveTimerInfo: Codable {
+        public let label: String
+        public let remainingSec: Int
+        public let endsAtMs: Double?
+        public let linkedTaskText: String?
+    }
+
     public let updatedAt: String
     public let todayKey: String
     public let tasks: [TaskItem]
     public let habits: [HabitItem]
+    public let activeTimer: ActiveTimerInfo?
 
     public static func placeholder() -> ProyouWidgetSnapshot {
         ProyouWidgetSnapshot(
@@ -32,7 +40,13 @@ public struct ProyouWidgetSnapshot: Codable {
             habits: [
                 HabitItem(id: "h1", label: "Water", direction: "build", todayStatus: nil),
                 HabitItem(id: "h2", label: "Screen time", direction: "break", todayStatus: "no"),
-            ]
+            ],
+            activeTimer: ActiveTimerInfo(
+                label: "Focus",
+                remainingSec: 18 * 60 + 42,
+                endsAtMs: Date().addingTimeInterval(18 * 60 + 42).timeIntervalSince1970 * 1000,
+                linkedTaskText: "Deep work block"
+            )
         )
     }
 }

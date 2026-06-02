@@ -141,7 +141,7 @@ Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences
 User request: ${userQ}
 Date: ${dayKey}. Schedule: ${JSON.stringify(scheduleData)}.${healthNote}${habitBlock}
 
-If they want meals / a weekly menu / meal plan / grocery list, return ADD_WEEKLY_MEAL_PLAN with weeklyMealPlan.days length 7 (Sun–Sat), 3-5 meals per day, macros on each meal, groceryLines, and proteinTargetGPerDay when they gave a protein target.
+If they want meals / a weekly menu / meal plan / grocery list, return ADD_WEEKLY_MEAL_PLAN with weeklyMealPlan.days length 7 (Sun-Sat), 3-5 meals per day, macros on each meal, groceryLines, and proteinTargetGPerDay when they gave a protein target.
 If they want workouts / programs, return ADD_WORKOUT_PROGRAM or ADD_TASK with workoutProgram as in training mode.
 Return JSON: { "summary": "2-5 sentences", "followUp": null, "actions": [], "suggestions": [ ... ] }. requiresApproval true on every suggestion.`
           : `Tone: practical training partner; concrete lifts and sessions, no medical claims.

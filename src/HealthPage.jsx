@@ -1738,9 +1738,9 @@ export function HealthPage({
                   disabled={labelScanBusy}
                   onClick={handleScanNutritionLabelClick}
                 >
-                  {labelScanBusy ? "Reading label…" : "Scan nutrition label"}
+                  {labelScanBusy ? "Scanning…" : "Scan label"}
                 </button>
-                <span className="health-subline health-label-scan-hint">Opens camera · reads P / C / F / calories</span>
+                <span className="health-subline health-label-scan-hint">Live scanner · Cal / Pro / Fat / Carb</span>
               </div>
               <label className="quick-row health-meal-food-field">
                 <span className="label">What you ate</span>

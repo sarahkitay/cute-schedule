@@ -5,6 +5,7 @@ import {
   coachPromptsRemaining,
   countOptionalEnabledModules,
   getFeatureGateCopy,
+  hasUnlimitedCoachPrompts,
 } from "./features.js";
 import { getAppTrialStatus, initAppTrialStart } from "./appTrial.js";
 import { getCoachPromptsUsedToday, consumeCoachPromptLocal } from "./promptUsage.js";
@@ -73,13 +74,24 @@ export function SubscriptionProvider({
   }, [syncSubscription]);
 
   useEffect(() => {
+    const onReferralPro = () => {
+      const referral = getReferralProGrant();
+      setReferralProActive(referral.active);
+      void syncSubscription();
+    };
+    window.addEventListener("proyou:referral-pro-updated", onReferralPro);
+    return () => window.removeEventListener("proyou:referral-pro-updated", onReferralPro);
+  }, [syncSubscription]);
+
+  useEffect(() => {
     setPromptsUsedToday(getCoachPromptsUsedToday());
     return subscribeSubscriptionSnapshot(() => {
       setPromptsUsedToday(getCoachPromptsUsedToday());
     });
   }, []);
 
-  const promptsRemainingToday = coachPromptsRemaining(promptsUsedToday, isPro);
+  const unlimitedCoach = hasUnlimitedCoachPrompts({ isPro, appTrialActive: appTrial.active });
+  const promptsRemainingToday = coachPromptsRemaining(promptsUsedToday, isPro, appTrial.active);
 
   const featureCtx = useMemo(
     () => ({
@@ -87,11 +99,11 @@ export function SubscriptionProvider({
       appTrialActive: appTrial.active,
       appTrialDaysLeft: appTrial.daysLeft,
       appTrialEnded: appTrial.ended,
-      promptsRemainingToday: isPro ? Infinity : promptsRemainingToday,
+      promptsRemainingToday: unlimitedCoach ? Infinity : promptsRemainingToday,
       routineTemplateCount,
       optionalModuleCount: countOptionalEnabledModules(enabledModules),
     }),
-    [isPro, appTrial, promptsRemainingToday, routineTemplateCount, enabledModules]
+    [isPro, appTrial, unlimitedCoach, promptsRemainingToday, routineTemplateCount, enabledModules]
   );
 
   const openUpgrade = useCallback((featureId = null) => {
@@ -110,21 +122,21 @@ export function SubscriptionProvider({
   );
 
   const consumeCoachPrompt = useCallback(() => {
-    if (isPro) return true;
+    if (unlimitedCoach) return true;
     if (promptsUsedToday >= FREE_COACH_PROMPTS_PER_DAY) return false;
     const next = consumeCoachPromptLocal();
     setPromptsUsedToday(next);
     return true;
-  }, [isPro, promptsUsedToday]);
+  }, [unlimitedCoach, promptsUsedToday]);
 
   const tryCoachPrompt = useCallback(() => {
-    if (isPro) return true;
+    if (unlimitedCoach) return true;
     if (promptsUsedToday >= FREE_COACH_PROMPTS_PER_DAY) {
       openUpgrade("coach_prompt");
       return false;
     }
     return true;
-  }, [isPro, promptsUsedToday, openUpgrade]);
+  }, [unlimitedCoach, promptsUsedToday, openUpgrade]);
 
   const purchasePro = useCallback(async () => {
     const state = await purchaseProMonthly();
@@ -155,7 +167,7 @@ export function SubscriptionProvider({
       trialActive,
       expirationDate,
       subscriptionExpired,
-      promptsRemainingToday: isPro ? Infinity : promptsRemainingToday,
+      promptsRemainingToday: unlimitedCoach ? Infinity : promptsRemainingToday,
       promptsUsedToday,
       canUseFeature: checkFeature,
       consumeCoachPrompt,
@@ -182,6 +194,7 @@ export function SubscriptionProvider({
       trialActive,
       expirationDate,
       subscriptionExpired,
+      unlimitedCoach,
       promptsRemainingToday,
       promptsUsedToday,
       checkFeature,

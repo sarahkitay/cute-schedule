@@ -63,6 +63,41 @@
   font-weight: 600;
   cursor: pointer;
   width: 100%;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.social-btn-primary:disabled,
+.social-btn-secondary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.social-btn-primary:not(:disabled):active,
+.social-btn-secondary:not(:disabled):active {
+  transform: scale(0.98);
+}
+.social-invite-status {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--py-accent-deep);
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+html[data-theme="dark"] .social-btn-primary {
+  background: linear-gradient(135deg, #3f3f46 0%, #0a0a0c 100%);
+  color: #fafafa;
+}
+html[data-theme="dark"] .social-back {
+  color: var(--ink-strong, #0a0a0c);
+}
+html[data-theme="dark"] .social-pending-badge {
+  background: rgba(10, 10, 12, 0.08);
+  color: #52525b;
+}
+html[data-theme="dark"] .social-code-box {
+  background: rgba(10, 10, 12, 0.06);
 }
 
 .social-btn-secondary {
@@ -73,6 +108,8 @@
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .social-toggle-row {

@@ -1,9 +1,20 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { getActiveTimerRemaining, normalizeActiveTimer } from "./modules/timers.js";
 
 const ProyouWidget = registerPlugin("ProyouWidget");
 
 const STORAGE_KEY = "cute_schedule_v3";
 const HABITS_STORAGE_KEY = "cute_schedule_habits_v1";
+const TIMERS_STORAGE_KEY = "cute_schedule_timers_v1";
+
+function loadTimersFromDisk() {
+  try {
+    const raw = localStorage.getItem(TIMERS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
 
 function todayKey(d = new Date()) {
   const y = d.getFullYear();
@@ -38,7 +49,7 @@ function loadHabitTrackerFromDisk() {
  * @param {object} habitTracker
  * @param {string} todayKey YYYY-MM-DD
  */
-export function buildWidgetSnapshot(appState, habitTracker, todayKey) {
+export function buildWidgetSnapshot(appState, habitTracker, todayKey, timersState = null) {
   const tasks = [];
   const day = appState?.days?.[todayKey];
   const hours = day?.hours;
@@ -75,30 +86,46 @@ export function buildWidgetSnapshot(appState, habitTracker, todayKey) {
     todayStatus: habitTracker?.log?.[todayKey]?.[h.id] ?? null,
   }));
 
+  let activeTimer = null;
+  const active = normalizeActiveTimer(timersState?.activeTimer);
+  if (active?.running && active.endsAt) {
+    activeTimer = {
+      label: String(active.label || "Timer").slice(0, 60),
+      remainingSec: Math.max(0, Math.ceil(getActiveTimerRemaining(active) / 1000)),
+      endsAtMs: active.endsAt,
+      linkedTaskText: active.linkedTask?.taskText
+        ? String(active.linkedTask.taskText).slice(0, 80)
+        : null,
+    };
+  }
+
   return {
     updatedAt: new Date().toISOString(),
     todayKey,
     tasks: tasks.slice(0, 12),
     habits: habits.slice(0, 8),
+    activeTimer,
   };
 }
 
 let syncTimer = null;
 
 /** Push snapshot to the native widget (iOS App Group). No-op on web. */
-export function scheduleWidgetSync(appState, habitTracker, todayKey) {
+export function scheduleWidgetSync(appState, habitTracker, todayKey, timersState = null) {
   if (!Capacitor.isNativePlatform()) return;
   if (syncTimer) clearTimeout(syncTimer);
   syncTimer = setTimeout(() => {
     syncTimer = null;
-    const snapshot = buildWidgetSnapshot(appState, habitTracker, todayKey);
+    const timers = timersState ?? loadTimersFromDisk();
+    const snapshot = buildWidgetSnapshot(appState, habitTracker, todayKey, timers);
     void ProyouWidget.updateSnapshot({ snapshot: JSON.stringify(snapshot) }).catch(() => {});
   }, 400);
 }
 
-export async function syncWidgetNow(appState, habitTracker, dayKey) {
+export async function syncWidgetNow(appState, habitTracker, dayKey, timersState = null) {
   if (!Capacitor.isNativePlatform()) return;
-  const snapshot = buildWidgetSnapshot(appState, habitTracker, dayKey);
+  const timers = timersState ?? loadTimersFromDisk();
+  const snapshot = buildWidgetSnapshot(appState, habitTracker, dayKey, timers);
   try {
     await ProyouWidget.updateSnapshot({ snapshot: JSON.stringify(snapshot) });
   } catch {}
@@ -108,5 +135,6 @@ export async function syncWidgetFromDisk() {
   if (!Capacitor.isNativePlatform()) return;
   const appState = loadAppStateFromDisk();
   const habitTracker = loadHabitTrackerFromDisk();
-  await syncWidgetNow(appState, habitTracker, todayKey());
+  const timers = loadTimersFromDisk();
+  await syncWidgetNow(appState, habitTracker, todayKey(), timers);
 }

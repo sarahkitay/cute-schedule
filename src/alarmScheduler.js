@@ -1,19 +1,7 @@
 import { Capacitor } from "@capacitor/core";
-import { getNextAlarmTime, alarmRequiresWakeUpChallenge } from "./modules/timers";
+import { getNextAlarmTime, alarmNotificationBody } from "./modules/timers";
 import { playAlarmSoundForAlarm, stopAlarmSoundPlayback } from "./alarmSounds";
-const DISMISSED_KEY = "cute_schedule_alarm_dismissed_v1";
-
-function isAlarmDismissedTodayLocal(alarmId) {
-  try {
-    const raw = localStorage.getItem(DISMISSED_KEY);
-    const map = raw ? JSON.parse(raw) : {};
-    const d = new Date();
-    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    return map[today]?.[String(alarmId)] === true;
-  } catch {
-    return false;
-  }
-}
+import { isAlarmDismissedToday } from "./alarmDismissState.js";
 
 /** @type {((alarm: object) => void) | null} */
 let onFireCallback = null;
@@ -42,11 +30,7 @@ export function stopAlarmSound() {
 
 export function notifyAlarm(alarm) {
   const title = alarm.label || "Morning alarm";
-  const body = alarmRequiresWakeUpChallenge(alarm)
-    ? alarm.mode === "math_dismiss"
-      ? "Complete the wake-up challenge to dismiss."
-      : "Type the phrase to turn off your alarm."
-    : "Time to wake up!";
+  const body = alarmNotificationBody(alarm);
   try {
     if (typeof Notification !== "undefined" && Notification.permission === "granted") {
       new Notification(title, { body, tag: `proyou-alarm-${alarm.id}` });
@@ -63,7 +47,8 @@ export function notifyAlarm(alarm) {
  * @param {(alarm: object) => void} onFire
  * @returns {() => void}
  */
-const ALARM_FIRE_GRACE_MS = 20 * 60 * 1000;
+/** Match snooze window in alarmRinging.js and local notification chain length. */
+const ALARM_FIRE_GRACE_MS = 15 * 60 * 1000;
 
 function todayFireTimeMs(alarm) {
   if (!alarm?.time) return null;
@@ -83,7 +68,7 @@ export function startAlarmWatcher(alarms, onFire) {
     const now = Date.now();
     for (const alarm of list) {
       if (!alarm?.enabled) continue;
-      if (isAlarmDismissedTodayLocal(alarm.id)) continue;
+      if (isAlarmDismissedToday(alarm.id)) continue;
 
       const todayMs = todayFireTimeMs(alarm);
       if (todayMs != null) {
@@ -129,6 +114,14 @@ export async function requestAlarmPermissions() {
       const display = perm?.display ?? perm?.receive;
       if (display !== "granted") await LocalNotifications.requestPermissions();
     } catch {}
+    if (Capacitor.getPlatform() === "ios") {
+      try {
+        const { isAlarmKitAvailable, requestAlarmKitAuthorization } = await import("./nativeAlarmKit.js");
+        if (await isAlarmKitAvailable()) {
+          await requestAlarmKitAuthorization();
+        }
+      } catch {}
+    }
   }
 }
 

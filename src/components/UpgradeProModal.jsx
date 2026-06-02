@@ -3,7 +3,7 @@ import { PRO_PRODUCT_DISPLAY_NAME } from "../subscription/constants.js";
 import { useSubscription } from "../subscription/SubscriptionContext.jsx";
 
 /**
- * Upgrade to Pro modal ,  30-day trial, $4.99/mo, restore purchases.
+ * Upgrade to Pro modal; 30-day trial, $4.99/mo, restore purchases.
  */
 export function UpgradeProModal() {
   const {

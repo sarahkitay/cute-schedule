@@ -1,8 +1,9 @@
 import Foundation
 import Capacitor
 import MediaPlayer
+import AVFoundation
 
-/// Presents the system music library picker and copies a locally available track for alarm playback.
+/// Presents the music library picker and exports a playable local audio file for alarms.
 @objc(ProyouMusicPickerPlugin)
 public class ProyouMusicPickerPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ProyouMusicPickerPlugin"
@@ -40,7 +41,10 @@ public class ProyouMusicPickerPlugin: CAPPlugin, CAPBridgedPlugin {
                     let picker = MPMediaPickerController(mediaTypes: .music)
                     picker.delegate = self
                     picker.allowsPickingMultipleItems = false
-                    picker.showsCloudItems = true
+                    picker.showsCloudItems = false
+                    if #available(iOS 14.0, *) {
+                        picker.showsItemsWithProtectedAssets = false
+                    }
                     self.mediaPicker = picker
                     self.bridge?.viewController?.present(picker, animated: true)
                 }
@@ -61,6 +65,64 @@ public class ProyouMusicPickerPlugin: CAPPlugin, CAPBridgedPlugin {
         default: return "audio/mp4"
         }
     }
+
+    private func exportItem(_ item: MPMediaItem, to dest: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+        guard let assetURL = item.assetURL else {
+            completion(.failure(ExportError.noLocalFile(item: item)))
+            return
+        }
+        let asset = AVURLAsset(url: assetURL)
+        if asset.isExportable {
+            guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+                copyFile(from: assetURL, to: dest, completion: completion)
+                return
+            }
+            session.outputURL = dest
+            session.outputFileType = .m4a
+            session.exportAsynchronously {
+                switch session.status {
+                case .completed:
+                    completion(.success(()))
+                case .failed, .cancelled:
+                    self.copyFile(from: assetURL, to: dest, completion: completion)
+                default:
+                    self.copyFile(from: assetURL, to: dest, completion: completion)
+                }
+            }
+            return
+        }
+        copyFile(from: assetURL, to: dest, completion: completion)
+    }
+
+    private func copyFile(from source: URL, to dest: URL, completion: @escaping (Result<Void, Error>) -> Void) {
+        do {
+            if FileManager.default.fileExists(atPath: dest.path) {
+                try FileManager.default.removeItem(at: dest)
+            }
+            try FileManager.default.copyItem(at: source, to: dest)
+            completion(.success(()))
+        } catch {
+            completion(.failure(error))
+        }
+    }
+
+    private enum ExportError: LocalizedError {
+        case noLocalFile(item: MPMediaItem)
+
+        var errorDescription: String? {
+            switch self {
+            case .noLocalFile(let item):
+                let title = item.title ?? "This song"
+                if item.isCloudItem {
+                    return "\(title) is only in the cloud. Download it in the Music app (⋯ → Download), then try again. Or use Choose from Files for an MP3/M4A you own."
+                }
+                if item.hasProtectedAsset {
+                    return "\(title) is an Apple Music download and can't be copied into PROYOU (DRM). Use Choose from Files for an MP3/M4A, or sync music from Finder/iTunes."
+                }
+                return "\(title) isn't available as a file on this iPhone. Use Choose from Files for an MP3/M4A, or sync the track from Finder/iTunes."
+            }
+        }
+    }
 }
 
 extension ProyouMusicPickerPlugin: MPMediaPickerControllerDelegate {
@@ -76,31 +138,25 @@ extension ProyouMusicPickerPlugin: MPMediaPickerControllerDelegate {
                 return
             }
             let title = item.title ?? "Song"
-            guard let assetURL = item.assetURL else {
-                call.reject(
-                    "This track isn’t on your device yet. In the Music app, tap ⋯ on the song and choose Download, then try again. Or use Choose from Files for an MP3/M4A you own.",
-                    "NO_LOCAL_FILE"
-                )
-                self.cleanupPicker()
-                return
-            }
-            let ext = assetURL.pathExtension.isEmpty ? "m4a" : assetURL.pathExtension
+            let ext = "m4a"
             let dest = FileManager.default.temporaryDirectory
                 .appendingPathComponent("proyou_alarm_\(UUID().uuidString).\(ext)")
-            do {
-                if FileManager.default.fileExists(atPath: dest.path) {
-                    try FileManager.default.removeItem(at: dest)
+
+            self.exportItem(item, to: dest) { result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success:
+                        call.resolve([
+                            "path": dest.path,
+                            "title": title,
+                            "mimeType": self.mimeType(for: ext),
+                        ])
+                    case .failure(let err):
+                        call.reject(err.localizedDescription, "NO_LOCAL_FILE")
+                    }
+                    self.cleanupPicker()
                 }
-                try FileManager.default.copyItem(at: assetURL, to: dest)
-                call.resolve([
-                    "path": dest.path,
-                    "title": title,
-                    "mimeType": self.mimeType(for: ext),
-                ])
-            } catch {
-                call.reject("Could not prepare that song: \(error.localizedDescription)", "EXPORT_FAILED")
             }
-            self.cleanupPicker()
         }
     }
 

@@ -2,10 +2,12 @@ import { APP_TRIAL_DAYS, APP_TRIAL_START_KEY } from "./constants.js";
 
 /** Features free for the first 30 days after first app open, then Pro. */
 export const APP_TRIAL_FEATURE_IDS = new Set([
+  "coach_prompt",
   "medications",
   "health",
   "insights",
   "advanced_alarms",
+  "finance",
 ]);
 
 /** @returns {boolean} */

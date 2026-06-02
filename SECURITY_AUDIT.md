@@ -45,7 +45,7 @@ This repository is a **single-user personal schedule / coach app**. There are **
 | `GET /api/push/vapid` | Yes | None | VAPID **public** key | GET only | `curl` URL | Public key is intentional for Web Push subscribe | **Low** |
 | `POST /api/push/subscribe` | Yes | None | Writes subscription to KV | None | POST fake subscription JSON | Unauthenticated KV write / pollution | **High** |
 | `POST /api/push/reminders` | Yes | None | Writes reminder list keyed by subscription endpoint | None | POST with known/guessed subscription | Reminder spam for that subscription key | **High** |
-| `POST /api/push/register-native` | Yes | None | Native device token in KV | Token length check only | POST many tokens | KV fill / cost | **Medium–High** |
+| `POST /api/push/register-native` | Yes | None | Native device token in KV | Token length check only | POST many tokens | KV fill / cost | **Medium-High** |
 | `POST /api/push/send` | Was Yes | None | **Was:** push to **all** subs | **Now:** requires `subscription` in body; sends to that sub only | POST without subscription → 400 | Broadcast abuse **mitigated** | Was **Critical** → **Lower** (targeted abuse only) |
 | `GET/POST /api/cron/push` | Yes if no `CRON_SECRET` | Cron | Sends due reminders to all web subs in KV | VAPID + KV; optional Bearer `CRON_SECRET` | Hit URL repeatedly | Load / annoy subscribers | **High** without secret |
 | `POST /api/coach` | Yes | None | Proxies user JSON to OpenAI; returns model JSON | `OPENAI_API_KEY` server-side; **10/min/IP** via KV; CORS configurable | Flood POST from many IPs / no KV | Key burn, cost | **High** (abuse); **Medium** with KV + RL |

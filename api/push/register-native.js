@@ -55,7 +55,7 @@ export default async function handler(req, res) {
       if (token.length < 32 || token.length > 4096) {
         return res.status(400).json({
           error: "Invalid FCM registration token",
-          hint: "After trim, token must be 32–4096 characters (from FirebaseMessaging.getToken()).",
+          hint: "After trim, token must be 32-4096 characters (from FirebaseMessaging.getToken()).",
           detail: `length=${token.length}`,
         });
       }
@@ -68,7 +68,7 @@ export default async function handler(req, res) {
       if (!isValidNormalizedIosDeviceToken(n)) {
         return res.status(400).json({
           error: "Invalid iOS APNs device token",
-          hint: "Legacy pushProvider=apns: even-length lowercase hex device token (64–200 chars after removing spaces and <>). Not APNS_PRIVATE_KEY.",
+          hint: "Legacy pushProvider=apns: even-length lowercase hex device token (64-200 chars after removing spaces and <>). Not APNS_PRIVATE_KEY.",
           detail: `normalizedLength=${n.length}; even=${n.length % 2 === 0}; hex=${/^[0-9a-f]+$/.test(n)}`,
         });
       }

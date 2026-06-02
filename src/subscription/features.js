@@ -6,7 +6,7 @@ import {
 import { isAppTrialGatedFeature } from "./appTrial.js";
 import { MODULE_IDS } from "../modules/registry.js";
 
-/** @typedef {'coach_prompt' | 'medications' | 'health' | 'insights' | 'cloud_sync' | 'unlimited_routines' | 'unlimited_modules' | 'advanced_alarms' | 'smart_recurring_reminders' | 'analytics' | 'advanced_customization'} FeatureId */
+/** @typedef {'coach_prompt' | 'medications' | 'health' | 'insights' | 'finance' | 'cloud_sync' | 'unlimited_routines' | 'unlimited_modules' | 'advanced_alarms' | 'smart_recurring_reminders' | 'analytics' | 'advanced_customization'} FeatureId */
 
 /** Core free modules per product spec */
 export const FREE_MODULE_IDS = new Set([
@@ -20,7 +20,7 @@ export const FREE_MODULE_IDS = new Set([
   MODULE_IDS.PROFILE,
 ]);
 
-/** Pro-only modules (some unlocked during first 30-day app trial ,  see appTrial.js) */
+/** Pro-only modules (some unlocked during first 30-day app trial; see appTrial.js) */
 export const PRO_MODULE_IDS = new Set([
   MODULE_IDS.MEDICATIONS,
   MODULE_IDS.INSIGHTS,
@@ -34,6 +34,9 @@ export const PRO_MODULE_IDS = new Set([
 export const FEATURE_COPY = {
   coach_prompt: {
     title: "Daily coach limit reached",
+    trialTitle: "Unlimited coach during your free trial",
+    trialBody:
+      "Your first 30 days with ProYou include unlimited AI coach prompts. After that, free includes 2 per day; Pro is unlimited.",
     body: "Free includes 2 AI coach prompts per day. Pro unlocks unlimited coaching.",
   },
   medications: {
@@ -56,6 +59,13 @@ export const FEATURE_COPY = {
     trialBody:
       "Free for your first 30 days with ProYou. After that, patterns, trends, and analytics are part of ProYou Pro.",
     body: "Your first 30 days of insights have ended. Subscribe to ProYou Pro to keep patterns and trends.",
+  },
+  finance: {
+    title: "Finance tracking is Pro",
+    trialTitle: "Finance included for now",
+    trialBody:
+      "Free for your first 30 days with ProYou. After that, budgets, spending, and savings tracking are part of ProYou Pro.",
+    body: "Your first 30 days of finance access have ended. Subscribe to ProYou Pro to keep budgets and spending.",
   },
   cloud_sync: {
     title: "Cloud backup is Pro",
@@ -113,6 +123,7 @@ export function canUseFeature(featureId, ctx) {
     case "health":
     case "advanced_alarms":
     case "insights":
+    case "finance":
     case "cloud_sync":
     case "smart_recurring_reminders":
     case "analytics":
@@ -165,7 +176,12 @@ export function countOptionalEnabledModules(enabledModules) {
   return (enabledModules || []).filter((id) => !FREE_MODULE_IDS.has(id)).length;
 }
 
-export function coachPromptsRemaining(usedToday, isPro) {
-  if (isPro) return Infinity;
+/** @param {{ isPro?: boolean, appTrialActive?: boolean }} [opts] */
+export function hasUnlimitedCoachPrompts(opts = {}) {
+  return Boolean(opts.isPro || opts.appTrialActive);
+}
+
+export function coachPromptsRemaining(usedToday, isPro, appTrialActive = false) {
+  if (hasUnlimitedCoachPrompts({ isPro, appTrialActive })) return Infinity;
   return Math.max(0, FREE_COACH_PROMPTS_PER_DAY - usedToday);
 }

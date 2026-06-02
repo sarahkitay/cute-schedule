@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ALARM_MODES, alarmRequiresWakeUpChallenge } from "../modules/timers";
-import { playAlarmSoundForAlarm, stopAlarmSoundPlayback } from "../alarmSounds";
+import { playAlarmSound, stopAlarmSound } from "../alarmScheduler";
 
 const WRITING_PROMPTS = [
   "I am awake and ready",
@@ -75,12 +75,11 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
 
   useEffect(() => {
     if (!alarm) return;
-    void playAlarmSoundForAlarm(alarm);
     try {
       navigator.vibrate?.([300, 120, 300, 120, 300]);
     } catch {}
     return () => {
-      stopAlarmSoundPlayback();
+      stopAlarmSound();
     };
   }, [alarm]);
 
@@ -102,7 +101,7 @@ export function WakeUpChallenge({ alarm, onDismiss }) {
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState === "visible" && alarm) {
-        void playAlarmSoundForAlarm(alarm);
+        void playAlarmSound(alarm);
       }
     };
     document.addEventListener("visibilitychange", onVis);

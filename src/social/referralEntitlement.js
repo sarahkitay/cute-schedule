@@ -31,14 +31,23 @@ export function getReferralProGrant() {
   return { active: true, until, daysLeft };
 }
 
-/** Grant 30-day internal Pro (complements StoreKit; not a manual Apple subscription extension). */
+/** Compute extended Pro-until ISO from an existing grant (or now). */
+export function computeReferralProUntilIso(existingIso, days = REFERRAL_PRO_DAYS) {
+  let base = Date.now();
+  if (existingIso) {
+    const existing = new Date(existingIso);
+    if (!Number.isNaN(existing.getTime()) && existing.getTime() > base) {
+      base = existing.getTime();
+    }
+  }
+  return new Date(base + days * 86400000).toISOString();
+}
+
+/** Grant 30-day internal Pro on this device (complements StoreKit). */
 export function grantReferralProDays(days = REFERRAL_PRO_DAYS) {
-  const existing = getReferralProGrant();
-  const base = existing.active && existing.until ? existing.until.getTime() : Date.now();
-  const until = new Date(base + days * 86400000);
-  const iso = until.toISOString();
+  const iso = computeReferralProUntilIso(getReferralProUntilIso(), days);
   setReferralProUntilIso(iso);
-  return until;
+  return new Date(iso);
 }
 
 /** Merge RevenueCat / dev state with referral grant for effective Pro access. */

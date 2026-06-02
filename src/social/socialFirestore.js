@@ -12,7 +12,8 @@ import {
   arrayUnion,
   arrayRemove,
 } from "firebase/firestore";
-import { initFirebase } from "../firebase.js";
+import { onAuthStateChanged } from "firebase/auth";
+import { getAuthApp, initFirebase } from "../firebase.js";
 import {
   defaultSocialPrivacy,
   friendshipDocId,
@@ -20,7 +21,7 @@ import {
   normalizeFriendVisibility,
   normalizeSocialPrivacy,
 } from "./socialModel.js";
-import { grantReferralProDays, setReferralProUntilIso } from "./referralEntitlement.js";
+import { computeReferralProUntilIso, setReferralProUntilIso } from "./referralEntitlement.js";
 
 function db() {
   const { db: firestore } = initFirebase();
@@ -33,34 +34,78 @@ function requireDb() {
   return d;
 }
 
-// ——— User profiles ———
+function mapFirestoreError(err) {
+  const code = err?.code || "";
+  if (code === "permission-denied") {
+    return new Error(
+      "Cloud permission denied. Deploy Firestore rules for friends and invites (firebase deploy --only firestore). See docs/SOCIAL_FIRESTORE_DEPLOY.md.",
+    );
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+/** Wait for Firebase Auth so Firestore requests include request.auth. */
+export async function requireAuthUid(hintUid = null) {
+  const auth = getAuthApp();
+  if (!auth) throw new Error("Cloud sync is not configured.");
+  if (auth.currentUser?.uid) {
+    const uid = auth.currentUser.uid;
+    if (hintUid && hintUid !== uid) {
+      console.warn("[social] using auth uid", uid, "not hint", hintUid);
+    }
+    return uid;
+  }
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsub();
+      reject(new Error("Still signing in to cloud. Wait a moment, then try again."));
+    }, 12000);
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (!user?.uid) return;
+      clearTimeout(timeout);
+      unsub();
+      resolve(user.uid);
+    });
+  });
+}
+
+// --- User profiles ---
 
 export async function ensureUserProfile(uid, { displayName = "" } = {}) {
-  if (!uid) return null;
+  const ownerUid = await requireAuthUid(uid);
   const firestore = requireDb();
-  const ref = doc(firestore, "user_profiles", uid);
-  const snap = await getDoc(ref);
-  if (snap.exists()) {
-    const data = snap.data();
-    if (displayName && !data.displayName) {
-      await updateDoc(ref, { displayName, updatedAt: serverTimestamp() });
+  const ref = doc(firestore, "user_profiles", ownerUid);
+  try {
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      const data = snap.data();
+      const patch = {};
+      if (displayName && !data.displayName) patch.displayName = displayName;
+      if (!data.referralCode) patch.referralCode = generateReferralCode(ownerUid);
+      if (Object.keys(patch).length) {
+        patch.updatedAt = serverTimestamp();
+        await updateDoc(ref, patch);
+        return { id: ownerUid, ...data, ...patch };
+      }
+      return { id: ownerUid, ...data };
     }
-    return { id: uid, ...data };
+    const referralCode = generateReferralCode(ownerUid);
+    const profile = {
+      displayName: displayName || "ProYou member",
+      referralCode,
+      friendUids: [],
+      blockedUids: [],
+      privacy: defaultSocialPrivacy(),
+      friendVisibility: {},
+      referralProUntilIso: "",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+    await setDoc(ref, profile);
+    return { id: ownerUid, ...profile };
+  } catch (e) {
+    throw mapFirestoreError(e);
   }
-  const referralCode = generateReferralCode(uid);
-  const profile = {
-    displayName: displayName || "ProYou member",
-    referralCode,
-    friendUids: [],
-    blockedUids: [],
-    privacy: defaultSocialPrivacy(),
-    friendVisibility: {},
-    referralProUntilIso: "",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  };
-  await setDoc(ref, profile);
-  return { id: uid, ...profile };
 }
 
 export async function loadUserProfile(uid) {
@@ -88,7 +133,7 @@ export async function findUserByReferralCode(code) {
   return { id: d.id, ...d.data() };
 }
 
-// ——— Friend requests ———
+// --- Friend requests ---
 
 export async function sendFriendRequest(fromUid, toUid) {
   if (!fromUid || !toUid || fromUid === toUid) throw new Error("Invalid friend request.");
@@ -189,7 +234,7 @@ export async function setFriendVisibility(myUid, friendUid, visibility) {
   });
 }
 
-// ——— Share snapshots ———
+// --- Share snapshots ---
 
 export async function publishShareSnapshot(uid, snapshot) {
   if (!uid) return;
@@ -212,7 +257,7 @@ export async function loadFriendShareSnapshot(friendUid) {
   return snap.data();
 }
 
-// ——— Shared tasks ———
+// --- Shared tasks ---
 
 export async function createSharedTask(creatorUid, task) {
   const firestore = requireDb();
@@ -285,7 +330,7 @@ export async function addSharedTaskReaction(taskId, uid, emoji) {
   await updateDoc(ref, { reactions, updatedAt: serverTimestamp() });
 }
 
-// ——— Referrals ———
+// --- Referrals ---
 
 export async function recordReferralSignup(refereeUid, referralCode) {
   const referrer = await findUserByReferralCode(referralCode);
@@ -304,6 +349,18 @@ export async function recordReferralSignup(refereeUid, referralCode) {
   };
   await setDoc(doc(firestore, "referrals", id), data);
   return { id, ...data };
+}
+
+/** Grant referral rewards only when signed in as the referrer (Firestore rules). */
+export async function processPendingReferralRewardsForReferrer(referrerUid) {
+  const uid = await requireAuthUid(referrerUid);
+  if (uid !== referrerUid) return;
+  const refs = await listReferralsForUser(uid);
+  for (const r of refs) {
+    if (r.status === "pending" && r.refereeUid) {
+      await grantReferralReward(uid, r.id, r.refereeUid);
+    }
+  }
 }
 
 export async function listReferralsForUser(referrerUid) {
@@ -338,27 +395,35 @@ export async function qualifyReferral(referralId, { refereeBecamePro = false } =
 }
 
 async function grantReferralReward(referrerUid, referralId, refereeUid) {
-  const until = grantReferralProDays();
+  const authUid = getAuthApp()?.currentUser?.uid;
+  if (!authUid || authUid !== referrerUid) return;
   const firestore = requireDb();
-  await setDoc(doc(firestore, "referral_rewards", `${referralId}_reward`), {
+  const rewardRef = doc(firestore, "referral_rewards", `${referralId}_reward`);
+  const existingReward = await getDoc(rewardRef);
+  if (existingReward.exists()) return;
+
+  const referrerProfile = await loadUserProfile(referrerUid);
+  const untilIso = computeReferralProUntilIso(referrerProfile?.referralProUntilIso);
+
+  await setDoc(rewardRef, {
     referrerUid,
     refereeUid,
     referralId,
     rewardType: "pro_month_internal",
     status: "granted",
-    proUntilIso: until.toISOString(),
-    note: "Fulfill via App Store offer code when available. Internal 30-day Pro access granted.",
+    proUntilIso: untilIso,
+    note: "Internal 30-day Pro access for successful invite signup.",
     createdAt: serverTimestamp(),
   });
   await updateDoc(doc(firestore, "referrals", referralId), {
     status: "rewarded",
+    qualifiedAt: serverTimestamp(),
     rewardedAt: serverTimestamp(),
   });
   await updateDoc(doc(firestore, "user_profiles", referrerUid), {
-    referralProUntilIso: until.toISOString(),
+    referralProUntilIso: untilIso,
     updatedAt: serverTimestamp(),
   });
-  setReferralProUntilIso(until.toISOString());
 }
 
 export async function listReferralRewards(referrerUid) {

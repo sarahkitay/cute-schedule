@@ -189,8 +189,14 @@
   width: 100%;
 }
 
+.feature-gate-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+
 .pro-trial-banner {
-  margin: 0 0 12px;
+  margin: 0;
   padding: 10px 14px;
   border-radius: 14px;
   font-size: 13px;

@@ -17,7 +17,7 @@ export const SHARE_CATEGORIES = [
 export const NON_SHAREABLE_CATEGORIES = ["medication", "notes", "journal"];
 
 /**
- * Default social privacy — nothing shared until opted in.
+ * Default social privacy - nothing shared until opted in.
  * @returns {import('./socialModel.js').SharePermissions}
  */
 export function defaultSharePermissions() {

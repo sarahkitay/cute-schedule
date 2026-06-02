@@ -1354,7 +1354,7 @@ html[data-theme="dark"] .task-detail-row {
   border-bottom-color: var(--ink-border-soft, rgba(10, 10, 12, 0.28));
 }
 
-/* Native iOS rubber-band scroll ,  content area only (header + nav stay pinned) */
+/* Native iOS rubber-band scroll; content area only (header + nav stay pinned) */
 @supports (-webkit-touch-callout: none) {
   html,
   body,
@@ -1380,4 +1380,23 @@ html[data-theme="dark"] .task-detail-row {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: auto;
   }
+}
+
+/* Dark mode (Midnight / Mocha): neutralize pink timer / alarm UI accents */
+html[data-theme="dark"] .timers-alarm-sound {
+  color: var(--ink-strong, #0a0a0c);
+}
+html[data-theme="dark"] .timers-sound-option.is-selected,
+html[data-theme="dark"] .timers-sound-custom.is-selected {
+  border-color: rgba(10, 10, 12, 0.28);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 0 0 1px rgba(10, 10, 12, 0.12);
+}
+html[data-theme="dark"] .timers-alarm-mode-option.is-selected {
+  border-color: rgba(10, 10, 12, 0.28);
+  background: rgba(255, 255, 255, 0.72);
+}
+html[data-theme="dark"] .timers-day-pill.is-on {
+  background: var(--ink-strong, #0a0a0c);
+  color: #fafafa;
 }

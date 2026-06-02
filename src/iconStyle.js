@@ -34,7 +34,7 @@ export function iconStyleForTheme(theme) {
   return isDarkTheme(theme) ? ICON_STYLE_SIMPLE : ICON_STYLE_COLORFUL;
 }
 
-/** User chose simple (light metallic) dock icons ,  shown on dark icon chips in any theme. */
+/** User chose simple (light metallic) dock icons; shown on dark icon chips in any theme. */
 export function useSimpleIcons(iconStyle) {
   return normalizeIconStyle(iconStyle) === ICON_STYLE_SIMPLE;
 }
@@ -63,6 +63,8 @@ export const APP_ICON_ASSETS = {
   youNavigation: { colorful: "nav.png", simpleDark: "navicondm.png" },
   youRoutines: { colorful: "suniconnobubble.png", simpleDark: "todayicondm.png" },
   youProfile: { colorful: "YouIcon.png", simpleDark: "youdm.png" },
+  accountability: { colorful: "accountability.png", simpleDark: "accountabilitydm.png" },
+  meds: { colorful: "meds.png", simpleDark: "meds icondm.png" },
 };
 
 export function appIconUrl(assetKey, iconStyle) {

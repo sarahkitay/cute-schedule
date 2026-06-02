@@ -1,48 +1,12 @@
 import { playAlarmSound, notifyAlarm, stopAlarmSound } from "./alarmScheduler";
 import { loadAlarmsFromDisk } from "./modules/timers";
+import { isAlarmDismissedToday, markAlarmDismissedToday } from "./alarmDismissState.js";
+
+export { isAlarmDismissedToday, markAlarmDismissedToday } from "./alarmDismissState.js";
 
 const RINGING_KEY = "cute_schedule_ringing_alarm_v1";
-const DISMISSED_KEY = "cute_schedule_alarm_dismissed_v1";
 const MAX_RING_MS = 30 * 60 * 1000;
 const SNOOZE_WINDOW_MS = 15 * 60 * 1000;
-
-function dayKeyFromDate(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function loadDismissedMap() {
-  try {
-    const raw = localStorage.getItem(DISMISSED_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-export function isAlarmDismissedToday(alarmId) {
-  const map = loadDismissedMap();
-  const today = dayKeyFromDate();
-  return map[today]?.[String(alarmId)] === true;
-}
-
-export function markAlarmDismissedToday(alarmId) {
-  const today = dayKeyFromDate();
-  const map = loadDismissedMap();
-  if (!map[today]) map[today] = {};
-  map[today][String(alarmId)] = true;
-  // Keep last 14 days only
-  const keys = Object.keys(map).sort();
-  while (keys.length > 14) {
-    delete map[keys.shift()];
-  }
-  try {
-    localStorage.setItem(DISMISSED_KEY, JSON.stringify(map));
-  } catch {}
-}
 
 export function persistRingingAlarm(alarm) {
   try {
@@ -119,7 +83,11 @@ export function fireAlarm(alarm, opts = {}) {
   if (isAlarmDismissedToday(alarm.id)) return;
   if (!opts.replayOnly) persistRingingAlarm(alarm);
   void playAlarmSound(alarm);
-  notifyAlarm(alarm);
+  try {
+    notifyAlarm(alarm);
+  } catch (e) {
+    console.warn("[fireAlarm] notify", e?.message || e);
+  }
 }
 
 /**
@@ -131,13 +99,19 @@ export async function dismissActiveAlarm(alarmId) {
   clearPersistedRingingAlarm();
   stopAlarmSound();
   try {
+    const { clearAlarmFireMemory } = await import("./alarmScheduler.js");
+    clearAlarmFireMemory();
+  } catch {}
+  try {
     const { cancelAlarmNotificationsForAlarm, resyncAlarmNotifications } = await import(
       "./nativeAlarmNotifications"
     );
     await cancelAlarmNotificationsForAlarm(alarmId);
     const { alarms } = loadAlarmsFromDisk();
     await resyncAlarmNotifications(alarms);
-  } catch {}
+  } catch (e) {
+    console.warn("[dismissActiveAlarm]", e?.message || e);
+  }
 }
 
 /** @param {object} extra */

@@ -62,5 +62,10 @@ export async function pickSongFromAppleMusicLibrary() {
   const file = new File([blob], `${safeTitle}.${ext}`, {
     type: result.mimeType || blob.type || "audio/mp4",
   });
-  return { file, title: result.title || safeTitle };
+  return {
+    file,
+    title: result.title || safeTitle,
+    /** Native filesystem path (use for AlarmKit without re-encoding). */
+    nativePath: result.path,
+  };
 }

@@ -49,7 +49,7 @@ export default async function handler(req, res) {
       if (token.length < 32 || token.length > 4096) {
         return res.status(400).json({
           error: "Invalid FCM token for reminders",
-          hint: "After trim, token must be 32–4096 characters (same rules as register-native with pushProvider=fcm).",
+          hint: "After trim, token must be 32-4096 characters (same rules as register-native with pushProvider=fcm).",
           detail: `length=${token.length}`,
         });
       }

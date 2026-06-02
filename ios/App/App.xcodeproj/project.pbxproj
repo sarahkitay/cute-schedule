@@ -25,6 +25,17 @@
 		B04EC32E1FED79650016851F /* ProyouMusicPickerPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC32D1FED79650016851F /* ProyouMusicPickerPlugin.swift */; };
 		B04EC3301FED79650016851F /* ProyouNutritionLabelPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC32F1FED79650016851F /* ProyouNutritionLabelPlugin.swift */; };
 		B04EC3311FED79650016851F /* ProyouAlarmSoundPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3321FED79650016851F /* ProyouAlarmSoundPlugin.swift */; };
+		B04EC3341FED79650016851F /* NutritionLabelOcr.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3331FED79650016851F /* NutritionLabelOcr.swift */; };
+		B04EC3361FED79650016851F /* NutritionLabelMacroParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3351FED79650016851F /* NutritionLabelMacroParser.swift */; };
+		B04EC3381FED79650016851F /* NutritionLabelScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3371FED79650016851F /* NutritionLabelScannerViewController.swift */; };
+		B04EC33A1FED79650016851F /* ProyouAlarmKitPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3391FED79650016851F /* ProyouAlarmKitPlugin.swift */; };
+		B04EC33C1FED79650016851F /* ProyouAlarmKitScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC33B1FED79650016851F /* ProyouAlarmKitScheduler.swift */; };
+		B04EC33E1FED79650016851F /* ProyouAlarmIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC33D1FED79650016851F /* ProyouAlarmIntents.swift */; };
+		B04EC3411FED79650016851F /* ProyouAlarmKitMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC33F1FED79650016851F /* ProyouAlarmKitMetadata.swift */; };
+		B04EC3431FED79650016851F /* NutritionLabelImagePipeline.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3421FED79650016851F /* NutritionLabelImagePipeline.swift */; };
+		B04EC3451FED79650016851F /* ProyouAlarmPendingOpen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3441FED79650016851F /* ProyouAlarmPendingOpen.swift */; };
+		B04EC3461FED79650016851F /* ProyouAlarmKitSoundInstaller.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3471FED79650016851F /* ProyouAlarmKitSoundInstaller.swift */; };
+		B04EC3491FED79650016851F /* ProyouAlarmPendingDismiss.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04EC3481FED79650016851F /* ProyouAlarmPendingDismiss.swift */; };
 		C94B20032FA1000100CAFE01 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = C94B20022FA1000100CAFE01 /* GoogleService-Info.plist */; };
 		E04EC3181FED79650016851F /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04EC3171FED79650016851F /* SceneDelegate.swift */; };
 /* End PBXBuildFile section */
@@ -77,6 +88,17 @@
 		B04EC32D1FED79650016851F /* ProyouMusicPickerPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouMusicPickerPlugin.swift; sourceTree = "<group>"; };
 		B04EC32F1FED79650016851F /* ProyouNutritionLabelPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouNutritionLabelPlugin.swift; sourceTree = "<group>"; };
 		B04EC3321FED79650016851F /* ProyouAlarmSoundPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouAlarmSoundPlugin.swift; sourceTree = "<group>"; };
+		B04EC3331FED79650016851F /* NutritionLabelOcr.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionLabelOcr.swift; sourceTree = "<group>"; };
+		B04EC3351FED79650016851F /* NutritionLabelMacroParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionLabelMacroParser.swift; sourceTree = "<group>"; };
+		B04EC3371FED79650016851F /* NutritionLabelScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionLabelScannerViewController.swift; sourceTree = "<group>"; };
+		B04EC3391FED79650016851F /* ProyouAlarmKitPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouAlarmKitPlugin.swift; sourceTree = "<group>"; };
+		B04EC33B1FED79650016851F /* ProyouAlarmKitScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouAlarmKitScheduler.swift; sourceTree = "<group>"; };
+		B04EC33D1FED79650016851F /* ProyouAlarmIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouAlarmIntents.swift; sourceTree = "<group>"; };
+		B04EC33F1FED79650016851F /* ProyouAlarmKitMetadata.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouAlarmKitMetadata.swift; sourceTree = "<group>"; };
+		B04EC3421FED79650016851F /* NutritionLabelImagePipeline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NutritionLabelImagePipeline.swift; sourceTree = "<group>"; };
+		B04EC3441FED79650016851F /* ProyouAlarmPendingOpen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouAlarmPendingOpen.swift; sourceTree = "<group>"; };
+		B04EC3471FED79650016851F /* ProyouAlarmKitSoundInstaller.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouAlarmKitSoundInstaller.swift; sourceTree = "<group>"; };
+		B04EC3481FED79650016851F /* ProyouAlarmPendingDismiss.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProyouAlarmPendingDismiss.swift; sourceTree = "<group>"; };
 		C94B20022FA1000100CAFE01 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		E04EC3171FED79650016851F /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		FC68EB0AF532CFC21C3344DD /* Pods-App.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-App.debug.xcconfig"; path = "Pods/Target Support Files/Pods-App/Pods-App.debug.xcconfig"; sourceTree = "<group>"; };
@@ -142,6 +164,17 @@
 				B04EC31A1FED79650016851F /* ProyouApnsPlugin.swift */,
 				B04EC32D1FED79650016851F /* ProyouMusicPickerPlugin.swift */,
 				B04EC32F1FED79650016851F /* ProyouNutritionLabelPlugin.swift */,
+				B04EC3331FED79650016851F /* NutritionLabelOcr.swift */,
+				B04EC3351FED79650016851F /* NutritionLabelMacroParser.swift */,
+				B04EC3371FED79650016851F /* NutritionLabelScannerViewController.swift */,
+				B04EC3391FED79650016851F /* ProyouAlarmKitPlugin.swift */,
+				B04EC33B1FED79650016851F /* ProyouAlarmKitScheduler.swift */,
+				B04EC33D1FED79650016851F /* ProyouAlarmIntents.swift */,
+				B04EC33F1FED79650016851F /* ProyouAlarmKitMetadata.swift */,
+				B04EC3471FED79650016851F /* ProyouAlarmKitSoundInstaller.swift */,
+				B04EC3441FED79650016851F /* ProyouAlarmPendingOpen.swift */,
+				B04EC3481FED79650016851F /* ProyouAlarmPendingDismiss.swift */,
+				B04EC3421FED79650016851F /* NutritionLabelImagePipeline.swift */,
 				B04EC3321FED79650016851F /* ProyouAlarmSoundPlugin.swift */,
 				A1WGT0041FED79650016851F /* ProyouWidgetPlugin.swift */,
 				504EC30B1FED79650016851F /* Main.storyboard */,
@@ -252,8 +285,6 @@
 				Base,
 			);
 			mainGroup = 504EC2FB1FED79650016851F;
-			packageReferences = (
-			);
 			productRefGroup = 504EC3051FED79650016851F /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -289,25 +320,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		B04EC3401FED79650016851F /* Merge Capacitor iOS plugins */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${SRCROOT}/../../scripts/merge-ios-cap-plugin-classes.mjs",
-				"${SRCROOT}/../../capacitor.config.json",
-			);
-			name = "Merge Capacitor iOS plugins";
-			outputPaths = (
-				"${SRCROOT}/App/capacitor.config.json",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -e\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"\nREPO_ROOT=\"${SRCROOT}/../..\"\ncd \"${REPO_ROOT}\"\nif ! command -v node >/dev/null 2>&1; then\n  echo \"error: node not found. Install Node.js or add it to PATH for Xcode builds.\" >&2\n  exit 1\nfi\nnode scripts/merge-ios-cap-plugin-classes.mjs\n";
-			showEnvVarsInLog = 0;
-		};
 		6634F4EFEBD30273BCE97C65 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -329,6 +341,7 @@
 		};
 		9592DBEFFC6D2A0C8D5DEB22 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -340,6 +353,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-App/Pods-App-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		B04EC3401FED79650016851F /* Merge Capacitor iOS plugins */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${SRCROOT}/../../scripts/merge-ios-cap-plugin-classes.mjs",
+				"${SRCROOT}/../../capacitor.config.json",
+			);
+			name = "Merge Capacitor iOS plugins";
+			outputPaths = (
+				"${SRCROOT}/App/capacitor.config.json",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:${PATH}\"\nREPO_ROOT=\"${SRCROOT}/../..\"\ncd \"${REPO_ROOT}\"\nif ! command -v node >/dev/null 2>&1; then\n  echo \"error: node not found. Install Node.js or add it to PATH for Xcode builds.\" >&2\n  exit 1\nfi\nnode scripts/merge-ios-cap-plugin-classes.mjs\n";
 			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
@@ -355,6 +387,17 @@
 				B04EC31C1FED79650016851F /* ProyouApnsPlugin.swift in Sources */,
 				B04EC32E1FED79650016851F /* ProyouMusicPickerPlugin.swift in Sources */,
 				B04EC3301FED79650016851F /* ProyouNutritionLabelPlugin.swift in Sources */,
+				B04EC3341FED79650016851F /* NutritionLabelOcr.swift in Sources */,
+				B04EC3361FED79650016851F /* NutritionLabelMacroParser.swift in Sources */,
+				B04EC3381FED79650016851F /* NutritionLabelScannerViewController.swift in Sources */,
+				B04EC33A1FED79650016851F /* ProyouAlarmKitPlugin.swift in Sources */,
+				B04EC33C1FED79650016851F /* ProyouAlarmKitScheduler.swift in Sources */,
+				B04EC33E1FED79650016851F /* ProyouAlarmIntents.swift in Sources */,
+				B04EC3411FED79650016851F /* ProyouAlarmKitMetadata.swift in Sources */,
+				B04EC3461FED79650016851F /* ProyouAlarmKitSoundInstaller.swift in Sources */,
+				B04EC3451FED79650016851F /* ProyouAlarmPendingOpen.swift in Sources */,
+				B04EC3491FED79650016851F /* ProyouAlarmPendingDismiss.swift in Sources */,
+				B04EC3431FED79650016851F /* NutritionLabelImagePipeline.swift in Sources */,
 				B04EC3311FED79650016851F /* ProyouAlarmSoundPlugin.swift in Sources */,
 				A1WGT0021FED79650016851F /* ProyouWidgetSnapshot.swift in Sources */,
 				A1WGT0051FED79650016851F /* ProyouWidgetPlugin.swift in Sources */,
@@ -525,7 +568,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 10.6;
+				MARKETING_VERSION = 11;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -552,7 +595,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 10.6;
+				MARKETING_VERSION = 11;
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -566,7 +609,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ProyouWidget/ProyouWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = HF3AKH98PY;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ProyouWidget/Info.plist;
@@ -577,7 +620,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 10.5;
+				MARKETING_VERSION = 11;
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou.ProyouWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -591,7 +634,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ProyouWidget/ProyouWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = HF3AKH98PY;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ProyouWidget/Info.plist;
@@ -602,7 +645,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 10.5;
+				MARKETING_VERSION = 11;
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou.ProyouWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

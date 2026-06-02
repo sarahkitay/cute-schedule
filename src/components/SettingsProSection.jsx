@@ -25,7 +25,7 @@ export function SettingsProSection() {
           ? "Subscription expired"
           : "Pro active"
       : appTrialActive
-        ? `${appTrialDaysLeft} day${appTrialDaysLeft === 1 ? "" : "s"} left: meds, fitness, insights, and alarms free`
+        ? `${appTrialDaysLeft} day${appTrialDaysLeft === 1 ? "" : "s"} left: unlimited coach, meds, fitness, insights, and alarms`
         : appTrialEnded
           ? "30-day welcome access ended"
           : Number.isFinite(promptsRemainingToday)
@@ -40,9 +40,9 @@ export function SettingsProSection() {
         <>
           <p className="settings-hint" style={{ marginTop: 0, marginBottom: 10 }}>
             {appTrialActive
-              ? `Meds, fitness, insights, and alarms are free for your first 30 days (${appTrialDaysLeft} day${appTrialDaysLeft === 1 ? "" : "s"} left). After that, they are part of ProYou Pro at $4.99/mo after a 30-day Pro trial.`
+              ? `Unlimited coach, meds, fitness, finance, insights, and alarms are free for your first 30 days (${appTrialDaysLeft} day${appTrialDaysLeft === 1 ? "" : "s"} left). After that, they are part of ProYou Pro at $4.99/mo after a 30-day Pro trial.`
               : appTrialEnded
-                ? "Your first 30 days of meds, fitness, insights, and alarms have ended. ProYou Pro unlocks them again, plus unlimited coach and more."
+                ? "Your first 30 days of meds, fitness, finance, insights, and alarms have ended. ProYou Pro unlocks them again, plus unlimited coach and more."
                 : "30-day free Pro trial, then $4.99/month. Unlimited coach, cloud backup, and more."}
           </p>
           <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8 }}>

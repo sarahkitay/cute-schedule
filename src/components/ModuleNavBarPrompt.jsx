@@ -33,13 +33,15 @@ export function ModuleNavBarPrompt({
   }
 
   return (
-    <div className="module-nav-prompt surface-glass scroll-reveal" role="region" aria-label="Navigation shortcut">
-      <DockNavIcon tabId={moduleId} active={false} />
-      <div className="module-nav-prompt__text">
-        <p className="module-nav-prompt__title">Show {label} in nav bar?</p>
-        <p className="settings-hint module-nav-prompt__hint">
-          Turn on to pin {label} to your bottom navigation for quick access.
-        </p>
+    <div className="module-nav-prompt surface-glass" role="region" aria-label="Navigation shortcut">
+      <div className="module-nav-prompt__main">
+        <DockNavIcon tabId={moduleId} active={false} />
+        <div className="module-nav-prompt__text">
+          <p className="module-nav-prompt__title">Show {label} in nav bar?</p>
+          <p className="settings-hint module-nav-prompt__hint">
+            Turn on to pin {label} to your bottom navigation for quick access.
+          </p>
+        </div>
       </div>
       <label className="module-nav-prompt__toggle">
         <span className="module-nav-prompt__toggle-label">Show in nav bar</span>

@@ -8,6 +8,8 @@ import {
   normalizeFriendVisibility,
 } from "../../social/socialModel.js";
 import { isFirebaseEnabled } from "../../firebase.js";
+import { buildReferralSharePayload, getAppStoreUrl } from "../../social/referralLinks.js";
+import { copyTextToClipboard, shareInvitePayload } from "../../social/shareInvite.js";
 
 const REACTIONS = ["👍", "✨", "💪", "🎉"];
 
@@ -32,6 +34,14 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
   useEffect(() => {
     if (social.profile?.privacy) setPrivacy(normalizeSocialPrivacy(social.profile.privacy));
   }, [social.profile?.privacy]);
+
+  const accountUid = firebaseUser?.uid || social.firebaseUid || null;
+
+  useEffect(() => {
+    if (section === "invite" && accountUid && social.cloudOn) {
+      void social.refresh();
+    }
+  }, [section, accountUid, social.cloudOn, social.refresh]);
 
   const openFriend = useCallback(
     async (uid) => {
@@ -78,16 +88,41 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
     );
   }
 
-  if (!firebaseUser?.uid) {
+  if (!accountUid) {
     return (
       <div className="social-hub">
         <button type="button" className="social-back" onClick={onBack}>← Back</button>
         <div className="py-glass-card social-hero">
           <h2>Accountability</h2>
-          <p>Sign in to invite friends, share progress you choose, and build routines together.</p>
+          <p>Sign in from Settings → Account to invite friends and get your invite code.</p>
         </div>
       </div>
     );
+  }
+
+  async function withInviteCode(action) {
+    setBusy(true);
+    setMsg("");
+    try {
+      let code = social.referralCode;
+      if (!code) {
+        setMsg("Creating your invite code…");
+        code = await social.ensureReferralCodeReady();
+      }
+      await action(code);
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+      setMsg(e?.message || String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function inviteCodeLabel() {
+    if (social.referralCode) return social.referralCode;
+    if (social.loading) return "Loading your code…";
+    if (!social.cloudOn) return "Cloud sync required";
+    return "Tap Generate my code below";
   }
 
   if (section === "invite") {
@@ -101,23 +136,51 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
         </div>
         <div className="py-glass-card social-card">
           <div style={{ fontSize: 13, color: "var(--py-ink-muted)" }}>Your invite code</div>
-          <div className="social-code-box">{social.referralCode || "…"}</div>
+          <div className="social-code-box" aria-live="polite">
+            {inviteCodeLabel()}
+          </div>
+          {msg ? (
+            <p className="social-invite-status" role="status" aria-live="polite">
+              {msg}
+            </p>
+          ) : null}
+          {social.error ? (
+            <p className="nutrition-label-scanner-error" style={{ marginTop: 8 }}>
+              {social.error}
+            </p>
+          ) : null}
+          {(social.inviteShare?.appStoreUrl || social.referralCode) ? (
+            <p className="settings-hint" style={{ marginTop: 8, fontSize: 12, wordBreak: "break-all" }}>
+              App Store: {social.inviteShare?.appStoreUrl || getAppStoreUrl()}
+            </p>
+          ) : null}
           <button
             type="button"
             className="social-btn-primary"
-            disabled={!social.inviteLink}
-            onClick={() => {
-              if (navigator.share) {
-                void navigator.share({
-                  title: "Join me on ProYou",
-                  text: "Build routines together on ProYou. Use my invite link:",
-                  url: social.inviteLink,
-                });
-              } else if (social.inviteLink) {
-                void navigator.clipboard?.writeText(social.inviteLink);
-                setMsg("Invite link copied.");
-              }
-            }}
+            disabled={busy || social.loading}
+            onClick={() =>
+              run(async () => {
+                await social.ensureReferralCodeReady();
+                setMsg("Invite code ready.");
+              })
+            }
+          >
+            {social.loading ? "Working…" : social.referralCode ? "Refresh my code" : "Generate my code"}
+          </button>
+          <button
+            type="button"
+            className="social-btn-primary"
+            style={{ marginTop: 8 }}
+            disabled={busy}
+            onClick={() =>
+              withInviteCode(async (code) => {
+                const share = social.inviteShare?.appStoreUrl
+                  ? social.inviteShare
+                  : buildReferralSharePayload(code);
+                const result = await shareInvitePayload({ ...share, referralCode: code });
+                setMsg(result === "shared" ? "Invite shared." : "App Store link copied.");
+              })
+            }
           >
             Share invite link
           </button>
@@ -125,10 +188,32 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
             type="button"
             className="social-btn-secondary"
             style={{ marginTop: 8, width: "100%" }}
-            onClick={() => {
-              void navigator.clipboard?.writeText(social.referralCode);
-              setMsg("Code copied.");
-            }}
+            disabled={busy}
+            onClick={() =>
+              withInviteCode(async (code) => {
+                const share = social.inviteShare?.appStoreUrl
+                  ? social.inviteShare
+                  : buildReferralSharePayload(code);
+                const link = share.appStoreUrl || share.shareUrl;
+                if (!link) throw new Error("App Store link is not ready yet.");
+                await copyTextToClipboard(link);
+                setMsg("App Store link copied.");
+              })
+            }
+          >
+            Copy invite link
+          </button>
+          <button
+            type="button"
+            className="social-btn-secondary"
+            style={{ marginTop: 8, width: "100%" }}
+            disabled={busy}
+            onClick={() =>
+              withInviteCode(async (code) => {
+                await copyTextToClipboard(code);
+                setMsg("Code copied.");
+              })
+            }
           >
             Copy code only
           </button>
@@ -159,7 +244,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
         </div>
         {msg ? <p style={{ fontSize: 13, color: "var(--py-accent-deep)" }}>{msg}</p> : null}
         <p style={{ fontSize: 11, color: "var(--py-ink-muted)", lineHeight: 1.4 }}>
-          Rewards are tracked when a friend signs up with your link. Pro month is granted after they qualify for Pro (subscription or trial per App Store rules). Fulfillment may use promotional offers when configured.
+          When a friend signs up with your link or code, you get one month of Pro (internal entitlement). They can install from the App Store link in the message. Rewards sync when you open Accountability again.
         </p>
       </div>
     );
@@ -236,7 +321,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
         <div className="py-glass-card social-card">
           {social.referralGrant.active ? (
             <p style={{ fontSize: 14 }}>
-              Referral Pro active — {social.referralGrant.daysLeft} day(s) left (internal entitlement).
+              Referral Pro active - {social.referralGrant.daysLeft} day(s) left (internal entitlement).
             </p>
           ) : (
             <p style={{ fontSize: 14, color: "var(--py-ink-secondary)" }}>No active referral Pro grant right now.</p>
@@ -249,7 +334,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
           <div key={r.id} className="py-glass-card social-card-row" style={{ display: "block", padding: 12 }}>
             <span className="social-pending-badge">{r.status}</span>
             <div style={{ fontSize: 13, marginTop: 6, color: "var(--py-ink-muted)" }}>
-              {r.status === "pending" ? "1 month free earned (pending qualification)" : r.status}
+              {r.status === "pending" ? "Friend signed up - reward processing" : r.status === "rewarded" ? "1 month Pro granted" : r.status}
             </div>
           </div>
         ))}
@@ -265,7 +350,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
       <div className="social-hub">
         <button type="button" className="social-back" onClick={() => setSection("main")}>← Back</button>
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>Shared tasks</h2>
-        <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)" }}>Build routines together — workouts, check-ins, rent, study sessions.</p>
+        <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)" }}>Build routines together - workouts, check-ins, rent, study sessions.</p>
 
         <div className="py-glass-card social-card">
           <input
@@ -446,7 +531,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
                 <div style={{ marginTop: 12 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>Habits</div>
                   {friendProgress.habitStreaks.map((h, i) => (
-                    <div key={i} style={{ fontSize: 13 }}>{h.label} — {h.streak}d</div>
+                    <div key={i} style={{ fontSize: 13 }}>{h.label} - {h.streak}d</div>
                   ))}
                 </div>
               ) : null}
@@ -546,7 +631,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
       <div>
         <h3 style={{ fontSize: 16, fontWeight: 600 }}>Friends ({social.friendUids.length})</h3>
         {social.friendUids.length === 0 ? (
-          <p className="social-offline-note">No friends yet — invite someone to get started.</p>
+          <p className="social-offline-note">No friends yet - invite someone to get started.</p>
         ) : (
           social.friendUids.map((uid) => (
             <button

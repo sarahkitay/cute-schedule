@@ -16,6 +16,7 @@ const EXTRA_IOS_PACKAGE_CLASSES = [
   "ProyouMusicPickerPlugin",
   "ProyouNutritionLabelPlugin",
   "ProyouAlarmSoundPlugin",
+  "ProyouAlarmKitPlugin",
 ];
 
 const ROOT_CAP_FILE = path.join(ROOT, "capacitor.config.json");

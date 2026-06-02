@@ -3,8 +3,10 @@ import { GlassCard } from "./GlassCard";
 import { PillButton } from "./PillButton";
 import { NavIcons } from "./NavIcons";
 import { DockNavIcon } from "../DockNavIcon";
+import { MedIcon } from "./MedIcon";
 import { TextInput } from "./SoftInput";
 import { MedReminderEditor } from "./MedReminderEditor";
+import { RowMoreMenu } from "./RowMoreMenu";
 import {
   getMedicationStatus,
   logMedicationAction,
@@ -14,13 +16,68 @@ import {
   defaultReminderTimesFromSchedule,
 } from "../modules/medications";
 
+const SCHEDULE_SLOTS = ["morning", "afternoon", "evening", "bedtime"];
+
+function MedEditorFields({
+  name,
+  onNameChange,
+  dose,
+  onDoseChange,
+  schedule,
+  onToggleSchedule,
+  reminderEnabled,
+  reminderTimes,
+  onReminderChange,
+}) {
+  return (
+    <div className="py-flex-col py-gap-3">
+      <TextInput placeholder="Medication name" value={name} onChange={(e) => onNameChange(e.target.value)} />
+      <TextInput placeholder="Dose (e.g. 20mg)" value={dose} onChange={(e) => onDoseChange(e.target.value)} />
+      <div>
+        <div
+          style={{
+            fontSize: "var(--py-text-caption)",
+            color: "var(--py-ink-secondary)",
+            marginBottom: "var(--py-space-2)",
+          }}
+        >
+          Schedule
+        </div>
+        <div style={{ display: "flex", gap: "var(--py-space-2)", flexWrap: "wrap" }}>
+          {SCHEDULE_SLOTS.map((time) => (
+            <button
+              key={time}
+              type="button"
+              className={`py-pill-btn py-pill-btn--sm ${schedule.includes(time) ? "py-pill-btn--primary" : "py-pill-btn--secondary"}`}
+              onClick={() => onToggleSchedule(time)}
+            >
+              {time}
+            </button>
+          ))}
+        </div>
+      </div>
+      <MedReminderEditor
+        enabled={reminderEnabled}
+        times={reminderTimes}
+        onChange={onReminderChange}
+      />
+    </div>
+  );
+}
+
 export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
   const [showAdd, setShowAdd] = useState(false);
+  const [editingMedId, setEditingMedId] = useState(null);
   const [newName, setNewName] = useState("");
   const [newDose, setNewDose] = useState("");
   const [newSchedule, setNewSchedule] = useState(["morning"]);
   const [newReminderEnabled, setNewReminderEnabled] = useState(false);
   const [newReminderTimes, setNewReminderTimes] = useState(["08:00"]);
+  const [editName, setEditName] = useState("");
+  const [editDose, setEditDose] = useState("");
+  const [editSchedule, setEditSchedule] = useState(["morning"]);
+  const [editReminderEnabled, setEditReminderEnabled] = useState(false);
+  const [editReminderTimes, setEditReminderTimes] = useState(["08:00"]);
 
   const adherence = getMedicationAdherence(medications.filter((m) => !m.archived), log);
   const activeMeds = medications.filter((m) => !m.archived);
@@ -32,6 +89,42 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
       ),
       log,
     });
+  }
+
+  function cancelEdit() {
+    setEditingMedId(null);
+    setEditName("");
+    setEditDose("");
+    setEditSchedule(["morning"]);
+    setEditReminderEnabled(false);
+    setEditReminderTimes(["08:00"]);
+  }
+
+  function startEdit(med) {
+    const row = normalizeMedication(med);
+    setShowAdd(false);
+    setEditingMedId(row.id);
+    setEditName(row.name);
+    setEditDose(row.dose);
+    setEditSchedule([...row.schedule]);
+    setEditReminderEnabled(row.reminderEnabled);
+    setEditReminderTimes(
+      row.reminderTimes.length
+        ? [...row.reminderTimes]
+        : defaultReminderTimesFromSchedule(row.schedule)
+    );
+  }
+
+  function handleDelete(medId, medName) {
+    const label = medName?.trim() || "this medication";
+    if (!window.confirm(`Remove ${label} from your list? You can add it again later.`)) return;
+    onUpdate({
+      medications: medications.map((m) =>
+        m.id === medId ? normalizeMedication({ ...m, archived: true }) : m
+      ),
+      log,
+    });
+    if (editingMedId === medId) cancelEdit();
   }
 
   function handleAdd() {
@@ -65,6 +158,23 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
     setShowAdd(false);
   }
 
+  function handleSaveEdit() {
+    if (!editingMedId || !editName.trim()) return;
+    const schedule = editSchedule.length ? editSchedule : ["morning"];
+    patchMedication(editingMedId, {
+      name: editName.trim(),
+      dose: editDose.trim(),
+      schedule,
+      reminderEnabled: editReminderEnabled,
+      reminderTimes: editReminderEnabled
+        ? editReminderTimes.length
+          ? editReminderTimes
+          : defaultReminderTimesFromSchedule(schedule)
+        : [],
+    });
+    cancelEdit();
+  }
+
   function handleAction(medId, action) {
     onUpdate({
       medications,
@@ -72,13 +182,17 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
     });
   }
 
-  function toggleScheduleTime(time) {
-    setNewSchedule((prev) => {
+  function toggleScheduleTime(time, { isEdit }) {
+    const setter = isEdit ? setEditSchedule : setNewSchedule;
+    const reminderOn = isEdit ? editReminderEnabled : newReminderEnabled;
+    const setReminderTimes = isEdit ? setEditReminderTimes : setNewReminderTimes;
+    setter((prev) => {
       const next = prev.includes(time) ? prev.filter((t) => t !== time) : [...prev, time];
-      if (newReminderEnabled && next.length) {
-        setNewReminderTimes(defaultReminderTimesFromSchedule(next.length ? next : ["morning"]));
+      const resolved = next.length ? next : ["morning"];
+      if (reminderOn) {
+        setReminderTimes(defaultReminderTimesFromSchedule(resolved));
       }
-      return next.length ? next : ["morning"];
+      return resolved;
     });
   }
 
@@ -89,7 +203,14 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
           <DockNavIcon tabId="medications" active />
           <h2 className="py-section-header__title">Medications</h2>
         </div>
-        <PillButton variant="secondary" size="sm" onClick={() => setShowAdd(!showAdd)}>
+        <PillButton
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            cancelEdit();
+            setShowAdd(!showAdd);
+          }}
+        >
           <NavIcons name="plus" size={14} /> Add
         </PillButton>
       </div>
@@ -97,7 +218,14 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
       {adherence !== null && (
         <GlassCard featured>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: "var(--py-text-caption)", fontWeight: 600, color: "var(--py-accent-deep)", textTransform: "uppercase" }}>
+            <div
+              style={{
+                fontSize: "var(--py-text-caption)",
+                fontWeight: 600,
+                color: "var(--py-accent-deep)",
+                textTransform: "uppercase",
+              }}
+            >
               7-day adherence
             </div>
             <div style={{ fontSize: 32, fontWeight: 700, color: "var(--py-ink)", marginTop: 4 }}>
@@ -109,47 +237,27 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
 
       {showAdd && (
         <GlassCard>
-          <div className="py-flex-col py-gap-3">
-            <TextInput
-              placeholder="Medication name"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              autoFocus
-            />
-            <TextInput
-              placeholder="Dose (e.g. 20mg)"
-              value={newDose}
-              onChange={(e) => setNewDose(e.target.value)}
-            />
-            <div>
-              <div style={{ fontSize: "var(--py-text-caption)", color: "var(--py-ink-secondary)", marginBottom: "var(--py-space-2)" }}>
-                Schedule
-              </div>
-              <div style={{ display: "flex", gap: "var(--py-space-2)", flexWrap: "wrap" }}>
-                {["morning", "afternoon", "evening", "bedtime"].map((time) => (
-                  <button
-                    key={time}
-                    type="button"
-                    className={`py-pill-btn py-pill-btn--sm ${newSchedule.includes(time) ? "py-pill-btn--primary" : "py-pill-btn--secondary"}`}
-                    onClick={() => toggleScheduleTime(time)}
-                  >
-                    {time}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <MedReminderEditor
-              enabled={newReminderEnabled}
-              times={newReminderTimes}
-              onChange={({ reminderEnabled, reminderTimes }) => {
-                setNewReminderEnabled(reminderEnabled);
-                if (reminderTimes) setNewReminderTimes(reminderTimes);
-              }}
-            />
-            <div style={{ display: "flex", gap: "var(--py-space-2)", marginTop: "var(--py-space-2)" }}>
-              <PillButton variant="primary" onClick={handleAdd}>Add medication</PillButton>
-              <PillButton variant="ghost" onClick={() => setShowAdd(false)}>Cancel</PillButton>
-            </div>
+          <MedEditorFields
+            name={newName}
+            onNameChange={setNewName}
+            dose={newDose}
+            onDoseChange={setNewDose}
+            schedule={newSchedule}
+            onToggleSchedule={(time) => toggleScheduleTime(time, { isEdit: false })}
+            reminderEnabled={newReminderEnabled}
+            reminderTimes={newReminderTimes}
+            onReminderChange={({ reminderEnabled, reminderTimes }) => {
+              setNewReminderEnabled(reminderEnabled);
+              if (reminderTimes) setNewReminderTimes(reminderTimes);
+            }}
+          />
+          <div style={{ display: "flex", gap: "var(--py-space-2)", marginTop: "var(--py-space-2)" }}>
+            <PillButton variant="primary" onClick={handleAdd}>
+              Add medication
+            </PillButton>
+            <PillButton variant="ghost" onClick={() => setShowAdd(false)}>
+              Cancel
+            </PillButton>
           </div>
         </GlassCard>
       )}
@@ -158,7 +266,9 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
         <GlassCard>
           <div className="py-text-center" style={{ padding: "var(--py-space-6) 0" }}>
             <p style={{ color: "var(--py-ink-secondary)" }}>
-              No medications tracked yet.<br />Add one to start tracking.
+              No medications tracked yet.
+              <br />
+              Add one to start tracking.
             </p>
           </div>
         </GlassCard>
@@ -166,12 +276,46 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
 
       {activeMeds.map((med) => {
         const row = normalizeMedication(med);
+        const isEditing = editingMedId === row.id;
         const status = getMedicationStatus(log, row.id, dayKey);
         const reminderLabel = row.reminderEnabled ? formatMedReminderTimes(row.reminderTimes) : "";
+
+        if (isEditing) {
+          return (
+            <GlassCard key={row.id}>
+              <div className="py-med-edit-label" style={{ fontWeight: 600, marginBottom: "var(--py-space-3)" }}>
+                Edit medication
+              </div>
+              <MedEditorFields
+                name={editName}
+                onNameChange={setEditName}
+                dose={editDose}
+                onDoseChange={setEditDose}
+                schedule={editSchedule}
+                onToggleSchedule={(time) => toggleScheduleTime(time, { isEdit: true })}
+                reminderEnabled={editReminderEnabled}
+                reminderTimes={editReminderTimes}
+                onReminderChange={({ reminderEnabled, reminderTimes }) => {
+                  setEditReminderEnabled(reminderEnabled);
+                  if (reminderTimes) setEditReminderTimes(reminderTimes);
+                }}
+              />
+              <div style={{ display: "flex", gap: "var(--py-space-2)", marginTop: "var(--py-space-2)" }}>
+                <PillButton variant="primary" onClick={handleSaveEdit}>
+                  Save
+                </PillButton>
+                <PillButton variant="ghost" onClick={cancelEdit}>
+                  Cancel
+                </PillButton>
+              </div>
+            </GlassCard>
+          );
+        }
+
         return (
           <div key={row.id} className="py-med-card">
             <div className="py-med-item">
-              <img src={`${import.meta.env.BASE_URL}meds.png`} alt="" style={{ width: 36, height: 36, borderRadius: 10, objectFit: "contain" }} />
+              <MedIcon size={36} />
               <div className="py-med-item__info">
                 <div className="py-med-item__name">{row.name}</div>
                 <div className="py-med-item__dose">
@@ -181,8 +325,21 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
                 </div>
               </div>
               <div className="py-med-item__actions">
+                <RowMoreMenu
+                  ariaLabel={`${row.name} options`}
+                  editLabel="Edit"
+                  deleteLabel="Remove"
+                  onEdit={() => startEdit(row)}
+                  onDelete={() => handleDelete(row.id, row.name)}
+                />
                 {status ? (
-                  <span style={{ fontSize: "var(--py-text-caption)", color: status.action === "taken" ? "var(--py-success)" : "var(--py-ink-muted)", fontWeight: 500 }}>
+                  <span
+                    style={{
+                      fontSize: "var(--py-text-caption)",
+                      color: status.action === "taken" ? "var(--py-success)" : "var(--py-ink-muted)",
+                      fontWeight: 500,
+                    }}
+                  >
                     {status.action === "taken" ? "✓ Taken" : status.action === "skipped" ? "Skipped" : "Snoozed"}
                   </span>
                 ) : (

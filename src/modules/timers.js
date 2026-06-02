@@ -121,6 +121,15 @@ export function normalizeActiveTimer(raw) {
   };
 }
 
+/** True when the floating dock timer pill should show (running, paused mid-session, or task timer). */
+export function isActiveTimerPillVisible(active) {
+  const norm = normalizeActiveTimer(active);
+  if (!norm) return false;
+  if (norm.running) return true;
+  if (norm.linkedTask) return true;
+  return norm.remainingMs < norm.selectedPresetMs;
+}
+
 /** @param {object|null|undefined} active */
 export function getActiveTimerRemaining(active) {
   const norm = normalizeActiveTimer(active);
@@ -156,9 +165,17 @@ export function pauseActiveTimer(active) {
 
 /** @param {object|null|undefined} active @param {number} [presetMs] */
 export function resetActiveTimer(active, presetMs) {
-  const base = normalizeActiveTimer(active) ?? defaultActiveTimerDraft();
+  const base = normalizeActiveTimer(active) ?? defaultActiveTimerDraft(presetMs);
   const ms = presetMs ?? base.selectedPresetMs ?? DEFAULT_PRESET_MS;
-  return { ...base, selectedPresetMs: ms, remainingMs: ms, running: false, endsAt: null };
+  return {
+    ...defaultActiveTimerDraft(ms),
+    label: base.label,
+    linkedTask: null,
+    selectedPresetMs: ms,
+    remainingMs: ms,
+    running: false,
+    endsAt: null,
+  };
 }
 
 /** @param {object} active @param {{ taskCompleted?: boolean }} [opts] */
@@ -202,11 +219,6 @@ export function completeActiveTimerState(state, opts = {}) {
   const entry = buildFocusTimerHistoryEntry(active, {
     taskCompleted: !!opts.resolveTaskDone?.(active),
   });
-  try {
-    if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-      new Notification("Timer complete", { body: `${active.label} timer finished!` });
-    }
-  } catch {}
   return {
     ...state,
     activeTimer: resetActiveTimer(active, active.selectedPresetMs),
@@ -284,33 +296,47 @@ export function createAlarm(options = {}) {
 }
 
 export function getNextAlarmTime(alarm) {
-  if (!alarm.enabled) return null;
+  if (!alarm?.enabled || !alarm?.time) return null;
+  const days =
+    Array.isArray(alarm.days) && alarm.days.length > 0
+      ? alarm.days
+      : [0, 1, 2, 3, 4, 5, 6];
   const now = new Date();
   const [h, m] = alarm.time.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
   const today = new Date();
   today.setHours(h, m, 0, 0);
-  if (today > now && alarm.days.includes(now.getDay())) return today;
+  if (today > now && days.includes(now.getDay())) return today;
   for (let i = 1; i <= 7; i++) {
     const d = new Date(now);
     d.setDate(d.getDate() + i);
     d.setHours(h, m, 0, 0);
-    if (alarm.days.includes(d.getDay())) return d;
+    if (days.includes(d.getDay())) return d;
   }
   return null;
 }
 
+/** @param {object} alarm @param {boolean} [isSnooze] */
+export function alarmNotificationBody(alarm, isSnooze = false) {
+  const label = alarm?.label || "Morning alarm";
+  if (isSnooze) {
+    return alarmRequiresWakeUpChallenge(alarm)
+      ? `${label} is still ringing. Open PROYOU to finish your wake-up challenge.`
+      : `${label} is still ringing. Tap to open PROYOU.`;
+  }
+  return alarmRequiresWakeUpChallenge(alarm)
+    ? `Tap to open PROYOU and complete your wake-up challenge.`
+    : `Tap to open PROYOU. Time to wake up!`;
+}
+
 /**
- * NOTE: Actual alarm triggering requires native platform hooks.
- * - iOS: Capacitor LocalNotifications with sound
- * - Web: Notification API + Audio API
- * This module provides the data model; native integration is a future step.
+ * Native alarm hooks (see nativeAlarmKit.js, nativeAlarmNotifications.js):
+ * - iOS 26+: AlarmKit system alarms
+ * - iOS/Android: Local notifications + in-app ring (ProyouAlarmSound on iOS)
+ * - Web: Notification API + Web Audio
  */
 export const PLATFORM_HOOKS_NEEDED = [
-  "Schedule native local notification for alarm time",
-  "Play custom sound/song on alarm trigger",
-  "Present math problem dismiss UI (native overlay)",
-  "Link alarm dismissal to routine/task completion check",
-  "Gentle wake mode: gradual volume increase",
+  "Gentle wake mode: gradual volume increase via AlarmKit countdown (optional)",
 ];
 
 function generateId() {

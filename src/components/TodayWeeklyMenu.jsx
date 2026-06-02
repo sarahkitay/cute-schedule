@@ -81,9 +81,6 @@ export function TodayWeeklyMenu({ health, setHealth, dayKey, onOpenMacros }) {
           );
         })}
       </ul>
-      <p className="settings-hint today-weekly-menu-hint">
-        Log anything different in Health → Macros. Partial portions use the serving picker.
-      </p>
     </section>
   );
 }

@@ -48,6 +48,7 @@ export function YouPage({
   const habitsIconSrc = dockNavAssetUrl(resolveDockNavImage("habits", { iconStyle }));
   const navigationIconSrc = dockNavAssetUrl(resolveDockNavImage("nav", { iconStyle }));
   const routinesIconSrc = dockNavAssetUrl(resolveDockNavImage("routines", { iconStyle }));
+  const accountabilityIconSrc = appIconUrl("accountability", iconStyle);
 
   const allModules = APP_MODULE_CATALOG.filter((m) => m.id !== "today").map((mod) => {
     const asset = getDockNavAsset(mod.id);
@@ -125,7 +126,7 @@ export function YouPage({
               <option value="build">Build</option>
               <option value="break">Break</option>
             </select>
-            <button type="button" onClick={addHabit} style={{ padding: "8px 16px", borderRadius: 999, background: "linear-gradient(135deg, #F0B4C4, #D4708A)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Add</button>
+            <button type="button" className="you-page-add-btn" onClick={addHabit} style={{ padding: "8px 16px", borderRadius: 999, background: "linear-gradient(135deg, #F0B4C4, #D4708A)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Add</button>
           </div>
           {(habitTracker.habits || []).length === 0 && <p style={{ fontSize: 14, color: "var(--py-ink-muted)", textAlign: "center", padding: 16 }}>No habits yet. Add one above.</p>}
           {(habitTracker.habits || []).map(h => (
@@ -161,7 +162,7 @@ export function YouPage({
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
             <input value={newRoutineLine} onChange={e => setNewRoutineLine(e.target.value)} placeholder="Add morning step..." className="py-input" style={{ flex: 1 }} onKeyDown={e => e.key === "Enter" && addMorningItem()} />
-            <button type="button" onClick={addMorningItem} style={{ padding: "8px 16px", borderRadius: 999, background: "linear-gradient(135deg, #F0B4C4, #D4708A)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Add</button>
+            <button type="button" className="you-page-add-btn" onClick={addMorningItem} style={{ padding: "8px 16px", borderRadius: 999, background: "linear-gradient(135deg, #F0B4C4, #D4708A)", color: "#fff", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Add</button>
           </div>
           {morningRoutineTemplate.map((r, i) => (
             <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: i < morningRoutineTemplate.length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
@@ -284,7 +285,7 @@ export function YouPage({
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>Customize your nav bar</div>
         </button>
         <button type="button" onClick={() => setSection("accountability")} className="py-glass-card" style={{ padding: 16, border: "none", cursor: "pointer", textAlign: "left" }}>
-          <div style={{ fontSize: 28, marginBottom: 8 }} aria-hidden>🤝</div>
+          <img src={accountabilityIconSrc} alt="" className="you-page-action-icon you-page-action-icon--accountability" style={{ width: 48, height: 48, borderRadius: 8, objectFit: "contain", marginBottom: 8 }} />
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--py-ink)" }}>Accountability</div>
           <div style={{ fontSize: 12, color: "var(--py-ink-tertiary)" }}>
             {social.friendUids?.length ? `${social.friendUids.length} friend(s)` : "Friends & shared tasks"}

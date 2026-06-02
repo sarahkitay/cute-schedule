@@ -9,7 +9,7 @@ const QUICK_SLIDES = [
   {
     title: "Plan & quick wins",
     body:
-      "**Plan** holds monthly objectives plus a scrollable task list for the day: great for checking things off without the full Today timeline. Bigger goals stay separate from your hourly schedule.",
+      "**Plan** holds a scrollable task list for the day plus a **month calendar** at the bottom to change days - great for checking things off without the full Today timeline. Monthly objectives also live on **Goals** and at the top of Plan.",
   },
   {
     title: "Coach, notes & money",
@@ -67,7 +67,7 @@ const FULL_SLIDES = [
   {
     title: "Timers & alarms",
     body:
-      "**Timers** (when in your nav) covers focus presets and morning alarms. Built-in sounds are available, or import from Files or Apple Music; see **Instructions** on the Timers tab for import steps and how custom sounds behave on iPhone vs in the app.",
+      "**Timers** (when in your nav) covers focus presets and morning alarms. Built-in sounds are available, or import your own MP3/M4A from Files; see **Instructions** on the Timers tab for alarm and wake-up challenge details.",
   },
   {
     title: "Habits & reminders",
@@ -82,7 +82,7 @@ const FULL_SLIDES = [
   {
     title: "Instructions on each tab",
     body:
-      "Longer help lives in the **Instructions** bar at the bottom of each main tab (Today, Plan, Coach, Notes, Finance, Health, Timers, and more); open it anytime. This tour is the overview; combine both when you need detail.",
+      "Longer help lives in the **Instructions** bar at the bottom of each main tab (Today, Plan, Goals, Coach, Notes, Finance, Health, Timers, Meds, You, Insights, and more); open it anytime. This tour is the overview; combine both when you need detail.",
   },
   {
     title: "Sync & account",
@@ -92,7 +92,7 @@ const FULL_SLIDES = [
   {
     title: "You are ready",
     body:
-      "Use the bottom bar to jump between areas. Everything from first setup can be changed in **Settings**. Tap **Done** below to close this tour — you can replay it anytime from **Settings → Guides & tours**.",
+      "Use the bottom bar to jump between areas. Everything from first setup can be changed in **Settings**. Tap **Done** below to close this tour - you can replay it anytime from **Settings → Guides & tours**.",
   },
 ];
 

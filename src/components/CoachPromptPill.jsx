@@ -1,14 +1,22 @@
 import React from "react";
 import { useSubscription } from "../subscription/SubscriptionContext.jsx";
 
-/** Coach tab — daily prompt allowance; upgrade only when out of free prompts. */
+/** Coach tab - daily prompt allowance; upgrade only when out of free prompts. */
 export function CoachPromptPill() {
-  const { isPro, promptsRemainingToday, openUpgrade } = useSubscription();
+  const { isPro, appTrialActive, promptsRemainingToday, openUpgrade } = useSubscription();
 
   if (isPro) {
     return (
       <p className="pro-coach-prompts-pill" style={{ marginTop: 0 }}>
         Pro · Unlimited coach prompts
+      </p>
+    );
+  }
+
+  if (appTrialActive) {
+    return (
+      <p className="pro-coach-prompts-pill" style={{ marginTop: 0 }}>
+        Free trial · Unlimited coach prompts
       </p>
     );
   }

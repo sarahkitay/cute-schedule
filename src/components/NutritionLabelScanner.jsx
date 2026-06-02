@@ -1,12 +1,27 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom";
 import { CloseIcon } from "../Icons";
-import { parseNutritionLabelText, scaleLabelMacrosForPortion } from "../nutritionLabelParser";
+import {
+  parseNutritionLabelText,
+  scaleLabelMacrosForPortion,
+  shouldEnhanceLabelParse,
+  formatLabelMacrosPreview,
+} from "../nutritionLabelParser";
 import {
   isNativeNutritionLabelScannerAvailable,
   launchNutritionLabelScan,
   pickNutritionLabelPhotoFromLibrary,
 } from "../nutritionLabelScanner";
+import { parseNutritionLabelWithCoachApi } from "../nutritionLabelCoachApi";
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error || new Error("Could not read image."));
+    reader.readAsDataURL(blob);
+  });
+}
 
 const PORTION_UNITS = [
   { id: "servings", label: "Servings" },
@@ -15,23 +30,74 @@ const PORTION_UNITS = [
   { id: "grams", label: "Grams" },
 ];
 
-function applyOcrToForm({ text, lines }, setters) {
-  const preview = lines?.length ? lines.join("\n") : text;
-  setters.setOcrPreview(preview);
-  const parsed = parseNutritionLabelText(text);
+function macrosFromNativePayload(nativeMacros) {
+  if (!nativeMacros || typeof nativeMacros !== "object") return null;
+  const calories = Math.round(Number(nativeMacros.calories) || 0);
+  const protein = Math.round(Number(nativeMacros.protein) || 0);
+  const fat = Math.round(Number(nativeMacros.fat) || 0);
+  const carbs = Math.round(Number(nativeMacros.carbs) || 0);
+  if (calories <= 0 && protein <= 0 && fat <= 0 && carbs <= 0) return null;
+  const complete = calories > 0 && protein >= 0 && fat >= 0 && carbs >= 0;
+  return {
+    macros: { calories, protein, fat, carbs },
+    confidence: complete ? "high" : "medium",
+    nativeComplete: complete,
+  };
+}
+
+async function applyOcrToForm({ text, lines, imageBase64, macros: nativeMacros }, setters) {
+  const fromNative = macrosFromNativePayload(nativeMacros);
+  let parsed = fromNative || parseNutritionLabelText(text || "");
+  const needsApi =
+    shouldEnhanceLabelParse(parsed, {
+      hasImage: Boolean(imageBase64),
+      nativeComplete: Boolean(fromNative?.nativeComplete),
+    }) && (text?.trim() || imageBase64);
+  if (needsApi) {
+    try {
+      const api = await parseNutritionLabelWithCoachApi({
+        text: text?.trim() || undefined,
+        imageBase64: imageBase64 || undefined,
+      });
+      if (api?.macros) {
+        parsed = {
+          macros: {
+            ...parsed.macros,
+            ...api.macros,
+            protein: api.macros.protein ?? parsed.macros?.protein ?? 0,
+            carbs: api.macros.carbs ?? parsed.macros?.carbs ?? 0,
+            fat: api.macros.fat ?? parsed.macros?.fat ?? 0,
+            calories: api.macros.calories ?? parsed.macros?.calories ?? 0,
+            servingSize: api.macros.servingSize || parsed.macros?.servingSize,
+          },
+          confidence: api.confidence || "medium",
+        };
+        if (api.foodName) setters.setFoodName?.(api.foodName);
+      }
+    } catch (e) {
+      if (!parsed.macros) {
+        setters.setPerServing(null);
+        setters.setError(
+          e?.message || "Could not read the label. Center the Nutrition Facts panel and try again."
+        );
+        return false;
+      }
+    }
+  }
   if (!parsed.macros) {
     setters.setPerServing(null);
     setters.setError(
-      "Could not read protein, carbs, fat, or calories. Fill the frame with the Nutrition Facts panel and try again."
+      "Could not read calories, protein, fat, or carbs. Fill the frame with the Nutrition Facts panel and try again."
     );
     return false;
   }
   setters.setPerServing(parsed.macros);
   setters.setConfidence(parsed.confidence);
-  setters.setEditProtein(String(parsed.macros.protein));
-  setters.setEditCarbs(String(parsed.macros.carbs));
-  setters.setEditFat(String(parsed.macros.fat));
-  setters.setEditCalories(String(parsed.macros.calories));
+  setters.setOcrPreview(formatLabelMacrosPreview(parsed.macros));
+  setters.setEditProtein(String(parsed.macros.protein ?? 0));
+  setters.setEditCarbs(String(parsed.macros.carbs ?? 0));
+  setters.setEditFat(String(parsed.macros.fat ?? 0));
+  setters.setEditCalories(String(parsed.macros.calories ?? 0));
   setters.setError("");
   return true;
 }
@@ -72,7 +138,7 @@ export function NutritionLabelScanner({ open, onClose, onApply, initialOcr = nul
       return;
     }
     if (initialOcr?.text) {
-      applyOcrToForm(initialOcr, {
+      void applyOcrToForm(initialOcr, {
         setOcrPreview,
         setPerServing,
         setConfidence,
@@ -81,6 +147,7 @@ export function NutritionLabelScanner({ open, onClose, onApply, initialOcr = nul
         setEditFat,
         setEditCalories,
         setError,
+        setFoodName,
       });
     }
   }, [open, initialOcr]);
@@ -91,9 +158,15 @@ export function NutritionLabelScanner({ open, onClose, onApply, initialOcr = nul
     setBusy(true);
     setError("");
     try {
-      const { text, lines } = await fn();
-      applyOcrToForm(
-        { text, lines },
+      const result = await fn();
+      const { text, lines, macros: nativeMacros } = result;
+      let imageBase64 = result.imageBase64;
+      if (!imageBase64 && result.imageBlob) {
+        const b64 = await blobToDataUrl(result.imageBlob);
+        imageBase64 = b64;
+      }
+      await applyOcrToForm(
+        { text, lines, imageBase64, macros: nativeMacros },
         {
           setOcrPreview,
           setPerServing,
@@ -103,6 +176,7 @@ export function NutritionLabelScanner({ open, onClose, onApply, initialOcr = nul
           setEditFat,
           setEditCalories,
           setError,
+          setFoodName,
         }
       );
     } catch (e) {
@@ -167,20 +241,26 @@ export function NutritionLabelScanner({ open, onClose, onApply, initialOcr = nul
       <div className="modal health-workout-sheet nutrition-label-scanner-sheet surface-glass" onClick={(ev) => ev.stopPropagation()}>
         <div className="health-workout-sheet-head">
           <h3 id="nutrition-label-scan-title" className="health-workout-sheet-title">
-            Scan nutrition label
+            Label scanner
           </h3>
           <button type="button" className="btn-icon" aria-label="Close" onClick={onClose}>
             <CloseIcon style={{ width: 22, height: 22 }} />
           </button>
         </div>
 
+        <div className="nutrition-label-scan-frame" aria-hidden="true">
+          <div className="nutrition-label-scan-frame-inner">
+            <span className="nutrition-label-scan-frame-label">Nutrition Facts</span>
+          </div>
+        </div>
+
         <p className="health-subline nutrition-label-scanner-intro">
-          Point your camera at the <strong>Nutrition Facts</strong> panel. We read protein, carbs, fat, and calories per serving, then you enter how much you had.
+          On iPhone, <strong>Scan label</strong> opens a live scanner. For <strong>bottles and bags</strong>, wrap the label around the frame, avoid glare, and tap ● once we read your macros. We only save <strong>Calories</strong>, <strong>Protein</strong>, <strong>Fat</strong>, and <strong>Carbs</strong>.
         </p>
 
         <div className="nutrition-label-scanner-actions">
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={handleCamera}>
-            {busy ? "Reading label…" : isNativeNutritionLabelScannerAvailable() ? "Scan with camera" : "Camera (iOS app)"}
+          <button type="button" className="btn btn-primary nutrition-label-scan-btn" disabled={busy} onClick={handleCamera}>
+            {busy ? "Processing…" : isNativeNutritionLabelScannerAvailable() ? "Scan label" : "Scan label (iOS app)"}
           </button>
           <button type="button" className="btn" disabled={busy} onClick={handleChoosePhoto}>
             {busy ? "…" : "Choose photo"}
@@ -188,6 +268,12 @@ export function NutritionLabelScanner({ open, onClose, onApply, initialOcr = nul
         </div>
 
         {error ? <p className="nutrition-label-scanner-error">{error}</p> : null}
+
+        {ocrPreview && !error ? (
+          <p className="nutrition-label-scanned-summary" role="status" aria-live="polite">
+            {busy ? "Reading label…" : `Scanned: ${ocrPreview}`}
+          </p>
+        ) : null}
 
         {perServing ? (
           <div className="nutrition-label-scanner-results">
@@ -259,13 +345,6 @@ export function NutritionLabelScanner({ open, onClose, onApply, initialOcr = nul
               </button>
             </div>
           </div>
-        ) : null}
-
-        {ocrPreview && !perServing ? (
-          <details className="nutrition-label-ocr-raw">
-            <summary className="health-subline">Raw text (for troubleshooting)</summary>
-            <pre>{ocrPreview}</pre>
-          </details>
         ) : null}
       </div>
     </div>

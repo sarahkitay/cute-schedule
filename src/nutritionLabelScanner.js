@@ -65,7 +65,9 @@ function pickNutritionLabelPhotoWeb({ preferCamera = false } = {}) {
           return;
         }
         try {
-          resolve(await recognizeNutritionLabelImage(file));
+          const ocr = await recognizeNutritionLabelImage(file);
+          const imageBase64 = await blobToBase64(file);
+          resolve({ ...ocr, imageBase64 });
         } catch (e) {
           reject(e);
         }

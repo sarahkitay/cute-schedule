@@ -90,7 +90,7 @@ export default async function handler(req, res) {
         error: "No valid FCM registration token in Redis for this deviceKey",
         hint: legacyApns
           ? "This deviceKey was registered with pushProvider=apns; re-register with pushProvider=fcm (FirebaseMessaging.getToken) to use /api/push/send."
-          : "Re-register from the app with pushProvider=fcm. Token must be 32–4096 characters after trim.",
+          : "Re-register from the app with pushProvider=fcm. Token must be 32-4096 characters after trim.",
         debug: isProd
           ? undefined
           : {

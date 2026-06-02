@@ -1045,7 +1045,7 @@ html[data-theme="dark"] .py-streak__digit {
 }
 
 /* ═══════════════════════════════════════════════
-   FULL APP RESTYLE ,  iOS Native Override
+   FULL APP RESTYLE; iOS Native Override
    Match reference: soft glass, generous spacing
    ═══════════════════════════════════════════════ */
 
@@ -1071,8 +1071,8 @@ html[data-theme="dark"] .py-streak__digit {
 }
 .app .header-brand-py-logo {
   flex-shrink: 0;
-  width: 48px;
-  height: 48px;
+  width: 56px;
+  height: 56px;
   object-fit: contain;
   display: block;
   margin-top: 0;
@@ -1127,6 +1127,9 @@ html[data-theme="dark"] .py-streak__digit {
   flex-shrink: 0;
   margin-left: 8px;
 }
+.app .top-actions.header-right-actions {
+  gap: 2px;
+}
 .morning-greeting-heading {
   display: flex;
   flex-direction: column;
@@ -1151,14 +1154,14 @@ html[data-theme="dark"] .app .greeting-tagline {
   color: #fafafa !important;
 }
 
-/* Keep original rich gradient background ,  do NOT override .app-bg */
+/* Keep original rich gradient background; do NOT override .app-bg */
 /* The original SVG texture + radial glow background gives the warm, dimensional feel */
 .app-bg-texture {
   opacity: 0.4 !important;
   filter: blur(1px) brightness(1.02) !important;
 }
 
-/* Shell override ,  content clears fixed bottom nav */
+/* Shell override; content clears fixed bottom nav */
 .app .shell {
   padding-bottom: 0 !important;
   flex: 1 1 auto !important;
@@ -1207,9 +1210,9 @@ html[data-theme="dark"] .app .greeting-tagline {
   z-index: 3;
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 2px;
   flex-shrink: 0;
-  margin-top: 4px;
+  margin-top: -4px;
 }
 .app .top-left .brand-name {
   font-size: 11px !important;
@@ -1733,7 +1736,7 @@ html[data-theme="dark"] .app .morning-routine-item {
   box-shadow: var(--task-bubble-shadow) !important;
 }
 
-/* Today / Plan / List / Goals monthly — soft pink task bubbles */
+/* Today / Plan / List / Goals monthly - soft pink task bubbles */
 .app .timeline-wrap .list .item,
 .app .list .item,
 .app .list-page-list > .list-row,
@@ -1997,7 +2000,7 @@ html[data-theme="dark"] .app .notes-list-page > .note-list-row,
 html[data-theme="dark"] .app .monthly-objectives-list > .monthly-list-row {
   background: linear-gradient(160deg, rgba(255, 253, 252, 0.96), rgba(255, 236, 244, 0.82)) !important;
   border-color: rgba(255, 188, 205, 0.42) !important;
-  box-shadow: 0 6px 22px rgba(232, 150, 170, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.94) !important;
+  box-shadow: var(--task-bubble-shadow) !important;
   color: var(--ink-strong, #0a0a0c) !important;
 }
 html[data-theme="dark"] .app .notes-section .health-segment-toggle,
@@ -2343,7 +2346,12 @@ html[data-theme="dark"] .app .capacity-pill.active {
 }
 .py-med-item__actions {
   display: flex;
+  align-items: center;
   gap: var(--py-space-2);
+  flex-shrink: 0;
+}
+.py-med-item__actions .row-more-menu-wrap {
+  flex-shrink: 0;
 }
 .py-med-card {
   display: flex;
@@ -2473,7 +2481,7 @@ html[data-theme="dark"] .app .capacity-pill.active {
 }
 
 /* ═══════════════════════════════════════════════
-   DARK MODE: Midnight / Mocha ,  high-contrast frosted UI
+   DARK MODE: Midnight / Mocha; high-contrast frosted UI
    Light panels + dark ink (boyish / readable variant)
    ═══════════════════════════════════════════════ */
 html[data-theme="dark"] .app .top-left .brand-name {
@@ -2526,6 +2534,25 @@ html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock {
 }
 html[data-theme="dark"] {
   --dock-bar-bg: rgba(255, 255, 255, 0.98);
+  /* Neutral accent tokens (Classic Pink --py-* defaults do not apply in dark UI) */
+  --py-accent: #a1a1aa;
+  --py-accent-deep: #0a0a0c;
+  --py-accent-soft: rgba(10, 10, 12, 0.08);
+  --py-accent-glow: rgba(0, 0, 0, 0.1);
+  --py-border-accent: rgba(10, 10, 12, 0.18);
+  --py-surface-featured: rgba(255, 255, 255, 0.72);
+  --py-shadow-glow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-xs: 0 2px 12px rgba(0, 0, 0, 0.06);
+  --shadow-sm: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 24px 56px rgba(0, 0, 0, 0.14);
+  --task-bubble-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.97), rgba(250, 250, 250, 0.9));
+  --task-bubble-border: rgba(10, 10, 12, 0.14);
+  --task-bubble-shadow: 0 6px 22px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  --task-bubble-bg-hover: linear-gradient(160deg, rgba(255, 255, 255, 0.99), rgba(246, 246, 246, 0.94));
+  --task-bubble-shadow-hover: 0 8px 26px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 1);
 }
 html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock::before {
   background: var(--dock-bar-bg) !important;
@@ -2556,10 +2583,10 @@ html[data-theme="dark"] .app img[src*="water"]:not([src*="icondm"]):not([src*="d
 html[data-theme="dark"] .app img[src*="sun"]:not([src*="icondm"]):not([src*="dm.png"]):not([src*="suniconnobubble"]),
 html[data-theme="dark"] .app img[src*="fork"]:not([src*="icondm"]):not([src*="dm.png"]),
 html[data-theme="dark"] .app img[src*="fitness"]:not([src*="icondm"]):not([src*="dm.png"]),
-html[data-theme="dark"] .app img[src*="meds"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="meds"]:not([src*="icondm"]):not([src*="dm.png"]):not(.py-med-item__icon-img),
 html[data-theme="dark"] .app img[src*="finance"]:not([src*="icondm"]):not([src*="dm.png"]),
 html[data-theme="dark"] .app img[src*="notes"]:not([src*="icondm"]):not([src*="dm.png"]),
-html[data-theme="dark"] .app img[src*="timer"]:not([src*="icondm"]):not([src*="dm.png"]),
+html[data-theme="dark"] .app img[src*="timer"]:not([src*="icondm"]):not([src*="dm.png"]):not(.global-active-timer-pill__icon-img),
 html[data-theme="dark"] .app img[src*="monthly"]:not([src*="icondm"]):not([src*="dm.png"]),
 html[data-theme="dark"] .app img[src*="task"]:not([src*="icondm"]):not([src*="dm.png"]),
 html[data-theme="dark"] .app img[src*="habit"]:not([src*="icondm"]):not([src*="dm.png"]),
@@ -2650,7 +2677,7 @@ html[data-theme="dark"] .app .progress-fill {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5) !important;
 }
 
-/* Today's Focus progress ,  white bubble in dark mode */
+/* Today's Focus progress; white bubble in dark mode */
 #today-tasks-section {
   scroll-margin-top: calc(env(safe-area-inset-top, 0px) + 64px);
 }
@@ -2716,7 +2743,7 @@ html[data-theme="dark"] .today-focus-progress__bubble {
     0 0 0 1px rgba(10, 10, 12, 0.1) !important;
 }
 
-/* Center PY bubble in dark mode ,  keep accent bubble on white nav */
+/* Center PY bubble in dark mode; keep accent bubble on white nav */
 html[data-theme="dark"] .app .bottom-nav-item--center .dock-nav-icon-wrap--center,
 html[data-theme="dark"] .app .bottom-nav button[aria-label="Coach"] .dock-nav-icon-wrap--center {
   background: radial-gradient(
@@ -2726,7 +2753,7 @@ html[data-theme="dark"] .app .bottom-nav button[aria-label="Coach"] .dock-nav-ic
     color-mix(in srgb, var(--theme-accent) 78%, transparent) 100%
   ) !important;
   border-color: rgba(255, 255, 255, 0.92) !important;
-  box-shadow: 0 12px 32px color-mix(in srgb, var(--theme-accent) 35%, transparent), 0 4px 12px rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.14), 0 4px 12px rgba(0, 0, 0, 0.08) !important;
 }
 
 /* Dark mode: readable copy on frosted surfaces */
@@ -2807,7 +2834,7 @@ html[data-theme="dark"] .app .notes-section .note-date {
    RESPONSIVE: iPad, Mac, larger screens
    ═══════════════════════════════════════════════ */
 
-/* Tablet (iPad) ,  content width only; header stays full bleed */
+/* Tablet (iPad); content width only; header stays full bleed */
 @media (min-width: 768px) {
   .app .shell-main {
     max-width: var(--app-content-max, 600px) !important;
@@ -2889,3 +2916,258 @@ html[data-theme="dark"] .app .notes-section .note-date {
 .py-mb-3 { margin-bottom: var(--py-space-3); }
 .py-mb-4 { margin-bottom: var(--py-space-4); }
 .py-w-full { width: 100%; }
+
+/* ─── Dark mode (Midnight / Mocha): strip leftover pink from global tokens ─── */
+html[data-theme="dark"] .app .bottom-nav .bottom-nav-item {
+  color: rgba(113, 113, 122, 0.92) !important;
+}
+html[data-theme="dark"] .app .bottom-nav .bottom-nav-item.active {
+  color: var(--ink-strong, #0a0a0c) !important;
+}
+html[data-theme="dark"] .app .bottom-nav.surface-dock .bottom-nav-item svg,
+html[data-theme="dark"] .app .bottom-nav .bottom-nav-item svg {
+  background: rgba(255, 255, 255, 0.5) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45) !important;
+}
+html[data-theme="dark"] .app .bottom-nav .bottom-nav-item.active svg {
+  background: var(--ink-strong, #0a0a0c) !important;
+  color: #fafafa !important;
+  opacity: 1 !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+}
+html[data-theme="dark"] .app .bottom-nav .bottom-nav-item.active,
+html[data-theme="dark"] .app .bottom-nav button[aria-current="page"] span {
+  color: var(--ink-strong, #0a0a0c) !important;
+}
+html[data-theme="dark"] .app .timeline-wrap .list .item:hover,
+html[data-theme="dark"] .app .list .item:hover,
+html[data-theme="dark"] .app .list-page-list > .list-row:hover,
+html[data-theme="dark"] .app .list-section .list-row:hover,
+html[data-theme="dark"] .app .notes-list-page > .note-list-row:hover,
+html[data-theme="dark"] .app .monthly-objectives-list > .monthly-list-row:hover {
+  border-color: rgba(10, 10, 12, 0.16) !important;
+}
+html[data-theme="dark"] .app .list-page-list > .list-row input[type="checkbox"]:checked + .checkmark,
+html[data-theme="dark"] .app .notes-list-page > .note-list-row input[type="checkbox"]:checked + .checkmark,
+html[data-theme="dark"] .app .monthly-objectives-list > .monthly-list-row input[type="checkbox"]:checked + .checkmark,
+html[data-theme="dark"] .app .list .item input[type="checkbox"]:checked + .checkmark {
+  background: var(--ink-strong, #0a0a0c) !important;
+  border-color: var(--ink-strong, #0a0a0c) !important;
+}
+html[data-theme="dark"] .app .list .item .task-meta-chip {
+  background: rgba(255, 255, 255, 0.5) !important;
+  border-color: rgba(10, 10, 12, 0.08) !important;
+}
+html[data-theme="dark"] .app .coach-v2-eyebrow,
+html[data-theme="dark"] .app .coach-v2-card-top .coach-v2-eyebrow {
+  color: #52525b !important;
+}
+html[data-theme="dark"] .app .notes-section .health-segment-btn--on,
+html[data-theme="dark"] .app .notes-segment-toggle .health-segment-btn--on {
+  background: var(--ink-strong, #0a0a0c) !important;
+  color: #fafafa !important;
+  box-shadow: none !important;
+}
+html[data-theme="dark"] .app .notes-section .health-segment-toggle,
+html[data-theme="dark"] .app .notes-segment-toggle {
+  background: rgba(255, 255, 255, 0.55) !important;
+  border-color: rgba(10, 10, 12, 0.12) !important;
+}
+html[data-theme="dark"] .app .notes-section .health-segment-btn {
+  color: var(--ink-strong, #0a0a0c) !important;
+}
+html[data-theme="dark"] .app .scroll-reveal .insight-card--peak .insight-value,
+html[data-theme="dark"] .app .moodboard-strip-link {
+  color: var(--ink-strong, #0a0a0c) !important;
+}
+html[data-theme="dark"] .app .coach-v2-why-label {
+  color: #52525b !important;
+}
+html[data-theme="dark"] .app .notes-section textarea:focus {
+  border-color: rgba(10, 10, 12, 0.28) !important;
+  box-shadow: 0 0 0 3px rgba(10, 10, 12, 0.08), 0 2px 10px rgba(0, 0, 0, 0.02) !important;
+}
+html[data-theme="dark"] .app .coach-mode-selector button.active,
+html[data-theme="dark"] .app .coach-mode-selector button[aria-selected="true"],
+html[data-theme="dark"] .app .coach-mode-tabs button.active {
+  background: var(--ink-strong, #0a0a0c) !important;
+  color: #fafafa !important;
+  box-shadow: none !important;
+}
+html[data-theme="dark"] .you-page-add-btn {
+  background: linear-gradient(135deg, #3f3f46 0%, #0a0a0c 100%) !important;
+  color: #fafafa !important;
+}
+
+/* Dark mode only: swap pink/warm drop shadows for faded black */
+html[data-theme="dark"] .app .panel,
+html[data-theme="dark"] .app .surface-glass,
+html[data-theme="dark"] .app .py-glass-card,
+html[data-theme="dark"] .app .month-calendar,
+html[data-theme="dark"] .app .plan-month-calendar-wrap .month-calendar,
+html[data-theme="dark"] .app .health-day-card--tasky,
+html[data-theme="dark"] .app .open-full-calendar-bar,
+html[data-theme="dark"] .app .home-open-calendar-bar,
+html[data-theme="dark"] .app .habit-daily-card,
+html[data-theme="dark"] .app .quick-add-bar,
+html[data-theme="dark"] .app .quick-add-bar.input-group:focus-within,
+html[data-theme="dark"] .app .task-dropdown,
+html[data-theme="dark"] .app .modal.calendar-sheet,
+html[data-theme="dark"] .app .finance-month-stat-wrap,
+html[data-theme="dark"] .app .coach-gtky-card,
+html[data-theme="dark"] .app .settings-sub-accordion,
+html[data-theme="dark"] .app .onboarding-card {
+  box-shadow: var(--glass-shadow), var(--glass-highlight) !important;
+}
+
+html[data-theme="dark"] .app .settings-modal-header,
+html[data-theme="dark"] .app .calendar-sheet-header,
+html[data-theme="dark"] .app .modal-header-sticky {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08) !important;
+}
+
+html[data-theme="dark"] .app .settings-modal,
+html[data-theme="dark"] .app .modal-content-wide {
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.14), var(--glass-highlight) !important;
+}
+
+html[data-theme="dark"] .app .bottom-nav.surface-dock:not(.bottom-nav--with-center),
+html[data-theme="dark"] .app .surface-dock:not(.bottom-nav--with-center) {
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.1), 0 1px 0 rgba(255, 255, 255, 0.9) inset !important;
+}
+
+html[data-theme="dark"] .app .bottom-nav.bottom-nav--with-center.surface-dock::before {
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 10px rgba(0, 0, 0, 0.06) !important;
+}
+
+html[data-theme="dark"] .app .next-up-prep,
+html[data-theme="dark"] .app .next-up-prep:hover,
+html[data-theme="dark"] .app .item.item-next-up:not(.item-done),
+html[data-theme="dark"] .app .quick-detail-energy-pill.active,
+html[data-theme="dark"] .app .task-add-button,
+html[data-theme="dark"] .app .task-add-button:hover,
+html[data-theme="dark"] .app .quick-add-submit,
+html[data-theme="dark"] .app .coach-mode-selector button.active,
+html[data-theme="dark"] .app .coach-mode-tabs button.active,
+html[data-theme="dark"] .app .coach-mode-btn.active,
+html[data-theme="dark"] .app .coach-v2-btn-row .btn-primary,
+html[data-theme="dark"] .app .coach-v2-card .btn-primary,
+html[data-theme="dark"] .app .coach-v2-add-all,
+html[data-theme="dark"] .app .timers-alarm-sound-option.is-selected,
+html[data-theme="dark"] .app .py-pill-btn--primary,
+html[data-theme="dark"] .app .btn-primary:not(.settings-logout-btn) {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12) !important;
+}
+
+html[data-theme="dark"] .app .bottom-nav-item--center .dock-nav-icon-wrap--center,
+html[data-theme="dark"] .app .bottom-nav button[aria-label="Coach"] .dock-nav-icon-wrap--center {
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.14),
+    0 4px 12px rgba(0, 0, 0, 0.08) !important;
+}
+
+html[data-theme="dark"] .bottom-nav--png .bottom-nav-item--center .dock-nav-icon-wrap--center,
+html[data-theme="dark"] .bottom-nav--png .bottom-nav-item--center.active .dock-nav-icon-wrap--center {
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.16),
+    0 4px 14px rgba(0, 0, 0, 0.1),
+    inset 0 2px 6px rgba(255, 255, 255, 0.85) !important;
+  animation: py-nav-pulse-dark 2.8s ease-in-out infinite !important;
+}
+
+html[data-theme="dark"] .bottom-nav--png .bottom-nav-item--center .dock-nav-icon-img--png {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.18)) !important;
+}
+
+@keyframes py-nav-pulse-dark {
+  0%,
+  100% {
+    box-shadow:
+      0 12px 30px rgba(0, 0, 0, 0.14),
+      0 4px 12px rgba(0, 0, 0, 0.08),
+      inset 0 2px 6px rgba(255, 255, 255, 0.85);
+  }
+  50% {
+    box-shadow:
+      0 16px 38px rgba(0, 0, 0, 0.18),
+      0 6px 16px rgba(0, 0, 0, 0.1),
+      inset 0 2px 6px rgba(255, 255, 255, 0.92);
+  }
+}
+
+html[data-theme="dark"] .app .finance-panel .finance-month-stat,
+html[data-theme="dark"] .app .feature-gate-banner {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72), 0 6px 18px rgba(0, 0, 0, 0.06) !important;
+}
+
+html[data-theme="dark"] .global-active-timer-pill {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12) !important;
+}
+
+html[data-theme="dark"] .app .monthly-page-icon,
+html[data-theme="dark"] .app .settings-hero-icon {
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12) !important;
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .ios-native-ui .py-card,
+html[data-theme="dark"] .ios-native-ui .settings-row {
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.75) !important;
+}
+
+html[data-theme="dark"] .section-health .health-tab-toggle .health-segment-btn--on {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+}
+
+html[data-theme="dark"] .btn-primary {
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.14) !important;
+}
+
+html[data-theme="dark"] .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.16) !important;
+}
+
+html[data-theme="dark"] .ios-native-ui .timers-display-card .py-timer__controls .py-pill-btn--primary {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12) !important;
+}
+
+html[data-theme="dark"] .app .bottom-nav .bottom-nav-item.active svg {
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.6) !important;
+}
+
+html[data-theme="dark"] .app .quick-add-details-form .quick-detail-energy-pill.active,
+html[data-theme="dark"] .app .quick-add-details-form .quick-details-submit,
+html[data-theme="dark"] .app .py-pill-btn--primary:hover,
+html[data-theme="dark"] .app .py-glass-card:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12) !important;
+}
+
+html[data-theme="dark"] .app .quick-add-details-form .quick-details-submit {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14) !important;
+}
+
+html[data-theme="dark"] .app .item.item-next-up:not(.item-done) {
+  box-shadow:
+    0 3px 12px rgba(0, 0, 0, 0.08),
+    0 0 0 2px rgba(10, 10, 12, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.55) !important;
+}
+
+html[data-theme="dark"] .app .btn-primary,
+html[data-theme="dark"] .app .quick-add-entry-mode-btn[aria-selected="true"],
+html[data-theme="dark"] .app .quick-add-bar .btn-primary,
+html[data-theme="dark"] .app .input-group .btn-primary,
+html[data-theme="dark"] .app .quick-add-stack .quick-add-submit-btn,
+html[data-theme="dark"] .app .quick-add-details-form .quick-details-submit,
+html[data-theme="dark"] .app .daily-progress-chip.btn-primary {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14) !important;
+}
+
+html[data-theme="dark"] .app .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16) !important;
+}
+
+html[data-theme="dark"] .app .capacity-selector button.active,
+html[data-theme="dark"] .app .capacity-pill.active {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+}

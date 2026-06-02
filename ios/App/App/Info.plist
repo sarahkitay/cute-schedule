@@ -78,6 +78,8 @@
 		<string>remote-notification</string>
 		<string>audio</string>
 	</array>
+	<key>NSAlarmKitUsageDescription</key>
+	<string>PROYOU schedules morning alarms that can ring through Silent mode and appear on your Lock Screen, like the Clock app.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>PROYOU needs access to your music library so you can pick a song for your morning alarm.</string>
 	<key>NSCameraUsageDescription</key>

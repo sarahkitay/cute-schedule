@@ -17,9 +17,10 @@
     "trigger-deploy": "sh -c 'if [ -z \"$VERCEL_DEPLOY_HOOK_URL\" ]; then echo \"Set VERCEL_DEPLOY_HOOK_URL to your Vercel deploy hook (Dashboard → Project → Settings → Git → Deploy Hooks).\" >&2; exit 1; fi; curl -s -X POST \"$VERCEL_DEPLOY_HOOK_URL\"'",
     "capacitor:sync:after": "node scripts/merge-ios-cap-plugin-classes.mjs",
     "cap:sync": "npm run build && npx cap sync",
-    "cap:sync:ios": "npm run build && npx cap sync ios",
+    "cap:sync:ios": "npm run build && npx cap sync ios && cd ios/App && pod install",
     "cap:merge-ios-plugins": "node scripts/merge-ios-cap-plugin-classes.mjs",
-    "cap:ios": "npx cap open ios"
+    "cap:ios": "sh scripts/open-ios-workspace.sh",
+    "firestore:deploy": "firebase deploy --only firestore"
   },
   "dependencies": {
     "@capacitor-community/apple-sign-in": "^7.1.0",

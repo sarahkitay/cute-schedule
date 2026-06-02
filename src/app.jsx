@@ -67,6 +67,7 @@ import { SoftInput } from "./components/SoftInput";
 import { InsightCard } from "./components/InsightCard";
 import { InsightsPage } from "./components/InsightsPage";
 import { MedicationsPage } from "./components/MedicationsPage";
+import { MedIcon } from "./components/MedIcon";
 import { RowMoreMenu, DeleteTextButton } from "./components/RowMoreMenu";
 import { FinanceDashboard } from "./components/FinanceDashboard";
 import { guessExpenseCategory } from "./financeDashboardHelpers";
@@ -79,7 +80,12 @@ import { SubscriptionBridge } from "./subscription/SubscriptionBridge.jsx";
 import { SKIP_LOGIN_STORAGE_KEY } from "./subscription/constants.js";
 import { getCoachRequestHeaders } from "./subscription/coachApiHeaders.js";
 import { consumeCoachPromptLocal } from "./subscription/promptUsage.js";
-import { getSubscriptionSnapshot, setSubscriptionSnapshot, tryBeginCoachPrompt } from "./subscription/subscriptionStore.js";
+import {
+  getSubscriptionSnapshot,
+  setSubscriptionSnapshot,
+  shouldTrackCoachPromptUsage,
+  tryBeginCoachPrompt,
+} from "./subscription/subscriptionStore.js";
 import { isAppTrialActive } from "./subscription/appTrial.js";
 import { useSubscriptionOptional } from "./subscription/SubscriptionContext.jsx";
 import { countOptionalEnabledModules } from "./subscription/features.js";
@@ -87,6 +93,8 @@ import { FREE_OPTIONAL_MODULE_LIMIT } from "./subscription/constants.js";
 import { SettingsProSection } from "./components/SettingsProSection.jsx";
 import { MonthlyCarryOverSection } from "./components/MonthlyCarryOverSection.jsx";
 import { CoachPromptPill } from "./components/CoachPromptPill.jsx";
+import { GlobalActiveTimerPill } from "./components/GlobalActiveTimerPill.jsx";
+import { TaskTimerBadge } from "./components/TaskTimerBadge.jsx";
 import {
   objectiveMonthKey,
   priorObjectiveMonthKey,
@@ -103,6 +111,7 @@ import {
   dismissActiveAlarm,
   resolveActiveRingingAlarm,
   alarmFromNotificationExtra,
+  isAlarmDismissedToday,
 } from "./alarmRinging";
 import { scheduleWidgetSync, syncWidgetFromDisk } from "./widgetSync";
 import { resyncAlarmNotifications } from "./nativeAlarmNotifications";
@@ -128,7 +137,15 @@ import {
   completeActiveTimerState,
   startActiveTimer,
   defaultActiveTimerDraft,
+  pauseActiveTimer,
+  normalizeActiveTimer,
 } from "./modules/timers";
+import { getLinkedTaskTimerRemainingMs } from "./taskTimerHelpers.js";
+import {
+  cancelTaskFocusTimerNotification,
+  playTaskTimerCompleteAlert,
+  syncTaskFocusTimerNotification,
+} from "./taskTimerNotify.js";
 import { YouPage } from "./components/YouPage";
 import { buildShareInputFromApp } from "./social/buildShareInputFromApp.js";
 import { TodayWeeklyMenu } from "./components/TodayWeeklyMenu";
@@ -1857,6 +1874,7 @@ function HourCard({
   highlightItemKey = null,
   /** When true, this hour’s card opens so the next task is visible */
   forceHourOpen = false,
+  getTaskTimerRemainingMs = null,
 }) {
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   const complete = hourIsComplete(tasksByCat, cats);
@@ -1929,6 +1947,9 @@ function HourCard({
                     <span className="checkmark" />
                     <span className="item-body">
                       <span className={`item-text ${t.done ? "item-text-done" : ""}`}>{t.text}</span>
+                      {!t.done && typeof getTaskTimerRemainingMs === "function" ? (
+                        <TaskTimerBadge remainingMs={getTaskTimerRemainingMs(hourKey, t.category, t.id)} />
+                      ) : null}
                       {!t.done && taskHasWorkoutProgramAttachment(t) && typeof onBeginWorkout === "function" ? (
                         <button
                           type="button"
@@ -2173,6 +2194,39 @@ function HourCard({
   );
 }
 
+/** Single habit row for Today check-in (pending or logged). */
+function HabitCheckinRow({ habit, logValue, onLogYes, onLogNo, onClear }) {
+  const isBuild = habit.direction !== "break";
+  return (
+    <li className="habit-checkin-row">
+      <HabitDirectionDot direction={habit.direction} />
+      <span className="habit-checkin-name">{habit.label}</span>
+      <div className="habit-checkin-actions">
+        <button
+          type="button"
+          className={`btn btn-sm ${logValue === "yes" ? "btn-primary habit-checkin-logged-btn" : ""}`}
+          aria-label={logValue === "yes" ? `${habit.label} logged positive` : undefined}
+          onClick={onLogYes}
+        >
+          {logValue === "yes" ? "Logged" : isBuild ? "Did it" : "Avoided"}
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${logValue === "no" ? "btn-primary" : ""}`}
+          onClick={onLogNo}
+        >
+          {isBuild ? "Not today" : "Slip"}
+        </button>
+        {logValue != null ? (
+          <button type="button" className="btn btn-sm btn-ghost" onClick={onClear} aria-label={`Clear log for ${habit.label}`}>
+            Undo
+          </button>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
 function MorningRoutine({ routine, onToggle }) {
   const allDone = (routine || []).length > 0 && (routine || []).every((r) => r.done);
   const doneCount = (routine || []).filter(r => r.done).length;
@@ -2189,7 +2243,7 @@ function MorningRoutine({ routine, onToggle }) {
         {(routine || []).map((item, idx) => (
           <div key={item.id} className="morning-routine-item" style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: idx < (routine || []).length - 1 ? "1px solid rgba(0,0,0,0.04)" : "none" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, cursor: "pointer" }}>
-              <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} style={{ width: 18, height: 18, borderRadius: 5, accentColor: "#D4708A", cursor: "pointer" }} />
+              <input type="checkbox" checked={!!item.done} onChange={() => onToggle(item.id)} style={{ width: 18, height: 18, borderRadius: 5, accentColor: "var(--py-accent-deep, #D4708A)", cursor: "pointer" }} />
               <span style={{ fontSize: 15, fontWeight: 400, color: item.done ? "var(--py-ink-muted)" : "var(--py-ink)", textDecoration: item.done ? "line-through" : "none" }}>{item.text}</span>
             </label>
           </div>
@@ -2256,7 +2310,7 @@ function formatScheduleDayLabel(dayKey, realTodayKey) {
   });
 }
 
-function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, onNextMonth, categories = DEFAULT_CATEGORIES, selectedDayKey = null }) {
+function MonthCalendar({ days, year, month, onSelectDay, onJumpToday, showJumpToday = false, onPrevMonth, onNextMonth, categories = DEFAULT_CATEGORIES, selectedDayKey = null }) {
   const dayKeys = getDayKeysInMonth(year, month);
   const firstWeekday = getFirstWeekday(year, month);
   const padding = Array(firstWeekday).fill(null);
@@ -2264,9 +2318,13 @@ function MonthCalendar({ days, year, month, onSelectDay, onBack, onPrevMonth, on
   return (
     <div className="month-calendar">
       <div className="month-calendar-header">
-        <button type="button" className="btn-icon" onClick={onBack} aria-label="Back to today">
-          <ChevronLeftIcon style={{ width: 20, height: 20 }} />
-        </button>
+        {showJumpToday && onJumpToday ? (
+          <button type="button" className="btn btn-sm btn-ghost month-calendar-today-btn" onClick={onJumpToday} aria-label="Go to today">
+            Today
+          </button>
+        ) : (
+          <span className="month-calendar-header-spacer" aria-hidden />
+        )}
         <h2 className="month-calendar-title">{MONTH_NAMES[month]} {year}</h2>
         <div className="month-calendar-nav">
           <button type="button" className="btn-icon" onClick={onPrevMonth} aria-label="Previous month">
@@ -2339,7 +2397,7 @@ function ProUpgradeEventListener() {
   return null;
 }
 
-/** Full-screen sign-in ,  optional; app works locally without an account. */
+/** Full-screen sign-in; optional; app works locally without an account. */
 function LoginGateScreen({ redirectAuthError = "", onConsumeRedirectError, onContinueFree }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -2628,9 +2686,9 @@ export default function App({ onAppReady }) {
   const ringAlarmRef = useRef(null);
 
   const ringAlarm = useCallback((alarm) => {
-    if (!alarm?.enabled) return;
+    if (!alarm?.enabled || isAlarmDismissedToday(alarm.id)) return;
+    flushSync(() => setRingingAlarm(alarm));
     fireAlarm(alarm);
-    setRingingAlarm(alarm);
   }, []);
 
   useEffect(() => {
@@ -2680,7 +2738,21 @@ export default function App({ onAppReady }) {
     const active = timersState.activeTimer;
     if (!active?.running || !active?.endsAt) return;
     const check = () => {
-      setTimersState((prev) => completeActiveTimerState(prev, { resolveTaskDone: resolveLinkedTaskDone }));
+      setTimersState((prev) => {
+        const before = normalizeActiveTimer(prev.activeTimer);
+        const next = completeActiveTimerState(prev, { resolveTaskDone: resolveLinkedTaskDone });
+        const after = normalizeActiveTimer(next.activeTimer);
+        if (
+          before?.running &&
+          before.endsAt &&
+          Date.now() >= before.endsAt &&
+          (!after?.running || after.endsAt !== before.endsAt)
+        ) {
+          void cancelTaskFocusTimerNotification();
+          void playTaskTimerCompleteAlert(before.label);
+        }
+        return next;
+      });
     };
     check();
     const id = setInterval(check, 500);
@@ -2699,11 +2771,28 @@ export default function App({ onAppReady }) {
 
   useEffect(() => {
     const active = resolveActiveRingingAlarm(alarmsState.alarms);
-    if (active && !ringingAlarm) {
+    if (active && !ringingAlarm && !isAlarmDismissedToday(active.id)) {
+      flushSync(() => setRingingAlarm(active));
       fireAlarm(active, { replayOnly: true });
-      setRingingAlarm(active);
     }
   }, [alarmsState.alarms, ringingAlarm]);
+
+  useEffect(() => {
+    if (!ringingAlarm) {
+      try {
+        document.documentElement.classList.remove("alarm-ringing-active");
+      } catch {}
+      return;
+    }
+    try {
+      document.documentElement.classList.add("alarm-ringing-active");
+    } catch {}
+    return () => {
+      try {
+        document.documentElement.classList.remove("alarm-ringing-active");
+      } catch {}
+    };
+  }, [ringingAlarm]);
 
   useEffect(() => { try { localStorage.setItem("cute_schedule_enabled_modules_v1", JSON.stringify(enabledModules)); } catch {} }, [enabledModules]);
   useEffect(() => { try { localStorage.setItem("cute_schedule_nav_order_v1", JSON.stringify(navOrder)); } catch {} }, [navOrder]);
@@ -3019,6 +3108,7 @@ export default function App({ onAppReady }) {
   /** Module id opened from You → show “add to nav bar” prompt on that tab. */
   const [youOpenedModuleId, setYouOpenedModuleId] = useState(null);
   const [youOpenAccountability, setYouOpenAccountability] = useState(false);
+  const [habitsLoggedExpanded, setHabitsLoggedExpanded] = useState(false);
 
   const goToTab = useCallback((nextTab) => {
     setYouOpenedModuleId(null);
@@ -3063,8 +3153,20 @@ export default function App({ onAppReady }) {
   }, [habitTracker]);
 
   useEffect(() => {
-    scheduleWidgetSync(appState, habitTracker, realTodayKey);
-  }, [appState, habitTracker, realTodayKey]);
+    scheduleWidgetSync(appState, habitTracker, realTodayKey, timersState);
+  }, [appState, habitTracker, realTodayKey, timersState]);
+
+  useEffect(() => {
+    void syncTaskFocusTimerNotification(timersState.activeTimer);
+  }, [timersState.activeTimer]);
+
+  useEffect(() => {
+    if (!timersState.activeTimer?.running) return;
+    const id = setInterval(() => {
+      scheduleWidgetSync(appState, habitTracker, realTodayKey, timersState);
+    }, 30000);
+    return () => clearInterval(id);
+  }, [timersState.activeTimer?.running, timersState.activeTimer?.endsAt, appState, habitTracker, realTodayKey, timersState]);
 
   useEffect(() => {
     if (!isCapacitorNativeApp()) return;
@@ -3262,6 +3364,23 @@ export default function App({ onAppReady }) {
     const dayLog = habitTracker.log[realTodayKey] || {};
     return habits.some((h) => dayLog[h.id] == null);
   }, [habitTracker, realTodayKey]);
+
+  const habitCheckinForDay = useMemo(() => {
+    const habits = habitTracker.habits || [];
+    const dayLog = habitTracker.log[tKey] || {};
+    const pending = [];
+    const logged = [];
+    for (const h of habits) {
+      const v = dayLog[h.id];
+      if (v === "yes" || v === "no") logged.push({ habit: h, value: v });
+      else pending.push(h);
+    }
+    return { pending, logged, showOnHome: pending.length > 0 };
+  }, [habitTracker, tKey]);
+
+  useEffect(() => {
+    setHabitsLoggedExpanded(false);
+  }, [tKey]);
 
   // Coach meta for cooldown and auto-run
   const [coachMeta, setCoachMeta] = useState(() => {
@@ -3735,28 +3854,75 @@ export default function App({ onAppReady }) {
 
   useEffect(() => {
     if (!isCapacitorNativeApp()) return;
-    let handle;
+    let urlHandle;
+    let stateHandle;
     let cancelled = false;
+    const ringFromAlarmId = (alarmId) => {
+      if (!alarmId || isAlarmDismissedToday(alarmId)) return;
+      const match = alarmsRef.current?.find((a) => String(a.id) === String(alarmId));
+      if (match?.enabled && !isAlarmDismissedToday(match.id)) ringAlarmRef.current?.(match);
+    };
+    const tryPendingAlarmKitOpen = async () => {
+      try {
+        const { consumePendingAlarmDismissed, consumePendingAlarmKitOpen } = await import(
+          "./nativeAlarmKit.js"
+        );
+        const { markAlarmDismissedToday } = await import("./alarmDismissState.js");
+        const dismissedId = await consumePendingAlarmDismissed();
+        if (dismissedId) {
+          markAlarmDismissedToday(dismissedId);
+          return;
+        }
+        const pendingId = await consumePendingAlarmKitOpen();
+        if (pendingId) ringFromAlarmId(pendingId);
+      } catch {}
+    };
     (async () => {
       try {
         const { App } = await import("@capacitor/app");
         if (cancelled) return;
         const routeFromUrl = (url) => {
           if (!url || typeof url !== "string") return;
+          try {
+            const parsed = new URL(url);
+            if (parsed.hostname === "alarm" || parsed.pathname.includes("alarm")) {
+              const alarmId =
+                parsed.searchParams.get("alarmId") || parsed.searchParams.get("id") || "";
+              ringFromAlarmId(alarmId);
+              return;
+            }
+          } catch {
+            /* not a full URL */
+          }
+          if (url.includes("alarm")) {
+            const idMatch = url.match(/[?&]alarmId=([^&]+)/);
+            ringFromAlarmId(idMatch ? decodeURIComponent(idMatch[1]) : "");
+            return;
+          }
           if (url.includes("today") || url.includes("tasks") || url.includes("habits")) {
             setTab("today");
           }
         };
-        handle = await App.addListener("appUrlOpen", ({ url }) => routeFromUrl(url));
+        urlHandle = await App.addListener("appUrlOpen", ({ url }) => routeFromUrl(url));
+        stateHandle = await App.addListener("appStateChange", ({ isActive }) => {
+          if (!isActive) return;
+          void tryPendingAlarmKitOpen();
+          const active = resolveActiveRingingAlarm(alarmsRef.current);
+          if (active && ringAlarmRef.current) ringAlarmRef.current(active);
+        });
         const launch = await App.getLaunchUrl();
         if (launch?.url) routeFromUrl(launch.url);
+        await tryPendingAlarmKitOpen();
+        const activeOnLaunch = resolveActiveRingingAlarm(alarmsRef.current);
+        if (activeOnLaunch) ringFromAlarmId(activeOnLaunch.id);
       } catch (e) {
         console.warn("[App] appUrlOpen listener", e);
       }
     })();
     return () => {
       cancelled = true;
-      if (handle && typeof handle.remove === "function") handle.remove();
+      if (urlHandle && typeof urlHandle.remove === "function") urlHandle.remove();
+      if (stateHandle && typeof stateHandle.remove === "function") stateHandle.remove();
     };
   }, []);
 
@@ -3766,8 +3932,8 @@ export default function App({ onAppReady }) {
     let receivedHandle;
     (async () => {
       const onAlarmExtra = (extra) => {
-        const alarm = alarmFromNotificationExtra(extra, alarmsState.alarms);
-        if (alarm) ringAlarm(alarm);
+        const alarm = alarmFromNotificationExtra(extra, alarmsRef.current);
+        if (alarm) ringAlarmRef.current?.(alarm);
       };
       actionHandle = await LocalNotifications.addListener("localNotificationActionPerformed", (action) => {
         const extra = action?.notification?.extra;
@@ -3794,7 +3960,7 @@ export default function App({ onAppReady }) {
       if (actionHandle && typeof actionHandle.remove === "function") actionHandle.remove();
       if (receivedHandle && typeof receivedHandle.remove === "function") receivedHandle.remove();
     };
-  }, [alarmsState.alarms, ringAlarm]);
+  }, []);
   useEffect(() => {
     if (pushRemindersList.length === 0) return;
     const t = setTimeout(() => {
@@ -4529,17 +4695,16 @@ export default function App({ onAppReady }) {
             taskText: label,
           }
         : null;
-    setTimersState((prev) => ({
-      ...prev,
-      activeTimer: startActiveTimer(defaultActiveTimerDraft(ms), {
-        remainingMs: ms,
-        label,
-        linkedTask,
-      }),
-    }));
+    const nextActive = startActiveTimer(defaultActiveTimerDraft(ms), {
+      remainingMs: ms,
+      label,
+      linkedTask,
+    });
+    setTimersState((prev) => ({ ...prev, activeTimer: nextActive }));
     setTaskTimerSetupKey(null);
     dismissTaskDropdownOnly();
-    setTab("timers");
+    void syncTaskFocusTimerNotification(nextActive);
+    scheduleWidgetSync(appState, habitTracker, realTodayKey, { ...timersState, activeTimer: nextActive });
   }
 
   function openTaskEditor(task, hourKey, category, editKey) {
@@ -5935,7 +6100,11 @@ export default function App({ onAppReady }) {
         headers: coachHeaders,
         body: JSON.stringify({
           ...payload,
-          subscription: { isPro: subSnap.isPro, trialActive: subSnap.trialActive },
+          subscription: {
+            isPro: subSnap.isPro,
+            trialActive: subSnap.trialActive,
+            appTrialActive: isAppTrialActive(),
+          },
         }),
       });
 
@@ -5979,7 +6148,7 @@ export default function App({ onAppReady }) {
               ? data.error
               : import.meta.env?.DEV
                 ? String(data?.detail || data?.hint || `Coach request failed (${res.status}).`)
-                : "Coach is offline right now — here's a grounded summary from your schedule instead.";
+                : "Coach is offline right now - here's a grounded summary from your schedule instead.";
         if (res.status === 402) dispatchProUpgrade("coach_prompt");
         setCoachError(hint);
         const localResponse = guardCoachResult(applyCoachSpecificityToResult(fallbackPayload(), coachContext));
@@ -6054,7 +6223,7 @@ export default function App({ onAppReady }) {
       }
       setCoachResult(guardCoachResult(afterSpecificity));
 
-      if (!getSubscriptionSnapshot().isPro) {
+      if (shouldTrackCoachPromptUsage()) {
         consumeCoachPromptLocal();
         setSubscriptionSnapshot({});
       }
@@ -6766,7 +6935,11 @@ export default function App({ onAppReady }) {
         body: JSON.stringify({
           ...payload,
           mode: adhdMode,
-          subscription: { isPro: subSnap.isPro, trialActive: subSnap.trialActive },
+          subscription: {
+            isPro: subSnap.isPro,
+            trialActive: subSnap.trialActive,
+            appTrialActive: isAppTrialActive(),
+          },
         }),
       });
       const rawText = await res.text();
@@ -6822,7 +6995,7 @@ export default function App({ onAppReady }) {
       } else {
         setCoachResult(null);
       }
-      if (!getSubscriptionSnapshot().isPro) {
+      if (shouldTrackCoachPromptUsage()) {
         consumeCoachPromptLocal();
         setSubscriptionSnapshot({});
       }
@@ -7259,10 +7432,6 @@ export default function App({ onAppReady }) {
     () => appIconUrl("settings", profile.iconStyle),
     [profile.iconStyle]
   );
-  const planCalendarIconSrc = useMemo(
-    () => dockNavAssetUrl(resolveDockNavImage("plan", { iconStyle: profile.iconStyle })),
-    [profile.iconStyle]
-  );
   const coachHeroSrc = useMemo(
     () => appIconUrl("coachLogo", profile.iconStyle),
     [profile.iconStyle]
@@ -7331,8 +7500,8 @@ export default function App({ onAppReady }) {
                         src={brandLogoSrc}
                         alt="PROYOU"
                         className="header-brand-py-logo"
-                        width={48}
-                        height={48}
+                        width={56}
+                        height={56}
                       />
                       <div
                         className={[
@@ -7368,23 +7537,6 @@ export default function App({ onAppReady }) {
                 </div>
 
                 <div className="top-actions header-right-actions">
-                  {tab === "today" ? (
-                    <button
-                      type="button"
-                      className="btn-icon header-plan-calendar-btn"
-                      onClick={() => setTab("plan")}
-                      title="Calendar"
-                      aria-label="Open calendar"
-                    >
-                      <img
-                        src={planCalendarIconSrc}
-                        alt=""
-                        className="header-plan-calendar-icon"
-                        width={40}
-                        height={40}
-                      />
-                    </button>
-                  ) : null}
                   <button
                     type="button"
                     id="settings-open"
@@ -7664,101 +7816,131 @@ export default function App({ onAppReady }) {
               )}
             </div>
 
-            {tab === "today" && (habitTracker.habits || []).length > 0 && (
+            {tab === "today" && habitCheckinForDay.showOnHome ? (
               <section className="panel habit-daily-card surface-glass scroll-reveal today-section--habits">
                 <div className="panel-title habit-daily-card-head">
-                  <div className="habit-daily-card-title-row">
-                    <button
-                      type="button"
-                      className="btn-icon habit-day-nav-btn"
-                      aria-label="Previous day"
-                      onClick={() => shiftScheduleDay(-1)}
-                    >
-                      <ChevronLeftIcon style={{ width: 20, height: 20 }} />
-                    </button>
-                    <span className="title">Habits · {formatScheduleDayLabel(tKey, realTodayKey)}</span>
-                    <button
-                      type="button"
-                      className="btn-icon habit-day-nav-btn"
-                      aria-label="Next day"
-                      disabled={isSameDayKey(tKey, realTodayKey)}
-                      onClick={() => shiftScheduleDay(1)}
-                    >
-                      <ChevronRightIcon style={{ width: 20, height: 20 }} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="btn-icon habit-day-nav-btn"
+                    aria-label="Previous day"
+                    onClick={() => shiftScheduleDay(-1)}
+                  >
+                    <ChevronLeftIcon style={{ width: 20, height: 20 }} />
+                  </button>
+                  <span className="title">Habits · {formatScheduleDayLabel(tKey, realTodayKey)}</span>
                   {!isSameDayKey(tKey, realTodayKey) ? (
-                    <button type="button" className="btn btn-sm btn-ghost habit-jump-today-btn" onClick={() => setSelectedDayKey(realTodayKey)}>
-                      Back to today
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-ghost habit-jump-today-btn"
+                      onClick={() => setSelectedDayKey(realTodayKey)}
+                    >
+                      Today
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    className="btn-icon habit-day-nav-btn"
+                    aria-label="Next day"
+                    disabled={isSameDayKey(tKey, realTodayKey)}
+                    onClick={() => shiftScheduleDay(1)}
+                  >
+                    <ChevronRightIcon style={{ width: 20, height: 20 }} />
+                  </button>
                 </div>
                 <ul className="list habit-checkin-list">
-                  {(habitTracker.habits || []).map((h) => {
-                    const v = (habitTracker.log[tKey] || {})[h.id];
-                    return (
-                      <li key={h.id} className="habit-checkin-row">
-                        <div className="habit-checkin-label">
-                          <span className="habit-checkin-name">{h.label}</span>
-                          <HabitDirectionDot direction={h.direction} />
-                        </div>
-                        <div className="habit-checkin-actions">
-                          {v === "yes" ? (
-                            <button
-                              type="button"
-                              className="btn btn-sm btn-primary habit-checkin-logged-btn"
-                              aria-label={`${h.label} logged, tap to change`}
-                              onClick={() =>
-                                setHabitTracker((prev) => {
-                                  const dayLog = { ...(prev.log[tKey] || {}) };
-                                  delete dayLog[h.id];
-                                  return { ...prev, log: { ...prev.log, [tKey]: dayLog } };
-                                })
-                              }
-                            >
-                              Logged
-                            </button>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className="btn btn-sm"
-                                onClick={() =>
-                                  setHabitTracker((prev) => ({
-                                    ...prev,
-                                    log: {
-                                      ...prev.log,
-                                      [tKey]: { ...(prev.log[tKey] || {}), [h.id]: "yes" },
-                                    },
-                                  }))
-                                }
-                              >
-                                {h.direction === "break" ? "Avoided" : "Did it"}
-                              </button>
-                              <button
-                                type="button"
-                                className={`btn btn-sm ${v === "no" ? "btn-primary" : ""}`}
-                                onClick={() =>
-                                  setHabitTracker((prev) => ({
-                                    ...prev,
-                                    log: {
-                                      ...prev.log,
-                                      [tKey]: { ...(prev.log[tKey] || {}), [h.id]: "no" },
-                                    },
-                                  }))
-                                }
-                              >
-                                {h.direction === "break" ? "Slip" : "Not today"}
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </li>
-                    );
-                  })}
+                  {habitCheckinForDay.pending.map((h) => (
+                    <HabitCheckinRow
+                      key={h.id}
+                      habit={h}
+                      logValue={null}
+                      onLogYes={() =>
+                        setHabitTracker((prev) => ({
+                          ...prev,
+                          log: {
+                            ...prev.log,
+                            [tKey]: { ...(prev.log[tKey] || {}), [h.id]: "yes" },
+                          },
+                        }))
+                      }
+                      onLogNo={() =>
+                        setHabitTracker((prev) => ({
+                          ...prev,
+                          log: {
+                            ...prev.log,
+                            [tKey]: { ...(prev.log[tKey] || {}), [h.id]: "no" },
+                          },
+                        }))
+                      }
+                      onClear={() =>
+                        setHabitTracker((prev) => {
+                          const dayLog = { ...(prev.log[tKey] || {}) };
+                          delete dayLog[h.id];
+                          return { ...prev, log: { ...prev.log, [tKey]: dayLog } };
+                        })
+                      }
+                    />
+                  ))}
                 </ul>
+                {habitCheckinForDay.logged.length > 0 ? (
+                  <div className="habit-daily-expand-wrap">
+                    <button
+                      type="button"
+                      className="habit-daily-expand-btn"
+                      aria-expanded={habitsLoggedExpanded}
+                      onClick={() => setHabitsLoggedExpanded((v) => !v)}
+                    >
+                      <span
+                        className={`habit-daily-caret${habitsLoggedExpanded ? " habit-daily-caret--open" : ""}`}
+                        aria-hidden
+                      >
+                        ▾
+                      </span>
+                      <span>
+                        {habitsLoggedExpanded
+                          ? "Hide logged habits"
+                          : `View or edit logged (${habitCheckinForDay.logged.length})`}
+                      </span>
+                    </button>
+                    {habitsLoggedExpanded ? (
+                      <ul className="list habit-checkin-list habit-checkin-list--logged">
+                        {habitCheckinForDay.logged.map(({ habit: h, value: v }) => (
+                          <HabitCheckinRow
+                            key={h.id}
+                            habit={h}
+                            logValue={v}
+                            onLogYes={() =>
+                              setHabitTracker((prev) => ({
+                                ...prev,
+                                log: {
+                                  ...prev.log,
+                                  [tKey]: { ...(prev.log[tKey] || {}), [h.id]: "yes" },
+                                },
+                              }))
+                            }
+                            onLogNo={() =>
+                              setHabitTracker((prev) => ({
+                                ...prev,
+                                log: {
+                                  ...prev.log,
+                                  [tKey]: { ...(prev.log[tKey] || {}), [h.id]: "no" },
+                                },
+                              }))
+                            }
+                            onClear={() =>
+                              setHabitTracker((prev) => {
+                                const dayLog = { ...(prev.log[tKey] || {}) };
+                                delete dayLog[h.id];
+                                return { ...prev, log: { ...prev.log, [tKey]: dayLog } };
+                              })
+                            }
+                          />
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                ) : null}
               </section>
-            )}
+            ) : null}
 
             {tab === "today" && isSameDayKey(tKey, realTodayKey) && pendingMedsToday.length > 0 && (getSubscriptionSnapshot().isPro || isAppTrialActive()) && (
               <section className="panel home-meds-card surface-glass scroll-reveal today-section--habits">
@@ -7771,7 +7953,7 @@ export default function App({ onAppReady }) {
                     const reminderLabel = med.reminderEnabled ? formatMedReminderTimes(med.reminderTimes) : "";
                     return (
                     <li key={med.id} className="py-med-item home-meds-row">
-                      <img src={`${import.meta.env.BASE_URL}meds.png`} alt="" style={{ width: 34, height: 34, borderRadius: 10, objectFit: "contain" }} />
+                      <MedIcon size={34} />
                       <div className="py-med-item__info">
                         <div className="py-med-item__name">{med.name}</div>
                         {(med.dose || med.schedule?.length > 0 || reminderLabel) && (
@@ -7850,6 +8032,9 @@ export default function App({ onAppReady }) {
                           forceHourOpen={
                             !!firstIncompleteTaskKeyToday && firstIncompleteTaskKeyToday.startsWith(`${hourKey}-`)
                           }
+                          getTaskTimerRemainingMs={(hk, cat, id) =>
+                            getLinkedTaskTimerRemainingMs(timersState.activeTimer, tKey, hk, cat, id)
+                          }
                         />
                       </div>
                     </div>
@@ -7909,7 +8094,7 @@ export default function App({ onAppReady }) {
               )}
             </section>
 
-            {/* Today's Focus + Streak ,  below daily progress, above module nav */}
+            {/* Today's Focus + Streak; below daily progress, above module nav */}
             <div className="py-card-grid today-focus-streak-row scroll-reveal">
               <button
                 type="button"
@@ -8316,6 +8501,17 @@ export default function App({ onAppReady }) {
                           <span className="checkmark" />
                           <span className="list-row-content">
                             <span className={`list-row-title ${t.done ? "item-text-done" : ""}`}>{t.text}</span>
+                            {!t.done ? (
+                              <TaskTimerBadge
+                                remainingMs={getLinkedTaskTimerRemainingMs(
+                                  timersState.activeTimer,
+                                  tKey,
+                                  t.hour,
+                                  t.category,
+                                  t.id,
+                                )}
+                              />
+                            ) : null}
                           </span>
                         </label>
                         <div className="list-row-actions">
@@ -8394,7 +8590,8 @@ export default function App({ onAppReady }) {
                     const d = new Date(dayKey + "T12:00:00");
                     setHomeCalendarMonth({ year: d.getFullYear(), month: d.getMonth() });
                   }}
-                  onBack={() => {
+                  showJumpToday
+                  onJumpToday={() => {
                     setSelectedDayKey(realTodayKey);
                     const d = new Date(realTodayKey + "T12:00:00");
                     setHomeCalendarMonth({ year: d.getFullYear(), month: d.getMonth() });
@@ -8968,6 +9165,7 @@ export default function App({ onAppReady }) {
           />
           </FeatureGate>
         ) : tab === "finance" ? (
+          <FeatureGate feature="finance">
           <section className="panel finance-panel surface-glass section-finance scroll-reveal">
             <div className="panel-top finance-page-header">
               <div className="panel-title page-icon-header">
@@ -9544,6 +9742,7 @@ export default function App({ onAppReady }) {
               </button>
             </div>
           </section>
+          </FeatureGate>
         ) : tab === "notes" ? (
           <section className="panel notes-section scroll-reveal">
             <div className="panel-top">
@@ -10004,6 +10203,17 @@ export default function App({ onAppReady }) {
                 );
               })()}
             </nav>
+
+            <GlobalActiveTimerPill
+              activeTimer={timersState.activeTimer}
+              onOpenTimers={() => setTab("timers")}
+              onPause={() =>
+                setTimersState((prev) => ({
+                  ...prev,
+                  activeTimer: pauseActiveTimer(prev.activeTimer),
+                }))
+              }
+            />
 
         <aside className="shell-rail" aria-hidden="true" />
 
@@ -10889,7 +11099,6 @@ export default function App({ onAppReady }) {
                     setHomeCalendarMonth({ year: d.getFullYear(), month: d.getMonth() });
                     setShowMonthCalendar(false);
                   }}
-                  onBack={() => setShowMonthCalendar(false)}
                   onPrevMonth={() => setMonthCalendarMonth((prev) => {
                     const d = new Date(prev.year, prev.month - 1, 1);
                     return { year: d.getFullYear(), month: d.getMonth() };
