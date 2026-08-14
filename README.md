@@ -1,16 +1,39 @@
-# React + Vite
+# Pro You — Personal Operating System
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Pro You is a planning and accountability application built for people who need structure without rigid productivity systems. It combines daily planning, routines, habits, health, finances, and reflection in one adaptive workspace.
 
-Currently, two official plugins are available:
+## Product capabilities
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Daily plans and time-blocked schedules
+- Reusable routines and habit tracking
+- Monthly objectives and progress views
+- Notes, health, medication, and finance workflows
+- Capacity and energy-aware planning
+- Timers, reminders, and accountability sharing
+- Insight and coaching surfaces
+- Mobile-ready web experience with iOS packaging support
 
-## React Compiler
+## Engineering
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React and Vite
+- Firebase-backed authentication and persistence
+- Responsive component system
+- Product analytics and user-state workflows
+- Capacitor/iOS integration
 
-## Expanding the ESLint configuration
+## Local development
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```bash
+npm install
+npm run dev
+```
+
+Create a local environment file from the provided example and supply your own Firebase configuration. Do not commit credentials or personal user data.
+
+## Product approach
+
+The central design constraint is that a planning tool should reduce cognitive load rather than create another backlog to maintain. Features are organized around the user's current capacity, immediate next action, and continuity across days.
+
+## Ownership
+
+Designed and engineered by Sarah Kitay.
