@@ -2,7 +2,7 @@ import { REFERRAL_PRO_DAYS } from "./socialModel.js";
 
 const REFERRAL_PRO_UNTIL_KEY = "proyou_referral_pro_until_v1";
 
-export function getReferralProUntilIso() {
+export function getReferralProUntilIso(): string {
   try {
     return localStorage.getItem(REFERRAL_PRO_UNTIL_KEY) || "";
   } catch {
@@ -10,7 +10,7 @@ export function getReferralProUntilIso() {
   }
 }
 
-export function setReferralProUntilIso(iso) {
+export function setReferralProUntilIso(iso: string | null | undefined): void {
   try {
     if (iso) localStorage.setItem(REFERRAL_PRO_UNTIL_KEY, iso);
     else localStorage.removeItem(REFERRAL_PRO_UNTIL_KEY);
@@ -19,8 +19,7 @@ export function setReferralProUntilIso(iso) {
   }
 }
 
-/** @returns {{ active: boolean, until: Date | null, daysLeft: number }} */
-export function getReferralProGrant() {
+export function getReferralProGrant(): { active: boolean; until: Date | null; daysLeft: number } {
   const iso = getReferralProUntilIso();
   if (!iso) return { active: false, until: null, daysLeft: 0 };
   const until = new Date(iso);
@@ -31,8 +30,7 @@ export function getReferralProGrant() {
   return { active: true, until, daysLeft };
 }
 
-/** Compute extended Pro-until ISO from an existing grant (or now). */
-export function computeReferralProUntilIso(existingIso, days = REFERRAL_PRO_DAYS) {
+export function computeReferralProUntilIso(existingIso?: string | null, days = REFERRAL_PRO_DAYS): string {
   let base = Date.now();
   if (existingIso) {
     const existing = new Date(existingIso);
@@ -43,15 +41,27 @@ export function computeReferralProUntilIso(existingIso, days = REFERRAL_PRO_DAYS
   return new Date(base + days * 86400000).toISOString();
 }
 
-/** Grant 30-day internal Pro on this device (complements StoreKit). */
-export function grantReferralProDays(days = REFERRAL_PRO_DAYS) {
+export function latestReferralProUntilIso(candidates: Array<string | null | undefined>): string {
+  let best = "";
+  let bestMs = 0;
+  for (const iso of candidates) {
+    if (!iso) continue;
+    const t = new Date(iso).getTime();
+    if (!Number.isNaN(t) && t > bestMs) {
+      bestMs = t;
+      best = iso;
+    }
+  }
+  return best;
+}
+
+export function grantReferralProDays(days = REFERRAL_PRO_DAYS): Date {
   const iso = computeReferralProUntilIso(getReferralProUntilIso(), days);
   setReferralProUntilIso(iso);
   return new Date(iso);
 }
 
-/** Merge RevenueCat / dev state with referral grant for effective Pro access. */
-export function mergeSubscriptionWithReferral(storeState) {
+export function mergeSubscriptionWithReferral<T extends Record<string, unknown>>(storeState: T): T & Record<string, unknown> {
   const referral = getReferralProGrant();
   if (!referral.active) return storeState;
   const untilIso = referral.until?.toISOString?.() || null;

@@ -7,11 +7,12 @@ import {
   getPendingReferralCode,
   normalizeSocialPrivacy,
 } from "./socialModel.js";
-import { getReferralProGrant, grantReferralProDays, setReferralProUntilIso } from "./referralEntitlement.js";
+import { getReferralProGrant, latestReferralProUntilIso, setReferralProUntilIso } from "./referralEntitlement.js";
 import { buildReferralSharePayload } from "./referralLinks.js";
 import { loadCachedReferralCode, saveCachedReferralCode } from "./referralCodeCache.js";
 import { buildShareSnapshot } from "./socialSnapshot.js";
 import * as sf from "./socialFirestore.js";
+import { sanitizeCloudUserError } from "../cloudUserMessages.js";
 
 function resolveFirebaseUid(propUid) {
   return getAuthApp()?.currentUser?.uid || propUid || null;
@@ -42,6 +43,7 @@ export function SocialProvider({
   const [sharedTasks, setSharedTasks] = useState([]);
   const [referrals, setReferrals] = useState([]);
   const [referralRewards, setReferralRewards] = useState([]);
+  const [friendNames, setFriendNames] = useState({});
   const [error, setError] = useState("");
 
   const resolvedUid = resolveFirebaseUid(firebaseUid);
@@ -67,9 +69,16 @@ export function SocialProvider({
       if (p?.referralCode && profileUid) saveCachedReferralCode(profileUid, p.referralCode);
       await sf.processPendingReferralRewardsForReferrer(profileUid);
       await sf.syncReferralProFromProfile(profileUid);
-      const synced = await sf.loadUserProfile(profileUid);
-      if (synced?.referralProUntilIso) {
-        setReferralProUntilIso(synced.referralProUntilIso);
+      const [synced, rewardRows] = await Promise.all([
+        sf.loadUserProfile(profileUid),
+        sf.listReferralRewards(profileUid).catch(() => []),
+      ]);
+      const until = latestReferralProUntilIso([
+        synced?.referralProUntilIso,
+        ...(rewardRows || []).map((r) => r.proUntilIso),
+      ]);
+      if (until) {
+        setReferralProUntilIso(until);
         if (typeof window !== "undefined") {
           window.dispatchEvent(new CustomEvent("proyou:referral-pro-updated"));
         }
@@ -88,8 +97,18 @@ export function SocialProvider({
       setSharedTasks(tasks);
       setReferrals(refs);
       setReferralRewards(rewards);
+      const uids = [...new Set(p?.friendUids || [])].filter(
+        (id) => !(p?.blockedUids || []).includes(id),
+      );
+      const namePairs = await Promise.all(
+        uids.map(async (fid) => {
+          const fp = await sf.loadUserProfile(fid);
+          return [fid, (fp?.displayName || "").trim() || "Friend"];
+        }),
+      );
+      setFriendNames(Object.fromEntries(namePairs));
     } catch (e) {
-      setError(e?.message || String(e));
+      setError(sanitizeCloudUserError(e));
     } finally {
       setLoading(false);
     }
@@ -97,7 +116,7 @@ export function SocialProvider({
 
   const ensureReferralCodeReady = useCallback(async () => {
     if (!cloudOn || !resolvedUid) {
-      throw new Error("Sign in with cloud sync to get an invite code.");
+      throw new Error("Sign in with your cloud account to get an invite code.");
     }
     setError("");
     setLoading(true);
@@ -111,7 +130,7 @@ export function SocialProvider({
       if (profileUid) saveCachedReferralCode(profileUid, p.referralCode);
       return p.referralCode;
     } catch (e) {
-      const msg = e?.message || String(e);
+      const msg = sanitizeCloudUserError(e);
       setError(msg);
       throw e;
     } finally {
@@ -130,7 +149,9 @@ export function SocialProvider({
     void (async () => {
       try {
         const recorded = await sf.recordReferralSignup(resolvedUid, code);
-        if (recorded) grantReferralProDays();
+        if (recorded) {
+          /* Referrer gets Pro when they open Accountability (processPendingReferralRewardsForReferrer). */
+        }
         clearPendingReferralCode();
         await refresh();
       } catch {
@@ -197,17 +218,18 @@ export function SocialProvider({
     return uids;
   }, [profile]);
 
-  const sendFriendRequestByCode = useCallback(
+  const addFriendByCode = useCallback(
     async (code) => {
-      const target = await sf.findUserByReferralCode(code);
-      if (!target) throw new Error("No user found with that code.");
-      if (target.id === resolvedUid) throw new Error("That is your own code.");
-      if ((profile?.blockedUids || []).includes(target.id)) throw new Error("User is blocked.");
-      await sf.sendFriendRequest(resolvedUid, target.id);
+      await sf.ensureUserProfile(resolvedUid, { displayName });
+      const target = await sf.addFriendByCode(resolvedUid, code);
       await refresh();
+      return target;
     },
-    [resolvedUid, profile, refresh],
+    [resolvedUid, displayName, refresh],
   );
+
+  /** @deprecated Use addFriendByCode - kept for older call sites. */
+  const sendFriendRequestByCode = addFriendByCode;
 
   const respondRequest = useCallback(
     async (requestId, accept) => {
@@ -251,28 +273,67 @@ export function SocialProvider({
 
   const loadFriendProgress = useCallback(
     async (friendUid) => {
-      const raw = await sf.loadFriendShareSnapshot(friendUid);
+      const [raw, friendProfile] = await Promise.all([
+        sf.loadFriendShareSnapshot(friendUid),
+        sf.loadUserProfile(friendUid),
+      ]);
       const vis = profile?.friendVisibility?.[friendUid];
-      const seeAll = {
-        scheduleToday: true,
-        habitStreaks: true,
-        completedTasks: true,
-        monthlyGoals: true,
-        fitness: true,
-        finance: true,
-      };
-      return filterSnapshotForFriend(raw, seeAll, vis);
+      const globalPerms = normalizeSocialPrivacy(friendProfile?.privacy || defaultSocialPrivacy()).sharePermissions;
+      return filterSnapshotForFriend(raw, globalPerms, vis);
     },
     [profile],
   );
 
   const createSharedTask = useCallback(
     async (task) => {
-      const created = await sf.createSharedTask(resolvedUid, task);
+      const created = await sf.createSharedTask(resolvedUid, {
+        ...task,
+        creatorDisplayName: displayName,
+      });
       await refresh();
       return created;
     },
-    [resolvedUid, refresh],
+    [resolvedUid, displayName, refresh],
+  );
+
+  const respondSharedTaskInvite = useCallback(
+    async (taskId, accept) => {
+      const result = await sf.respondSharedTaskInvite(taskId, resolvedUid, accept);
+      await refresh();
+      if (accept && result?.scheduleOnAccept !== false && typeof window !== "undefined") {
+        const sharedWithName =
+          (result.creatorDisplayName || "").trim() ||
+          friendNames[result.createdBy] ||
+          "Friend";
+        window.dispatchEvent(
+          new CustomEvent("proyou:shared-task-accepted", {
+            detail: {
+              task: { ...result, sharedWithName },
+            },
+          }),
+        );
+      }
+      return result;
+    },
+    [resolvedUid, refresh, friendNames],
+  );
+
+  const pendingSharedTaskInvites = useMemo(
+    () =>
+      sharedTasks.filter(
+        (t) => t.status === "pending" && t.inviteeUid === resolvedUid,
+      ),
+    [sharedTasks, resolvedUid],
+  );
+
+  const activeSharedTasks = useMemo(
+    () =>
+      sharedTasks.filter((t) => {
+        if (t.status === "declined") return false;
+        if (t.status === "pending" && t.inviteeUid === resolvedUid) return false;
+        return true;
+      }),
+    [sharedTasks, resolvedUid],
   );
 
   const completeSharedTask = useCallback(
@@ -316,9 +377,13 @@ export function SocialProvider({
     inviteShare,
     referralCode,
     friendUids: friendProfiles,
+    friendNames,
+    pendingSharedTaskInvites,
+    activeSharedTasks,
     referralGrant,
     refresh,
     ensureReferralCodeReady,
+    addFriendByCode,
     sendFriendRequestByCode,
     respondRequest,
     removeFriend,
@@ -328,6 +393,7 @@ export function SocialProvider({
     loadFriendProgress,
     loadUserProfile: sf.loadUserProfile,
     createSharedTask,
+    respondSharedTaskInvite,
     completeSharedTask,
     commentSharedTask,
     reactSharedTask,
@@ -353,12 +419,16 @@ export function useSocial() {
       referralCode: "",
       firebaseUid: null,
       friendUids: [],
+      friendNames: {},
+      pendingSharedTaskInvites: [],
+      activeSharedTasks: [],
       referralGrant: { active: false, until: null, daysLeft: 0 },
       error: "",
       refresh: () => {},
       ensureReferralCodeReady: async () => {
         throw new Error("Sign in to generate an invite code.");
       },
+      addFriendByCode: async () => {},
       sendFriendRequestByCode: async () => {},
       respondRequest: async () => {},
       removeFriend: async () => {},
@@ -368,6 +438,7 @@ export function useSocial() {
       loadFriendProgress: async () => null,
       loadUserProfile: async () => null,
       createSharedTask: async () => {},
+      respondSharedTaskInvite: async () => {},
       completeSharedTask: async () => {},
       commentSharedTask: async () => {},
       reactSharedTask: async () => {},

@@ -1,17 +1,21 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "jsx": "react-jsx",
-    "lib": ["ES2022", "DOM"],
-    "types": ["vite/client"],
-    "allowImportingTsExtensions": false,
+    "allowJs": true,
+    "checkJs": false,
+    "isolatedModules": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": false,
+    "types": ["vite/client"]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "vite.config.js"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts", "vite.config.js"],
+  "exclude": ["node_modules", "dist", "ios", "docs"]
 }

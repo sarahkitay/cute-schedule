@@ -1,5 +1,29 @@
-/** @typedef {'pending' | 'accepted' | 'declined'} FriendRequestStatus */
-/** @typedef {'pending' | 'qualified' | 'rewarded'} ReferralStatus */
+export type SharePermissions = {
+  scheduleToday: boolean;
+  habitStreaks: boolean;
+  completedTasks: boolean;
+  monthlyGoals: boolean;
+  fitness: boolean;
+  finance: boolean;
+};
+
+export type SocialPrivacySettings = {
+  profileVisible: boolean;
+  allowFriendRequests: boolean;
+  allowSharedTaskInvites: boolean;
+  sharePermissions: SharePermissions;
+};
+
+export type FriendVisibility = {
+  useGlobal: boolean;
+  categories: SharePermissions;
+};
+
+export const SHARED_TASK_STATUS = {
+  PENDING: "pending",
+  ACTIVE: "active",
+  DECLINED: "declined",
+} as const;
 
 export const REFERRAL_CODE_STORAGE_KEY = "proyou_pending_referral_code_v1";
 export const REFERRAL_PRO_DAYS = 30;
@@ -11,16 +35,11 @@ export const SHARE_CATEGORIES = [
   { id: "monthlyGoals", label: "Monthly goals", description: "Goal progress this month" },
   { id: "fitness", label: "Fitness progress", description: "Workouts and activity highlights" },
   { id: "finance", label: "Finance milestones", description: "Only if you explicitly enable" },
-];
+] as const;
 
-/** Categories that cannot be shared (safety). */
-export const NON_SHAREABLE_CATEGORIES = ["medication", "notes", "journal"];
+export const NON_SHAREABLE_CATEGORIES = ["medication", "notes", "journal"] as const;
 
-/**
- * Default social privacy - nothing shared until opted in.
- * @returns {import('./socialModel.js').SharePermissions}
- */
-export function defaultSharePermissions() {
+export function defaultSharePermissions(): SharePermissions {
   return {
     scheduleToday: false,
     habitStreaks: false,
@@ -31,25 +50,7 @@ export function defaultSharePermissions() {
   };
 }
 
-/**
- * @typedef {Object} SharePermissions
- * @property {boolean} scheduleToday
- * @property {boolean} habitStreaks
- * @property {boolean} completedTasks
- * @property {boolean} monthlyGoals
- * @property {boolean} fitness
- * @property {boolean} finance
- */
-
-/**
- * @typedef {Object} SocialPrivacySettings
- * @property {boolean} profileVisible
- * @property {boolean} allowFriendRequests
- * @property {boolean} allowSharedTaskInvites
- * @property {SharePermissions} sharePermissions
- */
-
-export function defaultSocialPrivacy() {
+export function defaultSocialPrivacy(): SocialPrivacySettings {
   return {
     profileVisible: true,
     allowFriendRequests: true,
@@ -58,51 +59,51 @@ export function defaultSocialPrivacy() {
   };
 }
 
-export function normalizeSharePermissions(raw) {
+export function normalizeSharePermissions(raw: unknown): SharePermissions {
   const base = defaultSharePermissions();
   if (!raw || typeof raw !== "object") return base;
-  for (const key of Object.keys(base)) {
-    if (typeof raw[key] === "boolean") base[key] = raw[key];
+  const obj = raw as Record<string, unknown>;
+  for (const key of Object.keys(base) as (keyof SharePermissions)[]) {
+    if (typeof obj[key] === "boolean") base[key] = obj[key];
   }
   return base;
 }
 
-export function normalizeSocialPrivacy(raw) {
+export function normalizeSocialPrivacy(raw: unknown): SocialPrivacySettings {
   const d = defaultSocialPrivacy();
   if (!raw || typeof raw !== "object") return d;
+  const obj = raw as Record<string, unknown>;
   return {
-    profileVisible: raw.profileVisible !== false,
-    allowFriendRequests: raw.allowFriendRequests !== false,
-    allowSharedTaskInvites: raw.allowSharedTaskInvites !== false,
-    sharePermissions: normalizeSharePermissions(raw.sharePermissions),
+    profileVisible: obj.profileVisible !== false,
+    allowFriendRequests: obj.allowFriendRequests !== false,
+    allowSharedTaskInvites: obj.allowSharedTaskInvites !== false,
+    sharePermissions: normalizeSharePermissions(obj.sharePermissions),
   };
 }
 
-/** Per-friend overrides: which categories this friend may see. */
-export function defaultFriendVisibility() {
+export function defaultFriendVisibility(): FriendVisibility {
   return { useGlobal: true, categories: defaultSharePermissions() };
 }
 
-export function normalizeFriendVisibility(raw) {
+export function normalizeFriendVisibility(raw: unknown): FriendVisibility {
   const d = defaultFriendVisibility();
   if (!raw || typeof raw !== "object") return d;
+  const obj = raw as Record<string, unknown>;
   return {
-    useGlobal: raw.useGlobal !== false,
-    categories: raw.useGlobal === false ? normalizeSharePermissions(raw.categories) : defaultSharePermissions(),
+    useGlobal: obj.useGlobal !== false,
+    categories: obj.useGlobal === false ? normalizeSharePermissions(obj.categories) : defaultSharePermissions(),
   };
 }
 
-export function friendshipDocId(uidA, uidB) {
-  return [uidA, uidB].sort().join("_");
-}
+export { friendshipDocId } from "./firestoreAccess";
 
-export function generateReferralCode(uid) {
+export function generateReferralCode(uid: string): string {
   const slice = (uid || "").replace(/[^a-zA-Z0-9]/g, "").slice(-6).toUpperCase();
   const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
   return `PY${slice || "YOU"}${rand}`;
 }
 
-export function captureReferralFromUrl() {
+export function captureReferralFromUrl(): void {
   try {
     const params = new URLSearchParams(window.location.search);
     const ref = params.get("ref") || params.get("referral");
@@ -118,7 +119,7 @@ export function captureReferralFromUrl() {
   }
 }
 
-export function getPendingReferralCode() {
+export function getPendingReferralCode(): string {
   try {
     return localStorage.getItem(REFERRAL_CODE_STORAGE_KEY) || "";
   } catch {
@@ -126,7 +127,7 @@ export function getPendingReferralCode() {
   }
 }
 
-export function clearPendingReferralCode() {
+export function clearPendingReferralCode(): void {
   try {
     localStorage.removeItem(REFERRAL_CODE_STORAGE_KEY);
   } catch {
@@ -134,14 +135,17 @@ export function clearPendingReferralCode() {
   }
 }
 
-/** Filter snapshot payload to only categories allowed for a friend. */
-export function filterSnapshotForFriend(snapshot, globalPerms, friendVisibility) {
+export function filterSnapshotForFriend(
+  snapshot: Record<string, unknown> | null | undefined,
+  globalPerms: unknown,
+  friendVisibility: FriendVisibility | null | undefined,
+): Record<string, unknown> | null {
   if (!snapshot) return null;
   const perms =
     friendVisibility?.useGlobal === false
       ? normalizeSharePermissions(friendVisibility.categories)
       : normalizeSharePermissions(globalPerms);
-  const out = { updatedAt: snapshot.updatedAt, displayName: snapshot.displayName };
+  const out: Record<string, unknown> = { updatedAt: snapshot.updatedAt, displayName: snapshot.displayName };
   if (perms.scheduleToday && snapshot.scheduleToday) out.scheduleToday = snapshot.scheduleToday;
   if (perms.habitStreaks && snapshot.habitStreaks) out.habitStreaks = snapshot.habitStreaks;
   if (perms.completedTasks && snapshot.completedTasks) out.completedTasks = snapshot.completedTasks;
