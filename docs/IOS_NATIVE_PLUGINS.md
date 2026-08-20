@@ -61,6 +61,18 @@ Permissions in `Info.plist`: `NSCameraUsageDescription`, `NSPhotoLibraryUsageDes
 
 Permission: `NSAlarmKitUsageDescription` in `Info.plist`. User must allow **alarms** for PROYOU in Settings.
 
+## Focus timers (AlarmKit, iOS 26+)
+
+Focus timers from **Timers** or **Start timer** on a task use AlarmKit's **timer** API (not a notification):
+
+- Countdown on **Lock Screen** and **Dynamic Island** via `ProyouAlarmLiveActivity.swift` (Live Activity in the widget extension)
+- Full-screen system alert with **Stop** when time is up (like Clock)
+- **Open PROYOU** opens the app to dismiss from the in-app **Dismiss** button
+
+Host app needs `NSSupportsLiveActivities` in `Info.plist`. Rebuild from Xcode after pulling these changes.
+
+On **iOS 18-25**, focus timers fall back to local notifications plus in-app ringing.
+
 See [ALARMKIT_IOS.md](./ALARMKIT_IOS.md).
 
 ## Custom alarm audio
@@ -96,30 +108,87 @@ The “Search path … Debug-iphonesimulator/Capacitor not found” messages usu
 
 Optional: delete stale Derived Data for this app (**Xcode → Settings → Locations → Derived Data → delete the App-* folder**), then rebuild.
 
-## Xcode warnings you can ignore
+## Archive fails: `No space left on device`
 
-These come from **dependencies**, not PROYOU app code:
+If archiving shows **`unable to open output file … ModuleCache.noindex … No space left on device`** or **`Could not build module 'UIKit'`**, the Mac disk is full. Xcode needs **several GB free** for Derived Data, module caches, and the archive `.ipa`.
 
-| Message | Source |
-|---------|--------|
-| `WKProcessPool` is deprecated (iOS 15) | Capacitor Cordova (`node_modules/@capacitor/ios/.../CDVWebViewProcessPoolFactory.h`) |
-| `@_implementationOnly` / library evolution | Firebase pods (`Pods/FirebaseAuth`, `FirebaseCoreInternal`) |
-| `weakSelf` was never mutated | FirebaseAuth (pod source) |
+Check free space:
 
-They do not block the build. Upgrading Capacitor/Firebase later may reduce noise.
+```bash
+df -h /
+```
+
+Free space safely (biggest wins first):
+
+```bash
+# 1. Remove unavailable iOS simulators (~often 10–30 GB)
+xcrun simctl delete unavailable
+
+# 2. Clear Xcode build caches (~5–10 GB; rebuild takes longer once)
+rm -rf ~/Library/Developer/Xcode/DerivedData
+
+# 3. Old archives you no longer need (check dates in Xcode → Window → Organizer)
+rm -rf ~/Library/Developer/Xcode/Archives/*
+
+# 4. Optional: old device support symbols (Xcode re-downloads when needed)
+# rm -rf ~/Library/Developer/Xcode/iOS\ DeviceSupport/*
+```
+
+Then **Product → Clean Build Folder** and archive again. Aim for **at least 15–20 GB free** before archiving.
+
+**Important:** Clean Build Folder does **not** clear the module cache. If you see **`not a valid precompiled module file`** or **`file too small to contain AST file magic`** after a disk-full build, wipe caches manually:
+
+```bash
+rm -rf ~/Library/Developer/Xcode/DerivedData/ModuleCache.noindex
+rm -rf ~/Library/Developer/Xcode/DerivedData/App-*
+```
+
+Quit Xcode first, run those commands, reopen `App.xcworkspace`, then **Product → Archive**.
+
+The `WKProcessPool` Capacitor warning is unrelated to this error.
+
+## Yellow warnings vs red errors
+
+Xcode’s **Issue navigator** lists warnings (yellow) and errors (red) together. Paths under `node_modules/`, `Pods/`, or **CapacitorFirebase\*** are **third-party code**, not PROYOU.
+
+**If the build finishes with “Build Succeeded”**, the app is fine - those messages are noise.
+
+To hide warnings while developing:
+
+1. Issue navigator filter: **Errors Only** (dropdown at the bottom of the list).
+2. Or run `cd ios/App && pod install` after pulling - the Podfile sets **`SWIFT_SUPPRESS_WARNINGS`** and **`GCC_WARN_INHIBIT_ALL_WARNINGS`** on pod targets so most dependency warnings stop appearing on the next clean build.
+
+**Pods → “Update to recommended settings”** is optional. You can ignore it, or update the **Pods** project only - do not re-enable **User Script Sandboxing** on the **App** target (that breaks `[CP] Embed Pods Frameworks`).
+
+| Message | Source | Blocks build? |
+|---------|--------|----------------|
+| `WKProcessPool` is deprecated | Capacitor Cordova | No |
+| Firebase `deprecated` / `@_implementationOnly` | Firebase pods | No |
+| RevenueCat / Capacitor plugin deprecations | npm Capacitor plugins | No |
+| `Update to recommended settings` (Pods) | Xcode UI suggestion | No |
+
+## `PhaseScriptExecution` failed (`[CP] Embed Pods Frameworks`)
+
+If the log shows **`Pods-App-frameworks.sh: Operation not permitted`** or the embed phase fails with no Swift error, **User Script Sandboxing** is blocking CocoaPods. This project sets **`ENABLE_USER_SCRIPT_SANDBOXING = NO`** in `App.xcodeproj` and the Podfile.
+
+If Xcode prompts **Update to recommended settings** and re-enables sandboxing, either decline that change for the App project or set **Build Settings → User Script Sandboxing → No** on the **App** target, then **Clean Build Folder** and rebuild.
+
+```bash
+cd ios/App && pod install
+```
 
 ## `ProyouWidgetExtension`: CodeSign failed
 
 This is the **only error that stops the build** in the list above. Common causes on a **physical device** build:
 
-1. **Wrong Xcode project** — open `ios/App/App.xcworkspace`, not `App.xcodeproj`.
-2. **Team not set on the widget** — in Xcode, select target **ProyouWidgetExtension** → **Signing & Capabilities** → enable **Automatically manage signing** and choose the same **Team** as the **App** target.
-3. **App Group not registered** — both bundle IDs need the group `group.app.proyou.proyou`:
+1. **Wrong Xcode project** - open `ios/App/App.xcworkspace`, not `App.xcodeproj`.
+2. **Team not set on the widget** - in Xcode, select target **ProyouWidgetExtension** → **Signing & Capabilities** → enable **Automatically manage signing** and choose the same **Team** as the **App** target.
+3. **App Group not registered** - both bundle IDs need the group `group.app.proyou.proyou`:
    - `app.proyou.proyou` (main app)
    - `app.proyou.proyou.ProyouWidget` (widget extension)  
    In [Apple Developer → Identifiers](https://developer.apple.com/account/resources/identifiers/list), enable **App Groups** on both IDs and assign the same group. Then in Xcode: **Signing & Capabilities** → **App Groups** → check `group.app.proyou.proyou` on **App** and **ProyouWidgetExtension**.
-4. **Stale profiles** — Xcode → **Settings → Accounts** → your Apple ID → **Download Manual Profiles**, then **Product → Clean Build Folder** and rebuild.
-5. **Version mismatch** — extension `CFBundleVersion` must match the app (both use `CURRENT_PROJECT_VERSION` in the project).
+4. **Stale profiles** - Xcode → **Settings → Accounts** → your Apple ID → **Download Manual Profiles**, then **Product → Clean Build Folder** and rebuild.
+5. **Version mismatch** - extension `CFBundleVersion` must match the app (both use `CURRENT_PROJECT_VERSION` in the project).
 
 After changing the Podfile team helper, run:
 

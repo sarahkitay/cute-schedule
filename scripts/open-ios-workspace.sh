@@ -24,5 +24,5 @@ if [ ! -d "$WORKSPACE" ]; then
   exit 1
 fi
 
-echo "Opening App.xcworkspace (required for Capacitor — do NOT use App.xcodeproj)"
+echo "Opening App.xcworkspace (required for Capacitor - do NOT use App.xcodeproj)"
 open "$WORKSPACE"

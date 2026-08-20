@@ -1,6 +1,6 @@
 /** Shopping-list keywords, task disposition log, finance month rollover, coach-facing summaries. */
 
-export const DEFAULT_GROCERY_KEYWORDS = ["grocery", "groceries", "store", "errand"];
+export const DEFAULT_GROCERY_KEYWORDS = ["grocery", "groceries", "store", "errand", "pack", "list"];
 
 const TASK_BEHAVIOR_KEY = "cute_schedule_task_behavior_v1";
 const taskBehaviorListeners = new Set();

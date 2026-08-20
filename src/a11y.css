@@ -1,0 +1,163 @@
+/* Accessibility: skip link, screen-reader text, visible focus, reduced motion */
+
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: 8px;
+  z-index: 10000;
+  padding: 10px 14px;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #fff;
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  transform: translateY(-180%);
+  transition: transform 0.15s ease;
+}
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--theme-accent, #c47a72) 80%, #3a2a28);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body {
+    scroll-behavior: auto !important;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.coach-voice-bar {
+  margin: 0 0 var(--space-3);
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.1));
+  background: color-mix(in srgb, var(--theme-accent, #e8b8b0) 10%, rgba(255, 255, 255, 0.72));
+}
+.coach-voice-bar__lead {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text, #1a1a1a);
+}
+.coach-voice-bar__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.coach-voice-mic {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent, #d4958a) 55%, transparent);
+  background: var(--surface-solid, #fff);
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text, #1a1a1a);
+  cursor: pointer;
+}
+.coach-voice-mic.is-listening {
+  background: color-mix(in srgb, var(--theme-accent, #e8b8b0) 35%, #fff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent, #e8b8b0) 35%, transparent);
+}
+.coach-voice-speak {
+  min-height: 44px;
+}
+.coach-voice-bar__live {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text, #1a1a1a);
+}
+.coach-voice-bar__error {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: #8a3a3a;
+}
+
+/* Form fields stay at least 16px so iOS will not hijack zoom, and low-vision users can still pinch-zoom. */
+.input,
+input.input,
+select.input,
+textarea.input,
+textarea,
+.coach-question-input {
+  font-size: 16px !important;
+}
+
+.coach-question-submit,
+.coach-hero-btn {
+  min-height: 44px;
+}
+
+.btn-icon,
+.icon-btn {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Keep dock names available to assistive tech when visual labels are hidden. */
+.bottom-nav--hide-labels .bottom-nav-side .bottom-nav-label,
+.bottom-nav--hide-labels .bottom-nav-center .bottom-nav-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+  display: block;
+}
+
+@media (prefers-contrast: more) {
+  .skip-link,
+  .coach-voice-bar,
+  .input,
+  .btn,
+  .coach-v2-card,
+  .login-gate-card {
+    border: 2px solid currentColor;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .surface-glass,
+  .coach-voice-bar,
+  .coach-output-card {
+    background: var(--surface-solid, #fff8f7);
+    backdrop-filter: none;
+  }
+}

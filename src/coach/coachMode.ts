@@ -33,6 +33,22 @@ export function inferCoachReasoningMode(userQuestion: string | null | undefined)
     return "missing_from_schedule";
   if (/\b(behind|on track|on pace|ahead|catch up)\b/.test(q)) return "schedule_check";
   if (/\b(monthly|objective|goal for the month|okr)\b/.test(q)) return "monthly_objective_alignment";
+
+  /** Full-day scheduling beats workout-only routing when they want everything on the calendar. */
+  const dayBuildCue =
+    /\b(put|add|schedule|slot|fit)\b[\s\S]{0,48}\b(on my schedule|on the schedule|on today|my schedule|my day|calendar|rest of (?:the )?day)\b/.test(
+      q
+    ) ||
+    /\b(all of this|everything)\b[\s\S]{0,24}\b(schedule|today|calendar)\b/.test(q) ||
+    /\b(can you|could you)\b[\s\S]{0,32}\b(put|add|schedule)\b[\s\S]{0,32}\b(schedule|today|calendar)\b/.test(q);
+  const multiItemCue =
+    (q.match(/\b(and|,|;)\b/g) || []).length >= 2 &&
+    q.length > 28 &&
+    /\b(i have to|i've to|i need to|i also need|need to|have to|must|today|this morning|this afternoon|tonight|schedule|plan|slot|fit in|get done|chores|errands|homework|calls?)\b/.test(
+      q
+    );
+  if (dayBuildCue || multiItemCue) return "daily_planning";
+
   // Training / body before loose "yesterday" routing so gym questions are not misclassified as schedule-audit.
   if (
     /\b(workout|gym|lift|lifting|program|training|strength|cardio|muscle|protein|macros|reps?|sets?|exercises?|routine|hypertrophy|bodybuilding|split|leg day|arm day|push day|pull day|upper body|lower body|full body|total body|core|abs|chest|back|shoulders?|biceps?|triceps?|glutes?|quads?|hamstrings?|calves|forearms?|delts|deadlift|squat|bench|row|press|pull-up|chin|machine|cable|dumbbell|barbell|kettlebell|mobility|stretch|warm[\s-]?up|pb|plates?|hiit|tabata|superset|dropset)\b/.test(
@@ -50,13 +66,6 @@ export function inferCoachReasoningMode(userQuestion: string | null | undefined)
   }
   if (/\b(momentum|streak|slump|rut|stuck)\b/.test(q)) return "momentum_recovery";
   if (/\b(overwhelm|too much|can't cope|drowning|panic)\b/.test(q)) return "overwhelm_prevention";
-
-  /** User listed several concrete to-dos (comma / and / semicolon) they want placed today. */
-  const multiItemCue =
-    (q.match(/\b(and|,|;)\b/g) || []).length >= 2 &&
-    q.length > 28 &&
-    /\b(i have to|i've to|i need to|need to|have to|must|today|this morning|this afternoon|tonight|schedule|plan|slot|fit in|get done|chores|errands|homework|calls?)\b/.test(q);
-  if (multiItemCue) return "daily_planning";
 
   if (/\b(today|this afternoon|tonight|plan my day|rest of the day)\b/.test(q)) return "daily_planning";
 

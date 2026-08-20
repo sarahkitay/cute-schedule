@@ -21,3 +21,6 @@ export const SUBSCRIPTION_SNAPSHOT_KEY = "proyou_subscription_snapshot_v1";
 /** First 30 days after first app open: meds, fitness, insights, alarms included */
 export const APP_TRIAL_START_KEY = "proyou_app_trial_start_v1";
 export const APP_TRIAL_DAYS = 30;
+/** Trial data lives in local storage; subscribing later does not wipe it. */
+export const APP_TRIAL_DATA_RETENTION_HINT =
+  "Your schedules, habits, meds logs, and other data stay on this device. Subscribe anytime to unlock Pro features again. Nothing is deleted.";

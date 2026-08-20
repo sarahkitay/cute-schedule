@@ -9,6 +9,14 @@ public struct ProyouWidgetSnapshot: Codable {
         public let category: String
     }
 
+    public struct CurrentTaskInfo: Codable {
+        public let id: String
+        public let text: String
+        public let hourKey: String
+        public let category: String
+        public let dayKey: String
+    }
+
     public struct HabitItem: Codable, Identifiable {
         public let id: String
         public let label: String
@@ -28,13 +36,24 @@ public struct ProyouWidgetSnapshot: Codable {
     public let tasks: [TaskItem]
     public let habits: [HabitItem]
     public let activeTimer: ActiveTimerInfo?
+    public let currentTask: CurrentTaskInfo?
+    public let nextTask: CurrentTaskInfo?
+    public let openTaskCount: Int?
+    public let hasTasks: Bool?
 
     public static func placeholder() -> ProyouWidgetSnapshot {
-        ProyouWidgetSnapshot(
+        let current = CurrentTaskInfo(
+            id: "2",
+            text: "Deep work block",
+            hourKey: "10:00",
+            category: "Work",
+            dayKey: "today"
+        )
+        return ProyouWidgetSnapshot(
             updatedAt: ISO8601DateFormatter().string(from: Date()),
             todayKey: "today",
             tasks: [
-                TaskItem(id: "1", text: "Morning routine", done: false, hourKey: "08:00", category: "Personal"),
+                TaskItem(id: "1", text: "Morning routine", done: true, hourKey: "08:00", category: "Personal"),
                 TaskItem(id: "2", text: "Deep work block", done: false, hourKey: "10:00", category: "Work"),
             ],
             habits: [
@@ -46,7 +65,11 @@ public struct ProyouWidgetSnapshot: Codable {
                 remainingSec: 18 * 60 + 42,
                 endsAtMs: Date().addingTimeInterval(18 * 60 + 42).timeIntervalSince1970 * 1000,
                 linkedTaskText: "Deep work block"
-            )
+            ),
+            currentTask: current,
+            nextTask: nil,
+            openTaskCount: 1,
+            hasTasks: true
         )
     }
 }

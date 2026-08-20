@@ -5,6 +5,12 @@ import { THEMES } from "../themes";
 import { ICON_STYLE_OPTIONS, ICON_STYLE_SIMPLE, iconStyleForTheme, normalizeIconStyle } from "../iconStyle";
 import { dockNavAssetUrl } from "../dockNavAssets";
 import { MODULE_REGISTRY, DEFAULT_ENABLED_MODULES, DEFAULT_NAV_ORDER } from "../modules/registry";
+import {
+  INTAKE_GENDER_OPTIONS,
+  canOfferPeriodTracker,
+  defaultPeriodTrackerEnabled,
+  normalizeIntakeGender,
+} from "../intakeModel.js";
 
 const USE_CASES = [
   { id: "adhd", label: "ADHD support" },
@@ -18,6 +24,7 @@ const USE_CASES = [
   { id: "school", label: "School" },
   { id: "business", label: "Business" },
   { id: "emotional", label: "Emotional regulation" },
+  { id: "cycle", label: "Cycle / period tracking" },
 ];
 
 const COACHING_TONES = [
@@ -46,6 +53,28 @@ const FALLOFF_REASONS = [
 const TOTAL_STEPS = 8;
 const LAST_STEP = TOTAL_STEPS - 1;
 
+/** Steps included in each setup path (step 0 is always the path chooser). */
+const QUICK_SETUP_STEPS = [1, 6, 7];
+const INDEPTH_SETUP_STEPS = [1, 2, 3, 4, 5, 6, 7];
+
+function stepsForMode(mode) {
+  return mode === "quick" ? QUICK_SETUP_STEPS : INDEPTH_SETUP_STEPS;
+}
+
+function nextStepInPath(currentStep, mode) {
+  const path = stepsForMode(mode);
+  const idx = path.indexOf(currentStep);
+  if (idx < 0 || idx >= path.length - 1) return null;
+  return path[idx + 1];
+}
+
+function prevStepInPath(currentStep, mode) {
+  const path = stepsForMode(mode);
+  const idx = path.indexOf(currentStep);
+  if (idx <= 0) return null;
+  return path[idx - 1];
+}
+
 const ONBOARDING_THEME_PREVIEW = {
   todayicondm: "todayicondm.png",
   goalsicondm: "goalsicondm.png",
@@ -53,7 +82,14 @@ const ONBOARDING_THEME_PREVIEW = {
 
 export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
   const [step, setStep] = useState(0);
+  const [setupMode, setSetupMode] = useState(null);
   const [name, setName] = useState(profile?.name || profile?.userName || "");
+  const [intakeGender, setIntakeGender] = useState(
+    () => normalizeIntakeGender(profile?.intakeGender) || "prefer_not_to_say",
+  );
+  const [periodTrackerEnabled, setPeriodTrackerEnabled] = useState(
+    () => profile?.periodTrackerEnabled ?? defaultPeriodTrackerEnabled(normalizeIntakeGender(profile?.intakeGender) || "prefer_not_to_say"),
+  );
   const [useCases, setUseCases] = useState([]);
   const [enabledModules, setEnabledModules] = useState([...DEFAULT_ENABLED_MODULES]);
   const [peakTime, setPeakTime] = useState("");
@@ -63,7 +99,14 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
   const [iconStyle, setIconStyle] = useState(() => normalizeIconStyle(profile?.iconStyle));
 
   function toggleUseCase(id) {
-    setUseCases((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setUseCases((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      if (id === "cycle" && !prev.includes(id) && canOfferPeriodTracker(intakeGender)) {
+        setPeriodTrackerEnabled(true);
+        setEnabledModules((mods) => (mods.includes("period") ? mods : [...mods, "period"]));
+      }
+      return next;
+    });
   }
 
   function toggleModule(id) {
@@ -75,36 +118,63 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
   }
 
   function finish(startTour = null) {
-    const navOrder = DEFAULT_NAV_ORDER.filter((id) => enabledModules.includes(id));
+    const gender = normalizeIntakeGender(intakeGender) || "prefer_not_to_say";
+    const trackPeriod = canOfferPeriodTracker(gender) && (periodTrackerEnabled || useCases.includes("cycle"));
+    const modules = [...enabledModules];
+    if (trackPeriod && !modules.includes("period")) modules.push("period");
+    if (!modules.includes("alarms")) modules.push("alarms");
+    const navOrder = DEFAULT_NAV_ORDER.filter((id) => modules.includes(id));
     onComplete({
       name,
+      intakeGender: gender,
+      periodTrackerEnabled: trackPeriod,
       useCases,
-      enabledModules,
+      enabledModules: modules,
       navOrder,
       peakTime,
       falloffReasons,
       coachingTone,
       theme: onboardingTheme,
       iconStyle,
+      setupMode,
       startTour,
     });
   }
 
+  function startSetup(mode) {
+    setSetupMode(mode);
+    setStep(stepsForMode(mode)[0]);
+  }
+
   function handleNext() {
-    if (step >= LAST_STEP) {
+    if (step === 0 || !setupMode) return;
+    const next = nextStepInPath(step, setupMode);
+    if (next == null) {
       finish();
       return;
     }
-    setStep((s) => s + 1);
+    setStep(next);
   }
 
   function handleBack() {
-    setStep((s) => Math.max(0, s - 1));
+    if (step === 0 || !setupMode) return;
+    const prev = prevStepInPath(step, setupMode);
+    if (prev == null) {
+      setStep(0);
+      setSetupMode(null);
+      return;
+    }
+    setStep(prev);
   }
 
   function handleSkip() {
     finish();
   }
+
+  const pathSteps = setupMode ? stepsForMode(setupMode) : [];
+  const pathIndex = setupMode ? pathSteps.indexOf(step) : -1;
+  const pathStepLabel =
+    setupMode && pathIndex >= 0 ? `Step ${pathIndex + 1} of ${pathSteps.length}` : null;
 
   const appearanceDark =
     onboardingTheme?.name === "Midnight" || onboardingTheme?.name === "Mocha";
@@ -121,7 +191,7 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
           >
             <span aria-hidden="true">‹</span> Back
           </button>
-          <span className="py-onboarding__stepcount">{`Step ${step} of ${LAST_STEP}`}</span>
+          <span className="py-onboarding__stepcount">{pathStepLabel || `Step ${step} of ${LAST_STEP}`}</span>
           <button
             type="button"
             className="py-onboarding__navbtn py-onboarding__navbtn--muted"
@@ -136,15 +206,30 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
           <>
             <div className="py-onboarding__brand">ProYou</div>
             <p className="py-onboarding__subtitle">
-              Your adaptive personal operating system.<br />
+              Your adaptive personal operating system.
+              <br />
               Built for real brains, real energy, real life.
             </p>
+            <p className="py-onboarding__subtitle" style={{ marginTop: "var(--py-space-4)", fontWeight: 600 }}>
+              How much setup do you want right now?
+            </p>
+            <div className="py-onboarding__setup-options">
+              <button type="button" className="py-onboarding__setup-option" onClick={() => startSetup("quick")}>
+                <span className="py-onboarding__setup-option-title">Quick setup</span>
+                <span className="py-onboarding__setup-option-desc">
+                  Name, colors &amp; icons, coach tone - about 2 minutes. Add habits, routines, and modules later under You and Settings.
+                </span>
+              </button>
+              <button type="button" className="py-onboarding__setup-option py-onboarding__setup-option--primary" onClick={() => startSetup("indepth")}>
+                <span className="py-onboarding__setup-option-title">In-depth setup</span>
+                <span className="py-onboarding__setup-option-desc">
+                  Goals, modules, peak time, fall-off patterns, appearance, and coaching - the full personalization pass.
+                </span>
+              </button>
+            </div>
             <div className="py-onboarding__actions">
-              <PillButton variant="primary" size="lg" onClick={handleNext}>
-                Get started
-              </PillButton>
               <PillButton variant="ghost" onClick={handleSkip}>
-                Skip setup
+                Skip setup for now
               </PillButton>
             </div>
           </>
@@ -165,8 +250,41 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
                 if (e.key === "Enter") handleNext();
               }}
               autoFocus
-              style={{ marginBottom: "var(--py-space-5)" }}
+              style={{ marginBottom: "var(--py-space-3)" }}
             />
+            <label className="label" style={{ display: "block", marginBottom: 6, fontSize: 14 }}>
+              Gender (optional)
+            </label>
+            <select
+              className="py-input"
+              value={intakeGender}
+              onChange={(e) => {
+                const g = normalizeIntakeGender(e.target.value) || "prefer_not_to_say";
+                setIntakeGender(g);
+                if (canOfferPeriodTracker(g)) {
+                  setPeriodTrackerEnabled(defaultPeriodTrackerEnabled(g));
+                } else {
+                  setPeriodTrackerEnabled(false);
+                }
+              }}
+              style={{ marginBottom: "var(--py-space-3)" }}
+            >
+              {INTAKE_GENDER_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            {canOfferPeriodTracker(intakeGender) ? (
+              <label className="social-toggle-row" style={{ marginBottom: "var(--py-space-4)" }}>
+                <input
+                  type="checkbox"
+                  checked={periodTrackerEnabled}
+                  onChange={(e) => setPeriodTrackerEnabled(e.target.checked)}
+                />
+                <span>Turn on period tracker (private, in You)</span>
+              </label>
+            ) : null}
             <div className="py-onboarding__actions">
               <PillButton variant="primary" size="lg" onClick={handleNext}>
                 Continue
@@ -380,25 +498,31 @@ export function OnboardingV2({ onComplete, profile, theme, setTheme }) {
             </div>
             <div className="py-onboarding__actions">
               <PillButton variant="primary" size="lg" onClick={() => finish("quick")}>
-                Take a quick tour
+                Quick tour
+              </PillButton>
+              <PillButton variant="secondary" size="lg" onClick={() => finish("full")}>
+                Full walkthrough
               </PillButton>
               <PillButton variant="ghost" onClick={() => finish(null)}>
-                Skip tour, start using ProYou
+                Start using ProYou
               </PillButton>
             </div>
             <p className="py-onboarding__finehint">
-              You can replay the tour anytime from Settings.
+              Replay either tour anytime from Settings → Guides &amp; tours.
             </p>
           </>
         )}
 
-        {step > 0 && (
+        {step > 0 && setupMode ? (
           <div className="py-onboarding__progress">
-            {Array.from({ length: TOTAL_STEPS }, (_, i) => (
-              <div key={i} className={`py-onboarding__dot ${i === step ? "py-onboarding__dot--active" : ""}`} />
+            {pathSteps.map((stepId) => (
+              <div
+                key={stepId}
+                className={`py-onboarding__dot ${stepId === step ? "py-onboarding__dot--active" : ""}`}
+              />
             ))}
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

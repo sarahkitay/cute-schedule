@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { CloseIcon } from "./Icons";
 
 /**
- * @param {{ open: boolean, taskPreview: string, programs: { id: string, name: string, exercises?: string[] }[], hasWeeklyRoutine?: boolean, onCancel: () => void, onConfirm: (pick: { workoutProgramMode: 'specific'|'queue'|'auto', workoutProgramId?: string, openHealthProgramBuilder?: boolean }) => void }} props
+ * @param {{ open: boolean, taskPreview: string, programs: { id: string, name: string, exercises?: string[] }[], hasWeeklyRoutine?: boolean, onCancel: () => void, onConfirm: (pick: { workoutProgramMode: 'specific'|'queue'|'auto'|'coach_gen', workoutProgramId?: string, openHealthProgramBuilder?: boolean, coachGenerateProgram?: boolean }) => void }} props
  */
 export function WorkoutProgramPickerModal({
   open,
@@ -31,6 +31,10 @@ export function WorkoutProgramPickerModal({
     }
     if (mode === "queue") {
       onConfirm({ workoutProgramMode: "queue" });
+      return;
+    }
+    if (mode === "coach_gen") {
+      onConfirm({ workoutProgramMode: "auto", coachGenerateProgram: true });
       return;
     }
     onConfirm({ workoutProgramMode: "auto" });
@@ -65,11 +69,20 @@ export function WorkoutProgramPickerModal({
           <button type="button" className="btn btn-primary workout-picker-quick-btn" onClick={() => confirmAuto(false)}>
             Skip for now
           </button>
+          <button
+            type="button"
+            className="btn workout-picker-quick-btn workout-picker-quick-btn--coach"
+            onClick={() => onConfirm({ workoutProgramMode: "auto", coachGenerateProgram: true })}
+          >
+            Have Coach build a program
+          </button>
           <button type="button" className="btn workout-picker-quick-btn" onClick={() => confirmAuto(true)}>
             Create a program in Health
           </button>
         </div>
-        <p className="settings-hint workout-picker-quick-hint">Adds the task either way. Open Health to name exercises and save a program, or set that up later.</p>
+        <p className="settings-hint workout-picker-quick-hint">
+          Adds the task either way. Coach can auto-generate a program from your goals, or open Health to build one yourself.
+        </p>
         <p className="workout-picker-advanced-label">Or choose how programs attach</p>
         <div className="workout-picker-modes">
           <label className="workout-picker-radio">
@@ -82,6 +95,10 @@ export function WorkoutProgramPickerModal({
               Next in my weekly routine
               {hasWeeklyRoutine ? " (uses your order in Health)" : " (set a weekly order in Health first)"}
             </span>
+          </label>
+          <label className="workout-picker-radio">
+            <input type="radio" name="wkpm" checked={mode === "coach_gen"} onChange={() => setMode("coach_gen")} />
+            <span>Have Coach auto-generate a program from my goals</span>
           </label>
           <label className="workout-picker-radio">
             <input type="radio" name="wkpm" checked={mode === "auto"} onChange={() => setMode("auto")} />

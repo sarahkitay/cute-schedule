@@ -1,16 +1,11 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
-import { FeatureGate } from "./FeatureGate.jsx";
+import React, { useState, useEffect, useMemo } from "react";
 import { GlassCard } from "./GlassCard";
 import { PillButton } from "./PillButton";
 import { SegmentedControl } from "./SegmentedControl";
 import { DockNavIcon } from "../DockNavIcon";
 import {
-  ALARM_MODES,
-  createAlarm,
   formatTimerDisplay,
   formatTimerPresetLabel,
-  formatAlarmTimeDisplay,
-  getNextAlarmTime,
   defaultActiveTimerDraft,
   normalizeActiveTimer,
   getActiveTimerRemaining,
@@ -18,21 +13,13 @@ import {
   pauseActiveTimer,
   resetActiveTimer,
 } from "../modules/timers";
-import { requestAlarmPermissions } from "../alarmScheduler";
-import { cancelTaskFocusTimerNotification } from "../taskTimerNotify.js";
 import {
-  getAlarmKitAuthorizationState,
-  isAlarmKitAvailable,
-  installCustomSoundForAlarmKit,
-} from "../nativeAlarmKit.js";
-import {
-  ALARM_SOUND_IDS,
-  BUILTIN_ALARM_SOUNDS,
-  saveCustomAlarmSound,
-  previewAlarmSound,
-  stopAlarmSoundPlayback,
-  getAlarmSoundLabel,
-} from "../alarmSounds";
+  cancelTaskFocusTimerNotification,
+  requestTimerNotificationPermissions,
+  syncTaskFocusTimerNotification,
+  stopTaskTimerCompleteAlert,
+  subscribeTaskTimerRinging,
+} from "../taskTimerNotify.js";
 
 const PRESETS = [
   { label: "5 min", ms: 5 * 60 * 1000 },
@@ -42,24 +29,18 @@ const PRESETS = [
   { label: "60 min", ms: 60 * 60 * 1000 },
 ];
 
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-const ALARM_MODE_OPTIONS = [
-  { value: ALARM_MODES.STANDARD, label: "Standard", desc: "Sound + one-tap dismiss" },
-  { value: ALARM_MODES.GENTLE, label: "Gentle", desc: "Softer tones" },
-  { value: ALARM_MODES.MATH_DISMISS, label: "Math wake-up", desc: "Optional game: solve to turn off" },
-  { value: ALARM_MODES.ACTION_REQUIRED, label: "Writing wake-up", desc: "Optional game: type phrase to turn off" },
-];
-
-export function TimersPage({
-  timersState,
-  onUpdateTimers,
-  alarmsState,
-  onUpdateAlarms,
-  resolveTimerHistoryTask,
-}) {
+export function TimersPage({ timersState, onUpdateTimers, resolveTimerHistoryTask, popToRootSignal = 0 }) {
   const [section, setSection] = useState("timer");
   const [tick, setTick] = useState(() => Date.now());
+  const [timerRinging, setTimerRinging] = useState(false);
+  const [permHint, setPermHint] = useState("");
+
+  useEffect(() => {
+    if (!popToRootSignal) return;
+    setSection("timer");
+  }, [popToRootSignal]);
+
+  useEffect(() => subscribeTaskTimerRinging(setTimerRinging), []);
 
   const activeTimer = normalizeActiveTimer(timersState?.activeTimer);
   const selectedPreset = activeTimer?.selectedPresetMs ?? 25 * 60 * 1000;
@@ -70,35 +51,6 @@ export function TimersPage({
     return activeTimer ? getActiveTimerRemaining(activeTimer) : selectedPreset;
   }, [tick, activeTimer, selectedPreset]);
 
-  const [showAddAlarm, setShowAddAlarm] = useState(false);
-  const [alarmKitAuth, setAlarmKitAuth] = useState(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!(await isAlarmKitAvailable())) {
-        if (!cancelled) setAlarmKitAuth("unavailable");
-        return;
-      }
-      const state = await getAlarmKitAuthorizationState();
-      if (!cancelled) setAlarmKitAuth(state);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  const [newAlarmTime, setNewAlarmTime] = useState("07:00");
-  const [newAlarmLabel, setNewAlarmLabel] = useState("Morning alarm");
-  const [newAlarmMode, setNewAlarmMode] = useState(ALARM_MODES.STANDARD);
-  const [newAlarmDays, setNewAlarmDays] = useState([1, 2, 3, 4, 5]);
-  const [newAlarmSound, setNewAlarmSound] = useState(ALARM_SOUND_IDS.DEFAULT);
-  const [newAlarmCustomSoundId, setNewAlarmCustomSoundId] = useState(null);
-  const [newAlarmCustomSoundName, setNewAlarmCustomSoundName] = useState("");
-  const [soundImportError, setSoundImportError] = useState("");
-  const [soundImporting, setSoundImporting] = useState(false);
-  const musicInputRef = useRef(null);
-
-  const alarms = alarmsState?.alarms || [];
   const history = timersState?.history || [];
 
   useEffect(() => {
@@ -107,29 +59,33 @@ export function TimersPage({
     return () => clearInterval(id);
   }, [running, activeTimer?.endsAt]);
 
-  useEffect(() => {
-    if (section === "alarms") requestAlarmPermissions();
-  }, [section]);
-
-  useEffect(() => () => stopAlarmSoundPlayback(), []);
-
   function patchActiveTimer(nextActive) {
     onUpdateTimers?.((prev) => ({ ...prev, activeTimer: nextActive }));
   }
 
-  function startTimer() {
+  async function startTimer() {
+    setPermHint("");
+    await requestTimerNotificationPermissions();
     const next = startActiveTimer(activeTimer ?? defaultActiveTimerDraft(selectedPreset), {
       remainingMs: remaining,
       label,
     });
     patchActiveTimer(next);
+    const sync = await syncTaskFocusTimerNotification(next);
+    if (sync.scheduled === 0 && sync.mode !== "alarmKit") {
+      setPermHint(
+        "Allow Alarms for PROYOU in Settings so the timer can ring when time is up.",
+      );
+    }
   }
 
   function pauseTimer() {
     patchActiveTimer(pauseActiveTimer(activeTimer));
+    void cancelTaskFocusTimerNotification();
   }
 
   function resetTimer() {
+    void stopTaskTimerCompleteAlert();
     onUpdateTimers?.((prev) => {
       const current = normalizeActiveTimer(prev.activeTimer);
       const presetMs = current?.selectedPresetMs ?? selectedPreset;
@@ -147,95 +103,27 @@ export function TimersPage({
     setTick(Date.now());
   }
 
-  function toggleAlarmDay(day) {
-    setNewAlarmDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
-    );
-  }
-
-  function addAlarm(e) {
-    e.preventDefault();
-    if (!newAlarmTime) return;
-    if (newAlarmSound === ALARM_SOUND_IDS.CUSTOM && !newAlarmCustomSoundId) {
-      setSoundImportError("Choose a song or audio clip from your device first.");
-      return;
-    }
-    const alarm = createAlarm({
-      time: newAlarmTime,
-      label: newAlarmLabel.trim() || "Morning alarm",
-      mode: newAlarmMode,
-      days: newAlarmDays.length ? newAlarmDays : [0, 1, 2, 3, 4, 5, 6],
-      sound: newAlarmSound,
-      customSoundId: newAlarmSound === ALARM_SOUND_IDS.CUSTOM ? newAlarmCustomSoundId : null,
-      customSoundName: newAlarmSound === ALARM_SOUND_IDS.CUSTOM ? newAlarmCustomSoundName : null,
-    });
-    onUpdateAlarms?.((prev) => ({ ...prev, alarms: [...(prev?.alarms || []), alarm] }));
-    setShowAddAlarm(false);
-    setSoundImportError("");
-  }
-
-  async function importAlarmMusicFile(file, displayName, { manageLoading = true } = {}) {
-    if (!file) return;
-    setSoundImportError("");
-    if (!file.type.startsWith("audio/") && !/\.(mp3|m4a|wav|aac|ogg|flac)$/i.test(file.name)) {
-      setSoundImportError("Please pick an audio file (MP3, M4A, WAV, etc.).");
-      return;
-    }
-    if (file.size > 15 * 1024 * 1024) {
-      setSoundImportError("File is too large. Try a shorter clip under 15 MB.");
-      return;
-    }
-    if (manageLoading) setSoundImporting(true);
-    try {
-      const id = `custom_${Date.now().toString(36)}`;
-      const name = displayName || file.name.replace(/\.[^.]+$/, "");
-      await saveCustomAlarmSound(id, name, file);
-      await installCustomSoundForAlarmKit(id, { file });
-      setNewAlarmSound(ALARM_SOUND_IDS.CUSTOM);
-      setNewAlarmCustomSoundId(id);
-      setNewAlarmCustomSoundName(name);
-    } catch {
-      setSoundImportError("Could not save that file. Try a different clip.");
-    } finally {
-      if (manageLoading) setSoundImporting(false);
-    }
-  }
-
-  async function handleMusicFile(file) {
-    await importAlarmMusicFile(file);
-  }
-
-  function previewSound(soundId, customId = null) {
-    void previewAlarmSound(soundId, customId);
-  }
-
-  function toggleAlarmEnabled(id) {
-    onUpdateAlarms?.((prev) => ({
-      ...prev,
-      alarms: (prev?.alarms || []).map((a) => (a.id === id ? { ...a, enabled: !a.enabled } : a)),
-    }));
-  }
-
-  function removeAlarm(id) {
-    onUpdateAlarms?.((prev) => ({
-      ...prev,
-      alarms: (prev?.alarms || []).filter((a) => a.id !== id),
-    }));
-  }
-
   return (
     <div className="py-flex-col py-gap-5 timers-page page-stack">
       <div className="py-section-header">
         <div className="py-section-header__title-row">
           <DockNavIcon tabId="timers" active />
-          <h2 className="py-section-header__title">Timers & Alarms</h2>
+          <h2 className="py-section-header__title">Timers</h2>
         </div>
       </div>
+
+      <p className="health-subline" style={{ margin: "-8px 0 0" }}>
+        On iPhone, focus timers can use the system alarm when Alarms are allowed. You still see the countdown in the app while it runs.
+      </p>
+      {permHint ? (
+        <p className="login-gate-error" role="alert" style={{ margin: 0 }}>
+          {permHint}
+        </p>
+      ) : null}
 
       <SegmentedControl
         options={[
           { value: "timer", label: "Timer" },
-          { value: "alarms", label: "Alarms" },
           { value: "history", label: "History" },
         ]}
         value={section}
@@ -249,7 +137,17 @@ export function TimersPage({
               <div className="py-timer__display">{formatTimerDisplay(remaining)}</div>
               <div className="py-timer__label">{label}</div>
               <div className="py-timer__controls">
-                {!running ? (
+                {timerRinging ? (
+                  <PillButton
+                    variant="primary"
+                    size="lg"
+                    onClick={() => {
+                      void stopTaskTimerCompleteAlert();
+                    }}
+                  >
+                    Dismiss
+                  </PillButton>
+                ) : !running ? (
                   <PillButton variant="primary" size="lg" onClick={startTimer}>
                     Start
                   </PillButton>
@@ -278,201 +176,6 @@ export function TimersPage({
             ))}
           </div>
         </>
-      )}
-
-      {section === "alarms" && (
-        <FeatureGate feature="advanced_alarms">
-        <>
-          <div className="timers-alarm-toolbar">
-            <PillButton
-              variant="primary"
-              size="md"
-              className="timers-alarm-add-btn"
-              onClick={() => setShowAddAlarm((v) => !v)}
-            >
-              {showAddAlarm ? "Cancel" : "+ Morning alarm"}
-            </PillButton>
-          </div>
-          <p className="health-subline timers-alarm-system-hint" style={{ margin: "0 0 12px" }}>
-            On iPhone with iOS 26+, alarms can ring like the Clock app when you allow system alarms for PROYOU. Older iOS uses notifications.
-            {alarmKitAuth === "denied" ? (
-              <span className="timers-alarm-auth-warn">
-                {" "}
-                System alarm access is off. Open Settings → PROYOU and allow alarms, then return here.
-              </span>
-            ) : null}
-            {alarmKitAuth === "authorized" ? (
-              <span className="timers-alarm-auth-ok"> System alarms are enabled.</span>
-            ) : null}
-          </p>
-
-          {showAddAlarm ? (
-            <GlassCard className="timers-alarm-form-card">
-              <form className="timers-alarm-form" onSubmit={addAlarm}>
-                <label className="timers-field">
-                  <span className="timers-field-label">Time</span>
-                  <input type="time" className="input" value={newAlarmTime} onChange={(e) => setNewAlarmTime(e.target.value)} required />
-                </label>
-                <label className="timers-field">
-                  <span className="timers-field-label">Label</span>
-                  <input className="input" value={newAlarmLabel} onChange={(e) => setNewAlarmLabel(e.target.value)} placeholder="Morning alarm" />
-                </label>
-                <div className="timers-field">
-                  <span className="timers-field-label">Wake-up style</span>
-                  <div className="timers-alarm-mode-grid">
-                    {ALARM_MODE_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.value}
-                        type="button"
-                        className={`timers-alarm-mode-option${newAlarmMode === opt.value ? " is-selected" : ""}`}
-                        onClick={() => setNewAlarmMode(opt.value)}
-                      >
-                        <span className="timers-alarm-mode-label">{opt.label}</span>
-                        <span className="timers-alarm-mode-desc">{opt.desc}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="timers-field">
-                  <span className="timers-field-label">Alarm sound</span>
-                  <div className="timers-sound-grid">
-                    {BUILTIN_ALARM_SOUNDS.filter((s) => s.id !== ALARM_SOUND_IDS.CUSTOM).map((opt) => (
-                      <div key={opt.id} className={`timers-sound-option${newAlarmSound === opt.id ? " is-selected" : ""}`}>
-                        <button
-                          type="button"
-                          className="timers-sound-option-main"
-                          onClick={() => {
-                            setNewAlarmSound(opt.id);
-                            setSoundImportError("");
-                          }}
-                        >
-                          <span className="timers-alarm-mode-label">{opt.label}</span>
-                          <span className="timers-alarm-mode-desc">{opt.desc}</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="timers-sound-preview-btn"
-                          aria-label={`Preview ${opt.label}`}
-                          onClick={() => previewSound(opt.id)}
-                        >
-                          ▶
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className={`timers-sound-custom${newAlarmSound === ALARM_SOUND_IDS.CUSTOM ? " is-selected" : ""}`}>
-                    <button
-                      type="button"
-                      className="timers-sound-custom-main"
-                      onClick={() => setNewAlarmSound(ALARM_SOUND_IDS.CUSTOM)}
-                    >
-                      <span className="timers-alarm-mode-label">Your music</span>
-                      <span className="timers-alarm-mode-desc">
-                        {newAlarmCustomSoundName || "Import an MP3 or M4A from Files"}
-                      </span>
-                    </button>
-                    <div className="timers-sound-custom-actions">
-                      <button
-                        type="button"
-                        className="btn btn-sm btn-primary"
-                        disabled={soundImporting}
-                        onClick={() => musicInputRef.current?.click()}
-                      >
-                        {soundImporting ? "Saving…" : newAlarmCustomSoundName ? "Change file" : "Choose from Files"}
-                      </button>
-                      {newAlarmCustomSoundId ? (
-                        <button
-                          type="button"
-                          className="timers-sound-preview-btn"
-                          aria-label="Preview your music"
-                          onClick={() => previewSound(ALARM_SOUND_IDS.CUSTOM, newAlarmCustomSoundId)}
-                        >
-                          ▶
-                        </button>
-                      ) : null}
-                    </div>
-                    <input
-                      ref={musicInputRef}
-                      type="file"
-                      accept="audio/*,.mp3,.m4a,.wav,.aac,.ogg,.flac"
-                      className="timers-sound-file-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) handleMusicFile(file);
-                        e.target.value = "";
-                      }}
-                    />
-                  </div>
-                  {soundImportError ? <p className="timers-sound-error">{soundImportError}</p> : null}
-                  <p className="timers-sound-import-hint">
-                    Use an MP3 or M4A you own (Music → Share → Save to Files works for many tracks). Re-save the alarm after changing sound so the lock-screen alarm uses your file. Built-in tones work everywhere.
-                  </p>
-                </div>
-                <div className="timers-field">
-                  <span className="timers-field-label">Repeat</span>
-                  <div className="timers-day-pills">
-                    {DAY_LABELS.map((d, i) => (
-                      <button
-                        key={d}
-                        type="button"
-                        className={`timers-day-pill${newAlarmDays.includes(i) ? " is-on" : ""}`}
-                        onClick={() => toggleAlarmDay(i)}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <PillButton variant="primary" type="submit">
-                  Save alarm
-                </PillButton>
-              </form>
-            </GlassCard>
-          ) : null}
-
-          {alarms.length === 0 ? (
-            <GlassCard>
-              <div className="timers-empty">
-                <DockNavIcon tabId="timers" active={false} />
-                <p>No alarms yet. Add a morning alarm to start your day on your terms.</p>
-              </div>
-            </GlassCard>
-          ) : (
-            <ul className="timers-alarm-list">
-              {alarms.map((alarm) => {
-                const next = getNextAlarmTime(alarm);
-                const modeMeta = ALARM_MODE_OPTIONS.find((o) => o.value === alarm.mode);
-                return (
-                  <li key={alarm.id} className={`timers-alarm-item${alarm.enabled ? "" : " is-off"}`}>
-                    <div className="timers-alarm-main">
-                      <span className="timers-alarm-time">{formatAlarmTimeDisplay(alarm.time)}</span>
-                      <div className="timers-alarm-meta">
-                        <span className="timers-alarm-label">{alarm.label}</span>
-                        <span className="timers-alarm-mode">{modeMeta?.label || "Standard"}</span>
-                        <span className="timers-alarm-sound">{getAlarmSoundLabel(alarm)}</span>
-                        {next ? (
-                          <span className="timers-alarm-next">
-                            Next: {next.toLocaleDateString(undefined, { weekday: "short" })} {next.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="timers-alarm-actions">
-                      <label className="timers-alarm-toggle">
-                        <input type="checkbox" checked={!!alarm.enabled} onChange={() => toggleAlarmEnabled(alarm.id)} />
-                        <span className="timers-alarm-toggle-ui" />
-                      </label>
-                      <button type="button" className="btn btn-sm btn-ghost" onClick={() => removeAlarm(alarm.id)}>
-                        Remove
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </>
-        </FeatureGate>
       )}
 
       {section === "history" && (

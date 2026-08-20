@@ -181,6 +181,45 @@ html[data-theme="dark"] .social-code-box {
   line-height: 1.5;
 }
 
+.social-friend-code-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.social-friend-code-row .py-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  color: var(--py-ink);
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-text-fill-color: var(--py-ink);
+}
+
+.social-friend-code-row .social-btn-primary {
+  width: auto;
+  flex-shrink: 0;
+  min-width: 4.5rem;
+}
+
+html[data-theme="dark"] .social-friend-code-row .py-input {
+  color: var(--ink-strong, #0a0a0c);
+  background: rgba(255, 255, 255, 0.94);
+  -webkit-text-fill-color: var(--ink-strong, #0a0a0c);
+  border-color: rgba(10, 10, 12, 0.2);
+}
+
+.social-hub .py-input {
+  color: var(--py-ink);
+  -webkit-text-fill-color: var(--py-ink);
+}
+
+html[data-theme="dark"] .social-hub .py-input {
+  color: var(--ink-strong, #0a0a0c);
+  -webkit-text-fill-color: var(--ink-strong, #0a0a0c);
+  background: rgba(255, 255, 255, 0.94);
+}
+
 .social-settings-link {
   display: flex;
   align-items: center;

@@ -4,5 +4,5 @@ cd "$(dirname "$0")"
 echo "Installing CocoaPods..."
 pod install
 echo ""
-echo "Opening App.xcworkspace (white Xcode icon — NOT App.xcodeproj)"
+echo "Opening App.xcworkspace (white Xcode icon - NOT App.xcodeproj)"
 open "App.xcworkspace"

@@ -40,6 +40,248 @@ export function buildProgramDraftDetectionText(userQuestion, conversation) {
   return q;
 }
 
+/** User wants multiple named to-dos placed on today's calendar in one message. */
+export function userWantsDayBuild(userQuestion) {
+  const q = String(userQuestion || "")
+    .toLowerCase()
+    .trim();
+  if (!q || q.length < 40) return false;
+  const scheduleIntent =
+    /\b(put|add|schedule|slot|fit)\b[\s\S]{0,48}\b(on my schedule|on the schedule|on today|my schedule|my day|calendar|rest of (?:the )?day)\b/.test(
+      q
+    ) ||
+    /\b(all of this|everything)\b[\s\S]{0,24}\b(schedule|today|calendar)\b/.test(q) ||
+    /\b(can you|could you)\b[\s\S]{0,32}\b(put|add|schedule)\b/.test(q);
+  const needCount = (q.match(/\b(i need to|i also need|need to|have to|must)\b/g) || []).length;
+  const andCount = (q.match(/\band\b/g) || []).length;
+  return scheduleIntent || (needCount >= 2 && andCount >= 2 && q.length > 60);
+}
+
+/** @param {string} userQuestion */
+function extractDayBuildItems(userQuestion) {
+  const q = String(userQuestion || "");
+  const ql = q.toLowerCase();
+  /** @type {Array<{ id: string; title: string; keywords: string[]; duration: number; energy: string; priority: number; groceryItems?: string[]; isWorkout?: boolean }>} */
+  const items = [];
+
+  if (/\b(clean(?:ing)?(?: the)? house|tidy(?:ing)?|wash(?:ing)? (?:my )?(?:cushion|bedding|linens?))\b/.test(ql)) {
+    items.push({
+      id: "clean",
+      title: "Clean house + laundry",
+      keywords: ["clean", "laundry", "wash", "bedding", "cushion", "house"],
+      duration: 60,
+      energy: "MEDIUM",
+      priority: 10,
+    });
+  }
+
+  if (/\bformula\b/.test(ql) && /\badmin\b/.test(ql)) {
+    let duration = 45;
+    if (/\b(?:about |~|approximately )?(?:an hour|1 hour|60 min)\b/.test(ql) || /\btake(?:s)? about an hour\b/.test(ql)) {
+      duration = 60;
+    }
+    items.push({
+      id: "formula",
+      title: "Test formula admin portal",
+      keywords: ["formula", "admin", "portal"],
+      duration,
+      energy: "MEDIUM",
+      priority: 20,
+    });
+  }
+
+  if (/\bproyou\b/.test(ql) || (/\b(submit|fix)\b/.test(ql) && /\b(app|release|store|build)\b/.test(ql))) {
+    items.push({
+      id: "proyou",
+      title: "Fix & submit PROYOU",
+      keywords: ["proyou", "submit"],
+      duration: 45,
+      energy: "MEDIUM",
+      priority: 30,
+    });
+  }
+
+  const groceryItems = [];
+  const productRe =
+    /\b(strawberr(?:y|ies)|blueberr(?:y|ies)|pineapple|raspberr(?:y|ies)|cat litter|dog poop bags?|milk|eggs|bread|bananas?|apples?|oranges?)\b/gi;
+  let productMatch;
+  while ((productMatch = productRe.exec(q)) !== null) {
+    const word = productMatch[0];
+    const label = word.replace(/\b\w/g, (c) => c.toUpperCase());
+    if (!groceryItems.some((x) => x.toLowerCase() === label.toLowerCase())) groceryItems.push(label);
+  }
+
+  const errandCue = /\b(trader joe|target|costco|walmart|whole foods|grocery|groceries|errands?)\b/.test(ql);
+  if (errandCue || groceryItems.length >= 2) {
+    let title = "Shopping errand";
+    if (/\btrader joe/.test(ql) && /\btarget\b/.test(ql)) title = "Trader Joe's + Target";
+    else if (/\btrader joe/.test(ql)) title = "Trader Joe's run";
+    else if (/\btarget\b/.test(ql)) title = "Target run";
+    items.push({
+      id: "errands",
+      title,
+      keywords: ["trader", "target", "errand", "shopping", "grocery", "grocer"],
+      duration: 75,
+      energy: "LIGHT",
+      priority: 40,
+      groceryItems,
+    });
+  }
+
+  if (/\b(workout|gym|glute|training|lift)\b/.test(ql)) {
+    items.push({
+      id: "workout",
+      title: /\bglute/.test(ql) ? "Glute-focused workout" : "Gym workout",
+      keywords: ["workout", "gym", "glute", "training", "lift"],
+      duration: 60,
+      energy: "HEAVY",
+      priority: 50,
+      isWorkout: true,
+    });
+  }
+
+  return items.sort((a, b) => a.priority - b.priority);
+}
+
+/** @param {unknown[]} suggestions @param {{ keywords: string[]; isWorkout?: boolean }} item */
+function dayBuildItemAlreadySuggested(suggestions, item) {
+  if (!Array.isArray(suggestions)) return false;
+  for (const s of suggestions) {
+    if (!s || typeof s !== "object") continue;
+    const t = String(s.type || "").toUpperCase().replace(/-/g, "_");
+    if (item.isWorkout) {
+      if (t === "ADD_TASK" && addTaskRowLooksLikeWorkoutBlock(s)) return true;
+      continue;
+    }
+    if (t !== "ADD_TASK") continue;
+    const blob = `${s.title || ""} ${s.name || ""} ${s.description || ""} ${s.reason || ""}`.toLowerCase();
+    if (item.keywords.some((k) => blob.includes(k))) return true;
+  }
+  return false;
+}
+
+/** @param {Record<string, unknown>} s */
+function extractWorkoutProgramPayloadFromRow(s) {
+  if (!s || typeof s !== "object") return null;
+  const wp = s.workoutProgram && typeof s.workoutProgram === "object" ? s.workoutProgram : null;
+  let name = String(s.name || s.title || (wp && wp.name) || "").trim();
+  const lines = [];
+  const pushLine = (x) => {
+    const t = String(x || "").trim();
+    if (t.length > 3) lines.push(t);
+  };
+  if (Array.isArray(s.exercises)) for (const x of s.exercises) pushLine(x);
+  if (wp && Array.isArray(wp.exerciseLines)) for (const x of wp.exerciseLines) pushLine(x);
+  if (wp && Array.isArray(wp.exercises)) for (const x of wp.exercises) pushLine(x);
+  const uniq = [...new Set(lines)];
+  if (!name || uniq.length < 4) return null;
+  return { name: name.slice(0, 100), exerciseLines: uniq.slice(0, 12) };
+}
+
+/** @param {string[]} cats @param {{ id: string; isWorkout?: boolean }} item */
+function pickCategoryForDayBuildItem(cats, item) {
+  if (item.isWorkout) return cats.includes("Personal") ? "Personal" : cats[0] || "Work";
+  if (item.id === "errands") return cats.includes("Personal") ? "Personal" : cats[0] || "Work";
+  if (item.id === "clean") return cats.includes("Personal") ? "Personal" : cats[0] || "Work";
+  return cats.includes("Work") ? "Work" : cats[0] || "Work";
+}
+
+/**
+ * When the user named many to-dos for today, fill missing ADD_TASK rows and attach grocery/workout payloads.
+ * @param {Record<string, unknown>} out
+ * @param {{ userQuestion?: string | null; conversation?: Array<{ role?: string; content?: string }> | null; localNowHHMM?: string; realTodayKey?: string; categories?: string[] }} opts
+ */
+function ensureDayBuildSuggestions(out, opts) {
+  const userQ = buildProgramDraftDetectionText(opts.userQuestion, opts.conversation);
+  if (!userWantsDayBuild(userQ)) return false;
+
+  const expected = extractDayBuildItems(userQ);
+  if (expected.length < 2) return false;
+
+  const cats = normalizeCategories(opts.categories);
+  const localNow = normalizeCoachLocalHHMM(opts.localNowHHMM);
+  const realToday = String(opts.realTodayKey || "").trim();
+  if (!realToday || !/^\d{4}-\d{2}-\d{2}$/.test(realToday)) return false;
+
+  if (!Array.isArray(out.suggestions)) out.suggestions = [];
+  let patched = false;
+
+  const errandExpected = expected.find((e) => e.id === "errands");
+  if (errandExpected?.groceryItems?.length) {
+    for (const s of out.suggestions) {
+      if (!s || typeof s !== "object") continue;
+      if (String(s.type || "").toUpperCase() !== "ADD_TASK") continue;
+      const blob = `${s.title || ""} ${s.description || ""}`.toLowerCase();
+      if (!/\b(trader|target|errand|shopping|grocery|grocer|store)\b/.test(blob)) continue;
+      const existing = s.groceryList && typeof s.groceryList === "object" ? s.groceryList : null;
+      const hasItems = existing && Array.isArray(existing.items) && existing.items.length > 0;
+      if (!hasItems) {
+        s.groceryList = { items: [...errandExpected.groceryItems] };
+        s.taskType = "shopping";
+        patched = true;
+      }
+    }
+  }
+
+  let cursor = coerceStartStrictlyAfterLocalNow(nextQuarterHourStartAfterLocalNow(localNow), localNow);
+
+  for (const item of expected) {
+    if (dayBuildItemAlreadySuggested(out.suggestions, item)) continue;
+
+    /** @type {Record<string, unknown>} */
+    const row = {
+      type: "ADD_TASK",
+      title: item.title,
+      reason: `You asked to schedule "${item.title}" today.`,
+      category: pickCategoryForDayBuildItem(cats, item),
+      energyLevel: item.energy,
+      start: cursor,
+      durationMinutes: item.duration,
+      recurring: false,
+      recurrencePattern: "none",
+      targetDayKey: realToday,
+      weekPlanLabel: "Today",
+      confidence: 0.84,
+      requiresApproval: true,
+      targetTaskId: null,
+    };
+
+    if (item.groceryItems?.length) {
+      row.groceryList = { items: [...item.groceryItems] };
+      row.taskType = "shopping";
+    }
+
+    if (item.isWorkout) {
+      const d = draftWorkoutProgramLinesFromCue(userQ.toLowerCase());
+      row.workoutProgram = { name: d.name, exerciseLines: d.exerciseLines };
+    }
+
+    out.suggestions.push(row);
+    patched = true;
+    const nextM = minutesFromHHMM(cursor) + item.duration + 15;
+    cursor = coerceStartStrictlyAfterLocalNow(nextQuarterHourStartAfterLocalNow(formatHMM(nextM)), localNow);
+  }
+
+  const workoutTask = out.suggestions.find((s) => addTaskRowLooksLikeWorkoutBlock(s));
+  const progOnly = out.suggestions.find((s) => {
+    if (!s || typeof s !== "object") return false;
+    return String(s.type || "").toUpperCase().replace(/-/g, "_") === "ADD_WORKOUT_PROGRAM";
+  });
+  if (workoutTask && progOnly) {
+    const payload = extractWorkoutProgramPayloadFromRow(progOnly);
+    if (payload && !workoutTask.workoutProgram) {
+      workoutTask.workoutProgram = payload;
+      patched = true;
+    }
+    if (workoutTask.workoutProgram && countWorkoutProgramExerciseLines(workoutTask) >= 4) {
+      out.suggestions = out.suggestions.filter((s) => s !== progOnly);
+      patched = true;
+    }
+  }
+
+  return patched;
+}
+
 /** True when the user is clearly asking for a saveable workout program draft (API + validator). */
 export function userWantsWorkoutProgramDraft(userQuestion, coachReasoningMode) {
   const q = String(userQuestion || "").toLowerCase().trim();
@@ -585,6 +827,15 @@ export function validateCoachSpecificity(parsed, opts) {
   }
 
   const healthCtx = ctx?.health && typeof ctx.health === "object" ? ctx.health : null;
+  if (ensureDayBuildSuggestions(out, {
+    userQuestion: opts.userQuestion,
+    conversation: opts.conversation,
+    localNowHHMM: localNow,
+    realTodayKey: realToday,
+    categories: cats,
+  })) {
+    patched = true;
+  }
   if (ensureWorkoutAddTasksEmbedProgram(out.suggestions, blendForDefaults)) patched = true;
   if (rewriteCollidingWorkoutPrograms(out.suggestions, healthCtx?.workoutProgramGuard, blendForDefaults)) patched = true;
 

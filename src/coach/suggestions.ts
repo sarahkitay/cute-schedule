@@ -140,6 +140,32 @@ function coerceRecurrencePattern(v: unknown): "none" | "daily" | "weekly" | null
   return null;
 }
 
+function normalizeCoachGroceryLines(row: Record<string, unknown>): string[] {
+  const lines: string[] = [];
+  const pushLine = (v: unknown) => {
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (t) lines.push(t.slice(0, 120));
+      return;
+    }
+    if (v && typeof v === "object" && "text" in (v as object)) {
+      const t = String((v as { text?: string }).text || "").trim();
+      if (t) lines.push(t.slice(0, 120));
+    }
+  };
+  const gl = row.groceryList;
+  if (gl && typeof gl === "object" && Array.isArray((gl as { items?: unknown }).items)) {
+    for (const it of (gl as { items: unknown[] }).items) pushLine(it);
+  }
+  if (Array.isArray(row.groceryLines)) {
+    for (const it of row.groceryLines) pushLine(it);
+  }
+  if (Array.isArray(row.shoppingList)) {
+    for (const it of row.shoppingList) pushLine(it);
+  }
+  return [...new Set(lines.map((x) => String(x || "").trim()).filter(Boolean))];
+}
+
 export function normalizeRawSuggestion(
   row: Record<string, unknown>,
   categories: string[],
@@ -329,6 +355,9 @@ export function normalizeRawSuggestion(
     if (wpName && uniqWp.length) workoutProgram = { name: wpName, exerciseLines: uniqWp };
   }
 
+  const groceryLines = normalizeCoachGroceryLines(row);
+  const groceryList = groceryLines.length ? { items: groceryLines } : null;
+
   return {
     id: String(row.id || newId()),
     type,
@@ -350,6 +379,7 @@ export function normalizeRawSuggestion(
     hour,
     targetTaskId,
     workoutProgram,
+    groceryList,
   };
 }
 

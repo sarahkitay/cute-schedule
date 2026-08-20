@@ -1,5 +1,5 @@
 /**
- * Alarm sound catalog, built-in Web Audio tones, and custom audio (IndexedDB).
+ * Alarm sound catalog, built-in Web Audio tones, and bundled alarm clips.
  */
 
 import { getMelodyVariant, melodyDurationSec } from "./alarmBuiltinMelodies.js";
@@ -13,30 +13,80 @@ export const ALARM_SOUND_IDS = Object.freeze({
   PIANO: "piano",
   SPARKLE: "sparkle",
   MUSICBOX: "musicbox",
+  EDGY_RINGTONE: "edgy_ringtone",
+  WAKE_UP_LEGEND: "wake_up_legend",
+  WAKE_UP_LEGEND_2: "wake_up_legend_2",
+  MORNING_LIGHT: "morning_light",
+  MORNING_LIGHT_2: "morning_light_2",
+  ON_THE_CLOCK: "on_the_clock",
+  /** @deprecated legacy import id — migrated to presets */
   CUSTOM: "custom",
 });
 
-export const BUILTIN_ALARM_SOUNDS = Object.freeze([
-  { id: ALARM_SOUND_IDS.DEFAULT, label: "Sunrise", desc: "Soft ascending wake-up" },
-  { id: ALARM_SOUND_IDS.SPARKLE, label: "Sparkle", desc: "Twinkly high notes" },
-  { id: ALARM_SOUND_IDS.MUSICBOX, label: "Music box", desc: "Gentle plucked melody" },
-  { id: ALARM_SOUND_IDS.CHIME, label: "Soft chime", desc: "Light glass bells" },
-  { id: ALARM_SOUND_IDS.BELLS, label: "Morning bells", desc: "Cheerful ring pattern" },
-  { id: ALARM_SOUND_IDS.PIANO, label: "Piano", desc: "Warm key notes" },
-  { id: ALARM_SOUND_IDS.BIRDS, label: "Birdsong", desc: "Playful chirps" },
-  { id: ALARM_SOUND_IDS.DIGITAL, label: "Pixel pop", desc: "Cute retro beeps" },
-  { id: ALARM_SOUND_IDS.CUSTOM, label: "Your music", desc: "MP3 or M4A from Files (iOS)" },
-]);
+/** Bundled clips shipped in public/sounds (also copied into the iOS app bundle). */
+export const BUNDLED_ALARM_SOUND_FILES = Object.freeze({
+  [ALARM_SOUND_IDS.EDGY_RINGTONE]: "sounds/proyou-edgy-ringtone.mp3",
+  [ALARM_SOUND_IDS.WAKE_UP_LEGEND]: "sounds/proyou-wake-up-you-legend.mp3",
+  [ALARM_SOUND_IDS.WAKE_UP_LEGEND_2]: "sounds/proyou-wake-up-you-legend-2.mp3",
+  [ALARM_SOUND_IDS.MORNING_LIGHT]: "sounds/proyou-morning-light-awakens.mp3",
+  [ALARM_SOUND_IDS.MORNING_LIGHT_2]: "sounds/proyou-morning-light-awakens-2.mp3",
+  [ALARM_SOUND_IDS.ON_THE_CLOCK]: "sounds/proyou-youre-on-the-clock.mp3",
+});
 
-const CUSTOM_DB = "cute_schedule_alarm_audio_v1";
-const CUSTOM_STORE = "sounds";
+export const BUILTIN_ALARM_SOUNDS = Object.freeze([
+  { id: ALARM_SOUND_IDS.DEFAULT, label: "Classic alarm", desc: "Urgent repeating beeps", emoji: "⏰" },
+  { id: ALARM_SOUND_IDS.DIGITAL, label: "Radar", desc: "Fast digital alarm pulses", emoji: "📟" },
+  { id: ALARM_SOUND_IDS.BELLS, label: "Morning bells", desc: "Bright ringing pattern", emoji: "🔔" },
+  { id: ALARM_SOUND_IDS.CHIME, label: "Glass chime", desc: "Clear bell tones", emoji: "🎐" },
+  { id: ALARM_SOUND_IDS.PIANO, label: "Piano wake", desc: "Warm key strikes", emoji: "🎹" },
+  { id: ALARM_SOUND_IDS.SPARKLE, label: "Sparkle", desc: "High twinkly notes", emoji: "✨" },
+  { id: ALARM_SOUND_IDS.MUSICBOX, label: "Music box", desc: "Gentle plucked melody", emoji: "🎵" },
+  { id: ALARM_SOUND_IDS.BIRDS, label: "Birdsong", desc: "Playful chirps", emoji: "🐦" },
+  {
+    id: ALARM_SOUND_IDS.EDGY_RINGTONE,
+    label: "Edgy ringtone",
+    desc: "Bundled clip. Loud and explicit lyrics",
+    emoji: "🔥",
+    contentWarning: "Contains profanity. Not recommended around kids or at work.",
+  },
+  {
+    id: ALARM_SOUND_IDS.WAKE_UP_LEGEND,
+    label: "Wake up, you legend",
+    desc: "Motivational wake-up clip",
+    emoji: "🏆",
+  },
+  {
+    id: ALARM_SOUND_IDS.WAKE_UP_LEGEND_2,
+    label: "Wake up, you legend (alt)",
+    desc: "Alternate motivational wake-up",
+    emoji: "⭐",
+  },
+  {
+    id: ALARM_SOUND_IDS.MORNING_LIGHT,
+    label: "Morning light awakens",
+    desc: "Bright morning energy",
+    emoji: "🌅",
+  },
+  {
+    id: ALARM_SOUND_IDS.MORNING_LIGHT_2,
+    label: "Morning light awakens (alt)",
+    desc: "Alternate morning energy",
+    emoji: "☀️",
+  },
+  {
+    id: ALARM_SOUND_IDS.ON_THE_CLOCK,
+    label: "You're on the clock",
+    desc: "Urgent get-moving wake-up",
+    emoji: "⏱️",
+  },
+]);
 
 let audioCtx = null;
 let loopTimer = null;
 let loopVariant = 0;
 let previewTimer = null;
 /** @type {HTMLAudioElement | null} */
-let customAudioEl = null;
+let bundledAudioEl = null;
 let audioUnlockPromise = null;
 
 /** iOS/WKWebView: resume AudioContext after a user gesture or before alarm playback. */
@@ -102,86 +152,44 @@ async function playBuiltinBurst(soundId, gentle = false, variant = 0) {
   const ctx = await getCtx();
   if (!ctx) return;
   const t = ctx.currentTime;
-  const volScale = gentle ? 0.72 : 1;
+  const volScale = gentle ? 0.72 : 1.15;
   const notes = getMelodyVariant(soundId, variant);
   for (const n of notes) {
     tone(ctx, n.freq, t + n.at, n.dur, n.type || "sine", (n.vol ?? 0.12) * volScale);
   }
 }
 
-function openCustomDb() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(CUSTOM_DB, 1);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(CUSTOM_STORE)) {
-        db.createObjectStore(CUSTOM_STORE, { keyPath: "id" });
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+export function bundledSoundUrl(soundId) {
+  const rel = BUNDLED_ALARM_SOUND_FILES[soundId];
+  if (!rel) return null;
+  const base = import.meta.env.BASE_URL || "/";
+  return `${base}${rel}`;
 }
 
-export async function saveCustomAlarmSound(id, name, blob) {
-  const db = await openCustomDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(CUSTOM_STORE, "readwrite");
-    tx.objectStore(CUSTOM_STORE).put({
-      id,
-      name: name || "My music",
-      mimeType: blob.type || "audio/mpeg",
-      blob,
-      savedAt: Date.now(),
-    });
-    tx.oncomplete = () => resolve(id);
-    tx.onerror = () => reject(tx.error);
-  });
-}
-
-export async function getCustomAlarmSound(id) {
-  if (!id) return null;
-  const db = await openCustomDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(CUSTOM_STORE, "readonly");
-    const req = tx.objectStore(CUSTOM_STORE).get(id);
-    req.onsuccess = () => resolve(req.result || null);
-    req.onerror = () => reject(req.error);
-  });
-}
-
-export async function deleteCustomAlarmSound(id) {
-  if (!id) return;
-  const db = await openCustomDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(CUSTOM_STORE, "readwrite");
-    tx.objectStore(CUSTOM_STORE).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+export function isBundledAlarmSound(soundId) {
+  return Boolean(BUNDLED_ALARM_SOUND_FILES[soundId]);
 }
 
 export function getAlarmSoundLabel(alarm) {
-  if (!alarm) return "Sunrise";
-  if (alarm.sound === ALARM_SOUND_IDS.CUSTOM) {
-    return alarm.customSoundName || "Your music";
-  }
-  return BUILTIN_ALARM_SOUNDS.find((s) => s.id === alarm.sound)?.label || "Sunrise";
+  if (!alarm) return "Classic alarm";
+  const id = normalizeAlarmSound(alarm.sound);
+  return BUILTIN_ALARM_SOUNDS.find((s) => s.id === id)?.label || "Classic alarm";
 }
 
 export function normalizeAlarmSound(sound) {
   const valid = BUILTIN_ALARM_SOUNDS.map((s) => s.id);
-  return valid.includes(sound) ? sound : ALARM_SOUND_IDS.DEFAULT;
+  if (valid.includes(sound)) return sound;
+  if (sound === ALARM_SOUND_IDS.CUSTOM) return ALARM_SOUND_IDS.DEFAULT;
+  return ALARM_SOUND_IDS.DEFAULT;
 }
 
-function stopCustomAudio() {
-  if (customAudioEl) {
+function stopBundledAudio() {
+  if (bundledAudioEl) {
     try {
-      customAudioEl.pause();
-      customAudioEl.currentTime = 0;
-      if (customAudioEl.src.startsWith("blob:")) URL.revokeObjectURL(customAudioEl.src);
+      bundledAudioEl.pause();
+      bundledAudioEl.currentTime = 0;
     } catch {}
-    customAudioEl = null;
+    bundledAudioEl = null;
   }
 }
 
@@ -195,26 +203,24 @@ export function stopAlarmSoundPlayback() {
     clearTimeout(previewTimer);
     previewTimer = null;
   }
-  stopCustomAudio();
+  stopBundledAudio();
   import("./nativeAlarmRing.js")
     .then((m) => m.stopNativeAlarmRinging())
     .catch(() => {});
 }
 
-async function playCustomLoop(customSoundId) {
-  const rec = await getCustomAlarmSound(customSoundId);
-  if (!rec?.blob) return false;
-  stopCustomAudio();
-  const url = URL.createObjectURL(rec.blob);
-  customAudioEl = new Audio(url);
-  customAudioEl.loop = true;
-  customAudioEl.volume = 0.85;
+async function playBundledLoop(soundId) {
+  const url = bundledSoundUrl(soundId);
+  if (!url) return false;
+  stopBundledAudio();
+  bundledAudioEl = new Audio(url);
+  bundledAudioEl.loop = true;
+  bundledAudioEl.volume = 1;
   try {
-    await customAudioEl.play();
+    await bundledAudioEl.play();
     return true;
   } catch {
-    URL.revokeObjectURL(url);
-    customAudioEl = null;
+    bundledAudioEl = null;
     return false;
   }
 }
@@ -227,51 +233,49 @@ export async function playAlarmSoundForAlarm(alarm) {
   const soundId = normalizeAlarmSound(alarm?.sound || ALARM_SOUND_IDS.DEFAULT);
   const gentle = alarm?.mode === "gentle";
 
-  if (soundId === ALARM_SOUND_IDS.CUSTOM && alarm?.customSoundId) {
-    const ok = await playCustomLoop(alarm.customSoundId);
+  if (isBundledAlarmSound(soundId)) {
+    const ok = await playBundledLoop(soundId);
     if (ok) return;
   }
 
   const notes = getMelodyVariant(soundId, 0);
-  const loopMs = Math.round(melodyDurationSec(notes) * 1000) + (gentle ? 900 : 600);
+  const loopMs = Math.round(melodyDurationSec(notes) * 1000) + (gentle ? 700 : 450);
 
   await playBuiltinBurst(soundId, gentle, loopVariant);
   loopTimer = setInterval(() => {
     loopVariant = (loopVariant + 1) % 3;
     void playBuiltinBurst(soundId, gentle, loopVariant);
     try {
-      navigator.vibrate?.([200, 100, 200]);
+      navigator.vibrate?.([300, 120, 300, 120, 300]);
     } catch {}
   }, loopMs);
 }
 
-/** Preview a sound for ~2.5s (built-in or custom). */
-export async function previewAlarmSound(soundId, customSoundId = null) {
+/** Preview a sound for ~3s (built-in or bundled). */
+export async function previewAlarmSound(soundId) {
   stopAlarmSoundPlayback();
   const id = normalizeAlarmSound(soundId);
 
   try {
     const { previewNativeAlarmSound, isNativeAlarmRingAvailable } = await import("./nativeAlarmRing.js");
     if (isNativeAlarmRingAvailable()) {
-      const ok = await previewNativeAlarmSound(id, customSoundId);
+      const ok = await previewNativeAlarmSound(id);
       if (ok) return;
     }
   } catch {}
 
   await unlockAlarmAudio();
 
-  if (id === ALARM_SOUND_IDS.CUSTOM && customSoundId) {
-    const rec = await getCustomAlarmSound(customSoundId);
-    if (rec?.blob) {
-      const url = URL.createObjectURL(rec.blob);
-      customAudioEl = new Audio(url);
-      customAudioEl.volume = 0.7;
+  if (isBundledAlarmSound(id)) {
+    const url = bundledSoundUrl(id);
+    if (url) {
+      bundledAudioEl = new Audio(url);
+      bundledAudioEl.volume = 0.85;
       try {
-        await customAudioEl.play();
+        await bundledAudioEl.play();
         previewTimer = setTimeout(() => stopAlarmSoundPlayback(), 4000);
       } catch {
-        URL.revokeObjectURL(url);
-        customAudioEl = null;
+        bundledAudioEl = null;
       }
     }
     return;
@@ -282,9 +286,9 @@ export async function previewAlarmSound(soundId, customSoundId = null) {
   previewTimer = setTimeout(() => stopAlarmSoundPlayback(), 3200);
 }
 
-/** iOS local notification sound name (bundled sounds only; custom falls back). */
+/** iOS local notification sound name (bundled + built-in presets). */
 export function iosNotificationSoundForAlarm(alarm) {
   const soundId = normalizeAlarmSound(alarm?.sound || ALARM_SOUND_IDS.DEFAULT);
-  if (soundId === ALARM_SOUND_IDS.CUSTOM) return "default";
+  if (isBundledAlarmSound(soundId)) return `proyou_${soundId}`;
   return "default";
 }

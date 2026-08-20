@@ -124,6 +124,28 @@
   color: #c0392b;
 }
 
+.pro-upgrade-legal-links {
+  margin: 4px 0 0;
+  text-align: center;
+}
+
+.pro-upgrade-legal-agreement {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
+
+.pro-upgrade-legal-links a {
+  color: var(--theme-accent, #c4687e);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.pro-upgrade-legal-links a:active {
+  opacity: 0.75;
+}
+
 .pro-upgrade-legal {
   margin: 12px 0 0;
   font-size: 11px;
@@ -133,6 +155,19 @@
 
 .pro-feature-gate {
   position: relative;
+}
+
+.pro-feature-gate--blocked {
+  min-height: min(72dvh, 560px);
+  display: flex;
+  flex-direction: column;
+  justify-content: stretch;
+}
+
+.pro-feature-gate--blocked .pro-feature-gate__content--dimmed {
+  max-height: 120px;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .pro-feature-gate__content--dimmed {
@@ -148,12 +183,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 24px 16px;
+  z-index: 2;
 }
 
 .pro-feature-gate__card {
-  max-width: 320px;
-  padding: 18px 16px;
+  width: min(100%, 320px);
+  margin: 0 auto;
+  padding: 22px 18px;
   border-radius: 20px;
   text-align: center;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
@@ -208,6 +245,28 @@
   border: 1px solid color-mix(in srgb, var(--theme-accent) 22%, transparent);
 }
 
+.app .header-upgrade-btn {
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid color-mix(in srgb, var(--py-accent-deep, #d4708a) 35%, transparent);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--py-accent, #e8a9b7) 88%, #fff),
+    color-mix(in srgb, var(--py-accent-deep, #d4708a) 75%, #fff)
+  );
+  color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--py-accent, #e8a9b7) 35%, transparent);
+}
+
+.app .header-upgrade-btn:active {
+  transform: scale(0.97);
+}
+
 html[data-theme="dark"] .pro-trial-banner {
   color: var(--ink-strong, #0a0a0c);
   background: rgba(255, 255, 255, 0.88);
@@ -246,10 +305,6 @@ html[data-theme="dark"] .pro-trial-banner {
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--border-subtle);
   color: var(--text-soft);
-}
-
-.login-gate-free {
-  margin-bottom: 12px;
 }
 
 html[data-theme="dark"] .pro-upgrade-modal,

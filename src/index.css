@@ -25,6 +25,8 @@ html {
   height: 100dvh;
   overflow: hidden;
   overflow-x: hidden;
+  color-scheme: light;
+  background-color: #fff8f7;
   background: var(--theme-bg-gradient, #fff8f7);
 }
 
@@ -37,7 +39,17 @@ body {
   height: 100dvh;
   overflow: hidden;
   overflow-x: hidden;
+  color-scheme: light;
+  background-color: #fff8f7;
   background: var(--theme-bg-gradient, #fff8f7);
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] body {
+  color-scheme: dark;
 }
 
 #root {

@@ -35,6 +35,11 @@ export type CoachWorkoutProgramDraft = {
   exerciseLines: string[];
 };
 
+/** Shopping checklist lines for errand ADD_TASK rows (strings until Approve). */
+export type CoachGroceryListDraft = {
+  items: string[];
+};
+
 export type CoachRecurrencePattern = "none" | "daily" | "weekly";
 
 export interface CoachSuggestionV2 {
@@ -64,6 +69,7 @@ export interface CoachSuggestionV2 {
   targetTaskId?: string | null;
   workoutProgram?: CoachWorkoutProgramDraft | null;
   weeklyMealPlan?: CoachWeeklyMealPlanDraft | null;
+  groceryList?: CoachGroceryListDraft | null;
 }
 
 export interface NormalizedCoachResult {

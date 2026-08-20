@@ -1,7 +1,7 @@
 import Foundation
 import AVFoundation
 
-/// Writes alarm audio into Library/Sounds so AlarmKit `.named()` can play it (built-in + imported music).
+/// Writes alarm audio into Library/Sounds so AlarmKit `AlertConfiguration.AlertSound.named()` can play it.
 enum ProyouAlarmKitSoundInstaller {
     private static let maxAlarmSeconds: TimeInterval = 30
 
@@ -15,12 +15,43 @@ enum ProyouAlarmKitSoundInstaller {
     static func installSound(soundId: String) -> String {
         let mapped = mapSoundId(soundId)
         let baseName = "proyou_\(mapped)"
+        if let source = bundledResourceURL(for: mapped) {
+            let dest = librarySoundsDirectory().appendingPathComponent("\(baseName).caf")
+            if convertToAlarmCAF(source: source, dest: dest) {
+                return baseName
+            }
+        }
         guard let loop = makeLoopBuffer(soundId: mapped, repeatCount: 14) else {
             return baseName
         }
         let dest = librarySoundsDirectory().appendingPathComponent("\(baseName).caf")
         writeBuffer(loop, to: dest)
         return baseName
+    }
+
+    /// True when Library/Sounds has a usable CAF for AlarmKit `.named(...)`.
+    static func soundFileExists(named baseName: String) -> Bool {
+        let dest = librarySoundsDirectory().appendingPathComponent("\(baseName).caf")
+        return FileManager.default.fileExists(atPath: dest.path)
+    }
+
+    /// Bundled mp3 shipped in the Capacitor `public/sounds` folder.
+    private static let bundledMp3BaseNames: [String: String] = [
+        "edgy_ringtone": "proyou-edgy-ringtone",
+        "wake_up_legend": "proyou-wake-up-you-legend",
+        "wake_up_legend_2": "proyou-wake-up-you-legend-2",
+        "morning_light": "proyou-morning-light-awakens",
+        "morning_light_2": "proyou-morning-light-awakens-2",
+        "on_the_clock": "proyou-youre-on-the-clock",
+    ]
+
+    static func bundledResourceURL(for soundId: String) -> URL? {
+        guard let base = bundledMp3BaseNames[soundId] else { return nil }
+        return Bundle.main.url(
+            forResource: base,
+            withExtension: "mp3",
+            subdirectory: "public/sounds"
+        ) ?? Bundle.main.url(forResource: base, withExtension: "mp3")
     }
 
     /// Copies imported audio from disk or app storage into Library/Sounds for AlarmKit.
@@ -119,7 +150,9 @@ enum ProyouAlarmKitSoundInstaller {
 
     private static func mapSoundId(_ soundId: String) -> String {
         switch soundId {
-        case "chime", "bells", "digital", "birds", "piano", "default":
+        case "chime", "bells", "digital", "birds", "piano", "default", "sparkle", "musicbox",
+             "edgy_ringtone", "wake_up_legend", "wake_up_legend_2", "morning_light",
+             "morning_light_2", "on_the_clock":
             return soundId
         default:
             return "default"
@@ -168,7 +201,7 @@ enum ProyouAlarmKitSoundInstaller {
         guard let burst = ProyouAlarmToneFactory.makeBurstBuffer(soundId: soundId),
               let channel = burst.floatChannelData?[0] else { return nil }
         let sampleRate = burst.format.sampleRate
-        let gapFrames = AVAudioFrameCount(sampleRate * 0.45)
+        let gapFrames = AVAudioFrameCount(sampleRate * 0.35)
         let unit = burst.frameLength + gapFrames
         let totalFrames = unit * AVAudioFrameCount(repeatCount) - gapFrames
         guard let out = AVAudioPCMBuffer(pcmFormat: burst.format, frameCapacity: totalFrames),

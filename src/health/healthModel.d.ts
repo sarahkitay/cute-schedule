@@ -38,3 +38,22 @@ export type ProgramLibraryEntry = {
 };
 
 export const PROGRAM_LIBRARY: readonly ProgramLibraryEntry[];
+
+export type CoachWeeklyMealPlanDayMeal = {
+  slot: string;
+  lines: string[];
+  food: string;
+  protein: number;
+  carbs: number;
+  fat: number;
+  calories: number;
+};
+
+export type CoachWeeklyMealPlanDraft = {
+  name: string;
+  proteinTargetGPerDay: number | null;
+  groceryLines: string[];
+  days: CoachWeeklyMealPlanDayMeal[][];
+};
+
+export function normalizeCoachWeeklyMealPlan(raw: unknown): CoachWeeklyMealPlanDraft | null;

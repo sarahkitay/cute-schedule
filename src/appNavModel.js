@@ -31,6 +31,8 @@ export const APP_MODULE_CATALOG = Object.freeze([
   { id: "finance", tab: "finance" },
   { id: "notes", tab: "notes" },
   { id: "timers", tab: "timers" },
+  { id: "alarms", tab: "alarms" },
+  { id: "period", tab: "period" },
 ]);
 
 const CATALOG_BY_ID = Object.fromEntries(
@@ -49,6 +51,7 @@ export const DEFAULT_ENABLED_MODULES = Object.freeze([
   "finance",
   "notes",
   "timers",
+  "alarms",
 ]);
 
 export const DEFAULT_NAV_ORDER = Object.freeze([
@@ -72,6 +75,21 @@ export function normalizeEnabledModules(raw) {
   }
   if (!seen.has("today")) out.unshift("today");
   return out.length ? out : [...DEFAULT_ENABLED_MODULES];
+}
+
+/** Ensures newer modules appear for users who saved an older enabled list. */
+export function mergeMissingEnabledModules(raw) {
+  const normalized = normalizeEnabledModules(raw);
+  const extras = ["alarms"];
+  const set = new Set(normalized.filter((id) => id !== "period"));
+  let added = false;
+  for (const id of extras) {
+    if (!set.has(id)) {
+      set.add(id);
+      added = true;
+    }
+  }
+  return added ? [...set] : normalized;
 }
 
 export function normalizeNavOrder(raw, enabledModules) {

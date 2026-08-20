@@ -14,12 +14,12 @@ const QUICK_SLIDES = [
   {
     title: "Coach, notes & money",
     body:
-      "**Coach** uses your real schedule and habits for gentle check-ins. **Notes** uses **This day** for the calendar day on Today, or **All notes** for workspace-wide entries. **Finance** tracks bills and subscriptions and can surface due dates on your day.",
+      "**Coach** uses your real schedule and habits for gentle check-ins. **Notes** uses **This day**, **All notes**, or **Lists** (saved shopping checklists). **Finance** tracks bills and subscriptions and can surface due dates on your day.",
   },
   {
-    title: "Settings & habits",
+    title: "You & Settings",
     body:
-      "Open **Settings** (gear) for account, themes, habit check-ins and **reminders** (hourly or custom times), task types, routines, and notifications. You can revisit anything you set during setup.",
+      "**You** is where you add **habits**, **routines**, and customize **navigation**. **Settings** covers theme, task types, notifications, account, and guides. On first launch, pick **Quick setup** or **In-depth setup** - you can change everything later.",
   },
 ];
 
@@ -32,7 +32,7 @@ const FULL_SLIDES = [
   {
     title: "Today tab & the timeline",
     body:
-      "Each **time block** holds tasks by category. Tap the small **▸ / ▾** on a row to open details (including **private notes** for that task). Use **⋯** for move to tomorrow, edit time, shopping lists, and more; notes stay on the expand panel on Today. Every main tab has a small **Instructions** strip at the bottom for full help.",
+      "Each **time block** holds tasks by category. Tap the small **▸ / ▾** on a row to open details (including **private notes** for that task). Use **⋯** for move to another day, edit time, shopping lists, and more; notes stay on the expand panel on Today. Every main tab has a small **Instructions** strip at the bottom for full help.",
   },
   {
     title: "Adding tasks: Type vs Details (top bar)",
@@ -60,24 +60,28 @@ const FULL_SLIDES = [
       "The **Coach** tab uses your patterns and picks a focus: **Schedule**, **Fitness**, or **Finance**. Tap the big coach button for that mode, or ask a follow-up question. Suggestions need your approval before anything is added.",
   },
   {
-    title: "Notes & Finance",
+    title: "Notes, lists & Finance",
     body:
-      "**Notes**: **This day** pins entries to the calendar day selected on Today; **All notes** keeps workspace-wide reflections and logs. **Finance** tracks bills and subscriptions; due items can appear as gentle reminders when you have configured them.",
+      "**Notes**: **This day** pins entries to the calendar day on Today; **All notes** keeps workspace-wide reflections; **Lists** stores shopping and errand checklists. **Finance** tracks bills and subscriptions; due items can appear as gentle reminders when configured.",
   },
   {
-    title: "Timers & alarms",
-    body:
-      "**Timers** (when in your nav) covers focus presets and morning alarms. Built-in sounds are available, or import your own MP3/M4A from Files; see **Instructions** on the Timers tab for alarm and wake-up challenge details.",
+    title: "Timers",
+    body: "**Timers** (when in your nav) covers focus presets with iOS notification sounds when time is up - even if PROYOU is in the background. Allow notifications for PROYOU in Settings.",
   },
   {
     title: "Habits & reminders",
     body:
-      "In **Settings → Habit check-ins**, define build/break habits. You can add **reminders**: **Hourly** (daytime hours) for nudges like water, or **Choose times** for specific clock times. In **Settings → Notifications**, use **Allow notifications and background reminders** (browser) or **Allow notifications and sync reminders** (app) so alerts and optional push work when your deployment supports it.",
+      "Add build/break habits under **You → Habits**. When notifications cadence is **Custom**, set hourly or clock times per habit there. In **Settings → Notifications**, turn **Remind** on or off per habit and allow notifications so alerts work on your device.",
+  },
+  {
+    title: "You tab: routines & nav",
+    body:
+      "**You → Routines** edits morning and wind-down steps, **Show on Today** toggles, and which weekdays they run. **You → Navigation** matches Settings dock editing. **Accountability** (friends, shared tasks) also lives on You.",
   },
   {
     title: "Routines & capacity",
     body:
-      "Morning and **wind-down** routines can appear on Today when enabled in Settings. **Today's Capacity** (mood and energy pills) nudges the coach and your self-awareness: optional metadata, not a grade.",
+      "Morning and **wind-down** routines appear on Today when enabled from **You → Routines**. **Today's Capacity** (mood and energy pills) nudges the coach and your self-awareness: optional metadata, not a grade.",
   },
   {
     title: "Instructions on each tab",
@@ -92,12 +96,12 @@ const FULL_SLIDES = [
   {
     title: "You are ready",
     body:
-      "Use the bottom bar to jump between areas. Everything from first setup can be changed in **Settings**. Tap **Done** below to close this tour - you can replay it anytime from **Settings → Guides & tours**.",
+      "Use the bottom bar to jump between areas. Habits and routines live under **You**; saved lists under **Notes → Lists**; theme, notifications, and account under **Settings**. Tap **Done** below to close this tour - you can replay it anytime from **Settings → Guides & tours**.",
   },
 ];
 
 /**
- * One-time (or explicit) product tour after onboarding. `mode`: quick (4) vs full (14).
+ * One-time (or explicit) product tour after onboarding. `mode`: quick (4) vs full (15).
  */
 export function FeatureWalkthrough({ mode, onComplete, onDismiss }) {
   const slides = mode === "full" ? FULL_SLIDES : QUICK_SLIDES;

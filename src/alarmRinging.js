@@ -90,11 +90,61 @@ export function fireAlarm(alarm, opts = {}) {
   }
 }
 
+const SNOOZE_UNTIL_KEY = "cute_schedule_alarm_snooze_until_v1";
+
+export function getPendingSnoozeAlarmId() {
+  try {
+    const raw = localStorage.getItem(SNOOZE_UNTIL_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed?.alarmId || !parsed?.until) return null;
+    if (Date.now() >= parsed.until) {
+      localStorage.removeItem(SNOOZE_UNTIL_KEY);
+      return String(parsed.alarmId);
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Snooze without marking dismissed for today. Alarm rings again after `minutes`.
+ * @param {object} alarm
+ * @param {(alarm: object) => void} onFire
+ * @param {number} [minutes]
+ */
+export function snoozeActiveAlarm(alarm, onFire, minutes = 9) {
+  if (!alarm?.id) return;
+  stopAlarmSound();
+  clearPersistedRingingAlarm();
+  const ms = Math.max(1, minutes) * 60 * 1000;
+  const until = Date.now() + ms;
+  try {
+    localStorage.setItem(SNOOZE_UNTIL_KEY, JSON.stringify({ alarmId: String(alarm.id), until }));
+  } catch {}
+  setTimeout(() => {
+    try {
+      const raw = localStorage.getItem(SNOOZE_UNTIL_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed?.alarmId === String(alarm.id) && Date.now() >= parsed.until) {
+        localStorage.removeItem(SNOOZE_UNTIL_KEY);
+        if (!isAlarmDismissedToday(alarm.id)) onFire?.(alarm);
+      }
+    } catch {
+      onFire?.(alarm);
+    }
+  }, ms);
+}
+
 /**
  * Stop alarm, clear persistence, mark dismissed for today.
  * @param {string} alarmId
  */
 export async function dismissActiveAlarm(alarmId) {
+  try {
+    localStorage.removeItem(SNOOZE_UNTIL_KEY);
+  } catch {}
   markAlarmDismissedToday(alarmId);
   clearPersistedRingingAlarm();
   stopAlarmSound();

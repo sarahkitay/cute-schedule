@@ -245,12 +245,19 @@ export const ALARM_MODES = {
   STANDARD: "standard",
   MATH_DISMISS: "math_dismiss",
   ACTION_REQUIRED: "action_required",
+  RIDDLE: "riddle",
+  PUZZLE: "puzzle",
 };
 
-/** True when the user chose a wake-up game (math or writing) for this alarm. */
+/** True when the user chose a wake-up game for this alarm. */
 export function alarmRequiresWakeUpChallenge(alarm) {
   const mode = alarm?.mode;
-  return mode === ALARM_MODES.MATH_DISMISS || mode === ALARM_MODES.ACTION_REQUIRED;
+  return (
+    mode === ALARM_MODES.MATH_DISMISS ||
+    mode === ALARM_MODES.ACTION_REQUIRED ||
+    mode === ALARM_MODES.RIDDLE ||
+    mode === ALARM_MODES.PUZZLE
+  );
 }
 
 export { ALARM_SOUND_IDS, BUILTIN_ALARM_SOUNDS } from "../alarmSounds";
@@ -291,6 +298,8 @@ export function createAlarm(options = {}) {
     customSoundName: options.customSoundName || null,
     mathDifficulty: options.mathDifficulty || "easy",
     requiredAction: options.requiredAction || null,
+    allowEmergencyOverride: options.allowEmergencyOverride !== false,
+    snoozeMinutes: typeof options.snoozeMinutes === "number" ? options.snoozeMinutes : 9,
     createdAt: Date.now(),
   };
 }

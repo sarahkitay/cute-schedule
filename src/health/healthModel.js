@@ -320,6 +320,94 @@ export function normalizeHealth(raw) {
   };
 }
 
+function mergeProgramLists(a, b) {
+  const map = new Map();
+  for (const p of [...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])]) {
+    if (!p?.id) continue;
+    const prev = map.get(p.id);
+    if (!prev) {
+      map.set(p.id, p);
+      continue;
+    }
+    const prevN = (prev.exercises || []).length;
+    const nextN = (p.exercises || []).length;
+    map.set(p.id, nextN >= prevN ? p : prev);
+  }
+  return [...map.values()];
+}
+
+function mergeMacroLogs(a, b) {
+  const out = { ...(a && typeof a === "object" ? a : {}) };
+  const other = b && typeof b === "object" ? b : {};
+  for (const [day, meals] of Object.entries(other)) {
+    const left = Array.isArray(out[day]) ? out[day] : [];
+    const right = Array.isArray(meals) ? meals : [];
+    if (!left.length) {
+      out[day] = right;
+      continue;
+    }
+    const byId = new Map();
+    for (const m of [...right, ...left]) {
+      if (!m || typeof m !== "object") continue;
+      const id = m.id != null ? String(m.id) : `${m.name || ""}-${m.calories || ""}-${m.protein || ""}`;
+      byId.set(id, m);
+    }
+    out[day] = [...byId.values()];
+  }
+  return out;
+}
+
+function healthProfileFilledCount(p) {
+  if (!p || typeof p !== "object") return 0;
+  let n = 0;
+  if (p.age) n += 1;
+  if (p.heightCm) n += 1;
+  if (p.weightKg) n += 1;
+  if (p.goalWeightKg) n += 1;
+  if (String(p.dietaryNotes || "").trim()) n += 1;
+  return n;
+}
+
+function weeklyMenuMealCount(menu) {
+  const days = menu?.days;
+  if (!Array.isArray(days)) return 0;
+  return days.reduce((n, day) => n + (Array.isArray(day) ? day.length : 0), 0);
+}
+
+/**
+ * Union local + cloud Health so a thinner Firestore doc cannot wipe My programs.
+ * Local wins on ties (same id, same exercise count).
+ */
+export function mergeHealthPreferRicher(localRaw, cloudRaw) {
+  const local = normalizeHealth(localRaw);
+  const cloud = normalizeHealth(cloudRaw);
+  const localScore = (local.programs || []).length * 100 + Object.keys(local.macroLog || {}).length;
+  const cloudScore = (cloud.programs || []).length * 100 + Object.keys(cloud.macroLog || {}).length;
+  const preferLocal = localScore >= cloudScore;
+  const base = preferLocal ? { ...cloud, ...local } : { ...local, ...cloud };
+  const programs = mergeProgramLists(cloud.programs, local.programs);
+  const weeklyPreferLocal = weeklyMenuMealCount(local.weeklyMenu) >= weeklyMenuMealCount(cloud.weeklyMenu);
+  return normalizeHealth({
+    ...base,
+    profile:
+      healthProfileFilledCount(local.profile) >= healthProfileFilledCount(cloud.profile)
+        ? local.profile
+        : cloud.profile,
+    programs,
+    macroLog: mergeMacroLogs(cloud.macroLog, local.macroLog),
+    macroTargets: local.macroTargets || cloud.macroTargets,
+    weightLog:
+      (local.weightLog || []).length >= (cloud.weightLog || []).length ? local.weightLog : cloud.weightLog,
+    weekRoutineProgramIds: [
+      ...new Set([...(cloud.weekRoutineProgramIds || []), ...(local.weekRoutineProgramIds || [])]),
+    ].slice(0, 21),
+    programDisplayOrder: [
+      ...new Set([...(local.programDisplayOrder || []), ...(cloud.programDisplayOrder || [])]),
+    ],
+    weeklyMenu: weeklyPreferLocal ? local.weeklyMenu : cloud.weeklyMenu,
+  });
+}
+
 const WEEKLY_MENU_DAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 export function weeklyMenuDayLabels() {

@@ -6,7 +6,6 @@ export const APP_TRIAL_FEATURE_IDS = new Set([
   "medications",
   "health",
   "insights",
-  "advanced_alarms",
   "finance",
 ]);
 

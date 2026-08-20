@@ -8,7 +8,7 @@ import {
   hasUnlimitedCoachPrompts,
 } from "./features.js";
 import { getAppTrialStatus, initAppTrialStart } from "./appTrial.js";
-import { getCoachPromptsUsedToday, consumeCoachPromptLocal } from "./promptUsage.js";
+import { getCoachPromptsUsedToday, consumeCoachPromptLocal, refreshCoachPromptUsageIfDayChanged } from "./promptUsage.js";
 import {
   purchaseProMonthly,
   refreshSubscriptionState,
@@ -16,19 +16,23 @@ import {
 } from "./revenueCatClient.js";
 import { setSubscriptionSnapshot, subscribeSubscriptionSnapshot } from "./subscriptionStore.js";
 import { mergeSubscriptionWithReferral, getReferralProGrant } from "../social/referralEntitlement.js";
+import { mergeSubscriptionWithTestPilot, isTestPilotActive } from "./testPilot.js";
+import { mergeSubscriptionWithAdminAccess, isAdminEmail } from "./proAdmin.js";
 
 /** @typedef {import('./features.js').FeatureId} FeatureId */
 
 const SubscriptionContext = createContext(null);
 
 /**
- * @param {{ children: React.ReactNode, firebaseUid?: string | null, enabledModules?: string[], routineTemplateCount?: number }} props
+ * @param {{ children: React.ReactNode, firebaseUid?: string | null, firebaseEmail?: string | null, enabledModules?: string[], routineTemplateCount?: number, profile?: object }} props
  */
 export function SubscriptionProvider({
   children,
   firebaseUid = null,
+  firebaseEmail = null,
   enabledModules = [],
   routineTemplateCount = 0,
+  profile = null,
 }) {
   const [loading, setLoading] = useState(true);
   const [isPro, setIsPro] = useState(false);
@@ -40,20 +44,49 @@ export function SubscriptionProvider({
   const [upgradeFeature, setUpgradeFeature] = useState(/** @type {FeatureId | null} */ (null));
   const [appTrial, setAppTrial] = useState(() => getAppTrialStatus());
   const [referralProActive, setReferralProActive] = useState(() => getReferralProGrant().active);
+  const [testPilotActive, setTestPilotActive] = useState(() => isTestPilotActive(firebaseUid, profile));
+  const [adminActive, setAdminActive] = useState(() => isAdminEmail(firebaseEmail));
+
+  useEffect(() => {
+    setTestPilotActive(isTestPilotActive(firebaseUid, profile));
+  }, [firebaseUid, profile?.testPilot]);
+
+  useEffect(() => {
+    setAdminActive(isAdminEmail(firebaseEmail));
+  }, [firebaseEmail]);
+
+  useEffect(() => {
+    const onTestPilot = () => setTestPilotActive(isTestPilotActive(firebaseUid, profile));
+    window.addEventListener("proyou:test-pilot-updated", onTestPilot);
+    return () => window.removeEventListener("proyou:test-pilot-updated", onTestPilot);
+  }, [firebaseUid, profile?.testPilot]);
 
   useEffect(() => {
     initAppTrialStart();
-    const refresh = () => setAppTrial(getAppTrialStatus());
+    const refresh = () => {
+      refreshCoachPromptUsageIfDayChanged();
+      setAppTrial(getAppTrialStatus());
+      setPromptsUsedToday(getCoachPromptsUsedToday());
+    };
     refresh();
     const id = setInterval(refresh, 60_000);
-    return () => clearInterval(id);
+    const onVis = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, []);
 
   const syncSubscription = useCallback(async () => {
     setLoading(true);
     try {
       const raw = await refreshSubscriptionState(firebaseUid || undefined);
-      const state = mergeSubscriptionWithReferral(raw);
+      let state = mergeSubscriptionWithReferral(raw);
+      state = mergeSubscriptionWithTestPilot(state, firebaseUid, profile);
+      state = mergeSubscriptionWithAdminAccess(state, firebaseEmail);
       const referral = getReferralProGrant();
       setReferralProActive(referral.active);
       setIsPro(state.isPro);
@@ -67,7 +100,7 @@ export function SubscriptionProvider({
     } finally {
       setLoading(false);
     }
-  }, [firebaseUid]);
+  }, [firebaseUid, firebaseEmail, profile?.testPilot]);
 
   useEffect(() => {
     void syncSubscription();
@@ -84,18 +117,34 @@ export function SubscriptionProvider({
   }, [syncSubscription]);
 
   useEffect(() => {
-    setPromptsUsedToday(getCoachPromptsUsedToday());
-    return subscribeSubscriptionSnapshot(() => {
+    const refreshPrompts = () => {
+      refreshCoachPromptUsageIfDayChanged();
       setPromptsUsedToday(getCoachPromptsUsedToday());
+    };
+    refreshPrompts();
+    return subscribeSubscriptionSnapshot(() => {
+      refreshPrompts();
     });
   }, []);
 
-  const unlimitedCoach = hasUnlimitedCoachPrompts({ isPro, appTrialActive: appTrial.active });
-  const promptsRemainingToday = coachPromptsRemaining(promptsUsedToday, isPro, appTrial.active);
+  const unlimitedCoach = hasUnlimitedCoachPrompts({
+    isPro,
+    appTrialActive: appTrial.active,
+    testPilotActive,
+    adminActive,
+  });
+  const promptsRemainingToday = coachPromptsRemaining(
+    promptsUsedToday,
+    isPro,
+    appTrial.active,
+    testPilotActive || adminActive,
+  );
 
   const featureCtx = useMemo(
     () => ({
       isPro,
+      testPilotActive,
+      adminActive,
       appTrialActive: appTrial.active,
       appTrialDaysLeft: appTrial.daysLeft,
       appTrialEnded: appTrial.ended,
@@ -103,7 +152,7 @@ export function SubscriptionProvider({
       routineTemplateCount,
       optionalModuleCount: countOptionalEnabledModules(enabledModules),
     }),
-    [isPro, appTrial, unlimitedCoach, promptsRemainingToday, routineTemplateCount, enabledModules]
+    [isPro, testPilotActive, adminActive, appTrial, unlimitedCoach, promptsRemainingToday, routineTemplateCount, enabledModules]
   );
 
   const openUpgrade = useCallback((featureId = null) => {
@@ -139,7 +188,10 @@ export function SubscriptionProvider({
   }, [unlimitedCoach, promptsUsedToday, openUpgrade]);
 
   const purchasePro = useCallback(async () => {
-    const state = await purchaseProMonthly();
+    const raw = await purchaseProMonthly(firebaseUid || undefined);
+    let state = mergeSubscriptionWithReferral(raw);
+    state = mergeSubscriptionWithTestPilot(state, firebaseUid, profile);
+    state = mergeSubscriptionWithAdminAccess(state, firebaseEmail);
     setIsPro(state.isPro);
     setTrialActive(state.trialActive);
     setExpirationDate(state.expirationDate);
@@ -147,10 +199,13 @@ export function SubscriptionProvider({
     setSubscriptionSnapshot({ isPro: state.isPro, trialActive: state.trialActive });
     if (state.isPro) closeUpgrade();
     return state;
-  }, [closeUpgrade]);
+  }, [closeUpgrade, firebaseUid, firebaseEmail, profile]);
 
   const restore = useCallback(async () => {
-    const state = await restorePurchases();
+    const raw = await restorePurchases(firebaseUid || undefined);
+    let state = mergeSubscriptionWithReferral(raw);
+    state = mergeSubscriptionWithTestPilot(state, firebaseUid, profile);
+    state = mergeSubscriptionWithAdminAccess(state, firebaseEmail);
     setIsPro(state.isPro);
     setTrialActive(state.trialActive);
     setExpirationDate(state.expirationDate);
@@ -158,12 +213,13 @@ export function SubscriptionProvider({
     setSubscriptionSnapshot({ isPro: state.isPro, trialActive: state.trialActive });
     if (state.isPro) closeUpgrade();
     return state;
-  }, [closeUpgrade]);
+  }, [closeUpgrade, firebaseUid, firebaseEmail, profile]);
 
   const value = useMemo(
     () => ({
       loading,
       isPro,
+      testPilotActive,
       trialActive,
       expirationDate,
       subscriptionExpired,
@@ -186,10 +242,13 @@ export function SubscriptionProvider({
       refreshSubscription: syncSubscription,
       referralProActive,
       referralProDaysLeft: getReferralProGrant().daysLeft,
+      adminActive,
     }),
     [
       loading,
       isPro,
+      testPilotActive,
+      adminActive,
       referralProActive,
       trialActive,
       expirationDate,

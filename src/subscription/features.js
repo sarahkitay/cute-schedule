@@ -17,14 +17,15 @@ export const FREE_MODULE_IDS = new Set([
   MODULE_IDS.COACH,
   MODULE_IDS.NOTES,
   MODULE_IDS.TIMERS,
+  MODULE_IDS.ALARMS,
   MODULE_IDS.PROFILE,
+  MODULE_IDS.PERIOD,
 ]);
 
 /** Pro-only modules (some unlocked during first 30-day app trial; see appTrial.js) */
 export const PRO_MODULE_IDS = new Set([
   MODULE_IDS.MEDICATIONS,
   MODULE_IDS.INSIGHTS,
-  MODULE_IDS.ALARMS,
   MODULE_IDS.HEALTH,
   MODULE_IDS.FINANCE,
   MODULE_IDS.ROUTINES,
@@ -104,38 +105,8 @@ export const FEATURE_COPY = {
  * @param {FeatureId} featureId
  * @param {{ isPro?: boolean, appTrialActive?: boolean, appTrialDaysLeft?: number, promptsRemainingToday?: number, routineTemplateCount?: number, optionalModuleCount?: number }} ctx
  */
-export function canUseFeature(featureId, ctx) {
-  const {
-    isPro,
-    appTrialActive = false,
-    promptsRemainingToday = 0,
-    routineTemplateCount = 0,
-    optionalModuleCount = 0,
-  } = ctx;
-  if (isPro) return true;
-
-  if (isAppTrialGatedFeature(featureId) && appTrialActive) return true;
-
-  switch (featureId) {
-    case "coach_prompt":
-      return promptsRemainingToday > 0;
-    case "medications":
-    case "health":
-    case "advanced_alarms":
-    case "insights":
-    case "finance":
-    case "cloud_sync":
-    case "smart_recurring_reminders":
-    case "analytics":
-    case "advanced_customization":
-      return false;
-    case "unlimited_routines":
-      return routineTemplateCount <= FREE_ROUTINE_TEMPLATE_LIMIT;
-    case "unlimited_modules":
-      return optionalModuleCount <= FREE_OPTIONAL_MODULE_LIMIT;
-    default:
-      return true;
-  }
+export function canUseFeature(_featureId, _ctx) {
+  return true;
 }
 
 /**
@@ -176,12 +147,11 @@ export function countOptionalEnabledModules(enabledModules) {
   return (enabledModules || []).filter((id) => !FREE_MODULE_IDS.has(id)).length;
 }
 
-/** @param {{ isPro?: boolean, appTrialActive?: boolean }} [opts] */
-export function hasUnlimitedCoachPrompts(opts = {}) {
-  return Boolean(opts.isPro || opts.appTrialActive);
+/** @param {{ isPro?: boolean, appTrialActive?: boolean, testPilotActive?: boolean, adminActive?: boolean }} [opts] */
+export function hasUnlimitedCoachPrompts(_opts = {}) {
+  return true;
 }
 
-export function coachPromptsRemaining(usedToday, isPro, appTrialActive = false) {
-  if (hasUnlimitedCoachPrompts({ isPro, appTrialActive })) return Infinity;
-  return Math.max(0, FREE_COACH_PROMPTS_PER_DAY - usedToday);
+export function coachPromptsRemaining(_usedToday, _isPro, _appTrialActive = false, _testPilotActive = false) {
+  return Infinity;
 }

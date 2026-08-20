@@ -1,6 +1,5 @@
 import React, { startTransition, useEffect, useMemo, useState } from "react";
 import { CheckIcon } from "./Icons";
-import { HabitIconPicker } from "./HabitIconPicker";
 import { DEFAULT_HABIT_ICON, suggestHabitIconFromLabel } from "./habitIcons";
 
 function rid() {
@@ -48,7 +47,6 @@ export function OnboardingFlow({
   const totalSteps = 9;
   const [habitLabel, setHabitLabel] = useState("");
   const [habitDir, setHabitDir] = useState("build");
-  const [habitIcon, setHabitIcon] = useState(DEFAULT_HABIT_ICON);
   const [morningDraft, setMorningDraft] = useState("");
   const [nightDraft, setNightDraft] = useState("");
   const [catsDraft, setCatsDraft] = useState("");
@@ -126,7 +124,7 @@ export function OnboardingFlow({
           id: rid(),
           label,
           direction: habitDir === "break" ? "break" : "build",
-          icon: habitIcon,
+          icon: suggestHabitIconFromLabel(label) || DEFAULT_HABIT_ICON,
           reminderSchedule: "none",
           reminderHours: [],
         },
@@ -134,7 +132,6 @@ export function OnboardingFlow({
       log: prev.log || {},
     }));
     setHabitLabel("");
-    setHabitIcon(DEFAULT_HABIT_ICON);
   }
 
   const progress = `${Math.min(step + 1, totalSteps)} / ${totalSteps}`;
@@ -150,8 +147,8 @@ export function OnboardingFlow({
             </h2>
             <p className="onboarding-lead">
               {firebaseOn
-                ? "You’re signed in. Over the next few screens you can add your name, birthday, habits, colors, routines, and task types, or skip anything you’d rather set up later in Settings. At the end you can open a quick or full tour of how each tab works."
-                : "Let’s walk through a few quick choices so the app feels like yours. You can skip any step and change everything later in Settings. When you finish, you can choose a quick or full walkthrough of the app (your choice)."}
+                ? "You’re signed in. Over the next few screens you can add your name, birthday, habits, colors, routines, and task types, or skip anything you’d rather set up later under You or Settings. At the end you can open a quick or full tour of how each tab works."
+                : "Let’s walk through a few quick choices so the app feels like yours. You can skip any step and change habits and routines under You, or theme and notifications in Settings. When you finish, you can choose a quick or full walkthrough of the app (your choice)."}
             </p>
           </>
         )}
@@ -202,16 +199,12 @@ export function OnboardingFlow({
             <h2 id="onboarding-title" className="onboarding-title">
               Habits
             </h2>
-            <p className="onboarding-lead">Add habits you want to build or break. You can edit them anytime in Settings.</p>
+            <p className="onboarding-lead">Add habits you want to build or break. You can edit them anytime under <strong>You → Habits</strong>.</p>
             <div className="onboarding-habit-row">
               <input
                 className="input onboarding-input"
                 value={habitLabel}
-                onChange={(e) => {
-                  const label = e.target.value;
-                  setHabitLabel(label);
-                  if (label.trim()) setHabitIcon(suggestHabitIconFromLabel(label));
-                }}
+                onChange={(e) => setHabitLabel(e.target.value)}
                 placeholder="e.g. Drink water, Screen off by 10pm"
               />
               <select className="input onboarding-select" value={habitDir} onChange={(e) => setHabitDir(e.target.value)} aria-label="Habit direction">
@@ -222,7 +215,6 @@ export function OnboardingFlow({
                 Add
               </button>
             </div>
-            <HabitIconPicker value={habitIcon} compact onChange={setHabitIcon} ariaLabel="Habit icon" />
             <ul className="onboarding-habit-list">
               {(habitTracker.habits || []).map((h) => (
                 <li key={h.id} className="onboarding-habit-item">

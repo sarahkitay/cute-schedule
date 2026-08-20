@@ -1,39 +1,46 @@
 import { coachPromptsRemaining, hasUnlimitedCoachPrompts } from "./features.js";
 import { isAppTrialActive } from "./appTrial.js";
-import { getCoachPromptsUsedToday } from "./promptUsage.js";
+import { isTestPilotActive } from "./testPilot.js";
+import { getCoachPromptsUsedToday, refreshCoachPromptUsageIfDayChanged } from "./promptUsage.js";
 import { readLocalSnapshot } from "./revenueCatClient.js";
 
 function unlimitedCoachAccess(snap) {
-  return hasUnlimitedCoachPrompts({ isPro: snap.isPro, appTrialActive: isAppTrialActive() });
+  return hasUnlimitedCoachPrompts({
+    isPro: snap.isPro,
+    appTrialActive: isAppTrialActive(),
+    testPilotActive: isTestPilotActive(),
+  });
+}
+
+function computePromptsRemainingToday(snap) {
+  refreshCoachPromptUsageIfDayChanged();
+  const used = getCoachPromptsUsedToday();
+  const appTrialActive = isAppTrialActive();
+  const testPilotActive = isTestPilotActive();
+  if (hasUnlimitedCoachPrompts({ isPro: snap.isPro, appTrialActive, testPilotActive })) return Infinity;
+  return coachPromptsRemaining(used, snap.isPro, appTrialActive, testPilotActive);
 }
 
 /** @type {{ isPro: boolean, trialActive: boolean, promptsRemainingToday: number }} */
 let snapshot = {
   isPro: false,
   trialActive: false,
-  promptsRemainingToday: coachPromptsRemaining(getCoachPromptsUsedToday(), false),
+  promptsRemainingToday: computePromptsRemainingToday({ isPro: false, trialActive: false }),
 };
 
 const listeners = new Set();
 
 export function getSubscriptionSnapshot() {
-  const used = getCoachPromptsUsedToday();
-  const unlimited = unlimitedCoachAccess(snapshot);
   return {
     ...snapshot,
-    promptsRemainingToday: unlimited
-      ? Infinity
-      : coachPromptsRemaining(used, false, false),
+    promptsRemainingToday: computePromptsRemainingToday(snapshot),
   };
 }
 
 /** @param {Partial<typeof snapshot>} next */
 export function setSubscriptionSnapshot(next) {
   snapshot = { ...snapshot, ...next };
-  const used = getCoachPromptsUsedToday();
-  snapshot.promptsRemainingToday = unlimitedCoachAccess(snapshot)
-    ? Infinity
-    : coachPromptsRemaining(used, false, false);
+  snapshot.promptsRemainingToday = computePromptsRemainingToday(snapshot);
   listeners.forEach((fn) => {
     try {
       fn(getSubscriptionSnapshot());
@@ -56,18 +63,14 @@ export function subscribeSubscriptionSnapshot(fn) {
   return () => listeners.delete(fn);
 }
 
-/** @returns {boolean} whether prompt may proceed */
-export function tryBeginCoachPrompt(onLimit) {
-  const snap = getSubscriptionSnapshot();
-  if (unlimitedCoachAccess(snapshot)) return true;
-  if (snap.promptsRemainingToday <= 0) {
-    onLimit?.();
-    return false;
-  }
+/** @returns {boolean} whether the coach request may proceed (server enforces quota). */
+export function tryBeginCoachPrompt() {
+  refreshCoachPromptUsageIfDayChanged();
   return true;
 }
 
 /** Whether a successful coach response should increment local/server free-tier usage. */
-export function shouldTrackCoachPromptUsage() {
-  return !unlimitedCoachAccess(snapshot);
+export function shouldTrackCoachPromptUsage(opts = {}) {
+  if (opts.adminActive) return false;
+  return !unlimitedCoachAccess(getSubscriptionSnapshot());
 }

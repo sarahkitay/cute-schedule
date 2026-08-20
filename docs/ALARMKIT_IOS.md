@@ -6,7 +6,7 @@ On **iOS 26+**, enabled PROYOU alarms sync to **AlarmKit** (Apple’s system ala
 
 - Can alert through **Silent** and **Focus**
 - **Lock Screen** and **Dynamic Island** UI
-- **Math / action-required alarms:** only **Open PROYOU** (Stop is hidden); tapping it opens the app, the system alarm keeps ringing until you finish the wake-up challenge in-app.
+- **Math / action-required alarms:** play the wake-up game on the **lock screen** Live Activity (tap answers or puzzle tiles). No need to unlock or open PROYOU. Optional **Open app** if you prefer the in-app challenge.
 - **Standard alarms:** **Stop** ends the alarm; **Open PROYOU** launches the app (`proyou://alarm?alarmId=<app alarm id>`).
 - Built-in and **imported** sounds (MP3/M4A from Files) are copied to `Library/Sounds` at sync so AlarmKit plays your clip on the lock screen (up to ~30s).
 
@@ -26,6 +26,16 @@ On **iOS 18-25**, the app keeps using **local notifications** plus in-app ringin
 - JS bridge: `src/nativeAlarmKit.js` → `resyncAlarmNotifications()` prefers AlarmKit on iOS 26+
 
 Requires **Xcode 26** and **iOS 26 SDK** to compile AlarmKit code (`#if canImport(AlarmKit)`). Older Xcode builds skip AlarmKit and fall back to notifications only.
+
+## Focus timers
+
+Focus timers use AlarmKit's **timer** API. The lock-screen countdown requires:
+
+- `AlarmPresentation` with **countdown** (not alert-only) in `ProyouAlarmKitScheduler.scheduleFocusTimer`
+- A widget extension Live Activity: `ProyouAlarmLiveActivity.swift` (`ActivityConfiguration` for `AlarmAttributes<ProyouFocusTimerMetadata>`)
+- `NSSupportsLiveActivities` in the main app `Info.plist`
+
+After starting a timer, lock your phone. You should see the countdown on the Lock Screen and in Dynamic Island.
 
 ## Not the Clock app
 

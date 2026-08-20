@@ -1,10 +1,13 @@
 import React from "react";
 import { useSubscription } from "../subscription/SubscriptionContext.jsx";
+import { APP_TRIAL_DATA_RETENTION_HINT } from "../subscription/constants.js";
 
 /** Pro subscription card for Settings */
 export function SettingsProSection() {
   const {
     isPro,
+    testPilotActive,
+    adminActive,
     trialActive,
     subscriptionExpired,
     promptsRemainingToday,
@@ -18,7 +21,11 @@ export function SettingsProSection() {
 
   const statusLabel = loading
     ? "Checking subscription…"
-    : isPro
+    : testPilotActive
+      ? "Test pilot: full Pro access"
+      : adminActive
+        ? "Admin: full Pro access"
+        : isPro
       ? trialActive
         ? "Pro trial active"
         : subscriptionExpired
@@ -34,20 +41,30 @@ export function SettingsProSection() {
 
   return (
     <div className="settings-section pro-settings-card surface-glass">
-      <p className="pro-settings-card__title">{isPro ? "ProYou Pro" : "Upgrade to Pro"}</p>
+      <p className="pro-settings-card__title">
+        {adminActive ? "Admin" : testPilotActive ? "Test pilot" : isPro ? "ProYou Pro" : "Upgrade to Pro"}
+      </p>
       <p className="pro-settings-card__meta">{statusLabel}</p>
-      {!isPro ? (
+      {adminActive ? (
+        <p className="settings-hint" style={{ marginTop: 0, marginBottom: 10 }}>
+          Signed in as admin with full ProYou Pro access. {APP_TRIAL_DATA_RETENTION_HINT}
+        </p>
+      ) : testPilotActive ? (
+        <p className="settings-hint" style={{ marginTop: 0, marginBottom: 10 }}>
+          You have full ProYou Pro access as a test pilot with no subscription required. {APP_TRIAL_DATA_RETENTION_HINT}
+        </p>
+      ) : !isPro ? (
         <>
           <p className="settings-hint" style={{ marginTop: 0, marginBottom: 10 }}>
             {appTrialActive
-              ? `Unlimited coach, meds, fitness, finance, insights, and alarms are free for your first 30 days (${appTrialDaysLeft} day${appTrialDaysLeft === 1 ? "" : "s"} left). After that, they are part of ProYou Pro at $4.99/mo after a 30-day Pro trial.`
+              ? `Unlimited coach, meds, fitness, finance, insights, and alarms are included for your first 30 days (${appTrialDaysLeft} day${appTrialDaysLeft === 1 ? "" : "s"} left). After that, subscribe to ProYou Pro ($4.99/mo) to keep them. ${APP_TRIAL_DATA_RETENTION_HINT}`
               : appTrialEnded
-                ? "Your first 30 days of meds, fitness, finance, insights, and alarms have ended. ProYou Pro unlocks them again, plus unlimited coach and more."
-                : "30-day free Pro trial, then $4.99/month. Unlimited coach, cloud backup, and more."}
+                ? `Your first 30 days of meds, fitness, finance, insights, and alarms have ended. ProYou Pro unlocks them again, plus unlimited coach and more. ${APP_TRIAL_DATA_RETENTION_HINT}`
+                : "ProYou Pro is $4.99/month - unlimited coach, cloud backup, and more."}
           </p>
           <div className="settings-push-actions" style={{ flexWrap: "wrap", gap: 8 }}>
             <button type="button" className="btn btn-primary btn-sm" onClick={() => openUpgrade("cloud_sync")}>
-              Start free trial
+              Subscribe now
             </button>
             <button type="button" className="btn btn-sm" onClick={() => restorePurchases()}>
               Restore purchases

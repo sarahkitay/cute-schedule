@@ -10,6 +10,8 @@ import {
 import { isFirebaseEnabled } from "../../firebase.js";
 import { buildReferralSharePayload, getAppStoreUrl } from "../../social/referralLinks.js";
 import { copyTextToClipboard, shareInvitePayload } from "../../social/shareInvite.js";
+import { sanitizeCloudUserError } from "../../cloudUserMessages.js";
+import { PageInstructions } from "../../PageInstructions.jsx";
 
 const REACTIONS = ["👍", "✨", "💪", "🎉"];
 
@@ -71,7 +73,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
     try {
       await action();
     } catch (e) {
-      setMsg(e?.message || String(e));
+      setMsg(sanitizeCloudUserError(e));
     } finally {
       setBusy(false);
     }
@@ -219,10 +221,18 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
           </button>
         </div>
         <div className="py-glass-card social-card">
-          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Add by code</div>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Add a friend instantly</div>
+          <p style={{ fontSize: 12, color: "var(--py-ink-muted)", margin: "0 0 8px" }}>
+            Enter their PY code - you&apos;ll connect right away (no request to accept).
+          </p>
           <input
+            type="text"
             className="py-input"
             placeholder="Friend's PY code"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="characters"
+            spellCheck={false}
             value={friendCode}
             onChange={(e) => setFriendCode(e.target.value.toUpperCase())}
             style={{ width: "100%", marginBottom: 8 }}
@@ -233,18 +243,18 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
             disabled={busy || !friendCode.trim()}
             onClick={() =>
               run(async () => {
-                await social.sendFriendRequestByCode(friendCode.trim());
+                const added = await social.addFriendByCode(friendCode.trim());
                 setFriendCode("");
-                setMsg("Friend request sent.");
+                setMsg(`You're now friends with ${added?.displayName || "them"}.`);
               })
             }
           >
-            Send friend request
+            Add friend
           </button>
         </div>
         {msg ? <p style={{ fontSize: 13, color: "var(--py-accent-deep)" }}>{msg}</p> : null}
         <p style={{ fontSize: 11, color: "var(--py-ink-muted)", lineHeight: 1.4 }}>
-          When a friend signs up with your link or code, you get one month of Pro (internal entitlement). They can install from the App Store link in the message. Rewards sync when you open Accountability again.
+          Share your App Store link so friends install ProYou. When they sign up with your link or code, you get one month of Pro. Rewards apply to you (the inviter) and sync the next time you open Accountability.
         </p>
       </div>
     );
@@ -263,7 +273,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
               checked={privacy.allowFriendRequests}
               onChange={(e) => setPrivacy((p) => ({ ...p, allowFriendRequests: e.target.checked }))}
             />
-            <span>Allow friend requests</span>
+            <span>Allow new friends by code</span>
           </label>
           <label className="social-toggle-row">
             <input
@@ -312,7 +322,8 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
   }
 
   if (section === "referrals") {
-    const pending = social.referrals.filter((r) => r.status === "pending").length;
+    const asReferrer = social.referrals.filter((r) => r.referrerUid === accountUid);
+    const pending = asReferrer.filter((r) => r.status === "pending").length;
     const earned = social.referralRewards.filter((r) => r.status === "granted").length;
     return (
       <div className="social-hub">
@@ -321,27 +332,118 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
         <div className="py-glass-card social-card">
           {social.referralGrant.active ? (
             <p style={{ fontSize: 14 }}>
-              Referral Pro active - {social.referralGrant.daysLeft} day(s) left (internal entitlement).
+              Referral Pro active - {social.referralGrant.daysLeft} day(s) left.
             </p>
           ) : (
             <p style={{ fontSize: 14, color: "var(--py-ink-secondary)" }}>No active referral Pro grant right now.</p>
           )}
-          <p style={{ fontSize: 13, marginTop: 12 }}>
-            Pending referrals: <strong>{pending}</strong> · Rewards granted: <strong>{earned}</strong>
+          <p style={{ fontSize: 13, marginTop: 12, lineHeight: 1.45 }}>
+            When someone installs and signs up with <strong>your</strong> invite link or code, <strong>you</strong> earn one free month of Pro. Open this screen again to sync rewards.
+          </p>
+          <p style={{ fontSize: 13, marginTop: 8 }}>
+            Pending signups: <strong>{pending}</strong> · Months earned: <strong>{earned}</strong>
           </p>
         </div>
-        {social.referrals.map((r) => (
-          <div key={r.id} className="py-glass-card social-card-row" style={{ display: "block", padding: 12 }}>
-            <span className="social-pending-badge">{r.status}</span>
-            <div style={{ fontSize: 13, marginTop: 6, color: "var(--py-ink-muted)" }}>
-              {r.status === "pending" ? "Friend signed up - reward processing" : r.status === "rewarded" ? "1 month Pro granted" : r.status}
+        {asReferrer.length === 0 ? (
+          <p className="social-offline-note">No referrals yet - share your invite link to get started.</p>
+        ) : (
+          asReferrer.map((r) => (
+            <div key={r.id} className="py-glass-card social-card-row" style={{ display: "block", padding: 12 }}>
+              <span className="social-pending-badge">{r.status}</span>
+              <div style={{ fontSize: 13, marginTop: 6, color: "var(--py-ink-muted)" }}>
+                {r.status === "pending"
+                  ? "Friend signed up - open Accountability to claim your month of Pro"
+                  : r.status === "rewarded"
+                    ? "1 month Pro granted to you"
+                    : r.status}
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
         <button type="button" className="social-btn-primary" onClick={() => setSection("invite")}>
           Invite another friend
         </button>
       </div>
+    );
+  }
+
+  function friendLabel(uid) {
+    return social.friendNames?.[uid] || "Friend";
+  }
+
+  function sharedTasksWithFriend(friendUid) {
+    if (!accountUid || !friendUid) return [];
+    return social.sharedTasks.filter((t) => {
+      if (t.status === "declined") return false;
+      const involved = new Set(
+        [...(t.memberUids || []), t.inviteeUid, t.createdBy].filter(Boolean),
+      );
+      return involved.has(friendUid) && involved.has(accountUid);
+    });
+  }
+
+  function renderFriendProgress(prog) {
+    if (!prog || Object.keys(prog).length <= 2) {
+      return <p style={{ fontSize: 13, marginTop: 8 }}>Nothing shared yet - they can turn on sharing in Privacy.</p>;
+    }
+    return (
+      <>
+        {prog.scheduleToday?.tasks?.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Today&apos;s schedule</div>
+            {prog.scheduleToday.tasks.map((t, i) => (
+              <div key={i} style={{ fontSize: 13, padding: "4px 0" }}>
+                {t.done ? "✓" : "○"} {t.time ? `${t.time} · ` : ""}{t.text}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {prog.habitStreaks?.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Habit streaks</div>
+            {prog.habitStreaks.map((h, i) => (
+              <div key={i} style={{ fontSize: 13 }}>{h.label} - {h.streak}d</div>
+            ))}
+          </div>
+        ) : null}
+        {prog.completedTasks?.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Recently completed</div>
+            {prog.completedTasks.map((t, i) => (
+              <div key={i} style={{ fontSize: 13 }}>✓ {t.text}</div>
+            ))}
+          </div>
+        ) : null}
+        {prog.monthlyGoals?.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Monthly goals</div>
+            {prog.monthlyGoals.map((g, i) => (
+              <div key={i} style={{ fontSize: 13 }}>{g.text} - {g.progress}</div>
+            ))}
+          </div>
+        ) : null}
+        {prog.fitness ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Fitness</div>
+            <div style={{ fontSize: 13 }}>
+              {typeof prog.fitness.workoutsThisWeek === "number" ? (
+                <span>{prog.fitness.workoutsThisWeek}/{prog.fitness.weeklyWorkoutTarget || "?"} workouts this week</span>
+              ) : null}
+              {prog.fitness.latestWeightKg != null ? (
+                <span>{typeof prog.fitness.workoutsThisWeek === "number" ? " · " : ""}Latest weight: {prog.fitness.latestWeightKg} kg</span>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        {prog.finance?.length ? (
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 14 }}>Finance milestones</div>
+            {prog.finance.map((m, i) => (
+              <div key={i} style={{ fontSize: 13 }}>{m.label}</div>
+            ))}
+          </div>
+        ) : null}
+      </>
     );
   }
 
@@ -350,7 +452,47 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
       <div className="social-hub">
         <button type="button" className="social-back" onClick={() => setSection("main")}>← Back</button>
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>Shared tasks</h2>
-        <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)" }}>Build routines together - workouts, check-ins, rent, study sessions.</p>
+        <p style={{ fontSize: 13, color: "var(--py-ink-tertiary)" }}>
+          Send a task to a friend - they approve it before it appears on their schedule.
+        </p>
+
+        {social.pendingSharedTaskInvites.length > 0 ? (
+          <div className="py-glass-card social-card">
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Task invites for you</div>
+            {social.pendingSharedTaskInvites.map((t) => (
+              <div key={t.id} className="social-card-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{t.title}</div>
+                <div style={{ fontSize: 12, color: "var(--py-ink-muted)" }}>
+                  From {t.creatorDisplayName || friendLabel(t.createdBy)}
+                  {t.dueAt ? ` · Due ${new Date(t.dueAt).toLocaleString()}` : ""}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="social-btn-primary"
+                    disabled={busy}
+                    onClick={() =>
+                      run(async () => {
+                        await social.respondSharedTaskInvite(t.id, true);
+                        setMsg("Added to your schedule and shared tasks.");
+                      })
+                    }
+                  >
+                    Accept
+                  </button>
+                  <button
+                    type="button"
+                    className="social-btn-secondary"
+                    disabled={busy}
+                    onClick={() => run(() => social.respondSharedTaskInvite(t.id, false))}
+                  >
+                    Decline
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         <div className="py-glass-card social-card">
           <input
@@ -377,7 +519,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
               <option value="">Solo (just me)</option>
               {social.friendUids.map((uid) => (
                 <option key={uid} value={uid}>
-                  With friend {uid.slice(0, 6)}…
+                  Send to {friendLabel(uid)}
                 </option>
               ))}
             </select>
@@ -388,30 +530,36 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
             disabled={busy || !taskTitle.trim()}
             onClick={() =>
               run(async () => {
-                const members = taskFriendUid ? [taskFriendUid] : [];
                 await social.createSharedTask({
                   title: taskTitle.trim(),
                   dueAt: taskDue ? new Date(taskDue).toISOString() : null,
-                  memberUids: members,
-                  assignees: members.length ? [firebaseUser.uid, ...members] : [firebaseUser.uid],
+                  inviteeUid: taskFriendUid || null,
+                  memberUids: taskFriendUid ? [] : [],
+                  assignees: taskFriendUid ? [firebaseUser.uid, taskFriendUid] : [firebaseUser.uid],
                 });
                 setTaskTitle("");
                 setTaskDue("");
-                setMsg("Shared task created.");
+                setMsg(taskFriendUid ? "Invite sent - they can accept from Shared tasks." : "Shared task created.");
               })
             }
           >
-            Create shared task
+            {taskFriendUid ? "Send task invite" : "Create shared task"}
           </button>
         </div>
 
-        {social.sharedTasks.length === 0 ? (
+        {(social.activeSharedTasks?.length ? social.activeSharedTasks : social.sharedTasks.filter((t) => t.status !== "declined")).length === 0 ? (
           <p className="social-offline-note">No shared tasks yet.</p>
         ) : (
-          social.sharedTasks.map((t) => {
+          (social.activeSharedTasks?.length ? social.activeSharedTasks : social.sharedTasks.filter((t) => t.status !== "declined")).map((t) => {
             const myDone = t.completions?.[firebaseUser.uid];
+            const isPendingOutgoing = t.status === "pending" && t.createdBy === firebaseUser.uid;
             return (
               <div key={t.id} className="py-glass-card social-card" style={{ marginBottom: 8 }}>
+                {isPendingOutgoing ? (
+                  <span className="social-pending-badge" style={{ marginBottom: 6, display: "inline-block" }}>
+                    Awaiting {friendLabel(t.inviteeUid)}
+                  </span>
+                ) : null}
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <input
                     type="checkbox"
@@ -431,10 +579,13 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
                   Partner status:{" "}
                   {(t.memberUids || []).map((uid) => (
                     <span key={uid}>
-                      {uid === firebaseUser.uid ? "You" : "Friend"}{" "}
+                      {uid === firebaseUser.uid ? "You" : friendLabel(uid)}{" "}
                       {t.completions?.[uid] ? "✓" : "○"}{" "}
                     </span>
                   ))}
+                  {t.inviteeUid && t.status === "pending" ? (
+                    <span>{friendLabel(t.inviteeUid)} (invite pending)</span>
+                  ) : null}
                 </div>
                 <div className="social-reactions" style={{ marginTop: 8 }}>
                   {REACTIONS.map((em) => (
@@ -505,38 +656,87 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
   if (section === "friend" && selectedFriend) {
     const vis = social.profile?.friendVisibility?.[selectedFriend];
     const normVis = normalizeFriendVisibility(vis);
+    const friendTasks = sharedTasksWithFriend(selectedFriend);
     return (
       <div className="social-hub">
         <button type="button" className="social-back" onClick={() => setSection("main")}>← Back</button>
         <h2 style={{ fontSize: 20, fontWeight: 600, margin: 0 }}>
-          {friendProfile?.displayName || "Friend"}
+          {friendProfile?.displayName || friendLabel(selectedFriend)}
         </h2>
         <div className="py-glass-card social-card">
-          <p style={{ fontSize: 13, color: "var(--py-ink-muted)" }}>Shared progress (only what they opted in to share)</p>
-          {!friendProgress || Object.keys(friendProgress).length <= 2 ? (
-            <p style={{ fontSize: 13, marginTop: 8 }}>No shared progress yet.</p>
+          <p style={{ fontSize: 13, color: "var(--py-ink-muted)" }}>Only what they opted in to share with friends</p>
+          {renderFriendProgress(friendProgress)}
+        </div>
+        <div className="py-glass-card social-card">
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 8 }}>Shared tasks together</div>
+          {friendTasks.length === 0 ? (
+            <p style={{ fontSize: 13, color: "var(--py-ink-muted)", margin: 0 }}>
+              No shared tasks with {friendLabel(selectedFriend)} yet. Send one from Shared tasks.
+            </p>
           ) : (
-            <>
-              {friendProgress.scheduleToday?.tasks?.length ? (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>Today</div>
-                  {friendProgress.scheduleToday.tasks.map((t, i) => (
-                    <div key={i} style={{ fontSize: 13, padding: "4px 0" }}>
-                      {t.done ? "✓" : "○"} {t.text}
+            friendTasks.map((t) => {
+              const myDone = t.completions?.[accountUid];
+              const isPendingIncoming = t.status === "pending" && t.inviteeUid === accountUid;
+              const isPendingOutgoing = t.status === "pending" && t.createdBy === accountUid;
+              return (
+                <div key={t.id} style={{ padding: "8px 0", borderBottom: "1px solid var(--py-border-subtle, rgba(0,0,0,0.06))" }}>
+                  {isPendingIncoming ? (
+                    <div style={{ fontSize: 12, color: "var(--py-accent-deep)", marginBottom: 4 }}>
+                      Invite from {t.creatorDisplayName || friendLabel(t.createdBy)}
                     </div>
-                  ))}
+                  ) : null}
+                  {isPendingOutgoing ? (
+                    <div style={{ fontSize: 12, color: "var(--py-ink-muted)", marginBottom: 4 }}>
+                      Awaiting {friendLabel(t.inviteeUid)}
+                    </div>
+                  ) : null}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {t.status === "active" ? (
+                      <input
+                        type="checkbox"
+                        checked={!!myDone}
+                        disabled={busy}
+                        onChange={(e) => run(() => social.completeSharedTask(t.id, e.target.checked))}
+                      />
+                    ) : null}
+                    <span className={myDone ? "social-task-done" : ""} style={{ flex: 1, fontWeight: 600, fontSize: 14 }}>
+                      {t.title}
+                    </span>
+                  </div>
+                  {isPendingIncoming ? (
+                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <button
+                        type="button"
+                        className="social-btn-primary"
+                        disabled={busy}
+                        onClick={() => run(() => social.respondSharedTaskInvite(t.id, true))}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        type="button"
+                        className="social-btn-secondary"
+                        disabled={busy}
+                        onClick={() => run(() => social.respondSharedTaskInvite(t.id, false))}
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
-              ) : null}
-              {friendProgress.habitStreaks?.length ? (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>Habits</div>
-                  {friendProgress.habitStreaks.map((h, i) => (
-                    <div key={i} style={{ fontSize: 13 }}>{h.label} - {h.streak}d</div>
-                  ))}
-                </div>
-              ) : null}
-            </>
+              );
+            })
           )}
+          {friendTasks.length > 0 ? (
+            <button
+              type="button"
+              className="social-btn-secondary"
+              style={{ marginTop: 10, width: "100%" }}
+              onClick={() => setSection("tasks")}
+            >
+              Open all shared tasks
+            </button>
+          ) : null}
         </div>
         <div className="py-glass-card social-card">
           <label className="social-toggle-row">
@@ -566,6 +766,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
             Block
           </button>
         </div>
+        <PageInstructions tab="accountability" compact summary="ProYou tips" />
       </div>
     );
   }
@@ -579,6 +780,22 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
         <h2>Accountability</h2>
         <p>Share your plan with someone who keeps you honest. Build routines together.</p>
       </div>
+
+      {social.pendingSharedTaskInvites.length > 0 ? (
+        <div className="py-glass-card social-card">
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>Shared task invites</div>
+          {social.pendingSharedTaskInvites.map((t) => (
+            <div key={t.id} className="social-card-row">
+              <span style={{ flex: 1, fontSize: 14 }}>
+                {t.title} from {t.creatorDisplayName || friendLabel(t.createdBy)}
+              </span>
+              <button type="button" className="social-btn-secondary" disabled={busy} onClick={() => setSection("tasks")}>
+                Review
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {social.incomingRequests.length > 0 ? (
         <div className="py-glass-card social-card">
@@ -608,7 +825,10 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
         <button type="button" className="social-settings-link" onClick={() => setSection("tasks")}>
           <span>
             <strong>Shared tasks</strong>
-            <div style={{ fontSize: 12, color: "var(--py-ink-muted)" }}>{social.sharedTasks.length} active</div>
+            <div style={{ fontSize: 12, color: "var(--py-ink-muted)" }}>
+              {(social.activeSharedTasks?.length ?? social.sharedTasks.length) || 0} active
+              {social.pendingSharedTaskInvites.length ? ` · ${social.pendingSharedTaskInvites.length} invite(s)` : ""}
+            </div>
           </span>
           <span>›</span>
         </button>
@@ -641,7 +861,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
               style={{ marginBottom: 8 }}
               onClick={() => openFriend(uid)}
             >
-              <span>Friend</span>
+              <span>{friendLabel(uid)}</span>
               <span>›</span>
             </button>
           ))
@@ -649,6 +869,7 @@ export function FriendsHub({ onBack, initialSection = null, firebaseUser = null 
       </div>
       {social.loading ? <p style={{ fontSize: 12, color: "var(--py-ink-muted)" }}>Syncing…</p> : null}
       {msg ? <p style={{ fontSize: 13, color: "var(--py-accent-deep)" }}>{msg}</p> : null}
+      <PageInstructions tab="accountability" compact summary="ProYou tips" />
     </div>
   );
 }

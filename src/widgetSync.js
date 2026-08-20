@@ -43,6 +43,47 @@ function loadHabitTrackerFromDisk() {
   }
 }
 
+/** @param {Array<{ id: string, text: string, done: boolean, hourKey: string, category: string, dayKey?: string }>} tasks */
+export function resolveWidgetCurrentTask(tasks, now = new Date()) {
+  const open = (tasks || []).filter((t) => t && !t.done);
+  if (!open.length) return { currentTask: null, nextTask: null, openTaskCount: 0 };
+
+  const withMin = open
+    .map((t) => {
+      const parts = String(t.hourKey || "09:00").split(":");
+      const h = Number(parts[0]) || 0;
+      const m = Number(parts[1]) || 0;
+      return { ...t, startM: h * 60 + m };
+    })
+    .sort((a, b) => a.startM - b.startM);
+
+  const nowM = now.getHours() * 60 + now.getMinutes();
+
+  let current = withMin.find((t) => nowM >= t.startM && nowM < t.startM + 60);
+  if (!current) current = withMin.find((t) => t.startM > nowM);
+  if (!current) current = withMin[0];
+
+  const idx = withMin.findIndex((t) => t.id === current.id);
+  const next = idx >= 0 && idx < withMin.length - 1 ? withMin[idx + 1] : null;
+
+  const pick = (t) =>
+    t
+      ? {
+          id: String(t.id),
+          text: String(t.text || "").slice(0, 120),
+          hourKey: String(t.hourKey || "09:00"),
+          category: String(t.category || "Work"),
+          dayKey: String(t.dayKey || ""),
+        }
+      : null;
+
+  return {
+    currentTask: pick(current),
+    nextTask: pick(next),
+    openTaskCount: open.length,
+  };
+}
+
 /**
  * Build a compact snapshot for iOS home-screen widgets.
  * @param {object} appState
@@ -68,6 +109,7 @@ export function buildWidgetSnapshot(appState, habitTracker, todayKey, timersStat
             done: !!t.done,
             hourKey,
             category: String(category),
+            dayKey: todayKey,
           });
         }
       }
@@ -78,6 +120,8 @@ export function buildWidgetSnapshot(appState, habitTracker, todayKey, timersStat
     if (a.done !== b.done) return Number(a.done) - Number(b.done);
     return a.hourKey.localeCompare(b.hourKey);
   });
+
+  const { currentTask, nextTask, openTaskCount } = resolveWidgetCurrentTask(tasks);
 
   const habits = (habitTracker?.habits || []).map((h) => ({
     id: String(h.id),
@@ -105,6 +149,10 @@ export function buildWidgetSnapshot(appState, habitTracker, todayKey, timersStat
     tasks: tasks.slice(0, 12),
     habits: habits.slice(0, 8),
     activeTimer,
+    currentTask,
+    nextTask,
+    openTaskCount: openTaskCount ?? tasks.filter((t) => !t.done).length,
+    hasTasks: tasks.length > 0,
   };
 }
 

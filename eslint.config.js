@@ -5,10 +5,10 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'node_modules']),
-  // API and server-side: Node env (process, Buffer)
+  globalIgnores(['dist', 'node_modules', 'docs', 'ios', 'android', 'cute-schedule@0.0.0']),
+  // Scripts, tests, and API: Node env (process, Buffer)
   {
-    files: ['api/**/*.js', 'api/**/*.mjs'],
+    files: ['api/**/*.js', 'api/**/*.mjs', 'scripts/**/*.mjs', 'tests/**/*.mjs', 'src/**/*.test.mjs'],
     languageOptions: {
       globals: { ...globals.node },
       parserOptions: { ecmaVersion: 'latest', sourceType: 'module' },

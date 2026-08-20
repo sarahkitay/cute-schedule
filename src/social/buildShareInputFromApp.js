@@ -1,14 +1,17 @@
 import { objectiveMonthKey } from "../monthlyObjectivesModel.js";
 import { getVisibleMonthObjectives } from "../monthlyObjectivesModel.js";
 
+import { isTaskHiddenFromSharedSchedule } from "../modules/period.js";
+
 /**
  * @param {Object} opts
  * @param {string} [opts.displayName]
  * @param {string} opts.realTodayKey
  * @param {Object} opts.appState
  * @param {Object} opts.habitTracker
+ * @param {Object} [opts.health]
  */
-export function buildShareInputFromApp({ displayName, realTodayKey, appState, habitTracker }) {
+export function buildShareInputFromApp({ displayName, realTodayKey, appState, habitTracker, health }) {
   const day = appState?.days?.[realTodayKey];
   const todayTasks = [];
   if (day?.hours) {
@@ -18,6 +21,7 @@ export function buildShareInputFromApp({ displayName, realTodayKey, appState, ha
         if (!Array.isArray(list)) continue;
         for (const task of list) {
           if (!task?.text) continue;
+          if (isTaskHiddenFromSharedSchedule(task)) continue;
           todayTasks.push({
             text: task.text,
             time: hourKey,
@@ -54,6 +58,7 @@ export function buildShareInputFromApp({ displayName, realTodayKey, appState, ha
         if (!Array.isArray(list)) continue;
         for (const task of list) {
           if (task?.done && task?.text) {
+            if (isTaskHiddenFromSharedSchedule(task)) continue;
             recentCompleted.push({ text: task.text, dayKey: key });
           }
         }
@@ -67,6 +72,22 @@ export function buildShareInputFromApp({ displayName, realTodayKey, appState, ha
     progress: o.done ? "Done" : "In progress",
   }));
 
+  let fitnessSummary = null;
+  if (health && typeof health === "object") {
+    const wp = health.workoutProgress && typeof health.workoutProgress === "object" ? health.workoutProgress : {};
+    const workoutsThisWeek = Object.values(wp).filter((row) => row && typeof row === "object" && row.done).length;
+    const target =
+      typeof health.profile?.weeklyWorkoutTarget === "number" ? health.profile.weeklyWorkoutTarget : 3;
+    const weightLog = Array.isArray(health.weightLog) ? health.weightLog : [];
+    const latest = weightLog.length ? weightLog[weightLog.length - 1] : null;
+    fitnessSummary = {
+      weeklyWorkoutTarget: target,
+      workoutsThisWeek,
+      goal: health.profile?.goal || null,
+      latestWeightKg: latest && typeof latest.kg === "number" ? latest.kg : null,
+    };
+  }
+
   return {
     displayName,
     todayKey: realTodayKey,
@@ -74,7 +95,7 @@ export function buildShareInputFromApp({ displayName, realTodayKey, appState, ha
     habits,
     recentCompleted: recentCompleted.slice(0, 12),
     monthlyGoals,
-    fitnessSummary: null,
+    fitnessSummary,
     financeMilestones: [],
   };
 }

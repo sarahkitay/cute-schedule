@@ -316,3 +316,48 @@ test("coach message promises leg program + block but omitted suggestions: adds p
   assert.ok(row.workoutProgram.exerciseLines.length >= 4);
   assert.ok(minutes(row.start) > minutes("14:00"));
 });
+
+test("validateCoachSpecificity expands day-build prompts with missing ADD_TASK rows", () => {
+  const userQuestion =
+    "It's already noon I accidentally slept in but I need to test the formula admin portal should take about an hour I also need to fix and submit PROYOU and I need to go to Trader Joe's and get strawberries and blueberries and pineapple and target to get cat litter and dog poop bags and I need to clean the house and wash my cushion covers and bedding and I want to do a glute focused workout can you put all of this on my schedule and make me the glute focused routine";
+  const { parsed, patched } = validateCoachSpecificity(
+    {
+      message: "Let's slot your afternoon.",
+      suggestions: [
+        {
+          type: "ADD_TASK",
+          title: "Test formula admin portal",
+          start: "14:00",
+          durationMinutes: 60,
+          category: "Work",
+          energyLevel: "MEDIUM",
+          requiresApproval: true,
+        },
+        {
+          type: "ADD_WORKOUT_PROGRAM",
+          name: "Glute focus",
+          exercises: ["Hip thrust 4x10", "RDL 3x10", "Bulgarian split squat 3x10", "Cable kickback 3x15", "Glute bridge 3x15"],
+          requiresApproval: true,
+        },
+      ],
+    },
+    {
+      coachContext: { today: { isOnPace: true, overdueTasks: 0 }, timeOfDay: "afternoon" },
+      coachReasoningMode: "daily_planning",
+      localNowHHMM: "12:00",
+      realTodayKey: "2026-05-28",
+      categories: ["Work", "Personal"],
+      userQuestion,
+      conversation: [],
+    }
+  );
+  assert.equal(patched, true);
+  const addTasks = parsed.suggestions.filter((s) => s.type === "ADD_TASK");
+  assert.ok(addTasks.length >= 4, `expected multiple ADD_TASK rows, got ${addTasks.length}`);
+  const errand = addTasks.find((s) => /trader|target|errand|shopping/i.test(String(s.title || "")));
+  assert.ok(errand, "errand task should exist");
+  assert.ok(Array.isArray(errand.groceryList?.items) && errand.groceryList.items.length >= 4);
+  const workout = addTasks.find((s) => /workout|glute|gym/i.test(String(s.title || "")));
+  assert.ok(workout, "workout task should exist");
+  assert.ok(workout.workoutProgram && workout.workoutProgram.exerciseLines?.length >= 4);
+});

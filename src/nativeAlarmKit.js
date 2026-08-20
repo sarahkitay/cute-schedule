@@ -1,6 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { ALARM_SOUND_IDS } from "./alarmSounds";
-import { getCustomAlarmSound } from "./alarmSounds";
+import { normalizeAlarmSound, BUNDLED_ALARM_SOUND_FILES } from "./alarmSounds";
 
 const ProyouAlarmKit = registerPlugin("ProyouAlarmKit");
 
@@ -42,71 +41,23 @@ export async function requestAlarmKitAuthorization() {
   }
 }
 
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
-}
-
-function fileExtensionFromMime(mimeType, fileName) {
-  if (fileName && fileName.includes(".")) {
-    return fileName.split(".").pop().toLowerCase();
-  }
-  if (mimeType?.includes("mpeg")) return "mp3";
-  if (mimeType?.includes("wav")) return "wav";
-  return "m4a";
-}
-
 /**
- * Copy one imported clip into iOS Library/Sounds for AlarmKit (lock-screen alarm audio).
- * @param {string} customSoundId
- * @param {{ path?: string, file?: File | Blob, mimeType?: string }} [opts]
+ * @param {Array<object>} [alarms]
  */
-export async function installCustomSoundForAlarmKit(customSoundId, opts = {}) {
-  if (!isIosNative() || !customSoundId) return;
-  try {
-    if (opts.path) {
-      await ProyouAlarmKit.installCustomSound({ customSoundId, path: opts.path });
-      return;
-    }
-    const blob = opts.file;
-    if (!blob) return;
-    const base64 = await blobToBase64(blob);
-    const ext = fileExtensionFromMime(opts.mimeType || blob.type, blob.name);
-    await ProyouAlarmKit.installCustomSound({
-      customSoundId,
-      base64,
-      fileExtension: ext,
-    });
-  } catch (e) {
-    console.warn("[nativeAlarmKit] installCustomSound", e?.message || e);
-  }
-}
-
-/**
- * Ensures every custom alarm sound used by enabled alarms is installed for AlarmKit.
- * @param {Array<object>} alarms
- */
-export async function syncCustomSoundsForAlarmKit(alarms) {
+export async function syncAlarmSoundsForAlarmKit(alarms = []) {
   if (!isIosNative() || !(await isAlarmKitAvailable())) return;
   const list = Array.isArray(alarms) ? alarms : [];
-  const ids = new Set();
+  const soundIds = new Set(["default", "digital", ...Object.keys(BUNDLED_ALARM_SOUND_FILES)]);
   for (const a of list) {
     if (a?.enabled === false) continue;
-    if (a?.sound === ALARM_SOUND_IDS.CUSTOM && a?.customSoundId) {
-      ids.add(String(a.customSoundId));
-    }
+    soundIds.add(normalizeAlarmSound(a?.sound || "default"));
   }
-  for (const id of ids) {
-    const rec = await getCustomAlarmSound(id);
-    if (!rec?.blob) continue;
-    await installCustomSoundForAlarmKit(id, {
-      file: rec.blob,
-      mimeType: rec.mimeType,
-    });
+  for (const soundId of soundIds) {
+    try {
+      await ProyouAlarmKit.installAlarmSound({ soundId });
+    } catch (e) {
+      console.warn("[nativeAlarmKit] installAlarmSound", soundId, e?.message || e);
+    }
   }
 }
 
@@ -117,20 +68,19 @@ export async function syncCustomSoundsForAlarmKit(alarms) {
  */
 export async function resyncAlarmKit(alarms) {
   if (!isIosNative()) return null;
-  await syncCustomSoundsForAlarmKit(alarms);
+  if (!(await isAlarmKitAvailable())) return null;
+  await syncAlarmSoundsForAlarmKit(alarms);
   const list = Array.isArray(alarms) ? alarms : [];
   const payload = list.map((a) => ({
     id: String(a.id),
     time: a.time,
     label: a.label,
-    days: Array.isArray(a.days) ? a.days : [0, 1, 2, 3, 4, 5, 6],
+    days: (Array.isArray(a.days) ? a.days : [0, 1, 2, 3, 4, 5, 6])
+      .map((d) => Number(d))
+      .filter((d) => Number.isFinite(d) && d >= 0 && d <= 6),
     enabled: a.enabled !== false,
-    mode: a.mode,
-    sound: a.sound || "default",
-    customSoundId:
-      a.sound === ALARM_SOUND_IDS.CUSTOM && a.customSoundId
-        ? String(a.customSoundId)
-        : undefined,
+    mode: a.mode || "standard",
+    sound: normalizeAlarmSound(a.sound || "default"),
   }));
   return ProyouAlarmKit.resyncAlarms({ alarms: payload });
 }
@@ -169,5 +119,60 @@ export async function cancelAlarmKit(alarmId) {
     await ProyouAlarmKit.cancelAlarm({ alarmId: String(alarmId) });
   } catch (e) {
     console.warn("[nativeAlarmKit] cancel", e?.message || e);
+  }
+}
+
+/**
+ * Schedule a Clock-style focus timer via AlarmKit (iOS 26+).
+ * @param {{ label?: string, durationSec: number, sessionId: string }} opts
+ */
+export async function scheduleFocusTimerKit(opts) {
+  if (!isIosNative() || !(await isAlarmKitAvailable())) return null;
+  const durationSec = Number(opts?.durationSec);
+  const sessionId = opts?.sessionId ? String(opts.sessionId) : "";
+  if (!sessionId || !Number.isFinite(durationSec) || durationSec <= 0) return null;
+  try {
+    const auth = await getAlarmKitAuthorizationState();
+    if (auth !== "authorized") {
+      const next = await requestAlarmKitAuthorization();
+      if (next !== "authorized") return { scheduled: 0, authorization: next };
+    }
+    return await ProyouAlarmKit.scheduleFocusTimer({
+      label: opts?.label || "Focus timer",
+      durationSec,
+      sessionId,
+    });
+  } catch (e) {
+    console.warn("[nativeAlarmKit] scheduleFocusTimer", e?.message || e, e?.code);
+    return { scheduled: 0, error: e?.message || String(e), code: e?.code || "" };
+  }
+}
+
+export async function cancelFocusTimerKit() {
+  if (!isIosNative()) return;
+  try {
+    await ProyouAlarmKit.cancelFocusTimer();
+  } catch (e) {
+    console.warn("[nativeAlarmKit] cancelFocusTimer", e?.message || e);
+  }
+}
+
+export async function consumePendingFocusTimerDismiss() {
+  if (!isIosNative()) return "";
+  try {
+    const r = await ProyouAlarmKit.consumePendingFocusTimerDismiss();
+    return r?.sessionId ? String(r.sessionId) : "";
+  } catch {
+    return "";
+  }
+}
+
+export async function consumePendingFocusTimerOpen() {
+  if (!isIosNative()) return "";
+  try {
+    const r = await ProyouAlarmKit.consumePendingFocusTimerOpen();
+    return r?.sessionId ? String(r.sessionId) : "";
+  } catch {
+    return "";
   }
 }

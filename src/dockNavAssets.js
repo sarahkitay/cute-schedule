@@ -76,6 +76,20 @@ export const DOCK_NAV_ASSETS = {
     simpleDarkImage: "timericondm.png",
     iconSize: DOCK_NAV_SIZE,
   },
+  alarms: {
+    label: "Alarms",
+    image: "suniconnobubble.png",
+    simpleDarkImage: "sunicondm.png",
+    iconSize: DOCK_NAV_SIZE,
+    iconScale: 1.12,
+  },
+  period: {
+    label: "Period",
+    image: "fireicon.png",
+    simpleDarkImage: "fireicondm.png",
+    iconSize: DOCK_NAV_SIZE,
+    iconScale: 1.08,
+  },
   habits: {
     label: "Habits",
     image: "habit.png",

@@ -1,7 +1,7 @@
 import { applyApiCors } from "./lib/cors.js";
 import { assertCoachRateLimit } from "./lib/coachRateLimit.js";
-import { assertCoachEntitlement, consumeCoachPrompt } from "./lib/coachEntitlement.js";
-import { buildProgramDraftDetectionText, userWantsWorkoutProgramDraft, validateCoachSpecificity } from "./lib/coachValidate.js";
+import { assertCoachEntitlement, consumeCoachPrompt, buildCoachQuotaPayload } from "./lib/coachEntitlement.js";
+import { buildProgramDraftDetectionText, userWantsDayBuild, userWantsWorkoutProgramDraft, validateCoachSpecificity } from "./lib/coachValidate.js";
 import { clientSafeDetail, logServerError } from "./lib/safeJsonError.js";
 
 const isProd = process.env.NODE_ENV === "production";
@@ -40,6 +40,7 @@ export default async function handler(req, res) {
       code: entitlement.code,
       limit: entitlement.limit,
       used: entitlement.used,
+      coachQuota: buildCoachQuotaPayload(entitlement),
       upgrade: true,
     });
   }
@@ -121,8 +122,20 @@ export default async function handler(req, res) {
           : "";
       const systemContent = `You are an ADHD-aware planning coach: emotionally steady, never shaming, and logically precise with the user's real data. ${OUTPUT_RULES}`;
       let userContent = "";
+      const adhdUserQ = String(userQuestion || req.body.userQuestion || "").trim();
+      const adhdDayBuild = userWantsDayBuild(adhdUserQ);
+      const adhdCategories = Array.isArray(categories) ? categories : ["Work", "Personal"];
+      const adhdDayBuildBlock = adhdDayBuild
+        ? ` DAY_BUILD (mandatory): They listed multiple to-dos for today. Return one ADD_TASK per distinct item with spread start times after localNowHHMM (${nowSlot || "unknown"}). Errand/shopping ADD_TASK must include groceryList.items with every product they named. Gym ADD_TASK must include workoutProgram embedded. Return 4-12 suggestions when they named that many items.`
+        : "";
       if (mode === "schedule") {
-        userContent = `Tone: calm strategist focused on the calendar and time blocks.
+        userContent = adhdUserQ
+          ? `Tone: calm strategist focused on the calendar and time blocks.
+
+User request: ${adhdUserQ}
+Date: ${dayKey}. Local now: ${nowSlot || "unknown"}. Current schedule (time -> categories -> tasks): ${JSON.stringify(scheduleData)}. Incomplete tasks: ${JSON.stringify(tasksList)}. Mood: ${mood || "not set"}.${habitBlock}${adhdDayBuildBlock}
+Return JSON: { "summary": "2-4 sentences", "followUp": null, "actions": [], "suggestions": [ ADD_TASK rows per DAY_BUILD rules, each requiresApproval true ] }. Categories: ${adhdCategories.join(", ")}.`
+          : `Tone: calm strategist focused on the calendar and time blocks.
 
 Help plan and organize the schedule. Date: ${dayKey}. Current schedule (time -> categories -> tasks): ${JSON.stringify(scheduleData)}. Incomplete tasks: ${JSON.stringify(tasksList)}. Mood: ${mood || "not set"}.${habitBlock}
 Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences", "followUp": "one optional question or null", "actions": [ { "type": "TIMEBOX", "taskId": "...", "start": "HH:MM", "end": "HH:MM" }, { "type": "REORDER", "taskIds": ["id1","id2"] }, { "type": "BREAK", "start": "HH:MM", "end": "HH:MM", "label": "Short break" } ], "suggestions": [] }. Use only taskIds that exist in the input.`;
@@ -139,11 +152,11 @@ Output a proposed order and timeboxing. Return JSON: { "summary": "2-3 sentences
           ? `Tone: practical coach for training AND nutrition when asked; no medical claims.
 
 User request: ${userQ}
-Date: ${dayKey}. Schedule: ${JSON.stringify(scheduleData)}.${healthNote}${habitBlock}
+Date: ${dayKey}. Local now: ${nowSlot || "unknown"}. Schedule: ${JSON.stringify(scheduleData)}.${healthNote}${habitBlock}${adhdDayBuildBlock}
 
 If they want meals / a weekly menu / meal plan / grocery list, return ADD_WEEKLY_MEAL_PLAN with weeklyMealPlan.days length 7 (Sun-Sat), 3-5 meals per day, macros on each meal, groceryLines, and proteinTargetGPerDay when they gave a protein target.
-If they want workouts / programs, return ADD_WORKOUT_PROGRAM or ADD_TASK with workoutProgram as in training mode.
-Return JSON: { "summary": "2-5 sentences", "followUp": null, "actions": [], "suggestions": [ ... ] }. requiresApproval true on every suggestion.`
+If they want workouts / programs, return ADD_TASK with workoutProgram embedded when they asked to schedule it; ADD_WORKOUT_PROGRAM only when they want a saved program without a calendar slot.
+Return JSON: { "summary": "2-5 sentences", "followUp": null, "actions": [], "suggestions": [ ... ] }. requiresApproval true on every suggestion. Categories: ${adhdCategories.join(", ")}.`
           : `Tone: practical training partner; concrete lifts and sessions, no medical claims.
 
 Coach fitness and training. Date: ${dayKey}. Schedule: ${JSON.stringify(scheduleData)}.${healthNote}${habitBlock}
@@ -192,6 +205,33 @@ Return JSON: { "summary": "2-4 sentences", "followUp": null, "actions": [], "sug
         );
       }
       await consumeCoachPrompt(entitlement);
+      const adhdV2 = {
+        message: parsed.summary || "",
+        insight: null,
+        highlights: [],
+        followUp: parsed.followUp || null,
+        suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+        ignoredMonthlies: [],
+        percentSummary: "",
+      };
+      if (adhdUserQ || adhdV2.suggestions.length) {
+        const { parsed: patchedAdhd } = validateCoachSpecificity(adhdV2, {
+          coachContext: coachContext && typeof coachContext === "object" ? coachContext : null,
+          coachReasoningMode: coachReasoningMode || (adhdDayBuild ? "daily_planning" : mode),
+          localNowHHMM: nowSlot,
+          realTodayKey: todayKeyForClock,
+          categories: adhdCategories,
+          userQuestion: adhdUserQ || null,
+          conversation: [],
+        });
+        return res.status(200).json({
+          summary: patchedAdhd.message || patchedAdhd.summary || "",
+          message: patchedAdhd.message || patchedAdhd.summary || "",
+          followUp: patchedAdhd.followUp || null,
+          actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+          suggestions: Array.isArray(patchedAdhd.suggestions) ? patchedAdhd.suggestions : [],
+        });
+      }
       return res.status(200).json({
         summary: parsed.summary || "",
         followUp: parsed.followUp || null,
@@ -245,7 +285,7 @@ Start the message with an observation about their data OR a reframing, not a pre
 
 Suggestions (Coach V2): When a concrete move fits, return 0-12 items in "suggestions" (use up to 12 when the user lists many separate to-dos for one day; otherwise prefer a tight 0-6). Each item uses ONE of these shapes:
 
-(A) Calendar block: { "type":"ADD_TASK"|"BREAK"|"SPLIT_TASK"|"DEFER"|"REORDER"|"TIMEBOX", "title":"short label", "description":"optional detail", "reason":"one sentence tied to THIS user's data", "category":"one of their categories", "energyLevel":"LIGHT"|"MEDIUM"|"HEAVY", "start":"HH:MM", "end":"HH:MM or null", "durationMinutes": number, "recurring": false, "recurrencePattern":"none"|"daily"|"weekly", "targetDayKey":"YYYY-MM-DD or null (which calendar day to place the block; default the request dayKey)", "weekPlanLabel":"short UI label e.g. Wed 7:30p", "confidence": 0.0-1.0, "requiresApproval": true, "targetTaskId": "existing id or null" }. If the block is a gym / strength / leg day / training / HIIT session (not errands), also include "workoutProgram": { "name": "short title", "exerciseLines": ["Lift + sets 3x8", "...5-8 lines"] } so Approve can save to Health and link the calendar task. Never return a gym-style ADD_TASK without workoutProgram.
+(A) Calendar block: { "type":"ADD_TASK"|"BREAK"|"SPLIT_TASK"|"DEFER"|"REORDER"|"TIMEBOX", "title":"short label", "description":"optional detail", "reason":"one sentence tied to THIS user's data", "category":"one of their categories", "energyLevel":"LIGHT"|"MEDIUM"|"HEAVY", "start":"HH:MM", "end":"HH:MM or null", "durationMinutes": number, "recurring": false, "recurrencePattern":"none"|"daily"|"weekly", "targetDayKey":"YYYY-MM-DD or null (which calendar day to place the block; default the request dayKey)", "weekPlanLabel":"short UI label e.g. Wed 7:30p", "confidence": 0.0-1.0, "requiresApproval": true, "targetTaskId": "existing id or null", "groceryList": { "items": ["product they named", "..."] } optional for shopping/errand runs (Trader Joe's, Target, etc.) }. If the block is a gym / strength / leg day / training / HIIT session (not errands), also include "workoutProgram": { "name": "short title", "exerciseLines": ["Lift + sets 3x8", "...5-8 lines"] } so Approve can save to Health and link the calendar task. Never return a gym-style ADD_TASK without workoutProgram.
 
 (B) Saved workout program (Health → My programs): { "type":"ADD_WORKOUT_PROGRAM", "name":"Short title", "reason":"why this split fits them", "exercises": ["Exercise one 3x10", "Exercise two 3x12", "...4-8 lines total, each a real lift + sets/reps"], "requiresApproval": true, "confidence": 0.8 }. No "start"/hour on this row - it is not a calendar block until they schedule it.
 
@@ -262,9 +302,11 @@ COMMITMENT_RULE: If "message" says you will add, schedule, save, or draft a work
 Clock rule for new time slots: The client sends localNowHHMM (24h) and realTodayKey. When targetDayKey is null or equals realTodayKey (same true calendar day as "now"), every ADD_TASK and BREAK must use "start" strictly AFTER localNowHHMM (pick the next quarter-hour or half-hour boundary after it). Never propose an earlier clock time for that day. For ADD_TASK on that day, prefer hour blocks in today's schedule JSON that are not already stacked with unfinished tasks unless the user explicitly asked to double-book.
 
 DAY_BUILD (when the user names several concrete tasks or errands for today in one message, e.g. homework, wash car, shower, call bank, call mom):
-- Return one ADD_TASK per distinct item they asked for (short titles in their words).
+- Return one ADD_TASK per distinct item they asked for (short titles in their words). If they named 5+ items, return 5+ ADD_TASK rows - never collapse to 1-2 tasks.
 - Spread start times across the rest of the day with realistic buffers; put quick personal care and short calls in lighter slots, homework or car wash in longer blocks; respect obvious order (e.g. shower before leaving, bank during daytime when plausible).
-- Use energyLevel LIGHT for quick calls/shower, MEDIUM for homework or chores, HEAVY only for big physical blocks if justified.
+- Use energyLevel LIGHT for quick calls/shower/errands, MEDIUM for homework or chores, HEAVY only for big physical blocks if justified.
+- For grocery / store runs: one ADD_TASK naming the store(s) with groceryList.items listing every product they mentioned (strawberries, cat litter, etc.).
+- For gym / workout they asked to schedule: one ADD_TASK with embedded workoutProgram (not ADD_WORKOUT_PROGRAM alone).
 - You may add one BREAK between dense clusters. Do not invent tasks they did not mention.
 
 Week / recurring planning: If the user asks to spread habits (e.g. art, dog walks) across the week, use weekAtAGlance + today's schedule to infer lighter blocks and propose multiple ADD_TASK rows on different targetDayKey values with realistic times. Prefer recurrencePattern weekly for habits they want a few times per week; daily for true every-day anchors. In "message", sound human: react to what they said (e.g. agreement, empathy, one concrete plan). Tie suggestions to their actual gaps; avoid generic filler.
@@ -376,6 +418,21 @@ PERSONALIZATION (mandatory):
 Do NOT reply with only generic encouragement.`
       : "";
 
+    const dayBuildAsk =
+      userWantsDayBuild(buildProgramDraftDetectionText(userQuestion, conversation)) ||
+      coachReasoningMode === "daily_planning";
+    const dailyPlanningHardRule = dayBuildAsk
+      ? `
+
+DAILY_PLAN_BUILD (mandatory for this user message):
+They listed multiple concrete to-dos and want them on today's schedule. You MUST return one ADD_TASK per distinct item they named - not 1-2 tasks when they named five or more.
+Spread start times across the rest of the day starting strictly after localNowHHMM with realistic buffers (cleaning/chores first, focused work blocks, errands before stores close, gym when energy allows).
+For grocery / errand runs (Trader Joe's, Target, shopping): one ADD_TASK naming the store(s) with "groceryList": { "items": ["every product they listed"] }.
+For gym / workout: one ADD_TASK with embedded workoutProgram (name + 5-8 exerciseLines) - do NOT return only ADD_WORKOUT_PROGRAM without a scheduled gym block when they asked to put the workout on the schedule.
+Do not omit cleaning, submit/fix work, or errands because you also returned a workout program.
+Return 4-12 suggestions when they named that many items.`
+      : "";
+
     const coachContextBlock = coachContextNarrative
       ? `\n\nCOACH_CONTEXT_NARRATIVE (highest-trust pacing and monthly signals; follow this over raw completion counts):\n${String(coachContextNarrative).slice(0, 8500)}`
       : coachContext && typeof coachContext === "object"
@@ -484,6 +541,7 @@ Monthly objectives: ${JSON.stringify(monthly || [])}${patternInsights}${notesCon
     const contextPrompt = `
 ${coachEvidenceFirst}
 ${healthProgrammingHardRule}
+${dailyPlanningHardRule}
 
 --- Calendar / schedule details (secondary to COACH_CONTEXT when both exist) ---
 ${scheduleDetails}
@@ -639,7 +697,12 @@ Return JSON EXACTLY in this schema (Coach V2). When you propose a full workout t
     }
 
     await consumeCoachPrompt(entitlement);
-    return res.status(200).json(patchedParsed);
+    const usedAfter =
+      entitlement.key && entitlement.used != null
+        ? Math.min(Number(entitlement.limit) || 2, Number(entitlement.used) + 1)
+        : null;
+    const coachQuota = buildCoachQuotaPayload(entitlement, usedAfter);
+    return res.status(200).json({ ...patchedParsed, coachQuota });
   } catch (e) {
     logServerError("Coach handler", e);
     const detail = clientSafeDetail(e, isProd);

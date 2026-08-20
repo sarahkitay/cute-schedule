@@ -10,11 +10,18 @@ import './subscription/subscription.css'
 import App from './app.jsx'
 import { initSubscriptionSnapshotFromStorage } from './subscription/subscriptionStore.js'
 import { initAppTrialStart } from './subscription/appTrial.js'
+import { refreshCoachPromptUsageIfDayChanged } from './subscription/promptUsage.js'
+import { syncAppTrialEndingNotification } from './subscription/appTrialNotifications.js'
+import { captureTestPilotFromUrl } from './subscription/testPilot.js'
 import { captureReferralFromUrl } from './social/socialModel.js'
 import './social/social.css'
+import './a11y.css'
 
 captureReferralFromUrl()
+captureTestPilotFromUrl()
 initAppTrialStart()
+refreshCoachPromptUsageIfDayChanged()
+void syncAppTrialEndingNotification()
 initSubscriptionSnapshotFromStorage()
 
 // Error boundary so a runtime error shows a message instead of a blank page

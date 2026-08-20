@@ -45,7 +45,7 @@ export function RowMoreMenu({
       ? ReactDOM.createPortal(
           (() => {
             const rect = triggerRef.current.getBoundingClientRect();
-            const { left, top, bottom, width } = computeDropdownPosition(rect, {
+            const { left, top, width, maxHeight } = computeDropdownPosition(rect, {
               panelWidth: 200,
               maxHeight: 160,
             });
@@ -55,11 +55,12 @@ export function RowMoreMenu({
                 style={{
                   position: "fixed",
                   left,
-                  ...(bottom != null ? { top: "auto", bottom } : { top }),
+                  top,
                   width,
+                  maxHeight,
                   maxWidth:
                     "min(100vw - 32px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
-                  zIndex: "var(--z-popover)",
+                  zIndex: "calc(var(--z-modal) - 8)",
                 }}
                 onClick={(e) => e.stopPropagation()}
               >

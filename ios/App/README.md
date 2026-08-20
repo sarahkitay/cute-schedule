@@ -1,6 +1,6 @@
 # Open this folder in Xcode correctly
 
-**Always open `App.xcworkspace` — never `App.xcodeproj`.**
+**Always open `App.xcworkspace` - never `App.xcodeproj`.**
 
 Capacitor, Firebase, and RevenueCat are installed via CocoaPods. They only link when you use the **workspace**.
 
@@ -24,7 +24,7 @@ Then in Xcode: **Product → Clean Build Folder**, then **Product → Build** (�
 
 ## If you see `No such module 'Capacitor'`
 
-1. You opened **`App.xcodeproj`** by mistake — close it and open **`App.xcworkspace`**.
+1. You opened **`App.xcodeproj`** by mistake - close it and open **`App.xcworkspace`**.
 2. Run `pod install` in this directory (`ios/App`).
 3. Clean build folder and rebuild.
 

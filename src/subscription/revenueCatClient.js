@@ -12,6 +12,37 @@ function isNativeIos() {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
 }
 
+function withTimeout(promise, ms, message) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    Promise.resolve(promise).then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function purchasesErrorMessage(error) {
+  const code = error?.code ?? error?.errorCode ?? "";
+  const msg = error?.message || String(error || "");
+  if (/cancel/i.test(msg) || code === "1" || code === 1) {
+    return { cancelled: true, message: msg };
+  }
+  if (/not configured/i.test(msg) || /not been configured/i.test(msg)) {
+    return {
+      cancelled: false,
+      message: "In-app purchases are not ready yet. Try again in a moment, or use Restore purchases.",
+    };
+  }
+  return { cancelled: false, message: msg || "Purchase failed. Please try again." };
+}
+
 async function loadPurchases() {
   if (purchasesModule) return purchasesModule;
   if (!isNativeIos()) return null;
@@ -120,28 +151,71 @@ export async function refreshSubscriptionState(appUserId) {
   return configureRevenueCat(appUserId);
 }
 
-export async function purchaseProMonthly() {
+/** Configure RevenueCat when possible; throws with a user-facing message if purchases cannot run. */
+export async function ensureRevenueCatReady(appUserId) {
+  if (!isNativeIos()) {
+    if (import.meta.env.DEV) return null;
+    throw new Error("Subscriptions are available in the ProYou iOS app.");
+  }
+  const apiKey = import.meta.env.VITE_REVENUECAT_IOS_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      "Subscriptions are not set up in this build yet. Your 30-day welcome access still works on this device.",
+    );
+  }
   const Purchases = await loadPurchases();
   if (!Purchases) {
-    if (import.meta.env.DEV) {
-      writeLocalSnapshot({
-        isPro: true,
-        trialActive: true,
-        expirationDate: new Date(Date.now() + 30 * 86400000).toISOString(),
-      });
-      return devSubscriptionState();
-    }
-    throw new Error("Subscriptions are available in the iOS app.");
+    throw new Error("In-app purchases are not available on this device.");
   }
-  const offerings = await Purchases.getOfferings();
+  await configureRevenueCat(appUserId);
+  return Purchases;
+}
+
+export async function purchaseProMonthly(appUserId) {
+  const Purchases = await ensureRevenueCatReady(appUserId);
+  if (!Purchases) {
+    writeLocalSnapshot({
+      isPro: true,
+      trialActive: true,
+      expirationDate: new Date(Date.now() + 30 * 86400000).toISOString(),
+    });
+    return devSubscriptionState();
+  }
+
+  let offerings;
+  try {
+    offerings = await withTimeout(
+      Purchases.getOfferings(),
+      20000,
+      "Could not load subscription options. Check your connection and try again.",
+    );
+  } catch (e) {
+    const { cancelled, message } = purchasesErrorMessage(e);
+    if (cancelled) throw e;
+    throw new Error(message);
+  }
+
   const pkg =
     offerings.current?.availablePackages?.find((p) => p.product?.identifier === PRO_PRODUCT_ID) ||
     offerings.current?.monthly ||
     offerings.current?.availablePackages?.[0];
   if (!pkg) {
-    throw new Error("Subscription product is not configured yet.");
+    throw new Error("Subscription product is not configured yet. Try Restore purchases or contact support.");
   }
-  const { customerInfo } = await Purchases.purchasePackage({ aPackage: pkg });
+
+  let customerInfo;
+  try {
+    ({ customerInfo } = await withTimeout(
+      Purchases.purchasePackage({ aPackage: pkg }),
+      120000,
+      "Purchase timed out. If you finished in the App Store sheet, tap Restore purchases.",
+    ));
+  } catch (e) {
+    const { cancelled, message } = purchasesErrorMessage(e);
+    if (cancelled) throw e;
+    throw new Error(message);
+  }
+
   const parsed = parseCustomerInfo(customerInfo);
   writeLocalSnapshot({
     isPro: parsed.isPro,
@@ -151,14 +225,27 @@ export async function purchaseProMonthly() {
   return parsed;
 }
 
-export async function restorePurchases() {
-  const Purchases = await loadPurchases();
+export async function restorePurchases(appUserId) {
+  const Purchases = await ensureRevenueCatReady(appUserId);
   if (!Purchases) {
     const snap = readLocalSnapshot();
     if (snap?.isPro) return devSubscriptionState();
-    throw new Error("Restore is available in the iOS app.");
+    throw new Error("Restore is available in the ProYou iOS app.");
   }
-  const { customerInfo } = await Purchases.restorePurchases();
+
+  let customerInfo;
+  try {
+    ({ customerInfo } = await withTimeout(
+      Purchases.restorePurchases(),
+      30000,
+      "Restore timed out. Check your connection and try again.",
+    ));
+  } catch (e) {
+    const { cancelled, message } = purchasesErrorMessage(e);
+    if (cancelled) throw e;
+    throw new Error(message);
+  }
+
   const parsed = parseCustomerInfo(customerInfo);
   writeLocalSnapshot({
     isPro: parsed.isPro,

@@ -2,6 +2,9 @@ import React, { useState } from "react";
 import { PRO_PRODUCT_DISPLAY_NAME } from "../subscription/constants.js";
 import { useSubscription } from "../subscription/SubscriptionContext.jsx";
 
+const PRIVACY_POLICY_URL = "https://sarahkitay.com/proyou/privacy";
+const TERMS_OF_USE_URL = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+
 /**
  * Upgrade to Pro modal; 30-day trial, $4.99/mo, restore purchases.
  */
@@ -12,6 +15,8 @@ export function UpgradeProModal() {
     upgradeCopy,
     isPro,
     trialActive,
+    appTrialActive,
+    appTrialDaysLeft,
     purchasePro,
     restorePurchases,
     promptsRemainingToday,
@@ -39,7 +44,7 @@ export function UpgradeProModal() {
   const title = upgradeCopy?.title || "Upgrade to ProYou Pro";
   const body =
     upgradeCopy?.body ||
-    "Unlock unlimited AI coaching, medication tracking, insights, cloud backup, and more.";
+    "Unlock unlimited AI coaching, fitness & finance tracking, medication reminders, insights, cloud backup, and more.";
 
   return (
     <div className="pro-upgrade-backdrop" role="presentation" onClick={closeUpgrade}>
@@ -64,10 +69,12 @@ export function UpgradeProModal() {
           <>
             <ul className="pro-upgrade-list">
               <li>Unlimited AI Coach prompts</li>
+              <li>Fitness &amp; training tracking</li>
+              <li>Finance &amp; budget tracking</li>
               <li>Medication tracking &amp; reminders</li>
               <li>Insights &amp; trend analytics</li>
               <li>Cloud sync &amp; backup</li>
-              <li>Advanced alarms &amp; smart reminders</li>
+              <li>Timer alerts &amp; smart reminders</li>
               <li>Unlimited routines &amp; modules</li>
             </ul>
 
@@ -75,7 +82,17 @@ export function UpgradeProModal() {
               <span className="pro-upgrade-price">$4.99</span>
               <span className="pro-upgrade-period">/ month after trial</span>
             </div>
-            <p className="pro-upgrade-trial">30-day free trial · Cancel anytime</p>
+            <p className="pro-upgrade-trial">
+              {appTrialActive
+                ? `${appTrialDaysLeft} day${appTrialDaysLeft === 1 ? "" : "s"} of welcome access active on this device · Subscribe anytime`
+                : "30-day App Store trial · Cancel anytime"}
+            </p>
+            {appTrialActive ? (
+              <p className="pro-upgrade-free-hint">
+                You already have Pro features for your first 30 days without paying. Subscribe below to keep them after
+                that.
+              </p>
+            ) : null}
             <p className="pro-upgrade-product-id">{PRO_PRODUCT_DISPLAY_NAME}</p>
 
             {Number.isFinite(promptsRemainingToday) ? (
@@ -90,7 +107,7 @@ export function UpgradeProModal() {
               disabled={busy}
               onClick={() => run(purchasePro)}
             >
-              {busy ? "Processing…" : "Start free trial"}
+              {busy ? "Processing…" : appTrialActive ? "Subscribe to Pro" : "Start free trial"}
             </button>
             <button
               type="button"
@@ -100,6 +117,20 @@ export function UpgradeProModal() {
             >
               Restore purchases
             </button>
+
+            <div className="pro-upgrade-legal-links">
+              <p className="pro-upgrade-legal-agreement">
+                By subscribing, you agree to our{" "}
+                <a href={TERMS_OF_USE_URL} target="_blank" rel="noopener noreferrer">
+                  Terms of Use
+                </a>{" "}
+                and{" "}
+                <a href={PRIVACY_POLICY_URL} target="_blank" rel="noopener noreferrer">
+                  Privacy Policy
+                </a>
+                .
+              </p>
+            </div>
           </>
         ) : (
           <p className="pro-upgrade-status">{trialActive ? "Trial active" : "Subscription active"}</p>

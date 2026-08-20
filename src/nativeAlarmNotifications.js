@@ -7,6 +7,7 @@ import {
   resyncAlarmKit,
   cancelAlarmKit,
   getAlarmKitAuthorizationState,
+  requestAlarmKitAuthorization,
 } from "./nativeAlarmKit.js";
 
 /** Snooze reminders every 60s for 15 minutes so tapping opens PROYOU until dismissed. */
@@ -83,16 +84,46 @@ export async function resyncAlarmNotifications(alarms) {
 
   const list = Array.isArray(alarms) ? alarms : [];
 
+  if (!list.length) {
+    if (Capacitor.getPlatform() === "ios" && (await isAlarmKitAvailable())) {
+      try {
+        await resyncAlarmKit([]);
+      } catch (e) {
+        console.warn("[nativeAlarmNotifications] AlarmKit clear failed:", e?.message || e);
+      }
+    }
+    try {
+      await cancelAllProyouAlarmLocalNotifications();
+    } catch (e) {
+      console.warn("[nativeAlarmNotifications] clear locals", e?.message || e);
+    }
+    return;
+  }
+
   if (Capacitor.getPlatform() === "ios" && (await isAlarmKitAvailable())) {
     try {
-      const auth = await getAlarmKitAuthorizationState();
+      let auth = await getAlarmKitAuthorizationState();
+      // Match focus timers: request AlarmKit permission when still undecided.
+      if (auth === "notDetermined") {
+        auth = await requestAlarmKitAuthorization();
+      }
       if (auth === "authorized") {
         const result = await resyncAlarmKit(list);
         const scheduled = result?.scheduled ?? 0;
-        if (scheduled > 0) {
+        const enabledCount = list.filter((a) => a?.enabled !== false && a?.time).length;
+        // Success path even when all alarms are disabled (scheduled === 0).
+        // Only fall through if we expected schedules and got none.
+        if (scheduled > 0 || enabledCount === 0) {
           await cancelAllProyouAlarmLocalNotifications();
           return;
         }
+        console.warn(
+          "[nativeAlarmNotifications] AlarmKit returned 0 schedules for",
+          enabledCount,
+          "enabled alarm(s); falling back to local notifications",
+        );
+      } else {
+        console.warn("[nativeAlarmNotifications] AlarmKit not authorized:", auth);
       }
     } catch (e) {
       console.warn("[nativeAlarmNotifications] AlarmKit sync failed, using local notifications:", e?.message || e);

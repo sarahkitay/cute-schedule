@@ -15,6 +15,7 @@ export const MODULE_IDS = {
   MEDICATIONS: "medications",
   TIMERS: "timers",
   ALARMS: "alarms",
+  PERIOD: "period",
   ROUTINES: "routines",
   CALENDAR: "calendar",
   INSIGHTS: "insights",
@@ -143,9 +144,16 @@ export const MODULE_REGISTRY = {
     label: "Alarms",
     shortLabel: "Alarms",
     icon: "alarm",
-    description: "Smart alarms with conditions",
+    description: "System wake-up alarms (AlarmKit on iOS)",
     category: "tools",
-    tier: "pro",
+  },
+  [MODULE_IDS.PERIOD]: {
+    id: MODULE_IDS.PERIOD,
+    label: "Period",
+    shortLabel: "Period",
+    icon: "period",
+    description: "Private cycle tracker",
+    category: "health",
   },
   [MODULE_IDS.CALENDAR]: {
     id: MODULE_IDS.CALENDAR,
@@ -175,6 +183,8 @@ export const DEFAULT_ENABLED_MODULES = [
   MODULE_IDS.FINANCE,
   MODULE_IDS.NOTES,
   MODULE_IDS.TIMERS,
+  MODULE_IDS.ALARMS,
+  MODULE_IDS.PERIOD,
 ];
 
 export const MODULE_CATEGORIES = {

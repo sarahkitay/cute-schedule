@@ -5,6 +5,7 @@ import { FirebaseMessaging } from "@capacitor-firebase/messaging";
 import { apiUrl, publicUrl, getApiBaseDebug, NATIVE_FALLBACK_API_ORIGIN } from "./apiBase";
 import { isValidFcmRegistrationToken, normalizeFcmRegistrationToken } from "../api/lib/fcmRegistrationToken.js";
 import { registerIosLocalTaskNotifDebugReporter } from "./nativeTaskLocalNotifications.js";
+import { sanitizeCloudUserError } from "./cloudUserMessages.js";
 
 export { resyncIosTaskLocalNotifications } from "./nativeTaskLocalNotifications.js";
 
@@ -365,8 +366,8 @@ async function persistNativeFcmTokenFromRaw(rawToken) {
   if (platform === "ios") {
     if (!isValidFcmRegistrationToken(raw)) {
       const msg = raw
-        ? `Invalid FCM registration token from FirebaseMessaging (expected 32-4096 chars after trim; got ${raw.length}).`
-        : "Missing FCM registration token (FirebaseMessaging.getToken returned empty).";
+        ? `Invalid push registration token (length ${raw.length}).`
+        : "Missing push registration token.";
       nativePushDebug.lastRegistrationError = msg;
       emitNativeDebug();
       console.warn("[Native push]", msg);
@@ -518,12 +519,12 @@ export async function registerNativePushFull() {
     if (!got) {
       return {
         ok: false,
-        hint: "FCM did not return a registration token yet. Reopen the app, confirm GoogleService-Info.plist + Push capability, and upload your APNs key in Firebase Console → Cloud Messaging.",
+        hint: "Couldn't connect remote notifications yet. Reopen the app and try again.",
       };
     }
     return { ok: true, native: true };
   } catch (e) {
-    const msg = e?.message || String(e);
+    const msg = sanitizeCloudUserError(e);
     nativePushDebug.lastRegistrationError = msg;
     emitNativeDebug();
     return { ok: false, hint: msg };

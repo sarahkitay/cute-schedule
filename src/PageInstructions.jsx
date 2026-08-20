@@ -35,7 +35,7 @@ const INSTRUCTIONS = {
         <strong>Monthly objectives</strong> also live on the Goals tab; here on Plan they stay separate from your hourly timeline until you turn them into tasks.
       </p>
       <p>
-        <strong>Today&apos;s list</strong> (or the day you pick in the <strong>month calendar</strong> at the bottom) is a flat checklist of incomplete tasks, sorted with heavier energy first. No timeline or quick-add here; that lives on Today. Use <strong>⋯</strong> for options; tap a date on the calendar to change days.
+        <strong>Today&apos;s list</strong> (or the day you pick in the <strong>month calendar</strong> at the bottom) is a flat checklist of incomplete tasks, sorted with heavier energy first. No timeline or quick-add here; that lives on Today. Use <strong>⋯</strong> for options; tap a date on the calendar to change days, or <strong>double-tap</strong> a day to jump to Today and add a task on that date. Expand <strong>Search past tasks</strong> to see how often you&apos;ve scheduled something and when you last did it.
       </p>
     </>
   ),
@@ -45,6 +45,9 @@ const INSTRUCTIONS = {
         The Coach tab shows <strong>pattern insights</strong> (peak time, categories, sleep correlation) from your real usage, then the coach conversation below.
       </p>
       <p>Suggestions need your <strong>Approve</strong> before anything is added. Workout <em>programs</em> from Coach save under Health → My programs when approved, then the app opens the Health tab so you can edit or schedule them.</p>
+      <p>
+        <strong>Talk to Coach:</strong> Tap the mic and say everything you have to do (times included if you know them). Coach turns that into a timed schedule. Nothing is added until you tap <strong>Approve</strong> (or <strong>Approve all</strong>). You can also type. Use <strong>Read aloud</strong> to hear Coach’s reply.
+      </p>
       <p>Choose <strong>Schedule</strong>, <strong>Fitness</strong>, or <strong>Finance</strong>, then tap the main coach button. Schedule mode can apply timeline actions; fitness and finance return suggestions you approve (including wish list items, grocery lines, and savings).</p>
       <p>
         Optional <strong>Get to know you</strong> fields (expand on Coach) give the coach stable context; update anytime. Your first 30 days include unlimited coach prompts; after that, free includes 2 per day and Pro is unlimited.
@@ -55,6 +58,9 @@ const INSTRUCTIONS = {
     <>
       <p>
         Use <strong>This day</strong> for notes tied to the calendar day you have selected on Today (reflections, logs, or anything day-specific). Use <strong>All notes</strong> for workspace-wide entries not tied to a calendar day.
+      </p>
+      <p>
+        <strong>Lists</strong> holds saved shopping and errand checklists, keyword triggers, and attaching a list to a task on Today. Save lists from a task&apos;s checklist modal or manage them here.
       </p>
       <p>
         Pick a <strong>subject</strong> when adding (or change it from the ⋯ menu) and filter the list with <em>Organize by subject</em>. Check the circle to cross off a note and move it to <strong>Archive</strong>; open Archive and uncheck to restore.
@@ -68,10 +74,10 @@ const INSTRUCTIONS = {
         <strong>Focus timer:</strong> Choose a preset, start a session, and pause or reset anytime. From a task’s <strong>⋯</strong> menu, <strong>Start timer</strong> links the session to that task. Completed sessions appear under <strong>History</strong> with the task name, whether you checked the task off, and how long the timer was set for.
       </p>
       <p>
-        <strong>Alarms:</strong> Pick a built-in sound or <strong>Your music</strong> (MP3/M4A from Files). On iPhone, Music → Share → Save to Files, then import in Timers. Re-save the alarm after changing sound so the system alarm uses your clip.
+        <strong>Timer alerts:</strong> On iPhone with Alarms allowed for PROYOU, focus timers use the system alarm when time is up (like Clock). Allow Alarms in Settings. On older iOS or without alarm permission, notifications are used instead.
       </p>
       <p>
-        When an alarm fires, PROYOU opens to a full-screen wake-up screen. <strong>Math wake-up</strong> and <strong>Writing wake-up</strong> keep the alarm sounding until you complete the challenge. Standard and Gentle can be dismissed with one tap once the app is open. Tap the notification to open PROYOU if the app was in the background.
+        <strong>Lock Screen countdown:</strong> To see the timer ticking on your Lock Screen while it runs, add a PROYOU <strong>home screen widget</strong> (Today&apos;s tasks, Habits, or Tasks &amp; habits) and turn on <strong>Live Activities</strong> for PROYOU in Settings. The in-app countdown always works without the widget.
       </p>
     </>
   ),
@@ -110,59 +116,50 @@ const INSTRUCTIONS = {
   settingsMain: (
     <>
       <p>
-        <strong>Habit tracker:</strong> Habits are build or break; Today asks once per day. <strong>Reminder nudges</strong> (cadence, quiet hours, on/off per habit) live under <strong>Notifications &amp; reminders</strong>. When that screen is set to <strong>Custom</strong>, you can choose hourly vs clock times per habit here; otherwise nudges follow the global cadence there.
-      </p>
-      <p>
-        <strong>Bottom navigation:</strong> <strong>Today</strong> stays first. Drag blocks to reorder. Use the ⋯ menu on a tab to remove it from the dock, add it back, or move it next to Today.
+        <strong>Bottom navigation:</strong> <strong>Today</strong> stays first. Drag blocks to reorder. Use the ⋯ menu on a tab to remove it from the dock, add it back, or move it next to Today. The same editor lives under <strong>You → Navigation</strong>.
       </p>
       <p>
         <strong>Task completion messages:</strong> Optional pop-up when you check off a task; tap outside to dismiss. Turning affirmations off still saves the task. <strong>Tone</strong> shapes the wording.
       </p>
       <p>
-        <strong>Morning / wind-down routines:</strong> Optional steps that can appear on Today; use the day chips to choose which weekdays (or every day).
+        <strong>Task types:</strong> Categories used by quick-add and task rows (e.g. Work, Personal). Optional: <strong>Log missed tasks when a day ends</strong> records still-unchecked tasks after midnight for Coach and stats.
       </p>
       <p>
-        <strong>Task types:</strong> Categories used by quick-add and task rows (e.g. Work, Personal).
+        <strong>Theme &amp; icon style:</strong> Accent palette and colorful vs metallic dock icons.
       </p>
       <p>
-        <strong>Shopping &amp; errand lists:</strong> When a task title contains a <strong>whole-word</strong> keyword (comma-separated list), the app can offer a checklist. Defaults are similar to grocery / store / errand. <strong>Saved lists</strong> come from the checklist modal or the attach flow below. <strong>Log missed tasks when a day ends</strong> records still-unchecked tasks after midnight for Coach and stats (optional).
+        <strong>Notifications &amp; reminders</strong> opens the full screen for permissions, task defaults, timing, habit cadence, quiet hours, and per-habit <strong>Remind</strong> toggles; see <strong>Instructions</strong> on that screen for platform details (iOS, Android, browser).
       </p>
       <p>
-        <strong>Attach a saved list:</strong> Pick a task on real today and a saved list; <strong>Apply</strong> replaces that task&apos;s checklist lines.
+        <strong>Habits, routines, and lists</strong> are not edited here: add habits under <strong>You → Habits</strong> (including custom hourly or clock reminders when cadence is Custom), morning and wind-down routines under <strong>You → Routines</strong>, and shopping lists under <strong>Notes → Lists</strong>.
       </p>
       <p>
-        <strong>Shopping prompt (matching tasks):</strong> If a task matches your keywords, you can attach a checklist; keywords are editable here under Shopping &amp; errand lists.
-      </p>
-      <p>
-        <strong>Theme:</strong> Accent / palette for the app.
-      </p>
-      <p>
-        <strong>Notifications &amp; reminders</strong> opens the full screen for permissions, task defaults, timing, habit cadence, quiet hours, and per-habit toggles; see <strong>Instructions</strong> on that screen for platform details (iOS, Android, browser).
-      </p>
-      <p>
-        <strong>Home screen widgets (iPhone):</strong> After building the native app, long-press your home screen → add widget → choose PROYOU. Options include <strong>Today&apos;s tasks</strong>, <strong>Habits</strong>, or <strong>Tasks &amp; habits</strong>. Widgets update when you open the app or change tasks and habits.
+        <strong>Home screen widgets (iPhone):</strong> After building the native app, long-press your home screen → add widget → choose PROYOU. Options include <strong>Today&apos;s tasks</strong>, <strong>Habits</strong>, or <strong>Tasks &amp; habits</strong>. Widgets update when you open the app or change tasks and habits. They are also required for the focus timer Lock Screen countdown (see <strong>Timers</strong> instructions).
       </p>
       <p>
         <strong>Accountability:</strong> Open from Settings or the <strong>You</strong> tab to invite friends, share selected progress (opt-in), create shared tasks, and manage privacy. Referral rewards grant bonus Pro time when friends qualify - not a substitute for App Store billing. Nothing is shared by default; meds and private notes are never shareable.
       </p>
       <p>
-        <strong>Guides &amp; tours:</strong> Replay the quick tab overview or the full walkthrough anytime. Exiting early does not mark complete; finishing the last slide does.
+        <strong>Guides &amp; tours:</strong> On first launch, choose <strong>Quick setup</strong> (name, theme, coach tone) or <strong>In-depth setup</strong> (modules, peak time, patterns, and more). Replay the quick tab overview or full walkthrough anytime here. Exiting a tour early does not mark it complete; finishing the last slide does.
       </p>
       <p>
-        <strong>Account:</strong> With Firebase enabled, you sync across devices. <strong>Guest</strong> is this browser only until you link an account. <strong>Delete account / guest data</strong> runs a short flow; removal is permanent, then this device reloads. <strong>Birthday</strong> as MMDD (e.g. 0315) for an in-app greeting.
+        <strong>Account:</strong> With a cloud account, you sync across devices. <strong>Guest</strong> is this device only until you sign in. <strong>Delete account / guest data</strong> runs a short flow; removal is permanent, then this device reloads. <strong>Birthday</strong> as MMDD (e.g. 0315) for an in-app greeting.
       </p>
     </>
   ),
   you: (
     <>
       <p>
-        <strong>You</strong> is your profile hub: habits (add, edit, and change today&apos;s check-ins when the Today habits card is hidden), morning and wind-down routines, and <strong>Navigation</strong> (same controls as Settings → Customization) to choose dock tabs vs home-only modules.
+        <strong>You</strong> is your profile hub: <strong>Habits</strong> (add, remove, and custom reminder times when notifications cadence is Custom), <strong>Routines</strong> (morning and wind-down steps, show on Today toggles, weekday schedule), <strong>Navigation</strong> (dock tabs vs home-only modules), and <strong>Accountability</strong> (friends and shared tasks).
+      </p>
+      <p>
+        After every habit is logged on Today, the habits card hides; open <strong>You → Habits</strong> to review or change that day&apos;s check-ins.
       </p>
       <p>
         Opening a module from here that is not in your bottom nav may offer <strong>Show in nav bar?</strong> at the top of that tab.
       </p>
       <p>
-        <strong>Accountability</strong> (friends, invites, shared tasks, privacy, referrals) lives here and under Settings. Sign in with cloud sync to use it; the rest of ProYou works fully without friends.
+        <strong>Settings</strong> (gear card here or header) covers theme, task types, notifications, account, and guides - not habits, routines, or saved lists.
       </p>
     </>
   ),
@@ -173,6 +170,22 @@ const INSTRUCTIONS = {
       </p>
       <p>
         The same objectives also appear at the top of <strong>Plan</strong>. Coach can reference neglected goals when suggesting next steps.
+      </p>
+    </>
+  ),
+  accountability: (
+    <>
+      <p>
+        Use the <strong>Invite</strong> tab to share your PY code or App Store link, or enter a friend&apos;s code to connect instantly.
+      </p>
+      <p>
+        <strong>Privacy</strong> controls what friends can see (schedule, habits, fitness, and more). Nothing is shared until you opt in. Medications and private notes are never shared.
+      </p>
+      <p>
+        <strong>Shared tasks</strong> let you and a friend track the same goal. Send one from Shared tasks; when they accept, it can land on their schedule labeled with your name. Tap a friend to see shared tasks and any progress they chose to share.
+      </p>
+      <p>
+        <strong>Rewards:</strong> when someone you invited subscribes to ProYou Pro, you can earn bonus Pro time - see Rewards.
       </p>
     </>
   ),
@@ -223,10 +236,10 @@ const INSTRUCTIONS = {
         <strong>Task reminder timing</strong> syncs preferences to the server and drives on-device scheduling on iPhone when Remind me is on. Per-task overrides stay on the task card. <strong>Apply as defaults for new tasks</strong> copies the current timing section into the defaults above.
       </p>
       <p>
-        <strong>Habit reminder cadence:</strong> Quiet hours apply to all modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list from Settings → Customization → Habit tracker.
+        <strong>Habit reminder cadence:</strong> Quiet hours apply to all modes. In-app habit checks run about every 20 seconds while the app is open. <strong>Custom</strong> uses each habit&apos;s hourly or clock list from <strong>You → Habits</strong>.
       </p>
       <p>
-        <strong>Per-habit reminders:</strong> Turn off <strong>Remind</strong> for habits you don&apos;t want pinged. If the habit list is empty, add habits under Customization → Habit tracker.
+        <strong>Per-habit reminders:</strong> Turn off <strong>Remind</strong> for habits you don&apos;t want pinged. If the habit list is empty, add habits under <strong>You → Habits</strong>.
       </p>
       <p>
         <strong>Background reminders (browser):</strong> Optional push connects this device to your deployment so pings can arrive after you close the tab. On iPhone Safari, add the app from the Share menu first. After connecting, use <strong>Send test</strong> to confirm.
@@ -240,8 +253,9 @@ const INSTRUCTIONS = {
  * @param {string} tab - Main tab id, or `"settings"` with `settingsSubView`.
  * @param {"main"|"notifications"} [settingsSubView] - When `tab === "settings"`, which copy to show.
  * @param {boolean} [compact] - Tighter spacing (e.g. inside Settings modal).
+ * @param {string} [summary] - Collapsible summary label.
  */
-export function PageInstructions({ tab, settingsSubView = "main", compact }) {
+export function PageInstructions({ tab, settingsSubView = "main", compact, summary = "Instructions" }) {
   let body;
   if (tab === "settings") {
     body = settingsSubView === "notifications" ? INSTRUCTIONS.settingsNotifications : INSTRUCTIONS.settingsMain;
@@ -251,7 +265,7 @@ export function PageInstructions({ tab, settingsSubView = "main", compact }) {
   if (!body) return null;
   return (
     <details className={["page-instructions-bar", "surface-glass", compact ? "page-instructions-bar--compact" : ""].filter(Boolean).join(" ")}>
-      <summary className="page-instructions-summary">Instructions</summary>
+      <summary className="page-instructions-summary">{summary}</summary>
       <div className="page-instructions-panel">{body}</div>
     </details>
   );

@@ -302,6 +302,7 @@ export function HealthPage({
   scrollToProgramBuilderSignal = 0,
   focusWeeklyMenuSignal = 0,
   onAskCoachMealPlan = null,
+  popToRootSignal = 0,
 }) {
   const h = useMemo(() => normalizeHealth(health), [health]);
   const [macroDate, setMacroDate] = useState(() => realTodayKey);
@@ -372,6 +373,24 @@ export function HealthPage({
   const macroTargetsApplied = !!(h.macroTargets?.calories);
   const [macroCalcExpanded, setMacroCalcExpanded] = useState(() => !macroTargetsApplied);
   const prevMacroTargetsRef = useRef(macroTargetsApplied);
+
+  useEffect(() => {
+    if (!popToRootSignal) return;
+    setHealthTab("workouts");
+    setBuildProgramOpen(false);
+    setProgramPickerOpen(false);
+    setProgramsGalleryOpen(false);
+    setAddWeekProgram(null);
+    setLabelScannerOpen(false);
+    setLabelScannerInitialOcr(null);
+    setMacroOverviewOpen(false);
+    setWorkoutOverviewOpen(false);
+    setMealFoodPickerOpen(false);
+    setEditingProgramId(null);
+    setDraftName("");
+    setDraftExercises([]);
+    onClearGuidedSession?.();
+  }, [popToRootSignal]);
 
   useEffect(() => {
     if (prevMacroTargetsRef.current === false && macroTargetsApplied) {

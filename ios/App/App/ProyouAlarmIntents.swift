@@ -51,4 +51,50 @@ struct ProyouOpenAppAlarmIntent: LiveActivityIntent {
         return .result()
     }
 }
+
+@available(iOS 26.0, *)
+struct ProyouStopFocusTimerIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Stop"
+    static var description = IntentDescription("Stop the PROYOU focus timer")
+
+    @Parameter(title: "Timer session id")
+    var sessionId: String
+
+    init() {
+        self.sessionId = ""
+    }
+
+    init(sessionId: String) {
+        self.sessionId = sessionId
+    }
+
+    func perform() async throws -> some IntentResult {
+        ProyouFocusTimerPending.storeDismiss(sessionId: sessionId)
+        try await ProyouAlarmKitScheduler.cancelFocusTimer()
+        return .result()
+    }
+}
+
+@available(iOS 26.0, *)
+struct ProyouOpenAppFocusTimerIntent: LiveActivityIntent {
+    static var title: LocalizedStringResource = "Open PROYOU"
+    static var description = IntentDescription("Open PROYOU to dismiss your focus timer")
+    static var openAppWhenRun: Bool = true
+
+    @Parameter(title: "Timer session id")
+    var sessionId: String
+
+    init() {
+        self.sessionId = ""
+    }
+
+    init(sessionId: String) {
+        self.sessionId = sessionId
+    }
+
+    func perform() async throws -> some IntentResult {
+        await ProyouFocusTimerPending.openApp(sessionId: sessionId)
+        return .result()
+    }
+}
 #endif

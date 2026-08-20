@@ -30,11 +30,15 @@ public class ProyouAlarmSoundPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Could not activate audio for alarm playback.")
                 return
             }
+            let soundId = call.getString("sound") ?? "default"
+            if self.startBundledIfPresent(soundId: soundId) {
+                call.resolve()
+                return
+            }
             if self.startCustomFileIfPresent(call) {
                 call.resolve()
                 return
             }
-            let soundId = call.getString("sound") ?? "default"
             self.startBuiltinLoop(soundId: soundId)
             call.resolve()
         }
@@ -49,7 +53,7 @@ public class ProyouAlarmSoundPlugin: CAPPlugin, CAPBridgedPlugin {
                 return
             }
             let soundId = call.getString("sound") ?? "default"
-            if self.startCustomFileIfPresent(call) {
+            if self.startBundledIfPresent(soundId: soundId) {
                 self.previewTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
                     self?.stopRingingInternal()
                 }
@@ -75,12 +79,17 @@ public class ProyouAlarmSoundPlugin: CAPPlugin, CAPBridgedPlugin {
     private func activatePlaybackSession() -> Bool {
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default, options: [.duckOthers])
+            try session.setCategory(.playback, mode: .default, options: [])
             try session.setActive(true)
             return true
         } catch {
             return false
         }
+    }
+
+    private func startBundledIfPresent(soundId: String) -> Bool {
+        guard let url = ProyouAlarmKitSoundInstaller.bundledResourceURL(for: soundId) else { return false }
+        return playCustomUrl(url)
     }
 
     private func startCustomFileIfPresent(_ call: CAPPluginCall) -> Bool {
@@ -209,7 +218,7 @@ enum ProyouAlarmToneFactory {
             ]
             return makeSequence(seqs[v], wave: .triangle, vol: 0.38)
         case "digital":
-            return makeBeeps(count: v == 0 ? 6 : 4, freq: 880 + Double(v) * 110, spacing: 0.14, len: 0.1, vol: 0.28)
+            return makeBeeps(count: v == 0 ? 10 : 8, freq: 990 + Double(v) * 80, spacing: 0.12, len: 0.1, vol: 0.38)
         case "birds":
             let seqs: [[(Double, Double)]] = [
                 [(2400, 0.08), (2800, 0.07), (2200, 0.09), (3100, 0.08), (2600, 0.1)],
@@ -228,11 +237,11 @@ enum ProyouAlarmToneFactory {
             fallthrough
         default:
             let seqs: [[(Double, Double)]] = [
-                [(523, 0.28), (659, 0.32), (784, 0.38), (988, 0.55), (1175, 0.45)],
-                [(440, 0.25), (554, 0.3), (659, 0.35), (880, 0.5)],
-                [(392, 0.4), (494, 0.35), (587, 0.4), (740, 0.55)],
+                [(784, 0.14), (988, 0.14), (784, 0.14), (988, 0.14), (784, 0.14), (988, 0.16)],
+                [(660, 0.12), (880, 0.12), (660, 0.12), (880, 0.12), (660, 0.12), (880, 0.14)],
+                [(880, 0.11), (1109, 0.11), (880, 0.11), (1109, 0.11), (880, 0.11), (1109, 0.13)],
             ]
-            return makeSequence(seqs[v], wave: .sine, vol: 0.36)
+            return makeSequence(seqs[v], wave: .square, vol: 0.42)
         }
     }
 
@@ -240,7 +249,7 @@ enum ProyouAlarmToneFactory {
 
     private static func makeBeeps(count: Int, freq: Double, spacing: Double, len: Double, vol: Float) -> AVAudioPCMBuffer? {
         var notes: [(Double, Double)] = []
-        for i in 0..<count { notes.append((freq, len)) }
+        for _ in 0..<count { notes.append((freq, len)) }
         return makeSequence(notes, wave: .square, vol: vol, gap: spacing - len)
     }
 

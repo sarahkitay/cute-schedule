@@ -1,3 +1,4 @@
+import { CLOUD_ACCOUNT_UNAVAILABLE, CLOUD_CONNECT_FAILED } from "./cloudUserMessages.js";
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { Capacitor } from "@capacitor/core";
@@ -429,12 +430,10 @@ async function signInWithAppleNativeIOS(auth, cfg) {
  */
 export async function signInWithApple() {
   const a = getAuthApp();
-  if (!a) throw new Error("Firebase not configured");
+  if (!a) throw new Error(CLOUD_ACCOUNT_UNAVAILABLE);
   const cfg = getFirebaseConfig();
   if (!cfg?.authDomain || !String(cfg.authDomain).trim().includes(".")) {
-    throw new Error(
-      "Firebase authDomain is missing or invalid. Set VITE_FIREBASE_AUTH_DOMAIN (e.g. your-project.firebaseapp.com)."
-    );
+    throw new Error(CLOUD_CONNECT_FAILED);
   }
   if (isCapacitorNativeShell() && Capacitor.getPlatform() === "ios") {
     return signInWithAppleNativeIOS(a, cfg);
@@ -442,9 +441,7 @@ export async function signInWithApple() {
   if (isCapacitorNativeShell() && Capacitor.getPlatform() !== "ios") {
     const origin = getAppOrigin();
     if (!origin || !/^https:\/\//i.test(String(origin).trim())) {
-      throw new Error(
-        "Capacitor needs VITE_APP_ORIGIN=https://your-live-site.com in the build (same host as Firebase authorized domains) for Sign in with Apple to return correctly."
-      );
+      throw new Error(CLOUD_CONNECT_FAILED);
     }
   }
   const appleProvider = getAppleAuthProvider();
@@ -521,7 +518,7 @@ export async function deleteCurrentUserAccount() {
 
 export async function signUpWithEmail(email, password) {
   const a = getAuthApp();
-  if (!a) throw new Error("Firebase not configured");
+  if (!a) throw new Error(CLOUD_ACCOUNT_UNAVAILABLE);
   const u = a.currentUser;
   if (u?.isAnonymous) {
     const cred = EmailAuthProvider.credential(email.trim(), password);
@@ -545,7 +542,7 @@ export async function signUpWithEmail(email, password) {
 
 export async function signInWithEmail(email, password) {
   const a = getAuthApp();
-  if (!a) throw new Error("Firebase not configured");
+  if (!a) throw new Error(CLOUD_ACCOUNT_UNAVAILABLE);
   const prevUid = a.currentUser?.isAnonymous ? a.currentUser.uid : null;
   await signInWithEmailAndPassword(a, email.trim(), password);
   const next = a.currentUser;

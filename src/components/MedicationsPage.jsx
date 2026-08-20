@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { GlassCard } from "./GlassCard";
 import { PillButton } from "./PillButton";
 import { NavIcons } from "./NavIcons";
@@ -65,7 +65,7 @@ function MedEditorFields({
   );
 }
 
-export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
+export function MedicationsPage({ medications, log, dayKey, onUpdate, popToRootSignal = 0 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingMedId, setEditingMedId] = useState(null);
   const [newName, setNewName] = useState("");
@@ -78,6 +78,12 @@ export function MedicationsPage({ medications, log, dayKey, onUpdate }) {
   const [editSchedule, setEditSchedule] = useState(["morning"]);
   const [editReminderEnabled, setEditReminderEnabled] = useState(false);
   const [editReminderTimes, setEditReminderTimes] = useState(["08:00"]);
+
+  useEffect(() => {
+    if (!popToRootSignal) return;
+    setShowAdd(false);
+    setEditingMedId(null);
+  }, [popToRootSignal]);
 
   const adherence = getMedicationAdherence(medications.filter((m) => !m.archived), log);
   const activeMeds = medications.filter((m) => !m.archived);

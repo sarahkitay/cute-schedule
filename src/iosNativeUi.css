@@ -232,7 +232,7 @@
     0 22px 56px rgba(0, 0, 0, 0.16),
     0 4px 14px rgba(140, 100, 90, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.95);
-  overflow: hidden;
+  overflow: visible;
 }
 .task-dropdown-header {
   padding: 10px 14px 8px;
@@ -457,63 +457,130 @@ html[data-theme="dark"] .section-health .health-tab-toggle .health-segment-btn--
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(20, 10, 16, 0.55);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(232, 169, 183, 0.35), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(212, 112, 138, 0.28), transparent 40%),
+    rgba(20, 10, 16, 0.62);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  overflow: hidden;
+}
+.wake-challenge-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(40px);
+  pointer-events: none;
+}
+.wake-challenge-blob--a {
+  width: 220px;
+  height: 220px;
+  top: 8%;
+  left: -40px;
+  background: rgba(232, 169, 183, 0.45);
+}
+.wake-challenge-blob--b {
+  width: 180px;
+  height: 180px;
+  bottom: 10%;
+  right: -20px;
+  background: rgba(212, 112, 138, 0.35);
 }
 .wake-challenge-card {
-  width: min(100%, 380px);
-  padding: 28px 22px;
-  border-radius: 24px;
-  background: rgba(255, 252, 250, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
+  position: relative;
+  width: min(100%, 400px);
+  padding: 28px 22px 24px;
+  border-radius: 28px;
+  background: linear-gradient(165deg, rgba(255, 252, 250, 0.98) 0%, rgba(255, 245, 248, 0.96) 100%);
+  border: 1px solid rgba(232, 169, 183, 0.45);
+  box-shadow:
+    0 24px 64px rgba(212, 112, 138, 0.22),
+    0 0 0 1px rgba(255, 255, 255, 0.85) inset;
   text-align: center;
 }
-.wake-challenge-icon-wrap {
+.wake-challenge-mode-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 12px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--py-accent-deep, #d4708a);
+  background: var(--py-accent-soft, rgba(232, 169, 183, 0.18));
+  border: 1px solid rgba(232, 169, 183, 0.35);
+}
+.wake-challenge-icon-wrap {
+  margin-bottom: 10px;
 }
 .wake-challenge-icon {
-  border-radius: 20px;
+  border-radius: 22px;
   object-fit: contain;
+  box-shadow: 0 8px 24px var(--py-accent-glow, rgba(232, 169, 183, 0.35));
 }
 .wake-challenge-title {
   margin: 0 0 8px;
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--py-ink, #2a1520);
+  letter-spacing: -0.02em;
 }
 .wake-challenge-sub {
   margin: 0 0 16px;
   font-size: 14px;
-  color: var(--text-soft);
+  line-height: 1.45;
+  color: var(--py-ink-muted, var(--text-soft));
 }
 .wake-challenge-progress {
   margin: 0 0 12px;
   font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
+  font-weight: 700;
+  color: var(--py-accent-deep, #d4708a);
 }
 .wake-challenge-problem {
-  font-size: 32px;
-  font-weight: 700;
+  font-size: 36px;
+  font-weight: 800;
   font-family: var(--font-mono);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding: 14px 10px;
+  border-radius: 18px;
+  color: var(--py-accent-deep, #d4708a);
+  background: var(--py-accent-soft, rgba(232, 169, 183, 0.18));
+  border: 1px solid rgba(232, 169, 183, 0.3);
 }
 .wake-challenge-phrase {
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 600;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.75);
+  border: 1px dashed rgba(232, 169, 183, 0.45);
+}
+.wake-challenge-phrase--riddle {
+  font-style: italic;
 }
 .wake-challenge-input {
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   margin-bottom: 8px;
-  border-radius: 14px;
+  border-radius: 16px;
   text-align: center;
-  font-size: 18px;
+  font-size: 17px;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-color: rgba(232, 169, 183, 0.55);
+}
+.wake-challenge-input:focus {
+  border-color: var(--py-accent, #e8a9b7);
+  box-shadow: 0 0 0 3px var(--py-accent-soft, rgba(232, 169, 183, 0.18));
 }
 .wake-challenge-error {
-  color: #b85555;
+  color: #c45c6a;
   font-size: 13px;
+  font-weight: 600;
   margin: 0 0 10px;
 }
 .wake-challenge-btn {
@@ -521,6 +588,64 @@ html[data-theme="dark"] .section-health .health-tab-toggle .health-segment-btn--
   border-radius: 999px;
   padding: 14px;
   font-size: 17px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--py-accent, #e8a9b7) 0%, var(--py-accent-deep, #d4708a) 100%);
+  box-shadow: 0 8px 22px var(--py-accent-glow, rgba(232, 169, 183, 0.35));
+}
+.wake-challenge-secondary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+}
+.wake-challenge-snooze-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(232, 169, 183, 0.45);
+  color: var(--py-accent-deep, #d4708a);
+  background: rgba(255, 255, 255, 0.85);
+}
+.wake-puzzle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  max-width: 260px;
+  margin: 0 auto 16px;
+  padding: 10px;
+  border-radius: 20px;
+  background: var(--py-accent-soft, rgba(232, 169, 183, 0.12));
+  border: 1px solid rgba(232, 169, 183, 0.28);
+}
+.wake-puzzle-tile {
+  aspect-ratio: 1;
+  border-radius: 14px;
+  border: 1px solid rgba(232, 169, 183, 0.35);
+  background: linear-gradient(145deg, #fff 0%, #fff7fa 100%);
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--py-accent-deep, #d4708a);
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(212, 112, 138, 0.12);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.wake-puzzle-tile:active:not(:disabled) {
+  transform: scale(0.96);
+  box-shadow: 0 2px 6px rgba(212, 112, 138, 0.18);
+}
+.wake-puzzle-tile--empty {
+  visibility: hidden;
+  pointer-events: none;
+}
+.alarm-sound-content-warning {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #9a4a2e;
+  background: rgba(255, 214, 170, 0.35);
+  border: 1px solid rgba(255, 170, 90, 0.45);
 }
 
 .timers-page.page-stack {
@@ -687,6 +812,22 @@ html[data-theme="dark"] .section-health .health-tab-toggle .health-segment-btn--
   display: flex;
   flex-direction: column;
   gap: var(--py-space-5, 20px);
+}
+.timers-alarm-form .quick-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  margin-bottom: 0;
+}
+.timers-alarm-form .quick-row .label {
+  min-width: 0;
+}
+.timers-alarm-form .input,
+.timers-alarm-label-input {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
 }
 .timers-field {
   margin: 0;
@@ -1188,7 +1329,7 @@ html[data-theme="dark"] .app .quick-add-details-form .quick-detail-actions {
   padding: 6px;
 }
 .task-dropdown-portal--edit-task .task-dropdown {
-  max-height: min(560px, calc(100vh - 32px));
+  max-height: none;
 }
 
 .list-page-list > .list-row,
@@ -1334,9 +1475,9 @@ html[data-theme="dark"] .hour-meta-pill {
   color: rgba(255, 255, 255, 0.72);
 }
 html[data-theme="dark"] .task-meta-chip--time {
-  background: color-mix(in srgb, var(--theme-accent) 16%, rgba(255, 255, 255, 0.92));
-  color: color-mix(in srgb, var(--theme-accent) 72%, var(--ink-strong, #0a0a0c));
-  border-color: color-mix(in srgb, var(--theme-accent) 28%, var(--ink-border-soft, rgba(10, 10, 12, 0.28)));
+  background: rgba(255, 255, 255, 0.5);
+  color: #52525b;
+  border-color: rgba(10, 10, 12, 0.08);
 }
 html[data-theme="dark"] .task-meta-chip--category {
   background: rgba(118, 98, 168, 0.12);
@@ -1399,4 +1540,84 @@ html[data-theme="dark"] .timers-alarm-mode-option.is-selected {
 html[data-theme="dark"] .timers-day-pill.is-on {
   background: var(--ink-strong, #0a0a0c);
   color: #fafafa;
+}
+
+/* Ask Coach bar (any page) */
+.ask-coach-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: var(--py-space-4, 16px);
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+.ask-coach-bar__hint {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--py-ink-muted, var(--text-soft));
+}
+.ask-coach-bar__btn {
+  flex-shrink: 0;
+}
+
+.coach-page-hero--compact {
+  padding: 4px 4px 12px;
+  margin-bottom: 4px;
+}
+
+.period-page.page-stack,
+.you-page.page-stack {
+  gap: var(--py-space-5, 20px);
+}
+
+.you-period-opt-in {
+  padding: 16px;
+  margin-top: 8px;
+}
+.you-period-opt-in__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.you-period-opt-in__body {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--py-ink-muted, var(--text-soft));
+}
+.you-period-opt-in__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.timers-day-pills {
+  justify-content: flex-start;
+}
+.timers-day-pill {
+  flex: 0 0 auto;
+  min-width: 36px;
+  text-align: center;
+}
+
+.timers-alarm-mode-grid {
+  gap: 8px;
+}
+.timers-alarm-form-card {
+  padding: 16px !important;
+}
+
+.workout-picker-quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.workout-picker-quick-btn--coach {
+  border-color: rgba(212, 112, 138, 0.35);
 }

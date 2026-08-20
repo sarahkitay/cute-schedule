@@ -42,12 +42,21 @@ export function getFirebaseAdmin() {
 
 /** @param {string | undefined} idToken */
 export async function verifyFirebaseIdToken(idToken) {
+  const details = await verifyFirebaseIdTokenDetails(idToken);
+  return details?.uid ?? null;
+}
+
+/** @param {string | undefined} idToken */
+export async function verifyFirebaseIdTokenDetails(idToken) {
   if (!idToken || typeof idToken !== "string") return null;
   const adm = getFirebaseAdmin();
   if (!adm) return null;
   try {
     const decoded = await adm.auth().verifyIdToken(idToken.trim());
-    return typeof decoded.uid === "string" ? decoded.uid : null;
+    const uid = typeof decoded.uid === "string" ? decoded.uid : null;
+    if (!uid) return null;
+    const email = typeof decoded.email === "string" ? decoded.email : null;
+    return { uid, email };
   } catch {
     return null;
   }

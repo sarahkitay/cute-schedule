@@ -1,5 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
-import { getCustomAlarmSound } from "./alarmSounds";
+import { normalizeAlarmSound } from "./alarmSounds";
 
 const ProyouAlarmSound = registerPlugin("ProyouAlarmSound");
 
@@ -7,25 +7,15 @@ export function isNativeAlarmRingAvailable() {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
 }
 
-async function customPayload(customSoundId) {
-  if (!customSoundId) return {};
-  const rec = await getCustomAlarmSound(customSoundId);
-  if (!rec?.blob) return {};
-  const base64 = await blobToBase64(rec.blob);
-  return { customBase64: base64 };
-}
-
 /**
- * @param {{ sound?: string, customSoundId?: string }} alarm
+ * @param {{ sound?: string }} alarm
  * @returns {Promise<boolean>}
  */
 export async function startNativeAlarmRinging(alarm) {
   if (!isNativeAlarmRingAvailable()) return false;
   try {
-    const extra = await customPayload(alarm?.customSoundId);
     await ProyouAlarmSound.startRinging({
-      sound: alarm?.sound || "default",
-      ...extra,
+      sound: normalizeAlarmSound(alarm?.sound || "default"),
     });
     return true;
   } catch (e) {
@@ -34,13 +24,11 @@ export async function startNativeAlarmRinging(alarm) {
   }
 }
 
-export async function previewNativeAlarmSound(soundId, customSoundId = null) {
+export async function previewNativeAlarmSound(soundId) {
   if (!isNativeAlarmRingAvailable()) return false;
   try {
-    const extra = await customPayload(customSoundId);
     await ProyouAlarmSound.previewSound({
-      sound: soundId || "default",
-      ...extra,
+      sound: normalizeAlarmSound(soundId || "default"),
     });
     return true;
   } catch (e) {
@@ -54,13 +42,4 @@ export async function stopNativeAlarmRinging() {
   try {
     await ProyouAlarmSound.stopRinging();
   } catch {}
-}
-
-function blobToBase64(blob) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(blob);
-  });
 }

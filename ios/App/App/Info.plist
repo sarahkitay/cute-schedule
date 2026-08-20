@@ -76,14 +76,21 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
-		<string>audio</string>
 	</array>
 	<key>NSAlarmKitUsageDescription</key>
 	<string>PROYOU schedules morning alarms that can ring through Silent mode and appear on your Lock Screen, like the Clock app.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>PROYOU uses notifications for focus timers, task reminders, and alarms so they can ring when the app is in the background.</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>PROYOU needs access to your music library so you can pick a song for your morning alarm.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>PROYOU uses the camera to scan nutrition labels for your macro tracker.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>PROYOU uses the microphone so you can talk to Coach and have it build a schedule plan from what you say.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>PROYOU converts your speech to text so Coach can turn what you have to do into a plan.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>PROYOU can read nutrition label photos you choose from your library.</string>
 </dict>
