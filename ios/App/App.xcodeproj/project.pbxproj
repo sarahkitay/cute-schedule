@@ -615,7 +615,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ProYou;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -624,7 +624,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 15;
+				MARKETING_VERSION = 17;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -641,7 +641,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 1;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = ProYou;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
@@ -650,7 +650,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 15;
+				MARKETING_VERSION = 17;
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
@@ -664,7 +664,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ProyouWidget/ProyouWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ProyouWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = PROYOU;
@@ -674,7 +674,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 15;
+				MARKETING_VERSION = 17;
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou.ProyouWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -688,7 +688,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ProyouWidget/ProyouWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = ProyouWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = PROYOU;
@@ -698,7 +698,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 15;
+				MARKETING_VERSION = 17;
 				PRODUCT_BUNDLE_IDENTIFIER = app.proyou.proyou.ProyouWidget;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

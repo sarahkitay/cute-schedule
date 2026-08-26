@@ -4367,6 +4367,11 @@ textarea.input {
   width: 100%;
   justify-content: center;
 }
+.task-dropdown-add-note-btn {
+  width: 100%;
+  justify-content: center;
+  font-weight: 600;
+}
 .task-dropdown-repeat-series {
   display: flex;
   flex-direction: column;
@@ -4900,6 +4905,67 @@ body.is-task-dragging .list-row {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.task-drag-hour-rail {
+  position: fixed;
+  right: max(10px, env(safe-area-inset-right, 0px));
+  top: max(72px, calc(env(safe-area-inset-top, 0px) + 56px));
+  bottom: max(88px, calc(env(safe-area-inset-bottom, 0px) + 72px));
+  width: min(92px, 24vw);
+  z-index: calc(var(--z-modal) - 3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 18px;
+  background: rgba(255, 252, 250, 0.94);
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 14px 36px rgba(60, 40, 36, 0.16);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  pointer-events: auto;
+}
+.task-drag-hour-rail-label {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--text-soft, rgba(80, 70, 68, 0.55));
+}
+.task-drag-hour-rail-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.task-drag-hour-slot {
+  flex: 0 0 auto;
+  padding: 8px 6px;
+  border-radius: 12px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--soft-charcoal, #3a3330);
+  background: rgba(255, 255, 255, 0.55);
+  border: 0.5px solid transparent;
+}
+.task-drag-hour-slot.is-current {
+  opacity: 0.55;
+}
+.task-drag-hour-slot.is-active {
+  background: color-mix(in srgb, var(--theme-accent, #e8b8b0) 24%, rgba(255, 255, 255, 0.92));
+  border-color: color-mix(in srgb, var(--theme-accent, #e8b8b0) 55%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--theme-accent, #e8b8b0) 35%, transparent);
+}
+.list-row.is-drop-target {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--theme-accent, #e8b8b0) 55%, transparent);
+  background: color-mix(in srgb, var(--theme-accent, #e8b8b0) 10%, rgba(255, 255, 255, 0.5));
 }
 .month-calendar-day.is-drop-target {
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent, #e8b8b0) 70%, transparent);
@@ -8121,6 +8187,10 @@ html[data-theme="dark"] .coach-gtky-body .input::placeholder {
 }
 
 .task-dropdown-portal--sheet {
+  left: 50%;
+  top: max(12px, env(safe-area-inset-top, 0px));
+  transform: translateX(-50%);
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   border-radius: 20px;
   animation: taskSheetIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -8128,11 +8198,11 @@ html[data-theme="dark"] .coach-gtky-body .input::placeholder {
 @keyframes taskSheetIn {
   from {
     opacity: 0;
-    transform: translate(-50%, -46%) scale(0.98);
+    transform: translateX(-50%) translateY(-10px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    transform: translateX(-50%) translateY(0) scale(1);
   }
 }
 

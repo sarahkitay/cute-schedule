@@ -10,7 +10,7 @@ private enum ProyouWakeChallengeFinish {
             try? AlarmManager.shared.stop(id: uuid)
         }
         if !proyouAlarmId.isEmpty {
-            UserDefaults(suiteName: ProyouWidgetSnapshot.appGroupId)?
+            UserDefaults(suiteName: ProyouWidgetStore.appGroupId)?
                 .set(proyouAlarmId, forKey: "proyou_alarm_dismissed_pending_v1")
         }
         ProyouWakeChallengeStore.clear(alarmKitId: alarmKitId)

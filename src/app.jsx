@@ -30,6 +30,11 @@ import {
   GENTLE_ANCHOR_PROMPT
 } from "./gentleAnchor";
 import cloudStorage from "./cloudStorage";
+import {
+  localPrefIsNewer,
+  seedLocalPrefsMetaFromDisk,
+  touchLocalPref,
+} from "./localPrefsMeta.js";
 import { THEMES } from "./themes";
 import { OnboardingV2 } from "./components/OnboardingV2";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
@@ -1139,6 +1144,13 @@ function normalizeText(s) {
   return String(s || "").trim();
 }
 
+/** Current local time as `HH:mm` (for task defaults when no time is specified). */
+function currentTimeKey(date = new Date()) {
+  const h = date.getHours();
+  const m = date.getMinutes();
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 /** Normalize `<input type="time">` / parsed values to `HH:mm` for stable `hours` keys. */
 function normalizeTimeKey(raw) {
   const s = String(raw || "").trim();
@@ -1558,7 +1570,7 @@ function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES, referenceDayKey =
   if (!s) return null;
   const { targetDayKey, working: afterDate } = extractNlTargetDayKey(s, referenceDayKey);
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
-  let hour = "09:00";
+  let hour = currentTimeKey();
   let category = cats[0] || "Work";
   let text = afterDate;
 
@@ -1910,6 +1922,25 @@ function ProgressSegments({ total, done }) {
 }
 
 // Ultra-minimal hour card with Daily Progress Type/Details mode
+/** Hour slots shown while dragging a task (existing blocks + nearby on-the-hour steps). */
+function hourKeysForTaskDragDrop(hoursMap, draggedHourKey) {
+  const keys = new Set(Object.keys(hoursMap || {}));
+  if (draggedHourKey) keys.add(String(draggedHourKey));
+  const sorted = [...keys].sort();
+  if (sorted.length === 0) {
+    const fallback = draggedHourKey || currentTimeKey();
+    return fallback ? [fallback] : [];
+  }
+  const minH = parseInt(sorted[0].split(":")[0], 10);
+  const maxH = parseInt(sorted[sorted.length - 1].split(":")[0], 10);
+  if (!Number.isNaN(minH) && !Number.isNaN(maxH)) {
+    for (let h = Math.max(0, minH - 1); h <= Math.min(23, maxH + 1); h++) {
+      keys.add(`${String(h).padStart(2, "0")}:00`);
+    }
+  }
+  return [...keys].sort();
+}
+
 const LONG_PRESS_MS = 420;
 const LONG_PRESS_MOVE_PX = 12;
 let suppressNextScheduleClick = false;
@@ -1939,8 +1970,20 @@ function bindScheduledItemLongPress(e, onArmed) {
   const hold = window.setTimeout(() => {
     if (cancelled) return;
     armed = true;
+    try {
+      e.currentTarget?.setPointerCapture?.(pointerId);
+    } catch {
+      /* ignore */
+    }
+    try {
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate(12);
+      }
+    } catch {
+      /* ignore */
+    }
     onArmed({ x: originX, y: originY, pointerId });
-  }, LONG_PRESS_MS);
+  }, e.pointerType === "touch" ? LONG_PRESS_MS + 80 : LONG_PRESS_MS);
   const cancelHold = () => {
     cancelled = true;
     window.clearTimeout(hold);
@@ -2911,7 +2954,14 @@ export default function App({ onAppReady }) {
   }, [customCategories]);
 
   // Profile (name, birthday, default task reminders), persisted
-  const [profile, setProfile] = useState(() => loadProfileFromDisk());
+  const bootLocalProfileRef = useRef(null);
+  const bootLocalThemeRef = useRef(null);
+  if (!bootLocalProfileRef.current) {
+    bootLocalProfileRef.current = loadProfileFromDisk();
+    bootLocalThemeRef.current = loadThemeFromDisk();
+    seedLocalPrefsMetaFromDisk(bootLocalProfileRef.current, bootLocalThemeRef.current);
+  }
+  const [profile, setProfile] = useState(() => bootLocalProfileRef.current || loadProfileFromDisk());
 
   const [health, setHealth] = useState(() => loadHealthFromDisk());
   const [workoutProgramPicker, setWorkoutProgramPicker] = useState(null);
@@ -3528,6 +3578,7 @@ export default function App({ onAppReady }) {
   const [taskTimerMinutes, setTaskTimerMinutes] = useState("25");
   const [dropdownAnchorRect, setDropdownAnchorRect] = useState(null); // { top, left, bottom, right } for portal
   const [taskMenuNoteDraft, setTaskMenuNoteDraft] = useState("");
+  const [taskMenuNoteOpen, setTaskMenuNoteOpen] = useState(false);
   const [taskMenuIncludeLastPeriod, setTaskMenuIncludeLastPeriod] = useState(false);
   const taskMenuNoteDraftRef = useRef("");
   taskMenuNoteDraftRef.current = taskMenuNoteDraft;
@@ -3979,8 +4030,24 @@ export default function App({ onAppReady }) {
           });
         }
         if (data.finance != null) setFinance(normalizeFinanceLoaded(data.finance));
-        if (data.profile != null) setProfile((prev) => mergeCloudProfile(prev, data.profile));
-        if (data.theme != null) setTheme(normalizeThemeLoaded(data.theme));
+        if (data.profile != null) {
+          setProfile((prev) => {
+            const merged = mergeCloudProfile(prev, data.profile);
+            if (localPrefIsNewer("userName", data.updatedAt)) {
+              const keep = String(prev.userName || bootLocalProfileRef.current?.userName || "").trim();
+              if (keep) merged.userName = keep;
+            }
+            if (localPrefIsNewer("iconStyle", data.updatedAt)) {
+              merged.iconStyle = normalizeIconStyle(
+                prev.iconStyle || bootLocalProfileRef.current?.iconStyle
+              );
+            }
+            return merged;
+          });
+        }
+        if (data.theme != null && !localPrefIsNewer("theme", data.updatedAt)) {
+          setTheme(normalizeThemeLoaded(data.theme));
+        }
         if (data.routineTemplate != null) setRoutineTemplate(normalizeBedtimeRoutineTemplate(data.routineTemplate));
         if (data.morningRoutineTemplate != null) setMorningRoutineTemplate(data.morningRoutineTemplate);
         if (data.routineSchedule != null) setRoutineSchedule(data.routineSchedule);
@@ -5092,10 +5159,12 @@ export default function App({ onAppReady }) {
     if (!key) {
       setEditingTaskKey(null);
       setTaskMenuNoteDraft("");
+      setTaskMenuNoteOpen(false);
       setTaskMenuIncludeLastPeriod(false);
       setTaskTimerSetupKey(null);
       return;
     }
+    setTaskMenuNoteOpen(false);
     if (key !== taskTimerSetupKey) setTaskTimerSetupKey(null);
     const parts = key.split("-");
     if (parts.length >= 3) {
@@ -6089,7 +6158,8 @@ export default function App({ onAppReady }) {
       if (!session) return;
       const hit = hitFromPoint(x, y);
       const destDay = hit.day && hit.day !== session.dayKey ? hit.day : session.dayKey;
-      const destHour = hit.hour && hit.hour !== session.hourKey ? hit.hour : session.hourKey;
+      const targetHour = hit.hour || session.dropHour;
+      const destHour = targetHour && targetHour !== session.hourKey ? targetHour : session.hourKey;
       if (destDay !== session.dayKey || destHour !== session.hourKey) {
         markSuppressNextScheduleClick();
         moveTaskToDayRef.current(
@@ -6128,7 +6198,7 @@ export default function App({ onAppReady }) {
     });
   }
 
-  const [newHour, setNewHour] = useState("09:00");
+  const [newHour, setNewHour] = useState(() => currentTimeKey());
   const [pastRepeatAddHour, setPastRepeatAddHour] = useState("09:00");
   const [quickCat, setQuickCat] = useState(() => customCategories[0] || "Work");
   useEffect(() => {
@@ -6259,6 +6329,7 @@ export default function App({ onAppReady }) {
       habitTracker,
     });
     setQuickText("");
+    setNewHour(currentTimeKey());
     setQuickRepeat(REPEAT_OPTIONS.NONE);
     setQuickDetailTaskKind("default");
     setQuickDetailIncludeLastPeriod(false);
@@ -7836,6 +7907,17 @@ export default function App({ onAppReady }) {
       return a.hour.localeCompare(b.hour);
     });
   }, [todayHoursWithSubs, customCategories]);
+
+  const taskDragDropHours = useMemo(() => {
+    if (!taskDrag) return [];
+    const dayHours = appState.days[taskDrag.dayKey]?.hours || {};
+    return hourKeysForTaskDragDrop(dayHours, taskDrag.hourKey);
+  }, [taskDrag, appState.days]);
+
+  const pickUserTheme = useCallback((themeData) => {
+    touchLocalPref("theme");
+    setTheme(themeData);
+  }, []);
 
   const groceryKeywordsNorm = useMemo(() => normalizeGroceryKeywordsFromProfile(profile), [profile]);
 
@@ -9562,10 +9644,12 @@ export default function App({ onAppReady }) {
                   return (
                     <li
                       key={dropdownKey}
+                      data-hour-drop={t.hour}
                       className={[
                         "list-row",
                         t.energyLevel === "HEAVY" ? "list-row-heavy" : "",
                         taskDrag?.dayKey === tKey && taskDrag?.id === t.id && taskDrag?.hourKey === t.hour ? "is-dragging" : "",
+                        taskDrag?.dropHour === t.hour && taskDrag?.dayKey === tKey ? "is-drop-target" : "",
                       ].filter(Boolean).join(" ")}
                       onPointerDown={(e) =>
                         bindScheduledItemLongPress(e, ({ x, y }) =>
@@ -11472,13 +11556,33 @@ export default function App({ onAppReady }) {
 
         {taskDrag
           ? ReactDOM.createPortal(
-              <div
-                className="task-drag-ghost"
-                style={{ left: taskDrag.x, top: taskDrag.y }}
-                aria-hidden="true"
-              >
-                {taskDrag.title}
-              </div>,
+              <>
+                <div
+                  className="task-drag-ghost"
+                  style={{ left: taskDrag.x, top: taskDrag.y }}
+                  aria-hidden="true"
+                >
+                  {taskDrag.title}
+                </div>
+                {taskDragDropHours.length > 0 ? (
+                  <div className="task-drag-hour-rail" role="listbox" aria-label="Drop on a time">
+                    <p className="task-drag-hour-rail-label">Move to</p>
+                    <div className="task-drag-hour-rail-scroll">
+                      {taskDragDropHours.map((hk) => (
+                        <div
+                          key={hk}
+                          className={`task-drag-hour-slot${taskDrag.dropHour === hk ? " is-active" : ""}${hk === taskDrag.hourKey ? " is-current" : ""}`}
+                          data-hour-drop={hk}
+                          role="option"
+                          aria-selected={taskDrag.dropHour === hk}
+                        >
+                          {toShort12Hour(hk)}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </>,
               document.body
             )
           : null}
@@ -11530,11 +11634,7 @@ export default function App({ onAppReady }) {
                   sheet
                     ? {
                         position: "fixed",
-                        left: "50%",
-                        top: "50%",
-                        transform: "translate(-50%, -50%)",
                         width: panelWidth,
-                        maxHeight: "min(560px, calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)))",
                         maxWidth:
                           "min(100vw - 24px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
                         zIndex: "calc(var(--z-modal) - 8)",
@@ -11689,19 +11789,32 @@ export default function App({ onAppReady }) {
                   ) : (
                     <>
                       <div className="task-dropdown-note-section">
-                        <label className="task-dropdown-section-label" htmlFor="task-menu-note">
-                          Notes (this task)
-                        </label>
-                        <textarea
-                          id="task-menu-note"
-                          className="input task-dropdown-note-input"
-                          rows={3}
-                          value={taskMenuNoteDraft}
-                          onChange={(e) => setTaskMenuNoteDraft(e.target.value)}
-                          onBlur={() => flushTaskMenuNoteForKey(`${hourKey}-${category}-${id}`)}
-                          placeholder="Private note for this task…"
-                          aria-label="Notes for this task"
-                        />
+                        {!taskMenuNoteOpen ? (
+                          <button
+                            type="button"
+                            className="btn btn-sm task-dropdown-add-note-btn"
+                            onClick={() => setTaskMenuNoteOpen(true)}
+                          >
+                            {taskMenuNoteDraft.trim() ? "Edit note" : "Add note"}
+                          </button>
+                        ) : (
+                          <>
+                            <label className="task-dropdown-section-label" htmlFor="task-menu-note">
+                              Notes (this task)
+                            </label>
+                            <textarea
+                              id="task-menu-note"
+                              className="input task-dropdown-note-input"
+                              rows={3}
+                              autoFocus
+                              value={taskMenuNoteDraft}
+                              onChange={(e) => setTaskMenuNoteDraft(e.target.value)}
+                              onBlur={() => flushTaskMenuNoteForKey(`${hourKey}-${category}-${id}`)}
+                              placeholder="Private note for this task…"
+                              aria-label="Notes for this task"
+                            />
+                          </>
+                        )}
                         {showMedicalPeriodNote ? (
                           <label className="task-dropdown-period-note-opt">
                             <input
@@ -11869,9 +11982,6 @@ export default function App({ onAppReady }) {
                           }}
                         >
                           Edit task
-                        </button>
-                        <button type="button" className="dropdown-item" onClick={() => { closeDropdown(); }}>
-                          Keep task
                         </button>
                         <button
                           type="button"
@@ -12992,7 +13102,7 @@ export default function App({ onAppReady }) {
                         key={key}
                         type="button"
                         className={`theme-option ${theme.name === themeData.name ? "selected" : ""}`}
-                        onClick={() => setTheme(themeData)}
+                        onClick={() => pickUserTheme(themeData)}
                         style={{
                           background: themeData.gradient,
                           border: theme.name === themeData.name ? `3px solid ${swatchInk}` : "2px solid transparent",
@@ -13016,7 +13126,10 @@ export default function App({ onAppReady }) {
                       key={opt.id}
                       type="button"
                       className={`icon-style-option ${normalizeIconStyle(profile.iconStyle) === opt.id ? "selected" : ""}`}
-                      onClick={() => setProfile((p) => ({ ...p, iconStyle: opt.id }))}
+                      onClick={() => {
+                        touchLocalPref("iconStyle");
+                        setProfile((p) => ({ ...p, iconStyle: opt.id }));
+                      }}
                       aria-pressed={normalizeIconStyle(profile.iconStyle) === opt.id}
                     >
                       <span className="icon-style-option__label">{opt.label}</span>
@@ -13351,7 +13464,10 @@ export default function App({ onAppReady }) {
                       className="input modal-input"
                       type="text"
                       value={profile.userName}
-                      onChange={(e) => setProfile((p) => ({ ...p, userName: e.target.value.trim() }))}
+                      onChange={(e) => {
+                        touchLocalPref("userName");
+                        setProfile((p) => ({ ...p, userName: e.target.value.trim() }));
+                      }}
                       placeholder="e.g. Sarah"
                       aria-label="Your name"
                     />
@@ -13623,6 +13739,7 @@ export default function App({ onAppReady }) {
             setTheme={setTheme}
             onComplete={(prefs) => {
               const nextName = String(prefs.name || prefs.userName || "").trim();
+              if (nextName) touchLocalPref("userName");
               setProfile((p) => ({
                 ...p,
                 userName: nextName || p.userName,
@@ -13634,7 +13751,7 @@ export default function App({ onAppReady }) {
                 peakTime: prefs.peakTime || p.peakTime,
                 falloffReasons: Array.isArray(prefs.falloffReasons) ? prefs.falloffReasons : p.falloffReasons,
               }));
-              if (prefs.theme) setTheme(prefs.theme);
+              if (prefs.theme) pickUserTheme(prefs.theme);
               if (prefs.enabledModules) setEnabledModules(mergeMissingEnabledModules(prefs.enabledModules));
               if (prefs.navOrder) setNavOrder(prefs.navOrder);
               if (prefs.coachingTone) setCoachingTone(prefs.coachingTone);

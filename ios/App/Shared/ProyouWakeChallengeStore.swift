@@ -22,7 +22,7 @@ struct ProyouWakeChallengeSession: Codable, Equatable {
 }
 
 enum ProyouWakeChallengeStore {
-    static let appGroupId = ProyouWidgetSnapshot.appGroupId
+    static let appGroupId = ProyouWidgetStore.appGroupId
     private static let keyPrefix = "proyou_wake_challenge_v1_"
 
     private static func defaults() -> UserDefaults? {

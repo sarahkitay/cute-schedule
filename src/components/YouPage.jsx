@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { touchLocalPref } from "../localPrefsMeta.js";
 import { FriendsHub } from "./social/FriendsHub.jsx";
 import { PeriodPage } from "./PeriodPage.jsx";
 import { useSocial } from "../social/SocialContext.jsx";
@@ -416,7 +417,10 @@ export function YouPage({
                   key={key}
                   type="button"
                   className={`theme-option ${selected ? "selected" : ""}`}
-                  onClick={() => setTheme?.(themeData)}
+                  onClick={() => {
+                    touchLocalPref("theme");
+                    setTheme?.(themeData);
+                  }}
                   style={{
                     background: themeData.gradient,
                     border: selected ? `3px solid ${swatchInk}` : "2px solid transparent",
@@ -441,7 +445,10 @@ export function YouPage({
                 key={opt.id}
                 type="button"
                 className={`icon-style-option ${normalizeIconStyle(profile.iconStyle) === opt.id ? "selected" : ""}`}
-                onClick={() => setProfile((p) => ({ ...p, iconStyle: opt.id }))}
+                onClick={() => {
+                  touchLocalPref("iconStyle");
+                  setProfile((p) => ({ ...p, iconStyle: opt.id }));
+                }}
                 aria-pressed={normalizeIconStyle(profile.iconStyle) === opt.id}
               >
                 <span className="icon-style-option__label">{opt.label}</span>
@@ -471,7 +478,10 @@ export function YouPage({
         <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 14 }}>
           <input
             value={profile.userName || ""}
-            onChange={(e) => setProfile((p) => ({ ...p, userName: e.target.value }))}
+            onChange={(e) => {
+              touchLocalPref("userName");
+              setProfile((p) => ({ ...p, userName: e.target.value }));
+            }}
             placeholder="Your name"
             className="py-input"
             style={{ maxWidth: 180, textAlign: "center", fontSize: 14 }}

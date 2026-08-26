@@ -1331,6 +1331,10 @@ html[data-theme="dark"] .app .quick-add-details-form .quick-detail-actions {
 .task-dropdown-portal--edit-task .task-dropdown {
   max-height: none;
 }
+.task-dropdown-portal--edit-task.task-dropdown-portal--sheet {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
 
 .list-page-list > .list-row,
 .monthly-objectives-list > .monthly-list-row,

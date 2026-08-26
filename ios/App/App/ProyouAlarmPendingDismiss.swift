@@ -7,15 +7,15 @@ enum ProyouAlarmPendingDismiss {
     static func store(proyouAlarmId: String) {
         guard !proyouAlarmId.isEmpty else { return }
         UserDefaults.standard.set(proyouAlarmId, forKey: userDefaultsKey)
-        UserDefaults(suiteName: ProyouWidgetSnapshot.appGroupId)?
+        UserDefaults(suiteName: ProyouWidgetStore.appGroupId)?
             .set(proyouAlarmId, forKey: userDefaultsKey)
     }
 
     static func consume() -> String? {
-        let fromGroup = UserDefaults(suiteName: ProyouWidgetSnapshot.appGroupId)?
+        let fromGroup = UserDefaults(suiteName: ProyouWidgetStore.appGroupId)?
             .string(forKey: userDefaultsKey)
         if let fromGroup, !fromGroup.isEmpty {
-            UserDefaults(suiteName: ProyouWidgetSnapshot.appGroupId)?.removeObject(forKey: userDefaultsKey)
+            UserDefaults(suiteName: ProyouWidgetStore.appGroupId)?.removeObject(forKey: userDefaultsKey)
             UserDefaults.standard.removeObject(forKey: userDefaultsKey)
             return fromGroup
         }
