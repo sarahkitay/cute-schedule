@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { getAuthApp, initFirebase } from "../firebase.js";
+import { isBlocklistedUserName } from "../cloudPersist.js";
 import {
   defaultSocialPrivacy,
   friendshipDocId,
@@ -95,12 +96,16 @@ export async function ensureUserProfile(uid, { displayName = "" } = {}) {
   const ownerUid = await requireAuthUid(uid);
   const firestore = requireDb();
   const ref = doc(firestore, "user_profiles", ownerUid);
+  const safeDisplayName = isBlocklistedUserName(displayName) ? "" : String(displayName || "").trim();
   try {
     const snap = await getDoc(ref);
     if (snap.exists()) {
       const data = snap.data();
       const patch = {};
-      if (displayName && !data.displayName) patch.displayName = displayName;
+      const existingName = String(data.displayName || "").trim();
+      if (safeDisplayName && (!existingName || isBlocklistedUserName(existingName))) {
+        patch.displayName = safeDisplayName;
+      }
       if (!data.referralCode) patch.referralCode = generateReferralCode(ownerUid);
       if (Object.keys(patch).length) {
         patch.updatedAt = serverTimestamp();
@@ -117,7 +122,7 @@ export async function ensureUserProfile(uid, { displayName = "" } = {}) {
     }
     const referralCode = generateReferralCode(ownerUid);
     const profile = {
-      displayName: displayName || "ProYou member",
+      displayName: safeDisplayName || "ProYou member",
       referralCode,
       friendUids: [],
       blockedUids: [],

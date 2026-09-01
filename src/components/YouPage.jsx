@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { touchLocalPref } from "../localPrefsMeta.js";
+import { pinLocalThemeName, pinLocalUserName, touchLocalPref } from "../localPrefsMeta.js";
 import { FriendsHub } from "./social/FriendsHub.jsx";
 import { PeriodPage } from "./PeriodPage.jsx";
 import { useSocial } from "../social/SocialContext.jsx";
@@ -418,7 +418,7 @@ export function YouPage({
                   type="button"
                   className={`theme-option ${selected ? "selected" : ""}`}
                   onClick={() => {
-                    touchLocalPref("theme");
+                    pinLocalThemeName(themeData.name);
                     setTheme?.(themeData);
                   }}
                   style={{
@@ -479,8 +479,9 @@ export function YouPage({
           <input
             value={profile.userName || ""}
             onChange={(e) => {
-              touchLocalPref("userName");
-              setProfile((p) => ({ ...p, userName: e.target.value }));
+              const next = e.target.value;
+              if (String(next || "").trim()) pinLocalUserName(next);
+              setProfile((p) => ({ ...p, userName: next }));
             }}
             placeholder="Your name"
             className="py-input"

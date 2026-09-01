@@ -31,10 +31,22 @@ import {
 } from "./gentleAnchor";
 import cloudStorage from "./cloudStorage";
 import {
+  applyPinnedProfileFields,
   localPrefIsNewer,
+  pinLocalThemeName,
+  pinLocalUserName,
+  readPinnedThemeName,
+  readPinnedUserName,
   seedLocalPrefsMetaFromDisk,
   touchLocalPref,
 } from "./localPrefsMeta.js";
+import {
+  buildCloudSavePayload,
+  isBlocklistedUserName,
+  markProfilePersisted,
+  sanitizeProfileForPersist,
+  shouldRepairCloudAfterLoad,
+} from "./cloudPersist.js";
 import { THEMES } from "./themes";
 import { OnboardingV2 } from "./components/OnboardingV2";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
@@ -307,6 +319,10 @@ function loadThemeFromDisk() {
   } catch {
     return THEMES["Classic Pink"];
   }
+}
+
+function buildScheduleCloudPayload(parts) {
+  return buildCloudSavePayload(parts, { themesByName: THEMES });
 }
 /** Legacy payloads may include moodboard; we no longer persist custom background images. */
 const EMPTY_MOODBOARD = Object.freeze({ imageUrl: "", text: "" });
@@ -583,11 +599,13 @@ function loadProfileFromDisk() {
     const gkw = normalizeGroceryKeywordArray(p.groceryKeywords);
     const legacyName = typeof p.name === "string" ? p.name : "";
     const legacyBirthday = typeof p.birthday === "string" ? p.birthday : "";
+    let userName =
+      typeof p.userName === "string" && p.userName.trim()
+        ? p.userName
+        : legacyName;
+    if (isBlocklistedUserName(userName)) userName = "";
     const merged = {
-      userName:
-        typeof p.userName === "string" && p.userName.trim()
-          ? p.userName
-          : legacyName,
+      userName,
       userBirthday:
         typeof p.userBirthday === "string" && p.userBirthday.trim()
           ? p.userBirthday
@@ -628,12 +646,20 @@ function mergeCloudProfile(prev, incoming) {
       ? /** @type {'supportive' | 'matter-of-fact' | 'funny' | 'harsh'} */ (base.completionAffirmationTone)
       : PROFILE_COMPLETION_DEFAULTS.completionAffirmationTone;
   return {
-    userName:
-      typeof inc.userName === "string" && inc.userName.trim()
-        ? inc.userName
-        : typeof inc.name === "string" && inc.name.trim()
-          ? inc.name
-          : base.userName,
+    userName: (() => {
+      const pinned = readPinnedUserName();
+      if (pinned) return pinned;
+      const fromCloud =
+        typeof inc.userName === "string" && inc.userName.trim()
+          ? inc.userName
+          : typeof inc.name === "string" && inc.name.trim()
+            ? inc.name
+            : "";
+      if (fromCloud && !isBlocklistedUserName(fromCloud)) return fromCloud;
+      const fromBase = String(base.userName || "").trim();
+      if (fromBase && !isBlocklistedUserName(fromBase)) return fromBase;
+      return "";
+    })(),
     userBirthday:
       typeof inc.userBirthday === "string" && inc.userBirthday.trim()
         ? inc.userBirthday
@@ -2961,7 +2987,9 @@ export default function App({ onAppReady }) {
     bootLocalThemeRef.current = loadThemeFromDisk();
     seedLocalPrefsMetaFromDisk(bootLocalProfileRef.current, bootLocalThemeRef.current);
   }
-  const [profile, setProfile] = useState(() => bootLocalProfileRef.current || loadProfileFromDisk());
+  const [profile, setProfile] = useState(() =>
+    applyPinnedProfileFields(bootLocalProfileRef.current || loadProfileFromDisk())
+  );
 
   const [health, setHealth] = useState(() => loadHealthFromDisk());
   const [workoutProgramPicker, setWorkoutProgramPicker] = useState(null);
@@ -3211,7 +3239,23 @@ export default function App({ onAppReady }) {
   const [routineSchedule, setRoutineSchedule] = useState(() => loadRoutineScheduleFromDisk());
 
   // Theme state
-  const [theme, setTheme] = useState(() => loadThemeFromDisk());
+  const [theme, setTheme] = useState(() => {
+    const boot = bootLocalThemeRef.current || loadThemeFromDisk();
+    const pinned = readPinnedThemeName();
+    if (pinned && THEMES[pinned]) return THEMES[pinned];
+    return boot;
+  });
+
+  useEffect(() => {
+    const pinnedName = readPinnedUserName();
+    if (pinnedName) {
+      setProfile((p) => (String(p.userName || "").trim() === pinnedName ? p : { ...p, userName: pinnedName }));
+    }
+    const pinnedTheme = readPinnedThemeName();
+    if (pinnedTheme && THEMES[pinnedTheme]) {
+      setTheme((t) => (t?.name === pinnedTheme ? t : THEMES[pinnedTheme]));
+    }
+  }, []);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--moodboard-image", "none");
@@ -3325,13 +3369,16 @@ export default function App({ onAppReady }) {
 
   useEffect(() => {
     try {
-      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+      const safe = sanitizeProfileForPersist(profile);
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(safe));
+      markProfilePersisted(safe);
     } catch {}
   }, [profile]);
 
   useEffect(() => {
     try {
       localStorage.setItem(HEALTH_STORAGE_KEY, JSON.stringify(health));
+      touchLocalPref("health");
     } catch {}
   }, [health]);
 
@@ -3930,6 +3977,7 @@ export default function App({ onAppReady }) {
   const [firestoreReady, setFirestoreReady] = useState(false);
   const firestoreSaveTimeoutRef = useRef(null);
   const latestForUnloadRef = useRef(null);
+  const cloudRepairPendingRef = useRef(false);
   /** Set true before flushSync(addTask) so the next layout commit saves Firestore with the real appState. */
   const saveFirestoreImmediateRef = useRef(false);
 
@@ -3940,23 +3988,25 @@ export default function App({ onAppReady }) {
       clearTimeout(firestoreSaveTimeoutRef.current);
       firestoreSaveTimeoutRef.current = null;
     }
-    void cloudStorage.saveFullState({
-      appState,
-      notes,
-      finance,
-      profile,
-      health,
-      theme,
-      routineTemplate,
-      morningRoutineTemplate,
-      routineSchedule,
-      coachMeta,
-      coachUserProfile,
-      moodboard: EMPTY_MOODBOARD,
-      customCategories,
-      patterns: loadPatterns(),
-      habitTracker,
-    });
+    void cloudStorage.saveFullState(
+      buildScheduleCloudPayload({
+        appState,
+        notes,
+        finance,
+        profile,
+        health,
+        theme,
+        routineTemplate,
+        morningRoutineTemplate,
+        routineSchedule,
+        coachMeta,
+        coachUserProfile,
+        moodboard: EMPTY_MOODBOARD,
+        customCategories,
+        patterns: loadPatterns(),
+        habitTracker,
+      })
+    );
   }, [
     appState,
     notes,
@@ -4032,8 +4082,11 @@ export default function App({ onAppReady }) {
         if (data.finance != null) setFinance(normalizeFinanceLoaded(data.finance));
         if (data.profile != null) {
           setProfile((prev) => {
-            const merged = mergeCloudProfile(prev, data.profile);
-            if (localPrefIsNewer("userName", data.updatedAt)) {
+            const merged = applyPinnedProfileFields(mergeCloudProfile(prev, data.profile));
+            const pinnedName = readPinnedUserName();
+            if (pinnedName) {
+              merged.userName = pinnedName;
+            } else if (localPrefIsNewer("userName", data.updatedAt)) {
               const keep = String(prev.userName || bootLocalProfileRef.current?.userName || "").trim();
               if (keep) merged.userName = keep;
             }
@@ -4045,7 +4098,10 @@ export default function App({ onAppReady }) {
             return merged;
           });
         }
-        if (data.theme != null && !localPrefIsNewer("theme", data.updatedAt)) {
+        const pinnedTheme = readPinnedThemeName();
+        if (pinnedTheme && THEMES[pinnedTheme]) {
+          setTheme(THEMES[pinnedTheme]);
+        } else if (data.theme != null && !localPrefIsNewer("theme", data.updatedAt)) {
           setTheme(normalizeThemeLoaded(data.theme));
         }
         if (data.routineTemplate != null) setRoutineTemplate(normalizeBedtimeRoutineTemplate(data.routineTemplate));
@@ -4070,8 +4126,22 @@ export default function App({ onAppReady }) {
           setHabitTracker((prev) => mergeHabitTrackers(prev, data.habitTracker));
         }
         if (data.health != null && typeof data.health === "object") {
-          setHealth((prev) => mergeHealthPreferRicher(prev, data.health));
+          if (localPrefIsNewer("health", data.updatedAt)) {
+            setHealth((prev) => mergeHealthPreferRicher(loadHealthFromDisk(), prev));
+          } else {
+            setHealth((prev) => {
+              const disk = loadHealthFromDisk();
+              return mergeHealthPreferRicher(mergeHealthPreferRicher(disk, prev), data.health);
+            });
+          }
         }
+        cloudRepairPendingRef.current = shouldRepairCloudAfterLoad({
+          cloudUpdatedAt: data.updatedAt,
+          cloudProfile: data.profile,
+          cloudHealth: data.health,
+          localProfile: bootLocalProfileRef.current || loadProfileFromDisk(),
+          localHealth: loadHealthFromDisk(),
+        });
       }
       setFirestoreReady(true);
     })();
@@ -4101,13 +4171,21 @@ export default function App({ onAppReady }) {
     };
     if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
     firestoreSaveTimeoutRef.current = setTimeout(() => {
-      cloudStorage.saveFullState(payload);
+      cloudStorage.saveFullState(buildScheduleCloudPayload(payload));
       firestoreSaveTimeoutRef.current = null;
     }, 400);
     return () => {
       if (firestoreSaveTimeoutRef.current) clearTimeout(firestoreSaveTimeoutRef.current);
     };
   }, [firestoreReady, appState, notes, finance, profile, health, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, customCategories, patternsRev, habitTracker]);
+
+  useEffect(() => {
+    if (!firestoreReady || !cloudRepairPendingRef.current) return;
+    cloudRepairPendingRef.current = false;
+    const p = latestForUnloadRef.current;
+    if (!p) return;
+    void cloudStorage.saveFullState(buildScheduleCloudPayload(p));
+  }, [firestoreReady, profile, health, theme, appState]);
 
   useEffect(() => {
     if (!firestoreReady) return;
@@ -4148,23 +4226,25 @@ export default function App({ onAppReady }) {
         clearTimeout(firestoreSaveTimeoutRef.current);
         firestoreSaveTimeoutRef.current = null;
       }
-      cloudStorage.saveFullState({
-        appState: p.appState,
-        notes: p.notes,
-        finance: p.finance,
-        profile: p.profile,
-        health: p.health,
-        theme: p.theme,
-        routineTemplate: p.routineTemplate,
-        morningRoutineTemplate: p.morningRoutineTemplate,
-        routineSchedule: p.routineSchedule,
-        coachMeta: p.coachMeta,
-        coachUserProfile: p.coachUserProfile,
-        moodboard: EMPTY_MOODBOARD,
-        customCategories: p.customCategories,
-        patterns: p.patterns,
-        habitTracker: p.habitTracker,
-      });
+      cloudStorage.saveFullState(
+        buildScheduleCloudPayload({
+          appState: p.appState,
+          notes: p.notes,
+          finance: p.finance,
+          profile: p.profile,
+          health: p.health,
+          theme: p.theme,
+          routineTemplate: p.routineTemplate,
+          morningRoutineTemplate: p.morningRoutineTemplate,
+          routineSchedule: p.routineSchedule,
+          coachMeta: p.coachMeta,
+          coachUserProfile: p.coachUserProfile,
+          moodboard: EMPTY_MOODBOARD,
+          customCategories: p.customCategories,
+          patterns: p.patterns,
+          habitTracker: p.habitTracker,
+        })
+      );
     };
     const onVis = () => {
       if (document.visibilityState === "hidden") flush();
@@ -4334,6 +4414,33 @@ export default function App({ onAppReady }) {
     return () => {
       cancelled = true;
       if (listener && typeof listener.remove === "function") listener.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isCapacitorNativeApp()) return;
+    let pauseListener;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        if (cancelled) return;
+        pauseListener = await App.addListener("pause", () => {
+          const p = latestForUnloadRef.current;
+          if (!p) return;
+          if (firestoreSaveTimeoutRef.current) {
+            clearTimeout(firestoreSaveTimeoutRef.current);
+            firestoreSaveTimeoutRef.current = null;
+          }
+          void cloudStorage.saveFullState(buildScheduleCloudPayload(p));
+        });
+      } catch (e) {
+        console.warn("[App] pause listener", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (pauseListener && typeof pauseListener.remove === "function") pauseListener.remove();
     };
   }, []);
 
@@ -5694,23 +5801,25 @@ export default function App({ onAppReady }) {
       setTab("health");
       setHealthProgramBuilderScroll((n) => n + 1);
     }
-    void cloudStorage.saveFullState({
-      appState: appStateRef.current,
-      notes,
-      finance,
-      profile,
-      health,
-      theme,
-      routineTemplate,
-      morningRoutineTemplate,
-      routineSchedule,
-      coachMeta,
-      coachUserProfile,
-      moodboard: EMPTY_MOODBOARD,
-      customCategories,
-      patterns: loadPatterns(),
-      habitTracker,
-    });
+    void cloudStorage.saveFullState(
+      buildScheduleCloudPayload({
+        appState: appStateRef.current,
+        notes,
+        finance,
+        profile,
+        health,
+        theme,
+        routineTemplate,
+        morningRoutineTemplate,
+        routineSchedule,
+        coachMeta,
+        coachUserProfile,
+        moodboard: EMPTY_MOODBOARD,
+        customCategories,
+        patterns: loadPatterns(),
+        habitTracker,
+      })
+    );
     setWorkoutProgramPicker(null);
     setQuickText("");
     setQuickRepeat(REPEAT_OPTIONS.NONE);
@@ -6321,13 +6430,25 @@ export default function App({ onAppReady }) {
       addTask(hourKey, quickCat, clean, quickRepeat, null, extras);
     });
     if (isMedAppt) setPeriodHistoryModalOpen(true);
-    void cloudStorage.saveFullState({
-      appState: appStateRef.current,
-      notes, finance, profile, health, theme, routineTemplate, morningRoutineTemplate,
-      routineSchedule, coachMeta, coachUserProfile, moodboard: EMPTY_MOODBOARD, customCategories,
-      patterns: loadPatterns(),
-      habitTracker,
-    });
+    void cloudStorage.saveFullState(
+      buildScheduleCloudPayload({
+        appState: appStateRef.current,
+        notes,
+        finance,
+        profile,
+        health,
+        theme,
+        routineTemplate,
+        morningRoutineTemplate,
+        routineSchedule,
+        coachMeta,
+        coachUserProfile,
+        moodboard: EMPTY_MOODBOARD,
+        customCategories,
+        patterns: loadPatterns(),
+        habitTracker,
+      })
+    );
     setQuickText("");
     setNewHour(currentTimeKey());
     setQuickRepeat(REPEAT_OPTIONS.NONE);
@@ -6379,13 +6500,25 @@ export default function App({ onAppReady }) {
     });
     if (isMedApptNl) setPeriodHistoryModalOpen(true);
     // Save directly after flushSync; appStateRef.current is updated synchronously by the commit
-    void cloudStorage.saveFullState({
-      appState: appStateRef.current,
-      notes, finance, profile, health, theme, routineTemplate, morningRoutineTemplate,
-      routineSchedule, coachMeta, coachUserProfile, moodboard: EMPTY_MOODBOARD, customCategories,
-      patterns: loadPatterns(),
-      habitTracker,
-    });
+    void cloudStorage.saveFullState(
+      buildScheduleCloudPayload({
+        appState: appStateRef.current,
+        notes,
+        finance,
+        profile,
+        health,
+        theme,
+        routineTemplate,
+        morningRoutineTemplate,
+        routineSchedule,
+        coachMeta,
+        coachUserProfile,
+        moodboard: EMPTY_MOODBOARD,
+        customCategories,
+        patterns: loadPatterns(),
+        habitTracker,
+      })
+    );
     setQuickAddValue("");
 
     setQuickText("");
@@ -7915,7 +8048,7 @@ export default function App({ onAppReady }) {
   }, [taskDrag, appState.days]);
 
   const pickUserTheme = useCallback((themeData) => {
-    touchLocalPref("theme");
+    pinLocalThemeName(themeData?.name);
     setTheme(themeData);
   }, []);
 
@@ -8412,10 +8545,12 @@ export default function App({ onAppReady }) {
     [profile.iconStyle]
   );
   const todayGreetingName = useMemo(() => {
+    const pinned = readPinnedUserName();
+    if (pinned) return pinned;
     const fromProfile = String(profile.userName || profile.name || "").trim();
     if (fromProfile) return fromProfile;
-    return String(firebaseUser?.displayName || "").trim();
-  }, [profile.userName, profile.name, firebaseUser?.displayName]);
+    return "";
+  }, [profile.userName, profile.name]);
 
   const brandLogoSrc = useMemo(
     () => appIconUrl("brandLogo", profile.iconStyle),
@@ -8437,13 +8572,13 @@ export default function App({ onAppReady }) {
   const getShareSnapshotInput = useCallback(
     () =>
       buildShareInputFromApp({
-        displayName: profile.userName || profile.name || firebaseUser?.displayName || "",
+        displayName: profile.userName || profile.name || "",
         realTodayKey,
         appState,
         habitTracker,
         health,
       }),
-    [profile.userName, profile.name, firebaseUser?.displayName, realTodayKey, appState, habitTracker, health],
+    [profile.userName, profile.name, realTodayKey, appState, habitTracker, health],
   );
 
   useEffect(() => {
@@ -8479,7 +8614,7 @@ export default function App({ onAppReady }) {
       enabledModules={enabledModules}
       routineTemplateCount={routineTemplateCount}
       profile={profile}
-      socialDisplayName={profile.userName || profile.name || firebaseUser?.displayName || ""}
+      socialDisplayName={profile.userName || profile.name || ""}
       getShareSnapshotInput={getShareSnapshotInput}
     >
       <IconStyleProvider iconStyle={profile.iconStyle} theme={theme}>
@@ -13465,8 +13600,9 @@ export default function App({ onAppReady }) {
                       type="text"
                       value={profile.userName}
                       onChange={(e) => {
-                        touchLocalPref("userName");
-                        setProfile((p) => ({ ...p, userName: e.target.value.trim() }));
+                        const next = e.target.value.trim();
+                        if (next) pinLocalUserName(next);
+                        setProfile((p) => ({ ...p, userName: next }));
                       }}
                       placeholder="e.g. Sarah"
                       aria-label="Your name"
@@ -13739,7 +13875,7 @@ export default function App({ onAppReady }) {
             setTheme={setTheme}
             onComplete={(prefs) => {
               const nextName = String(prefs.name || prefs.userName || "").trim();
-              if (nextName) touchLocalPref("userName");
+              if (nextName) pinLocalUserName(nextName);
               setProfile((p) => ({
                 ...p,
                 userName: nextName || p.userName,
