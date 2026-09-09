@@ -5398,6 +5398,7 @@ export default function App({ onAppReady }) {
     setTaskDropdown(null);
     setDropdownAnchorRect(null);
     setTaskMenuNoteDraft("");
+    setTaskMenuNoteOpen(false);
     setTaskMenuIncludeLastPeriod(false);
     setEditingTaskKey(null);
     setTaskTimerSetupKey(null);
@@ -12036,7 +12037,7 @@ export default function App({ onAppReady }) {
             const isEditing = editingTaskKey === editKey;
             const closeDropdown = () => handleTaskMenuOpen(null, null);
             const showTaskTimerSetup = !isEditing && taskTimerSetupKey === taskDropdown;
-            const dropdownMaxHeight = isEditing ? 560 : showTaskTimerSetup ? 520 : 440;
+            const dropdownMaxHeight = isEditing ? 560 : showTaskTimerSetup || taskMenuNoteOpen ? 520 : 400;
             const vv = typeof window !== "undefined" ? window.visualViewport : null;
             const vwForPanel =
               typeof window !== "undefined"
@@ -12059,199 +12060,194 @@ export default function App({ onAppReady }) {
               maxHeight: dropdownMaxHeight,
               leftNudge: isEditing ? 0 : undefined,
             });
-            const sheet = isEditing;
+            const useCenterModal = isEditing || pos.useCenterModal;
+            const closeEditOrMenu = () => {
+              setEditingTaskKey(null);
+              setTaskMenuNoteOpen(false);
+              closeDropdown();
+            };
             return (
-              <div
-                className={[
-                  "task-dropdown-portal",
-                  isEditing ? "task-dropdown-portal--edit-task" : "",
-                  sheet ? "task-dropdown-portal--sheet" : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
-                style={
-                  sheet
-                    ? {
-                        position: "fixed",
-                        width: panelWidth,
-                        maxWidth:
-                          "min(100vw - 24px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
-                        zIndex: "calc(var(--z-modal) - 8)",
-                      }
-                    : {
-                        position: "fixed",
-                        left: pos.left,
-                        top: pos.top,
-                        width: pos.width,
-                        maxHeight: pos.maxHeight,
-                        maxWidth:
-                          "min(100vw - 32px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
-                        zIndex: "calc(var(--z-modal) - 8)",
-                      }
-                }
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className={`task-dropdown${isEditing ? " task-dropdown--edit-task" : ""}`}>
-                  {!isEditing ? (
-                    <div className="task-dropdown-preview">
-                      <TaskMetaChips
-                        hourKey={hourKey}
-                        endHour={taskNodeForMenu?.endHour || null}
-                        category={category}
-                        energyLevel={taskNodeForMenu?.energyLevel}
-                        mode="details"
-                        showTime={tab === "plan" || !!taskNodeForMenu?.endHour}
-                        inline
-                        dayKey={tKey}
-                        realTodayKey={realTodayKey}
-                      />
-                      {taskNodeForMenu?.text ? (
+              <>
+                {useCenterModal ? (
+                  <div
+                    className="task-menu-modal-backdrop"
+                    onClick={closeEditOrMenu}
+                    aria-hidden="true"
+                  />
+                ) : null}
+                <div
+                  className={[
+                    "task-dropdown-portal",
+                    isEditing ? "task-dropdown-portal--edit-task" : "",
+                    useCenterModal ? "task-dropdown-portal--center-modal" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  role={useCenterModal ? "dialog" : undefined}
+                  aria-modal={useCenterModal ? "true" : undefined}
+                  aria-label={isEditing ? "Edit task" : "Task options"}
+                  style={
+                    useCenterModal
+                      ? {
+                          position: "fixed",
+                          width: panelWidth,
+                          maxWidth:
+                            "min(100vw - 24px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
+                          maxHeight:
+                            "min(82dvh, calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)))",
+                          zIndex: "var(--z-modal)",
+                        }
+                      : {
+                          position: "fixed",
+                          left: pos.left,
+                          top: pos.top,
+                          width: pos.width,
+                          maxHeight: pos.maxHeight,
+                          maxWidth:
+                            "min(100vw - 32px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 16px))",
+                          zIndex: "calc(var(--z-modal) - 8)",
+                        }
+                  }
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className={`task-dropdown${isEditing ? " task-dropdown--edit-task" : ""}`}>
+                    {useCenterModal ? (
+                      <div className="task-dropdown-header task-dropdown-header--with-close">
+                        <span className="task-dropdown-header-title">
+                          {isEditing ? "Edit task" : "Task options"}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn-icon task-dropdown-close-btn"
+                          onClick={closeEditOrMenu}
+                          aria-label="Close"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : taskNodeForMenu?.text ? (
+                      <div className="task-dropdown-preview">
                         <p className="task-dropdown-preview-title">{taskNodeForMenu.text}</p>
-                      ) : null}
-                    </div>
-                  ) : (
-                    <div className="task-dropdown-header">
-                      <span className="task-dropdown-header-title">Edit task</span>
-                    </div>
-                  )}
-                  {isEditing ? (
-                    <div className="task-edit-form">
-                      <label className="task-edit-row">
-                        <span className="task-edit-label">Time</span>
-                        <input
-                          type="time"
-                          className="input task-edit-input task-edit-input--time"
-                          value={editTaskDraft.hourKey}
-                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, hourKey: e.target.value }))}
-                          aria-label="Task start time"
-                        />
-                      </label>
-                      <label className="task-edit-row">
-                        <span className="task-edit-label">Ends</span>
-                        <input
-                          type="time"
-                          className="input task-edit-input task-edit-input--time"
-                          value={editTaskDraft.endHour || ""}
-                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, endHour: e.target.value }))}
-                          aria-label="Task end time (optional)"
-                        />
-                      </label>
-                      <label className="task-edit-row">
-                        <span className="task-edit-label">Category</span>
-                        <select
-                          className="input task-edit-input"
-                          value={editTaskDraft.category}
-                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, category: e.target.value }))}
-                          aria-label="Task category"
-                        >
-                          {customCategories.map((c) => (
-                            <option key={c} value={c}>{c}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label className="task-edit-row task-edit-row--grow">
-                        <span className="task-edit-label">Task</span>
-                        <input
-                          type="text"
-                          className="input task-edit-input"
-                          value={editTaskDraft.text}
-                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, text: e.target.value }))}
-                          placeholder="What to do…"
-                          aria-label="Task title"
-                        />
-                      </label>
-                      <div className="task-edit-row task-edit-row--energy">
-                        <span className="task-edit-label" id={`task-edit-energy-${editKey}`}>Energy</span>
-                        <div className="quick-detail-energy-pills" role="group" aria-labelledby={`task-edit-energy-${editKey}`}>
-                          {["LIGHT", "MEDIUM", "HEAVY"].map((lev) => (
-                            <button
-                              key={lev}
-                              type="button"
-                              className={`quick-detail-energy-pill ${editTaskDraft.energyLevel === lev ? "active" : ""}`}
-                              onClick={() => setEditTaskDraft((d) => ({ ...d, energyLevel: lev }))}
-                            >
-                              {lev.charAt(0) + lev.slice(1).toLowerCase()}
-                            </button>
-                          ))}
-                        </div>
                       </div>
-                      <label className="task-edit-row">
-                        <span className="task-edit-label">Task type</span>
-                        <select
-                          className="input task-edit-input"
-                          value={editTaskDraft.taskKind}
-                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, taskKind: e.target.value }))}
-                          aria-label="Task type"
-                        >
-                          <option value="default">Normal</option>
-                          <option value="shopping">Shopping</option>
-                          {healthProfileComplete(health) ? (
-                            <option value="workout">Workout</option>
-                          ) : null}
-                        </select>
-                      </label>
-                      {showPeriodFeatures ? (
-                        <label className="task-edit-row task-edit-row--checkbox">
+                    ) : null}
+                    {isEditing ? (
+                      <div className="task-edit-form">
+                        <label className="task-edit-row">
+                          <span className="task-edit-label">Time</span>
                           <input
-                            type="checkbox"
-                            checked={!!editTaskDraft.hideWhenShared}
-                            onChange={(e) =>
-                              setEditTaskDraft((d) => ({ ...d, hideWhenShared: e.target.checked }))
-                            }
+                            type="time"
+                            className="input task-edit-input task-edit-input--time"
+                            value={editTaskDraft.hourKey}
+                            onChange={(e) => setEditTaskDraft((d) => ({ ...d, hourKey: e.target.value }))}
+                            aria-label="Task start time"
                           />
-                          <span>Private (hide from shared schedule)</span>
                         </label>
-                      ) : null}
-                      {editTaskDraft.taskKind === "shopping" ? (
-                        <button
-                          type="button"
-                          className="btn btn-sm task-edit-shopping-list-btn"
-                          onClick={() => {
-                            setGroceryListModal({ dayKey: tKey, hourKey, category, taskId: id });
-                          }}
-                        >
-                          {taskHasAssociatedGroceryList(taskNodeForMenu) &&
-                          (taskNodeForMenu.groceryList?.items || []).length > 0
-                            ? "Edit shopping list"
-                            : "Add shopping list"}
-                        </button>
-                      ) : null}
-                      <div className="task-edit-actions">
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm task-edit-save"
-                          onClick={() => {
-                            flushTaskMenuNoteForKeyRef.current(taskDropdown);
-                            saveTaskEdits(hourKey, category, id, editTaskDraft);
-                          }}
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm"
-                          onClick={() => { setEditingTaskKey(null); closeDropdown(); }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="task-dropdown-note-section">
-                        {!taskMenuNoteOpen ? (
+                        <label className="task-edit-row">
+                          <span className="task-edit-label">Ends</span>
+                          <input
+                            type="time"
+                            className="input task-edit-input task-edit-input--time"
+                            value={editTaskDraft.endHour || ""}
+                            onChange={(e) => setEditTaskDraft((d) => ({ ...d, endHour: e.target.value }))}
+                            aria-label="Task end time (optional)"
+                          />
+                        </label>
+                        <label className="task-edit-row">
+                          <span className="task-edit-label">Category</span>
+                          <select
+                            className="input task-edit-input"
+                            value={editTaskDraft.category}
+                            onChange={(e) => setEditTaskDraft((d) => ({ ...d, category: e.target.value }))}
+                            aria-label="Task category"
+                          >
+                            {customCategories.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="task-edit-row task-edit-row--grow">
+                          <span className="task-edit-label">Task</span>
+                          <input
+                            type="text"
+                            className="input task-edit-input"
+                            value={editTaskDraft.text}
+                            onChange={(e) => setEditTaskDraft((d) => ({ ...d, text: e.target.value }))}
+                            placeholder="What to do…"
+                            aria-label="Task title"
+                          />
+                        </label>
+                        <div className="task-edit-row task-edit-row--energy">
+                          <span className="task-edit-label" id={`task-edit-energy-${editKey}`}>Energy</span>
+                          <div className="quick-detail-energy-pills" role="group" aria-labelledby={`task-edit-energy-${editKey}`}>
+                            {["LIGHT", "MEDIUM", "HEAVY"].map((lev) => (
+                              <button
+                                key={lev}
+                                type="button"
+                                className={`quick-detail-energy-pill ${editTaskDraft.energyLevel === lev ? "active" : ""}`}
+                                onClick={() => setEditTaskDraft((d) => ({ ...d, energyLevel: lev }))}
+                              >
+                                {lev.charAt(0) + lev.slice(1).toLowerCase()}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {showPeriodFeatures ? (
+                          <label className="task-edit-row task-edit-row--checkbox">
+                            <input
+                              type="checkbox"
+                              checked={!!editTaskDraft.hideWhenShared}
+                              onChange={(e) =>
+                                setEditTaskDraft((d) => ({ ...d, hideWhenShared: e.target.checked }))
+                              }
+                            />
+                            <span>Private (hide from shared schedule)</span>
+                          </label>
+                        ) : null}
+                        {editTaskDraft.taskKind === "shopping" ? (
                           <button
                             type="button"
-                            className="btn btn-sm task-dropdown-add-note-btn"
-                            onClick={() => setTaskMenuNoteOpen(true)}
+                            className="btn btn-sm task-edit-shopping-list-btn"
+                            onClick={() => {
+                              setGroceryListModal({ dayKey: tKey, hourKey, category, taskId: id });
+                            }}
                           >
-                            {taskMenuNoteDraft.trim() ? "Edit note" : "Add note"}
+                            {taskHasAssociatedGroceryList(taskNodeForMenu) &&
+                            (taskNodeForMenu.groceryList?.items || []).length > 0
+                              ? "Edit shopping list"
+                              : "Add shopping list"}
                           </button>
-                        ) : (
-                          <>
-                            <label className="task-dropdown-section-label" htmlFor="task-menu-note">
-                              Notes (this task)
-                            </label>
+                        ) : null}
+                        <div className="task-edit-actions">
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm task-edit-save"
+                            onClick={() => {
+                              flushTaskMenuNoteForKeyRef.current(taskDropdown);
+                              saveTaskEdits(hourKey, category, id, editTaskDraft);
+                            }}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm"
+                            onClick={closeEditOrMenu}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="task-dropdown-actions-block">
+                        <button
+                          type="button"
+                          className="dropdown-item"
+                          onClick={() => setTaskMenuNoteOpen((open) => !open)}
+                        >
+                          {taskMenuNoteDraft.trim() ? (taskMenuNoteOpen ? "Hide note" : "Edit note") : "Add note"}
+                        </button>
+                        {taskMenuNoteOpen ? (
+                          <div className="task-dropdown-note-expand" onClick={(e) => e.stopPropagation()}>
                             <textarea
                               id="task-menu-note"
                               className="input task-dropdown-note-input"
@@ -12263,34 +12259,34 @@ export default function App({ onAppReady }) {
                               placeholder="Private note for this task…"
                               aria-label="Notes for this task"
                             />
-                          </>
-                        )}
-                        {showMedicalPeriodNote ? (
-                          <label className="task-dropdown-period-note-opt">
-                            <input
-                              type="checkbox"
-                              checked={taskMenuIncludeLastPeriod}
-                              disabled={!periodState?.profile?.lastPeriodStart}
-                              onChange={(e) => toggleTaskMenuIncludeLastPeriod(e.target.checked)}
-                            />
-                            <span>
-                              Include my last period in notes
-                              {periodState?.profile?.lastPeriodStart
-                                ? ` (${formatPeriodDateDisplay(periodState.profile.lastPeriodStart)})`
-                                : " (log a start date in Period first)"}
-                            </span>
-                          </label>
+                            {showMedicalPeriodNote ? (
+                              <label className="task-dropdown-period-note-opt">
+                                <input
+                                  type="checkbox"
+                                  checked={taskMenuIncludeLastPeriod}
+                                  disabled={!periodState?.profile?.lastPeriodStart}
+                                  onChange={(e) => toggleTaskMenuIncludeLastPeriod(e.target.checked)}
+                                />
+                                <span>
+                                  Include my last period in notes
+                                  {periodState?.profile?.lastPeriodStart
+                                    ? ` (${formatPeriodDateDisplay(periodState.profile.lastPeriodStart)})`
+                                    : " (log a start date in Period first)"}
+                                </span>
+                              </label>
+                            ) : null}
+                          </div>
                         ) : null}
                         {showMakeRepeatableBtn ? (
                           <button
                             type="button"
-                            className="btn btn-sm task-dropdown-repeat-btn btn-with-leading-icon"
+                            className="dropdown-item"
                             onClick={() => {
                               openRepeatWeekdayPicker(tKey, hourKey, category, id);
                             }}
                           >
-                            <RepeatIcon className="btn-leading-icon" aria-hidden />
-                            <span>Make repeat task</span>
+                            <RepeatIcon style={{ marginRight: 8, width: 16, height: 16 }} aria-hidden />
+                            Make repeat task
                           </button>
                         ) : showRepeatSeriesControls ? (
                           <div className="task-dropdown-repeat-series">
@@ -12302,17 +12298,16 @@ export default function App({ onAppReady }) {
                             </p>
                             <button
                               type="button"
-                              className="btn btn-sm btn-with-leading-icon"
+                              className="dropdown-item"
                               onClick={() =>
                                 openRepeatWeekdayPicker(tKey, hourKey, category, id, taskNodeForMenu.repeatSeriesId)
                               }
                             >
-                              <RepeatIcon className="btn-leading-icon" aria-hidden />
-                              <span>Edit repeat days</span>
+                              Edit repeat days
                             </button>
                             <button
                               type="button"
-                              className="btn btn-sm btn-ghost"
+                              className="dropdown-item"
                               onClick={() => stopTaskRepeatSeries(taskNodeForMenu.repeatSeriesId)}
                             >
                               Stop repeating
@@ -12324,8 +12319,6 @@ export default function App({ onAppReady }) {
                         ) : taskNodeForMenu && (taskNodeForMenu.repeat ?? REPEAT_OPTIONS.NONE) === REPEAT_OPTIONS.OPTIONAL ? (
                           <p className="task-dropdown-repeat-hint">Legacy repeat template</p>
                         ) : null}
-                      </div>
-                      <div className="task-dropdown-actions-block">
                         {showTaskTimerSetup ? (
                           <div className="task-dropdown-timer-section">
                             <span className="task-dropdown-section-label">Timer for this task</span>
@@ -12396,7 +12389,7 @@ export default function App({ onAppReady }) {
                         )}
                         <button type="button" className="dropdown-item task-dropdown-move-item" onClick={() => { openMoveTaskDayModal(tKey, hourKey, category, id); closeDropdown(); }}>
                           <CalendarIcon style={{ marginRight: '8px' }} />
-                          Change date
+                          Move to another day
                         </button>
                         {(() => {
                           const taskNode = findTaskInAppState(appState, tKey, hourKey, category, id);
@@ -12445,10 +12438,10 @@ export default function App({ onAppReady }) {
                           Delete task
                         </button>
                       </div>
-                    </>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
+              </>
             );
           })(),
           document.body

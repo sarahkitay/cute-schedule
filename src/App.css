@@ -4541,6 +4541,9 @@ textarea.input {
   padding: 12px 14px 14px;
   border-bottom: 1px solid var(--border-subtle);
 }
+.task-dropdown-note-expand {
+  border-bottom: 1px solid var(--border-subtle);
+}
 .task-dropdown-section-label,
 .task-dropdown-note-section .task-dropdown-section-label {
   display: block;
@@ -8388,6 +8391,62 @@ html[data-theme="dark"] .coach-gtky-body .input::placeholder {
   max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
   border-radius: 20px;
   animation: taskSheetIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.task-menu-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: calc(var(--z-modal) - 1);
+  background: rgba(40, 32, 36, 0.28);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.task-dropdown-portal--center-modal {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  border-radius: 20px;
+  animation: taskCenterModalIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: var(--shadow-hero, 0 22px 56px rgba(0, 0, 0, 0.18));
+}
+
+@keyframes taskCenterModalIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.task-dropdown-header--with-close {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-dropdown-close-btn {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  font-size: 22px;
+  line-height: 1;
+  border-radius: 999px;
+}
+
+.task-dropdown-note-expand {
+  padding: 4px 10px 10px;
+}
+
+.task-dropdown-note-expand .task-dropdown-note-input {
+  margin-bottom: 0;
 }
 
 @keyframes taskSheetIn {

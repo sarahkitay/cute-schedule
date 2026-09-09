@@ -277,9 +277,13 @@
   padding: 10px 12px 12px;
   margin: 2px 4px 4px;
   border-radius: 14px;
-  background: rgba(255, 252, 250, 0.7);
-  border: 0.5px solid rgba(0, 0, 0, 0.05);
+  background: transparent;
+  border: none;
   border-bottom: none;
+}
+.task-dropdown-note-expand {
+  margin: 0 4px 4px;
+  padding: 4px 8px 10px;
 }
 .task-dropdown-note-input {
   border-radius: 12px !important;
@@ -1334,6 +1338,24 @@ html[data-theme="dark"] .app .quick-add-details-form .quick-detail-actions {
 .task-dropdown-portal--edit-task.task-dropdown-portal--sheet {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+.task-dropdown-portal--center-modal {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.task-dropdown-header--with-close {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 10px 8px 14px;
+}
+.task-dropdown-close-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .list-page-list > .list-row,
