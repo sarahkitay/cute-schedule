@@ -11661,11 +11661,26 @@ html[data-theme="dark"] .health-meal-type-btn.is-selected {
   gap: 8px;
   margin: 0 0 12px;
 }
+.health-meal-photo-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.health-meal-photo-btn {
+  width: 100%;
+  min-height: 42px;
+  font-weight: 600;
+}
 .health-label-scan-btn {
   width: 100%;
   flex-shrink: 0;
+  grid-column: 1 / -1;
 }
 .health-label-scan-hint {
+  margin: 0;
+  text-align: center;
+}
+.health-meal-photo-status {
   margin: 0;
   text-align: center;
 }

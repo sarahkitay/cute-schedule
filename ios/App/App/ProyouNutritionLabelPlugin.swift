@@ -3,7 +3,7 @@ import Capacitor
 import UIKit
 import AVFoundation
 
-/// Nutrition label OCR: live scanner UI + photo library fallback.
+/// Nutrition label OCR + plain photo capture for plated-meal estimates.
 @objc(ProyouNutritionLabelPlugin)
 public class ProyouNutritionLabelPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "ProyouNutritionLabelPlugin"
@@ -13,11 +13,15 @@ public class ProyouNutritionLabelPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "scanLabel", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pickLabelPhoto", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "recognizeImage", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takePhoto", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "pickPhoto", returnType: CAPPluginReturnPromise),
     ]
 
     private var scanCall: CAPPluginCall?
     private var imagePicker: UIImagePickerController?
     private var liveScanner: NutritionLabelScannerViewController?
+    /// When true, camera/library returns JPEG only (no Vision OCR) for plated-meal estimates.
+    private var skipOcr = false
 
     @objc func isAvailable(_ call: CAPPluginCall) {
         let camera = UIImagePickerController.isSourceTypeAvailable(.camera)
@@ -25,6 +29,7 @@ public class ProyouNutritionLabelPlugin: CAPPlugin, CAPBridgedPlugin {
             "available": camera,
             "visionOcr": true,
             "liveScanner": camera,
+            "mealPhoto": true,
         ])
     }
 
@@ -32,6 +37,7 @@ public class ProyouNutritionLabelPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func scanLabel(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            self.skipOcr = false
             guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
                 call.reject("Camera is not available on this device.", "NO_CAMERA")
                 return
@@ -86,6 +92,54 @@ public class ProyouNutritionLabelPlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func pickLabelPhoto(_ call: CAPPluginCall) {
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
+            self.skipOcr = false
+            guard UIImagePickerController.isSourceTypeAvailable(.photoLibrary) else {
+                call.reject("Photo library is not available on this device.", "NO_LIBRARY")
+                return
+            }
+            self.presentImagePicker(sourceType: .photoLibrary, call: call)
+        }
+    }
+
+    /// Plain camera capture for plated-meal estimates. No OCR.
+    @objc func takePhoto(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.skipOcr = true
+            guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
+                call.reject("Camera is not available on this device.", "NO_CAMERA")
+                return
+            }
+            switch AVCaptureDevice.authorizationStatus(for: .video) {
+            case .authorized:
+                self.presentImagePicker(sourceType: .camera, call: call)
+            case .notDetermined:
+                AVCaptureDevice.requestAccess(for: .video) { granted in
+                    DispatchQueue.main.async {
+                        if granted {
+                            self.presentImagePicker(sourceType: .camera, call: call)
+                        } else {
+                            call.reject(
+                                "Allow camera access in Settings → PROYOU → Camera to photograph meals.",
+                                "PERMISSION_DENIED"
+                            )
+                        }
+                    }
+                }
+            default:
+                call.reject(
+                    "Allow camera access in Settings → PROYOU → Camera to photograph meals.",
+                    "PERMISSION_DENIED"
+                )
+            }
+        }
+    }
+
+    /// Photo library picker for plated-meal estimates. No OCR.
+    @objc func pickPhoto(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.skipOcr = true
             guard UIImagePickerController.isSourceTypeAvailable(.photoLibrary) else {
                 call.reject("Photo library is not available on this device.", "NO_LIBRARY")
                 return
@@ -125,6 +179,21 @@ public class ProyouNutritionLabelPlugin: CAPPlugin, CAPBridgedPlugin {
         scanCall = nil
         imagePicker = nil
         liveScanner = nil
+        skipOcr = false
+    }
+
+    private func resolvePhotoOnly(image: UIImage, call: CAPPluginCall) {
+        guard let jpeg = image.jpegData(compressionQuality: 0.82) else {
+            call.reject("Could not encode photo.", "ENCODE_FAILED")
+            cleanup()
+            return
+        }
+        call.resolve([
+            "imageBase64": "data:image/jpeg;base64," + jpeg.base64EncodedString(),
+            "text": "",
+            "lines": [],
+        ])
+        cleanup()
     }
 
     private func resolveOcrPayload(ocr: (lines: [String], fullText: String), image: UIImage, call: CAPPluginCall) {
@@ -166,10 +235,20 @@ extension ProyouNutritionLabelPlugin: UIImagePickerControllerDelegate, UINavigat
             return
         }
         let image = (info[.originalImage] as? UIImage)
+        let photoOnly = skipOcr
         picker.dismiss(animated: true) { [weak self] in
-            guard let self = self, let image = image, let cgImage = image.cgImage else {
+            guard let self = self, let image = image else {
                 call.reject("No photo captured.", "NO_IMAGE")
                 self?.cleanup()
+                return
+            }
+            if photoOnly {
+                self.resolvePhotoOnly(image: image, call: call)
+                return
+            }
+            guard let cgImage = image.cgImage else {
+                call.reject("No photo captured.", "NO_IMAGE")
+                self.cleanup()
                 return
             }
             NutritionLabelOcr.recognize(cgImage: cgImage, accurate: true, regionOfInterest: nil) { result in

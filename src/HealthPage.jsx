@@ -47,6 +47,8 @@ import { useIconStyle } from "./IconStyleContext";
 import { NutritionLabelScanner } from "./components/NutritionLabelScanner";
 import { AddWorkoutWeekModal } from "./components/AddWorkoutWeekModal.jsx";
 import { launchNutritionLabelScan } from "./nutritionLabelScanner";
+import { pickMealPhoto } from "./pickMealImage.js";
+import { estimateMealFromPhotoApi } from "./mealPhotoEstimateApi.js";
 
 function newId(prefix) {
   try {
@@ -358,6 +360,8 @@ export function HealthPage({
   const [labelScannerOpen, setLabelScannerOpen] = useState(false);
   const [labelScannerInitialOcr, setLabelScannerInitialOcr] = useState(null);
   const [labelScanBusy, setLabelScanBusy] = useState(false);
+  const [mealPhotoBusy, setMealPhotoBusy] = useState(false);
+  const [mealPhotoStatus, setMealPhotoStatus] = useState("");
   const [groceryListTitle, setGroceryListTitle] = useState("");
   const [groceryDraftItems, setGroceryDraftItems] = useState([]);
   const [groceryItemInput, setGroceryItemInput] = useState("");
@@ -907,6 +911,7 @@ export function HealthPage({
 
   async function handleScanNutritionLabelClick() {
     setLabelScanBusy(true);
+    setMealPhotoStatus("");
     try {
       const ocr = await launchNutritionLabelScan();
       setLabelScannerInitialOcr(ocr);
@@ -917,6 +922,37 @@ export function HealthPage({
       setLabelScannerOpen(true);
     } finally {
       setLabelScanBusy(false);
+    }
+  }
+
+  async function handleMealPhotoEstimate(camera) {
+    setMealPhotoBusy(true);
+    setMealPhotoStatus("");
+    try {
+      const photo = await pickMealPhoto({ camera });
+      const estimate = await estimateMealFromPhotoApi(photo.base64, photo.mimeType, {
+        mealSlot: mealType || undefined,
+      });
+      const name = estimate.foodName || "Meal photo";
+      applyLabelScanToMeal({
+        food: name,
+        protein: estimate.protein,
+        carbs: estimate.carbs,
+        fat: estimate.fat,
+        calories: estimate.calories,
+      });
+      const conf =
+        estimate.confidence === "high"
+          ? "High confidence"
+          : estimate.confidence === "low"
+            ? "Low confidence — double-check"
+            : "Estimated";
+      setMealPhotoStatus(`${conf}: ${name} · ${estimate.calories} kcal · P${estimate.protein} C${estimate.carbs} F${estimate.fat}`);
+    } catch (e) {
+      if (e?.code === "CANCELLED") return;
+      setMealPhotoStatus(e?.message || "Could not estimate from that photo. Try another shot or type the meal.");
+    } finally {
+      setMealPhotoBusy(false);
     }
   }
 
@@ -1755,15 +1791,40 @@ export function HealthPage({
                 </div>
               </div>
               <div className="health-label-scan-row">
-                <button
-                  type="button"
-                  className="btn btn-primary health-label-scan-btn"
-                  disabled={labelScanBusy}
-                  onClick={handleScanNutritionLabelClick}
-                >
-                  {labelScanBusy ? "Scanning…" : "Scan label"}
-                </button>
-                <span className="health-subline health-label-scan-hint">Live scanner · Cal / Pro / Fat / Carb</span>
+                <div className="health-meal-photo-actions">
+                  <button
+                    type="button"
+                    className="btn health-meal-photo-btn"
+                    disabled={mealPhotoBusy || labelScanBusy}
+                    onClick={() => void handleMealPhotoEstimate(true)}
+                  >
+                    {mealPhotoBusy ? "Estimating…" : "Camera"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn health-meal-photo-btn"
+                    disabled={mealPhotoBusy || labelScanBusy}
+                    onClick={() => void handleMealPhotoEstimate(false)}
+                  >
+                    Photos
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary health-label-scan-btn"
+                    disabled={labelScanBusy || mealPhotoBusy}
+                    onClick={handleScanNutritionLabelClick}
+                  >
+                    {labelScanBusy ? "Scanning…" : "Scan label"}
+                  </button>
+                </div>
+                <span className="health-subline health-label-scan-hint">
+                  Plate photo → AI macros · or scan a package label
+                </span>
+                {mealPhotoStatus ? (
+                  <p className="settings-hint health-meal-photo-status" role="status">
+                    {mealPhotoStatus}
+                  </p>
+                ) : null}
               </div>
               <label className="quick-row health-meal-food-field">
                 <span className="label">What you ate</span>
