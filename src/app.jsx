@@ -31,7 +31,16 @@ import {
 } from "./gentleAnchor";
 import cloudStorage from "./cloudStorage";
 import {
+  buildCloudSavePayload,
+  formatAccountStatusLabel,
+  isBlocklistedUserName,
+  markProfilePersisted,
+  sanitizeProfileForPersist,
+  shouldRepairCloudAfterLoad,
+} from "./cloudPersist.js";
+import {
   applyPinnedProfileFields,
+  clearBlocklistedPinnedUserName,
   localPrefIsNewer,
   pinLocalThemeName,
   pinLocalUserName,
@@ -40,13 +49,6 @@ import {
   seedLocalPrefsMetaFromDisk,
   touchLocalPref,
 } from "./localPrefsMeta.js";
-import {
-  buildCloudSavePayload,
-  isBlocklistedUserName,
-  markProfilePersisted,
-  sanitizeProfileForPersist,
-  shouldRepairCloudAfterLoad,
-} from "./cloudPersist.js";
 import { THEMES } from "./themes";
 import { OnboardingV2 } from "./components/OnboardingV2";
 import { FeatureWalkthrough } from "./FeatureWalkthrough";
@@ -281,6 +283,7 @@ import {
   signUpWithEmail,
   signInWithEmail as emailPasswordSignIn,
   authSignOut,
+  clearAuthDisplayNameIfMatches,
   deleteCurrentUserAccount,
   isFirebaseEnabled,
   ensureSignedIn,
@@ -322,7 +325,11 @@ function loadThemeFromDisk() {
 }
 
 function buildScheduleCloudPayload(parts) {
-  return buildCloudSavePayload(parts, { themesByName: THEMES });
+  return buildCloudSavePayload(parts, {
+    themesByName: THEMES,
+    diskHealth: loadHealthFromDisk(),
+    cloudHealth: cloudStorage._lastCloudHealth || null,
+  });
 }
 /** Legacy payloads may include moodboard; we no longer persist custom background images. */
 const EMPTY_MOODBOARD = Object.freeze({ imageUrl: "", text: "" });
@@ -2983,6 +2990,7 @@ export default function App({ onAppReady }) {
   const bootLocalProfileRef = useRef(null);
   const bootLocalThemeRef = useRef(null);
   if (!bootLocalProfileRef.current) {
+    clearBlocklistedPinnedUserName();
     bootLocalProfileRef.current = loadProfileFromDisk();
     bootLocalThemeRef.current = loadThemeFromDisk();
     seedLocalPrefsMetaFromDisk(bootLocalProfileRef.current, bootLocalThemeRef.current);
@@ -3378,7 +3386,6 @@ export default function App({ onAppReady }) {
   useEffect(() => {
     try {
       localStorage.setItem(HEALTH_STORAGE_KEY, JSON.stringify(health));
-      touchLocalPref("health");
     } catch {}
   }, [health]);
 
@@ -4126,14 +4133,11 @@ export default function App({ onAppReady }) {
           setHabitTracker((prev) => mergeHabitTrackers(prev, data.habitTracker));
         }
         if (data.health != null && typeof data.health === "object") {
-          if (localPrefIsNewer("health", data.updatedAt)) {
-            setHealth((prev) => mergeHealthPreferRicher(loadHealthFromDisk(), prev));
-          } else {
-            setHealth((prev) => {
-              const disk = loadHealthFromDisk();
-              return mergeHealthPreferRicher(mergeHealthPreferRicher(disk, prev), data.health);
-            });
-          }
+          cloudStorage.rememberCloudHealth(data.health);
+          setHealth((prev) => {
+            const disk = loadHealthFromDisk();
+            return mergeHealthPreferRicher(mergeHealthPreferRicher(disk, prev), data.health);
+          });
         }
         cloudRepairPendingRef.current = shouldRepairCloudAfterLoad({
           cloudUpdatedAt: data.updatedAt,
@@ -4149,6 +4153,18 @@ export default function App({ onAppReady }) {
       cancelled = true;
     };
   }, [firebaseAuthResolved, firebaseUser?.uid]);
+
+  useEffect(() => {
+    if (!firebaseUser?.uid) return;
+    clearBlocklistedPinnedUserName();
+    if (isBlocklistedUserName(firebaseUser.displayName)) {
+      void clearAuthDisplayNameIfMatches((name) => isBlocklistedUserName(name)).then((cleared) => {
+        if (cleared) {
+          setFirebaseUser((u) => (u ? { ...u, displayName: null } : u));
+        }
+      });
+    }
+  }, [firebaseUser?.uid, firebaseUser?.displayName]);
 
   useEffect(() => {
     if (!firestoreReady) return;
@@ -13545,21 +13561,44 @@ export default function App({ onAppReady }) {
                     ) : (
                       <>
                         <p className="finance-meta settings-account-status" style={{ marginBottom: 12 }}>
-                          {firebaseUser?.isAnonymous ? (
-                            <>Logged in as <strong>guest</strong> (this device)</>
-                          ) : firebaseUser?.email ? (
-                            <>
-                              Logged in as <strong>{firebaseUser.email}</strong>
-                            </>
-                          ) : firebaseUser?.displayName ? (
-                            <>
-                              Logged in as <strong>{firebaseUser.displayName}</strong>
-                            </>
-                          ) : firebaseUser ? (
-                            "Logged in"
-                          ) : (
-                            "Not signed in - add an account below to sync."
-                          )}
+                          {(() => {
+                            const acct = formatAccountStatusLabel({
+                              isAnonymous: !!firebaseUser?.isAnonymous,
+                              email: firebaseUser?.email,
+                              authDisplayName: firebaseUser?.displayName,
+                              profileName: profile.userName || profile.name,
+                            });
+                            if (!firebaseUser && isFirebaseEnabled()) {
+                              return "Not signed in - add an account below to sync.";
+                            }
+                            if (!isFirebaseEnabled()) return null;
+                            if (acct.kind === "guest") {
+                              return (
+                                <>
+                                  Logged in as <strong>guest</strong> (this device)
+                                </>
+                              );
+                            }
+                            if (acct.kind === "email" || acct.kind === "auth" || acct.kind === "profile") {
+                              return (
+                                <>
+                                  Logged in as <strong>{acct.text}</strong>
+                                  {acct.kind === "profile" ? " (your name)" : null}
+                                </>
+                              );
+                            }
+                            if (firebaseUser) {
+                              return (
+                                <>
+                                  Logged in with <strong>Apple</strong>
+                                  {String(profile.userName || "").trim()
+                                    ? <> · name in app: <strong>{String(profile.userName).trim()}</strong></>
+                                    : " · set your name below"}
+                                </>
+                              );
+                            }
+                            return "Not signed in - add an account below to sync.";
+                          })()}
                         </p>
                         {accountNeedsSignIn(firebaseUser) ? (
                           <SettingsAccountSignInPanel

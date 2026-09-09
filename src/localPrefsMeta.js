@@ -40,12 +40,27 @@ export function localPrefIsNewer(field, cloudUpdatedAtIso) {
 }
 
 export function readPinnedUserName() {
-  return String(readLocalPrefsMeta().pinnedUserName || "").trim();
+  const name = String(readLocalPrefsMeta().pinnedUserName || "").trim();
+  if (!name) return "";
+  if (isBlocklistedUserName(name)) {
+    clearBlocklistedPinnedUserName();
+    return "";
+  }
+  return name;
+}
+
+export function clearBlocklistedPinnedUserName() {
+  const meta = readLocalPrefsMeta();
+  const pinned = String(meta.pinnedUserName || "").trim();
+  if (!pinned || !isBlocklistedUserName(pinned)) return false;
+  delete meta.pinnedUserName;
+  writeLocalPrefsMeta(meta);
+  return true;
 }
 
 export function pinLocalUserName(name) {
   const trimmed = String(name || "").trim();
-  if (!trimmed) return;
+  if (!trimmed || isBlocklistedUserName(trimmed)) return;
   const meta = readLocalPrefsMeta();
   const now = Date.now();
   meta.userName = now;
@@ -71,6 +86,7 @@ export function pinLocalThemeName(themeName) {
 
 /** Pin good on-disk prefs once so cloud cannot revert them (skips blocklisted stale names). */
 export function seedLocalPrefsMetaFromDisk(profile, theme) {
+  clearBlocklistedPinnedUserName();
   const meta = readLocalPrefsMeta();
   const name = String(profile?.userName || "").trim();
   if (name && !meta.pinnedUserName && !isBlocklistedUserName(name)) {
@@ -86,5 +102,6 @@ export function applyPinnedProfileFields(profile) {
   const next = { ...profile };
   const pinnedName = readPinnedUserName();
   if (pinnedName) next.userName = pinnedName;
+  else if (isBlocklistedUserName(next.userName)) next.userName = "";
   return next;
 }

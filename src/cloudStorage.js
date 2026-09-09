@@ -5,6 +5,7 @@ import {
   encodeAppStateHourKeys,
   decodeAppStateHourKeys,
 } from "./cloudStateCodec.js";
+import { healthProgramCount, preferRicherHealth } from "./cloudPersist.js";
 
 const FIRESTORE_COLLECTION = "schedules";
 
@@ -13,6 +14,8 @@ class CloudStorage {
     this.storageKey = "cute-schedule-data";
     this.syncKey = "cute-schedule-sync";
     this._loadFullStateOncePromise = null;
+    /** Last cloud health we loaded (used so empty local saves cannot wipe My programs). */
+    this._lastCloudHealth = null;
   }
 
   /** One shared in-flight load per tab (React StrictMode double-mount would otherwise run two loads and race setState). */
@@ -26,39 +29,81 @@ class CloudStorage {
   /** Call when Firebase auth uid changes so the next load hits the correct document. */
   invalidateLoadCache() {
     this._loadFullStateOncePromise = null;
+    this._lastCloudHealth = null;
+  }
+
+  rememberCloudHealth(health) {
+    if (health && typeof health === "object") {
+      this._lastCloudHealth = cloneForFirestore(health);
+    }
+  }
+
+  /**
+   * Never write fewer workout programs than cloud already has (empty boot races wiped My programs).
+   */
+  protectHealthAgainstThinOverwrite(outgoingHealth) {
+    let health = cloneForFirestore(outgoingHealth) ?? null;
+    const known = this._lastCloudHealth;
+    if (!known) return health;
+    const outN = healthProgramCount(health);
+    const cloudN = healthProgramCount(known);
+    if (cloudN > outN) {
+      health = cloneForFirestore(preferRicherHealth(health, known));
+    }
+    return health;
   }
 
   /** Save full app state to Firestore (and keep localStorage as fallback). */
   async saveFullState(payload) {
     const { appState, notes, finance, profile, health, theme, routineTemplate, morningRoutineTemplate, routineSchedule, coachMeta, coachUserProfile, moodboard, customCategories, patterns, habitTracker } = payload;
     const appStateEncoded = appState != null ? encodeAppStateHourKeys(appState) : null;
-    const dataToSave = {
-      appState: appStateEncoded,
-      notes: cloneForFirestore(notes) ?? [],
-      finance: cloneForFirestore(finance) ?? null,
-      profile: cloneForFirestore(profile) ?? null,
-      health: cloneForFirestore(health) ?? null,
-      theme: cloneForFirestore(theme) ?? null,
-      routineTemplate: cloneForFirestore(routineTemplate) ?? null,
-      morningRoutineTemplate: cloneForFirestore(morningRoutineTemplate) ?? null,
-      routineSchedule: cloneForFirestore(routineSchedule) ?? null,
-      coachMeta: cloneForFirestore(coachMeta) ?? null,
-      coachUserProfile: cloneForFirestore(coachUserProfile) ?? null,
-      moodboard: cloneForFirestore(moodboard) ?? null,
-      customCategories: cloneForFirestore(customCategories) ?? null,
-      patterns: cloneForFirestore(patterns) ?? null,
-      habitTracker: cloneForFirestore(habitTracker) ?? null,
-      updatedAt: new Date().toISOString(),
-      version: "1.0",
-    };
+    let healthSafe = this.protectHealthAgainstThinOverwrite(health);
 
     try {
       const firebaseDb = getDb();
       if (firebaseDb) {
         const docId = getScheduleDocId();
         const ref = doc(firebaseDb, FIRESTORE_COLLECTION, docId);
+        try {
+          const snap = await getDoc(ref);
+          if (snap.exists()) {
+            const existingHealth = snap.data()?.health;
+            if (existingHealth && typeof existingHealth === "object") {
+              this.rememberCloudHealth(existingHealth);
+              const outN = healthProgramCount(healthSafe);
+              const cloudN = healthProgramCount(existingHealth);
+              if (cloudN > outN) {
+                healthSafe = cloneForFirestore(preferRicherHealth(healthSafe, existingHealth));
+              }
+            }
+          }
+        } catch {
+          /* best-effort guard; still attempt the write */
+        }
+
+        const dataToSave = {
+          appState: appStateEncoded,
+          notes: cloneForFirestore(notes) ?? [],
+          finance: cloneForFirestore(finance) ?? null,
+          profile: cloneForFirestore(profile) ?? null,
+          health: healthSafe,
+          theme: cloneForFirestore(theme) ?? null,
+          routineTemplate: cloneForFirestore(routineTemplate) ?? null,
+          morningRoutineTemplate: cloneForFirestore(morningRoutineTemplate) ?? null,
+          routineSchedule: cloneForFirestore(routineSchedule) ?? null,
+          coachMeta: cloneForFirestore(coachMeta) ?? null,
+          coachUserProfile: cloneForFirestore(coachUserProfile) ?? null,
+          moodboard: cloneForFirestore(moodboard) ?? null,
+          customCategories: cloneForFirestore(customCategories) ?? null,
+          patterns: cloneForFirestore(patterns) ?? null,
+          habitTracker: cloneForFirestore(habitTracker) ?? null,
+          updatedAt: new Date().toISOString(),
+          version: "1.0",
+        };
+
         // Full replace - merge:true deep-merges nested maps and can leave stale/empty `hours` vs real tasks.
         await setDoc(ref, dataToSave);
+        this.rememberCloudHealth(healthSafe);
         if (typeof localStorage !== "undefined") {
           localStorage.setItem(this.syncKey, Date.now().toString());
         }
@@ -87,6 +132,9 @@ class CloudStorage {
 
       const data = snap.data();
       const rawApp = data.appState ?? null;
+      if (data.health && typeof data.health === "object") {
+        this.rememberCloudHealth(data.health);
+      }
       return {
         appState: rawApp != null ? decodeAppStateHourKeys(rawApp) : null,
         notes: data.notes ?? [],

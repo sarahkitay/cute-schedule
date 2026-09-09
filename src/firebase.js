@@ -24,6 +24,7 @@ import {
   linkWithCredential,
   signInWithCredential,
   deleteUser,
+  updateProfile,
 } from "firebase/auth";
 
 const DEVICE_ID_KEY = "cute_schedule_device_id_v1";
@@ -557,4 +558,24 @@ export async function authSignOut() {
   const a = getAuthApp();
   if (!a) return;
   await signOut(a);
+}
+
+/**
+ * Clear a stale Auth displayName (e.g. wrong Apple name) so Settings Account
+ * does not show it. Does not change email or credentials.
+ */
+export async function clearAuthDisplayNameIfMatches(predicate) {
+  const a = getAuthApp();
+  const user = a?.currentUser;
+  if (!user) return false;
+  const name = String(user.displayName || "").trim();
+  if (!name) return false;
+  if (typeof predicate === "function" ? !predicate(name) : true) return false;
+  try {
+    await updateProfile(user, { displayName: "" });
+    return true;
+  } catch (e) {
+    console.warn("clearAuthDisplayNameIfMatches:", e?.code ?? e);
+    return false;
+  }
 }

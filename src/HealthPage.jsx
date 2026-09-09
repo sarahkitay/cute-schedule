@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { touchLocalPref } from "./localPrefsMeta.js";
 import { CloseIcon, MacroCalculatorIcon } from "./Icons";
 import {
   PROGRAM_LIBRARY,
@@ -648,6 +649,7 @@ export function HealthPage({
         return { ...base, programs, programDisplayOrder: order };
       });
     }
+    touchLocalPref("health");
     clearBuilder();
   }
 
@@ -659,6 +661,7 @@ export function HealthPage({
       const programDisplayOrder = (base.programDisplayOrder || []).filter((x) => x !== id);
       return { ...base, programs, weekRoutineProgramIds, programDisplayOrder };
     });
+    touchLocalPref("health");
     if (editingProgramId === id) clearBuilder();
   }
 
@@ -677,6 +680,7 @@ export function HealthPage({
       );
       return { ...base, programs, programDisplayOrder: order };
     });
+    touchLocalPref("health");
   }
 
   function selectProgram(p) {

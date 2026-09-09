@@ -21,8 +21,13 @@ describe("localPrefsMeta", () => {
   it("pins userName and always wins over cloud merge helper", () => {
     pinLocalUserName("Sarah");
     assert.equal(readPinnedUserName(), "Sarah");
-    const merged = applyPinnedProfileFields({ userName: "Christy Gilkin" });
+    const merged = applyPinnedProfileFields({ userName: "Other" });
     assert.equal(merged.userName, "Sarah");
+  });
+
+  it("refuses to pin a blocklisted name", () => {
+    pinLocalUserName("Christy Gilkin");
+    assert.equal(readPinnedUserName(), "");
   });
 
   it("does not auto-pin blocklisted stale cloud names from disk", () => {
