@@ -32,12 +32,29 @@ export function normalizeRepeatSeries(raw) {
   const skippedDayKeys = Array.isArray(raw.skippedDayKeys)
     ? raw.skippedDayKeys.filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(String(k)))
     : [];
+  const hour = String(raw.hour || "09:00").slice(0, 5);
+  let endHour;
+  if (typeof raw.endHour === "string" && /^\d{2}:\d{2}$/.test(raw.endHour.trim())) {
+    const candidate = raw.endHour.trim().slice(0, 5);
+    const [sh, sm] = hour.split(":").map(Number);
+    const [eh, em] = candidate.split(":").map(Number);
+    if (
+      Number.isFinite(sh) &&
+      Number.isFinite(sm) &&
+      Number.isFinite(eh) &&
+      Number.isFinite(em) &&
+      eh * 60 + em > sh * 60 + sm
+    ) {
+      endHour = candidate;
+    }
+  }
   return {
     id,
     templateTaskId: String(raw.templateTaskId || "").slice(0, 64) || id,
     text: String(raw.text || "").slice(0, 500),
     category: String(raw.category || "Personal").slice(0, 40),
-    hour: String(raw.hour || "09:00").slice(0, 5),
+    hour,
+    ...(endHour ? { endHour } : {}),
     energyLevel:
       raw.energyLevel === "LIGHT" || raw.energyLevel === "HEAVY" ? raw.energyLevel : "MEDIUM",
     taskNote: typeof raw.taskNote === "string" ? raw.taskNote.slice(0, 2000) : undefined,
@@ -117,6 +134,7 @@ export function createRepeatSeriesFromTask(task, dayKey, hourKey, category, repe
     text: task.text,
     category,
     hour: hourKey,
+    endHour: task.endHour,
     energyLevel: task.energyLevel,
     taskNote: task.taskNote,
     repeatWeekdays: days,
@@ -177,6 +195,7 @@ function buildInstanceTask(series, dayKey) {
     ...(series.workoutProgramMode ? { workoutProgramMode: series.workoutProgramMode } : {}),
     ...(series.workoutProgramId ? { workoutProgramId: series.workoutProgramId } : {}),
     ...(series.taskNote ? { taskNote: series.taskNote } : {}),
+    ...(series.endHour ? { endHour: series.endHour } : {}),
     repeatInstanceDayKey: dayKey,
   };
 }

@@ -4,7 +4,13 @@ import {
   priorObjectiveMonthKey,
   getPendingCarryObjectives,
   getVisibleMonthObjectives,
+  getObjectivesForMonth,
+  listObjectiveMonthKeys,
   carryMonthlyObjective,
+  autoCarryPendingMonthlyObjectives,
+  getMonthEndReviewObjectives,
+  keepCarriedMonthlyObjective,
+  letGoCarriedMonthlyObjective,
   leaveMonthlyObjectiveInPriorMonth,
   completeMonthlyObjectiveUnmarked,
   filterMonthlyForCoach,
@@ -33,8 +39,38 @@ describe("monthlyObjectivesModel", () => {
     assert.equal(next[0].carryOutcome, "carried");
     assert.equal(next[1].monthKey, "2026-05");
     assert.equal(next[1].carriedFromId, "a");
+    assert.equal(next[1].monthEndReviewed, false);
     assert.equal(getPendingCarryObjectives(next, "2026-05").length, 0);
     assert.equal(getVisibleMonthObjectives(next, "2026-05").length, 1);
+  });
+
+  it("autoCarryPendingMonthlyObjectives carries all pending", () => {
+    const monthly = [
+      { id: "a", text: "Blog", done: false, monthKey: "2026-04" },
+      { id: "b", text: "Taxes", done: false, monthKey: "2026-04" },
+    ];
+    let n = 0;
+    const { monthly: next, carriedIds } = autoCarryPendingMonthlyObjectives(monthly, "2026-05", () => `n${++n}`);
+    assert.equal(carriedIds.length, 2);
+    assert.equal(getPendingCarryObjectives(next, "2026-05").length, 0);
+    assert.equal(getVisibleMonthObjectives(next, "2026-05").length, 2);
+    assert.equal(getMonthEndReviewObjectives(next, "2026-05").length, 2);
+  });
+
+  it("keep and let go resolve month-end review", () => {
+    const monthly = [
+      { id: "a", text: "Blog", done: false, monthKey: "2026-04", carryResolved: true, carryOutcome: "carried", carriedToId: "n1" },
+      { id: "n1", text: "Blog", done: false, monthKey: "2026-05", carriedFromId: "a", monthEndReviewed: false },
+    ];
+    const kept = keepCarriedMonthlyObjective(monthly, "n1");
+    assert.equal(kept[1].monthEndReviewed, true);
+    assert.equal(getMonthEndReviewObjectives(kept, "2026-05").length, 0);
+
+    const gone = letGoCarriedMonthlyObjective(monthly, "n1");
+    assert.equal(gone.length, 1);
+    assert.equal(gone[0].id, "a");
+    assert.equal(gone[0].carryOutcome, "left");
+    assert.equal(getVisibleMonthObjectives(gone, "2026-05").length, 0);
   });
 
   it("leave and complete unmarked resolve without adding row", () => {
@@ -46,6 +82,15 @@ describe("monthlyObjectivesModel", () => {
     const done = completeMonthlyObjectiveUnmarked(monthly, "a");
     assert.equal(done[0].done, true);
     assert.equal(done[0].carryOutcome, "completed_unmarked");
+  });
+
+  it("history helpers list months and filter by month", () => {
+    const monthly = [
+      { id: "a", text: "Old", done: true, monthKey: "2026-03" },
+      { id: "b", text: "Now", done: false, monthKey: "2026-05" },
+    ];
+    assert.deepEqual(listObjectiveMonthKeys(monthly, "2026-05"), ["2026-05", "2026-03"]);
+    assert.deepEqual(getObjectivesForMonth(monthly, "2026-03").map((m) => m.id), ["a"]);
   });
 
   it("filterMonthlyForCoach uses real today month", () => {

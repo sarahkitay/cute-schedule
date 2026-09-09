@@ -113,17 +113,23 @@ import { useSubscriptionOptional } from "./subscription/SubscriptionContext.jsx"
 import { countOptionalEnabledModules } from "./subscription/features.js";
 import { FREE_OPTIONAL_MODULE_LIMIT } from "./subscription/constants.js";
 import { MonthlyCarryOverSection } from "./components/MonthlyCarryOverSection.jsx";
+import { PlanDayPreviewModal } from "./components/PlanDayPreviewModal.jsx";
+import { extractNlTimeRange, timeKeyToMinutes } from "./nlTimeRange.js";
 import { GlobalActiveTimerPill } from "./components/GlobalActiveTimerPill.jsx";
 import { TaskTimerBadge } from "./components/TaskTimerBadge.jsx";
 import {
   objectiveMonthKey,
   priorObjectiveMonthKey,
+  formatObjectiveMonthLabel,
   normalizeMonthlyList,
   getPendingCarryObjectives,
   getVisibleMonthObjectives,
-  carryMonthlyObjective,
-  leaveMonthlyObjectiveInPriorMonth,
-  completeMonthlyObjectiveUnmarked,
+  getObjectivesForMonth,
+  listObjectiveMonthKeys,
+  autoCarryPendingMonthlyObjectives,
+  getMonthEndReviewObjectives,
+  keepCarriedMonthlyObjective,
+  letGoCarriedMonthlyObjective,
 } from "./monthlyObjectivesModel.js";
 import { scheduleWidgetSync, syncWidgetFromDisk, resolveWidgetCurrentTask } from "./widgetSync";
 import { resyncAlarmNotifications } from "./nativeAlarmNotifications";
@@ -841,8 +847,8 @@ function SharedWithSubtitle({ name }) {
 }
 
 /** Time / category / energy chips and note above ⋯ and expand on task rows */
-function TaskMetaAboveActions({ hourKey, category, energyLevel, note, showTime = false, dayKey = null, realTodayKey = null }) {
-  const hasChips = showTime || category || energyLevel;
+function TaskMetaAboveActions({ hourKey, endHour = null, category, energyLevel, note, showTime = false, dayKey = null, realTodayKey = null }) {
+  const hasChips = showTime || endHour || category || energyLevel;
   const hasNote = !!trimTaskNote(note);
   if (!hasChips && !hasNote) return null;
   return (
@@ -850,10 +856,11 @@ function TaskMetaAboveActions({ hourKey, category, energyLevel, note, showTime =
       {hasChips ? (
         <TaskMetaChips
           hourKey={hourKey}
+          endHour={endHour}
           category={category}
           energyLevel={energyLevel}
           mode="details"
-          showTime={showTime}
+          showTime={showTime || !!endHour}
           showEnergy
           size="tiny"
           dayKey={dayKey}
@@ -1225,8 +1232,29 @@ function toShort12Hour(time24) {
   return `${hour12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+/** e.g. "10 am–5 pm" when endHour is set and after start */
+function formatTaskTimeLabel(hourKey, endHour) {
+  const start = hourKey ? toShort12Hour(hourKey) : "";
+  if (!endHour || !hourKey) return start;
+  const sm = timeKeyToMinutes(hourKey);
+  const em = timeKeyToMinutes(endHour);
+  if (sm == null || em == null || em <= sm) return start;
+  return `${start}–${toShort12Hour(endHour)}`;
+}
+
+function normalizeOptionalEndHour(startHour, endRaw) {
+  if (endRaw == null || String(endRaw).trim() === "") return null;
+  const start = normalizeTimeKey(startHour);
+  const end = normalizeTimeKey(endRaw);
+  const sm = timeKeyToMinutes(start);
+  const em = timeKeyToMinutes(end);
+  if (sm == null || em == null || em <= sm) return null;
+  return end;
+}
+
 function TaskMetaChips({
   hourKey,
+  endHour = null,
   category,
   energyLevel,
   mode = "type",
@@ -1250,7 +1278,9 @@ function TaskMetaChips({
     (mode === "details" || underTitle);
   if (showTime && hourKey && (mode === "details" || underTitle)) {
     chips.push(
-      <span key="time" className="task-meta-chip task-meta-chip--time">{toShort12Hour(hourKey)}</span>
+      <span key="time" className="task-meta-chip task-meta-chip--time">
+        {formatTaskTimeLabel(hourKey, endHour)}
+      </span>
     );
   }
   if (showDate) {
@@ -1597,31 +1627,39 @@ function extractNlTargetDayKey(workingStr, referenceDayKey) {
   return { targetDayKey: targetKey, working };
 }
 
-/** Simple NL parse for quick add: "Call Martin 11am", "Work 3pm email", "dentist 2pm tomorrow", "doc 3/26/26 4pm", etc. */
+/** Simple NL parse for quick add: "Call Martin 11am", "dinner 5-7pm", "numen group 10am to 5pm", etc. */
 function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES, referenceDayKey = null) {
   const s = String(str || "").trim();
   if (!s) return null;
   const { targetDayKey, working: afterDate } = extractNlTargetDayKey(s, referenceDayKey);
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   let hour = currentTimeKey();
+  let endHour = null;
   let category = cats[0] || "Work";
   let text = afterDate;
 
-  const time12In = afterDate.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
-  if (time12In) {
-    let h = parseInt(time12In[1], 10);
-    const mins = time12In[2] ? parseInt(time12In[2], 10) : 0;
-    if (time12In[3].toLowerCase() === "pm" && h < 12) h += 12;
-    if (time12In[3].toLowerCase() === "am" && h === 12) h = 0;
-    hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-    text = afterDate.replace(time12In[0], "").replace(/\s+/g, " ").trim();
+  const ranged = extractNlTimeRange(afterDate);
+  if (ranged) {
+    hour = ranged.start;
+    endHour = ranged.end;
+    text = ranged.working;
   } else {
-    const time24In = afterDate.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
-    if (time24In) {
-      const h = parseInt(time24In[1], 10);
-      const mins = parseInt(time24In[2], 10);
+    const time12In = afterDate.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i);
+    if (time12In) {
+      let h = parseInt(time12In[1], 10);
+      const mins = time12In[2] ? parseInt(time12In[2], 10) : 0;
+      if (time12In[3].toLowerCase() === "pm" && h < 12) h += 12;
+      if (time12In[3].toLowerCase() === "am" && h === 12) h = 0;
       hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-      text = afterDate.replace(time24In[0], "").replace(/\s+/g, " ").trim();
+      text = afterDate.replace(time12In[0], "").replace(/\s+/g, " ").trim();
+    } else {
+      const time24In = afterDate.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+      if (time24In) {
+        const h = parseInt(time24In[1], 10);
+        const mins = parseInt(time24In[2], 10);
+        hour = `${String(h).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+        text = afterDate.replace(time24In[0], "").replace(/\s+/g, " ").trim();
+      }
     }
   }
 
@@ -1645,6 +1683,10 @@ function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES, referenceDayKey =
 
   if (!text) text = afterDate.replace(/\s+/g, " ").trim();
   const out = { hour: normalizeTimeKey(hour), category, text: text.trim() };
+  if (endHour) {
+    const ek = normalizeTimeKey(endHour);
+    if (timeKeyToMinutes(ek) > timeKeyToMinutes(out.hour)) out.endHour = ek;
+  }
   if (targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(targetDayKey)) out.targetDayKey = targetDayKey;
   return out;
 }
@@ -2096,6 +2138,13 @@ function HourCard({
     return { total, done };
   }, [allTasks]);
 
+  const hourTimeLabel = useMemo(() => {
+    if (allTasks.length === 1 && allTasks[0].endHour) {
+      return formatTaskTimeLabel(hourKey, allTasks[0].endHour);
+    }
+    return toShort12Hour(hourKey);
+  }, [allTasks, hourKey]);
+
   // Don't show hour card if no tasks
   if (totals.total === 0) return null;
 
@@ -2109,7 +2158,7 @@ function HourCard({
         <button type="button" className="hour-title" onClick={() => setOpen((v) => !v)}>
           <div className="hour-left">
             <span className="hour-time">
-              {toShort12Hour(hourKey)}
+              {hourTimeLabel}
               {mode === "details" && realTodayKey && dayKey && !isSameDayKey(dayKey, realTodayKey) ? (
                 <span className="hour-date"> · {formatShortScheduleDate(dayKey)}</span>
               ) : null}
@@ -2228,6 +2277,7 @@ function HourCard({
                   <div className="item-actions-stack">
                     <TaskMetaAboveActions
                       hourKey={hourKey}
+                      endHour={t.endHour || null}
                       category={t.category}
                       energyLevel={t.energyLevel}
                       note={t.taskNote}
@@ -2278,10 +2328,11 @@ function HourCard({
                     <div className="item-detail-head">
                       <TaskMetaChips
                         hourKey={hourKey}
+                        endHour={t.endHour || null}
                         category={t.category}
                         energyLevel={t.energyLevel}
                         mode={mode}
-                        showTime={mode === "details"}
+                        showTime={mode === "details" || !!t.endHour}
                         inline
                         dayKey={dayKey}
                         realTodayKey={realTodayKey}
@@ -2539,18 +2590,39 @@ function MonthCalendar({ days, year, month, onSelectDay, onDoubleSelectDay, onJu
   const firstWeekday = getFirstWeekday(year, month);
   const padding = Array(firstWeekday).fill(null);
   const lastTapRef = useRef({ dayKey: null, at: 0 });
+  const singleTapTimerRef = useRef(null);
+
+  useEffect(
+    () => () => {
+      if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+    },
+    []
+  );
 
   function handleDayPress(dayKey) {
     if (suppressNextScheduleClick) return;
     const now = Date.now();
     const last = lastTapRef.current;
     if (onDoubleSelectDay && last.dayKey === dayKey && now - last.at < 450) {
+      if (singleTapTimerRef.current) {
+        clearTimeout(singleTapTimerRef.current);
+        singleTapTimerRef.current = null;
+      }
       lastTapRef.current = { dayKey: null, at: 0 };
       onDoubleSelectDay(dayKey);
       return;
     }
     lastTapRef.current = { dayKey, at: now };
-    onSelectDay(dayKey);
+    if (!onDoubleSelectDay) {
+      onSelectDay?.(dayKey);
+      return;
+    }
+    // Delay single-tap so a double-tap can cancel opening the day preview / select.
+    if (singleTapTimerRef.current) clearTimeout(singleTapTimerRef.current);
+    singleTapTimerRef.current = setTimeout(() => {
+      singleTapTimerRef.current = null;
+      onSelectDay?.(dayKey);
+    }, 280);
   }
 
   return (
@@ -2931,6 +3003,7 @@ export default function App({ onAppReady }) {
   const tKey = selectedDayKey;
   const [mode, setMode] = useState("type"); // Daily Progress timeline: "type" | "details"
   const [showMonthCalendar, setShowMonthCalendar] = useState(false);
+  const [planDayPreviewKey, setPlanDayPreviewKey] = useState(null);
   const [monthCalendarMonth, setMonthCalendarMonth] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -3649,6 +3722,7 @@ export default function App({ onAppReady }) {
   const [editTaskDraft, setEditTaskDraft] = useState({
     text: "",
     hourKey: "09:00",
+    endHour: "",
     category: "",
     energyLevel: "MEDIUM",
     taskKind: "default",
@@ -5378,6 +5452,7 @@ export default function App({ onAppReady }) {
     setEditTaskDraft({
       text: task?.text != null ? String(task.text) : "",
       hourKey,
+      endHour: task?.endHour ? String(task.endHour) : "",
       category,
       energyLevel: task?.energyLevel === "LIGHT" || task?.energyLevel === "HEAVY" ? task.energyLevel : "MEDIUM",
       taskKind:
@@ -5414,6 +5489,9 @@ export default function App({ onAppReady }) {
       if (!task) return prev;
 
       let updated = { ...task, text: clean, energyLevel };
+      const nextEnd = normalizeOptionalEndHour(hourKey, draft.endHour);
+      if (nextEnd) updated.endHour = nextEnd;
+      else delete updated.endHour;
       if (draft.hideWhenShared) updated.hideWhenShared = true;
       else delete updated.hideWhenShared;
       if (draft.taskKind === "workout") {
@@ -5566,6 +5644,10 @@ export default function App({ onAppReady }) {
             }
           : {}),
         ...(trimTaskNote(ex.taskNote) ? { taskNote: trimTaskNote(ex.taskNote) } : {}),
+        ...(() => {
+          const end = normalizeOptionalEndHour(hourKey, ex.endHour);
+          return end ? { endHour: end } : {};
+        })(),
         ...(ex.sharedTaskId ? { sharedTaskId: String(ex.sharedTaskId) } : {}),
         ...(ex.source === "shared_task" ? { source: "shared_task" } : {}),
         ...(ex.sharedWithName ? { sharedWithName: String(ex.sharedWithName).trim().slice(0, 80) } : {}),
@@ -6196,6 +6278,28 @@ export default function App({ onAppReady }) {
       return;
     }
 
+    const movedTask = { ...task };
+    const keptEnd = normalizeOptionalEndHour(destHour, task.endHour);
+    if (keptEnd) {
+      movedTask.endHour = keptEnd;
+    } else if (task.endHour) {
+      const sm = timeKeyToMinutes(hourKey);
+      const em = timeKeyToMinutes(task.endHour);
+      const dm = timeKeyToMinutes(destHour);
+      if (sm != null && em != null && dm != null && em > sm) {
+        const newEndMins = dm + (em - sm);
+        if (newEndMins > dm && newEndMins < 24 * 60) {
+          movedTask.endHour = `${String(Math.floor(newEndMins / 60)).padStart(2, "0")}:${String(newEndMins % 60).padStart(2, "0")}`;
+        } else {
+          delete movedTask.endHour;
+        }
+      } else {
+        delete movedTask.endHour;
+      }
+    } else {
+      delete movedTask.endHour;
+    }
+
     appendTaskBehaviorEvent({
       type: destKey === addDaysKey(srcKey, 1) ? "tomorrow" : "reschedule",
       dayKey: srcKey,
@@ -6234,7 +6338,7 @@ export default function App({ onAppReady }) {
       const destByCat = destHours[destHour] || {};
       destHours[destHour] = {
         ...destByCat,
-        [category]: [...(destByCat[category] || []), task],
+        [category]: [...(destByCat[category] || []), movedTask],
       };
 
       return {
@@ -6496,6 +6600,7 @@ export default function App({ onAppReady }) {
       parsed.targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(String(parsed.targetDayKey).trim())
         ? { targetDayKey: String(parsed.targetDayKey).trim() }
         : {};
+    if (parsed.endHour) nlExtras.endHour = parsed.endHour;
     const isMedApptNl = showPeriodFeatures && isMedicalAppointmentTask(taskText);
     if (isMedApptNl && periodState?.profile?.lastPeriodStart) {
       const note = appendLastPeriodToTaskNote("", periodState.profile.lastPeriodStart);
@@ -6545,19 +6650,11 @@ export default function App({ onAppReady }) {
   const [editingMonthlyId, setEditingMonthlyId] = useState(null);
   const [editingMonthlyText, setEditingMonthlyText] = useState("");
   const [monthlyMenuNoteDraft, setMonthlyMenuNoteDraft] = useState("");
+  const [viewingObjectiveMonthKey, setViewingObjectiveMonthKey] = useState(null);
   const monthlyMenuNoteDraftRef = useRef("");
   monthlyMenuNoteDraftRef.current = monthlyMenuNoteDraft;
-  function addMonthly(e) {
-    e.preventDefault();
-    const clean = normalizeText(monthlyText);
-    if (!clean) return;
-    const monthKey = objectiveMonthKey();
-    setAppState((prev) => ({
-      ...prev,
-      monthly: [...prev.monthly, { id: uid(), text: clean, done: false, monthKey }],
-    }));
-    setMonthlyText("");
-  }
+  const monthlyAutoCarryRanRef = useRef("");
+
   const currentObjectiveMonthKey = useMemo(
     () => objectiveMonthKey(new Date(`${realTodayKey}T12:00:00`)),
     [realTodayKey]
@@ -6566,31 +6663,70 @@ export default function App({ onAppReady }) {
     () => priorObjectiveMonthKey(currentObjectiveMonthKey),
     [currentObjectiveMonthKey]
   );
-  const pendingMonthlyCarry = useMemo(
-    () => getPendingCarryObjectives(appState.monthly, currentObjectiveMonthKey),
+  const effectiveViewingMonthKey = viewingObjectiveMonthKey || currentObjectiveMonthKey;
+  const isViewingCurrentObjectiveMonth = effectiveViewingMonthKey === currentObjectiveMonthKey;
+
+  useEffect(() => {
+    setViewingObjectiveMonthKey((prev) => prev || currentObjectiveMonthKey);
+  }, [currentObjectiveMonthKey]);
+
+  useEffect(() => {
+    const pending = getPendingCarryObjectives(appState.monthly, currentObjectiveMonthKey);
+    if (!pending.length) return;
+    const runKey = `${currentObjectiveMonthKey}:${pending.map((p) => p.id).sort().join(",")}`;
+    if (monthlyAutoCarryRanRef.current === runKey) return;
+    monthlyAutoCarryRanRef.current = runKey;
+    setAppState((prev) => {
+      const stillPending = getPendingCarryObjectives(prev.monthly, currentObjectiveMonthKey);
+      if (!stillPending.length) return prev;
+      const { monthly } = autoCarryPendingMonthlyObjectives(prev.monthly, currentObjectiveMonthKey, uid);
+      return { ...prev, monthly };
+    });
+  }, [appState.monthly, currentObjectiveMonthKey]);
+
+  const monthEndReviewObjectives = useMemo(
+    () => getMonthEndReviewObjectives(appState.monthly, currentObjectiveMonthKey),
+    [appState.monthly, currentObjectiveMonthKey]
+  );
+  const objectiveMonthKeys = useMemo(
+    () => listObjectiveMonthKeys(appState.monthly, currentObjectiveMonthKey),
     [appState.monthly, currentObjectiveMonthKey]
   );
   const visibleMonthlyObjectives = useMemo(
-    () => getVisibleMonthObjectives(appState.monthly, currentObjectiveMonthKey),
-    [appState.monthly, currentObjectiveMonthKey]
+    () =>
+      isViewingCurrentObjectiveMonth
+        ? getVisibleMonthObjectives(appState.monthly, currentObjectiveMonthKey)
+        : getObjectivesForMonth(appState.monthly, effectiveViewingMonthKey),
+    [
+      appState.monthly,
+      currentObjectiveMonthKey,
+      effectiveViewingMonthKey,
+      isViewingCurrentObjectiveMonth,
+    ]
   );
-  function resolveMonthlyCarry(id) {
-    const newId = uid();
+
+  function addMonthly(e) {
+    e.preventDefault();
+    const clean = normalizeText(monthlyText);
+    if (!clean) return;
+    const monthKey = currentObjectiveMonthKey || objectiveMonthKey();
     setAppState((prev) => ({
       ...prev,
-      monthly: carryMonthlyObjective(prev.monthly, id, currentObjectiveMonthKey, newId),
+      monthly: [...prev.monthly, { id: uid(), text: clean, done: false, monthKey }],
+    }));
+    setMonthlyText("");
+    setViewingObjectiveMonthKey(monthKey);
+  }
+  function resolveMonthlyKeep(id) {
+    setAppState((prev) => ({
+      ...prev,
+      monthly: keepCarriedMonthlyObjective(prev.monthly, id),
     }));
   }
-  function resolveMonthlyLeave(id) {
+  function resolveMonthlyLetGo(id) {
     setAppState((prev) => ({
       ...prev,
-      monthly: leaveMonthlyObjectiveInPriorMonth(prev.monthly, id),
-    }));
-  }
-  function resolveMonthlyCompleteUnmarked(id) {
-    setAppState((prev) => ({
-      ...prev,
-      monthly: completeMonthlyObjectiveUnmarked(prev.monthly, id),
+      monthly: letGoCarriedMonthlyObjective(prev.monthly, id),
     }));
   }
   function toggleMonthly(id) {
@@ -7743,6 +7879,18 @@ export default function App({ onAppReady }) {
           ? String(s.targetTaskId).trim()
           : undefined;
       ensureHour(hour, dayKey);
+      const coachEnd = normalizeOptionalEndHour(
+        hour,
+        ov.end || s.end || (Number(s.durationMinutes) > 0
+          ? (() => {
+              const sm = timeKeyToMinutes(hour);
+              if (sm == null) return null;
+              const em = sm + Math.round(Number(s.durationMinutes));
+              if (em <= sm || em >= 24 * 60) return null;
+              return `${String(Math.floor(em / 60)).padStart(2, "0")}:${String(em % 60).padStart(2, "0")}`;
+            })()
+          : null)
+      );
       addTask(hour, cat, label, repeat, null, {
         energyLevel: s.energyLevel || "MEDIUM",
         coachSuggestionId: s.id,
@@ -7751,6 +7899,7 @@ export default function App({ onAppReady }) {
         ...(splitParentId ? { sourceTaskId: splitParentId } : {}),
         coachSuggestionEdited: edited,
         ...(dayKey !== tKey ? { targetDayKey: dayKey } : {}),
+        ...(coachEnd ? { endHour: coachEnd } : {}),
         ...coachSuggestionGroceryExtras(s),
       });
       setCoachLearning((prev) =>
@@ -8145,6 +8294,59 @@ export default function App({ onAppReady }) {
       (nlInput || taskInput)?.focus?.();
     });
   }, []);
+
+  const planDayPreviewTasks = useMemo(() => {
+    if (!planDayPreviewKey) return [];
+    const hours = appState.days?.[planDayPreviewKey]?.hours || {};
+    return allTasksInDay(hours, customCategories);
+  }, [planDayPreviewKey, appState.days, customCategories]);
+
+  const openPlanDayPreview = useCallback((dayKey) => {
+    const key = String(dayKey || "").trim();
+    if (!key || !/^\d{4}-\d{2}-\d{2}$/.test(key)) return;
+    selectScheduleDay(key, { scrollTo: "plan" });
+    setPlanDayPreviewKey(key);
+  }, [selectScheduleDay]);
+
+  const closePlanDayPreview = useCallback(() => setPlanDayPreviewKey(null), []);
+
+  const openPlanDayOnHome = useCallback(
+    (dayKey) => {
+      const key = String(dayKey || "").trim();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return;
+      setPlanDayPreviewKey(null);
+      selectScheduleDay(key, { scrollTo: "today", switchTab: "today" });
+    },
+    [selectScheduleDay]
+  );
+
+  const quickAddToPlanDay = useCallback(
+    ({ text, hourKey, category }) => {
+      const dayKey = planDayPreviewKey;
+      if (!dayKey) return;
+      const raw = String(text || "").trim();
+      if (!raw) return;
+      const parsed = parseQuickAddNL(raw, customCategories, dayKey);
+      const clean = normalizeText(parsed?.text || raw) || raw;
+      if (!clean) return;
+      const usedNlTime =
+        !!extractNlTimeRange(raw) ||
+        /\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?|am|pm)\b/i.test(raw) ||
+        /\b([01]?\d|2[0-3]):([0-5]\d)\b/.test(raw);
+      const hk = normalizeTimeKey(usedNlTime && parsed?.hour ? parsed.hour : hourKey || currentTimeKey());
+      const cats = customCategories.length ? customCategories : DEFAULT_CATEGORIES;
+      const cat =
+        usedNlTime && parsed?.category && cats.includes(parsed.category)
+          ? parsed.category
+          : cats.includes(category)
+            ? category
+            : cats[0] || "Work";
+      const extras = { targetDayKey: dayKey };
+      if (usedNlTime && parsed?.endHour) extras.endHour = parsed.endHour;
+      addTask(hk, cat, clean, REPEAT_OPTIONS.NONE, null, extras);
+    },
+    [planDayPreviewKey, customCategories]
+  );
 
   const openScheduleDayWithAddTask = useCallback(
     (dayKey, { scrollTo = "today", switchTab = "today", closeCalendar = false } = {}) => {
@@ -8680,6 +8882,19 @@ export default function App({ onAppReady }) {
           );
         }}
       />
+      {planDayPreviewKey ? (
+        <PlanDayPreviewModal
+          dayKey={planDayPreviewKey}
+          realTodayKey={realTodayKey}
+          tasks={planDayPreviewTasks}
+          categories={customCategories}
+          defaultHour={currentTimeKey()}
+          defaultCategory={quickCat || customCategories[0] || "Work"}
+          onClose={closePlanDayPreview}
+          onOpenDay={openPlanDayOnHome}
+          onQuickAdd={quickAddToPlanDay}
+        />
+      ) : null}
       <div className="app">
       {authWaiting && (
         <div className="app-boot-splash" aria-busy="true" aria-live="polite">
@@ -8811,6 +9026,27 @@ export default function App({ onAppReady }) {
               ) : null}
               {tab === "today" ? (
           <>
+            {!isSameDayKey(tKey, realTodayKey) ? (
+              <div className="home-other-day-banner scroll-reveal" role="status">
+                <div className="home-other-day-banner-copy">
+                  <span className="home-other-day-banner-label">Viewing</span>
+                  <strong className="home-other-day-banner-date">
+                    {new Date(`${tKey}T12:00:00`).toLocaleDateString(undefined, {
+                      weekday: "short",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </strong>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-primary home-other-day-back"
+                  onClick={() => selectScheduleDay(realTodayKey, { scrollTo: "today", switchTab: "today" })}
+                >
+                  Back to today
+                </button>
+              </div>
+            ) : null}
             {/* Add bar: Type (natural language) vs Details (time, category, repeat, energy); above the add field */}
             <div className="quick-add-stack scroll-reveal">
               <div className="quick-add-top-bar">
@@ -9717,7 +9953,9 @@ export default function App({ onAppReady }) {
                 onSelectDay={(dayKey) => selectScheduleDay(dayKey, { scrollTo: "plan" })}
               />
               <div className="panel month-calendar-wrap plan-month-calendar-wrap">
-                <p className="settings-hint plan-calendar-hint">Tap a day to open its task list below. Double-tap to add a task on Today.</p>
+                <p className="settings-hint plan-calendar-hint">
+                  Tap a day to preview what&apos;s planned, quick-add a task, or open that day on Home.
+                </p>
                 <MonthCalendar
                   days={appState.days || {}}
                   year={homeCalendarMonth.year}
@@ -9725,8 +9963,8 @@ export default function App({ onAppReady }) {
                   categories={customCategories}
                   selectedDayKey={tKey}
                   dropTargetDay={taskDrag?.dropDay || null}
-                  onSelectDay={(dayKey) => selectScheduleDay(dayKey, { scrollTo: "plan" })}
-                  onDoubleSelectDay={(dayKey) => openScheduleDayWithAddTask(dayKey, { scrollTo: "today", switchTab: "today" })}
+                  onSelectDay={(dayKey) => openPlanDayPreview(dayKey)}
+                  onDoubleSelectDay={(dayKey) => openPlanDayOnHome(dayKey)}
                   showJumpToday
                   onJumpToday={() => selectScheduleDay(realTodayKey, { scrollTo: "plan" })}
                   onPrevMonth={() =>
@@ -9880,6 +10118,7 @@ export default function App({ onAppReady }) {
                         <div className="list-row-actions-stack">
                           <TaskMetaAboveActions
                             hourKey={t.hour}
+                            endHour={t.endHour || null}
                             category={t.category}
                             energyLevel={t.energyLevel}
                             note={t.taskNote}
@@ -9925,22 +10164,64 @@ export default function App({ onAppReady }) {
                   <div className="title">Monthly objectives</div>
                 </div>
               </div>
-              <MonthlyCarryOverSection
-                pending={pendingMonthlyCarry}
-                priorMonthKey={priorObjectiveMonth}
-                currentMonthKey={currentObjectiveMonthKey}
-                onCarry={resolveMonthlyCarry}
-                onLeave={resolveMonthlyLeave}
-                onCompleteUnmarked={resolveMonthlyCompleteUnmarked}
-              />
 
-              <form className="monthly-add monthly-add-bar" onSubmit={addMonthly}>
-                <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" aria-label="New objective" />
-                <button className="btn btn-primary monthly-add-submit" type="submit">Add</button>
-              </form>
+              <div className="monthly-month-toolbar">
+                <label className="monthly-month-picker-label" htmlFor="monthly-month-picker">
+                  Review month
+                </label>
+                <select
+                  id="monthly-month-picker"
+                  className="input monthly-month-picker"
+                  value={effectiveViewingMonthKey}
+                  onChange={(e) => setViewingObjectiveMonthKey(e.target.value)}
+                  aria-label="Review monthly objectives by month"
+                >
+                  {objectiveMonthKeys.map((mk) => (
+                    <option key={mk} value={mk}>
+                      {formatObjectiveMonthLabel(mk)}
+                      {mk === currentObjectiveMonthKey ? " (this month)" : ""}
+                    </option>
+                  ))}
+                </select>
+                {!isViewingCurrentObjectiveMonth ? (
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost monthly-month-back"
+                    onClick={() => setViewingObjectiveMonthKey(currentObjectiveMonthKey)}
+                  >
+                    Back to this month
+                  </button>
+                ) : null}
+              </div>
 
-              {visibleMonthlyObjectives.length === 0 && pendingMonthlyCarry.length === 0 ? (
-                <div className="empty">Add your first monthly objective.</div>
+              {isViewingCurrentObjectiveMonth ? (
+                <MonthlyCarryOverSection
+                  reviewItems={monthEndReviewObjectives}
+                  priorMonthKey={priorObjectiveMonth}
+                  currentMonthKey={currentObjectiveMonthKey}
+                  onKeep={resolveMonthlyKeep}
+                  onLetGo={resolveMonthlyLetGo}
+                />
+              ) : null}
+
+              {isViewingCurrentObjectiveMonth ? (
+                <form className="monthly-add monthly-add-bar" onSubmit={addMonthly}>
+                  <input className="input" value={monthlyText} onChange={(e) => setMonthlyText(e.target.value)} placeholder="Add a monthly objective…" aria-label="New objective" />
+                  <button className="btn btn-primary monthly-add-submit" type="submit">Add</button>
+                </form>
+              ) : (
+                <p className="monthly-history-hint">
+                  Viewing {formatObjectiveMonthLabel(effectiveViewingMonthKey)}. Switch back to this month to add or edit active objectives.
+                </p>
+              )}
+
+              {visibleMonthlyObjectives.length === 0 &&
+              !(isViewingCurrentObjectiveMonth && monthEndReviewObjectives.length) ? (
+                <div className="empty">
+                  {isViewingCurrentObjectiveMonth
+                    ? "Add your first monthly objective."
+                    : "No objectives saved for this month."}
+                </div>
               ) : visibleMonthlyObjectives.length === 0 ? null : (
                 <ul className="list list-page-list monthly-objectives-list">
                   {visibleMonthlyObjectives.map((m) => (
@@ -9948,7 +10229,7 @@ export default function App({ onAppReady }) {
                       key={m.id}
                       className={["list-row", "monthly-list-row", m.done ? "monthly-list-row-done" : ""].filter(Boolean).join(" ")}
                     >
-                      {editingMonthlyId === m.id ? (
+                      {editingMonthlyId === m.id && isViewingCurrentObjectiveMonth ? (
                         <div className="monthly-edit-row list-row-edit-row">
                           <input
                             className="input"
@@ -9965,30 +10246,37 @@ export default function App({ onAppReady }) {
                       ) : (
                         <div className="list-row-body monthly-list-row-body">
                           <label className="list-row-main check monthly-list-check" onClick={(e) => e.stopPropagation()}>
-                            <input type="checkbox" checked={m.done} onChange={() => toggleMonthly(m.id)} />
+                            <input
+                              type="checkbox"
+                              checked={m.done}
+                              disabled={!isViewingCurrentObjectiveMonth}
+                              onChange={() => toggleMonthly(m.id)}
+                            />
                             <span className="checkmark" />
                             <span className="list-row-content">
                               <span className={`list-row-title ${m.done ? "item-text-done" : ""}`}>{m.text}</span>
                               <TaskNoteSubtitle note={m.note} />
                             </span>
                           </label>
-                          <div className="list-row-actions">
-                            <button
-                              type="button"
-                              className="icon-btn list-row-action list-row-more"
-                              title="Objective options"
-                              aria-label="Objective options"
-                              data-list-menu-trigger
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const anchorEl = e.currentTarget;
-                                if (!anchorEl) return;
-                                openMonthlyListMenu(m.id, anchorEl.getBoundingClientRect());
-                              }}
-                            >
-                              <MenuIcon style={{ width: 18, height: 18 }} />
-                            </button>
-                          </div>
+                          {isViewingCurrentObjectiveMonth ? (
+                            <div className="list-row-actions">
+                              <button
+                                type="button"
+                                className="icon-btn list-row-action list-row-more"
+                                title="Objective options"
+                                aria-label="Objective options"
+                                data-list-menu-trigger
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const anchorEl = e.currentTarget;
+                                  if (!anchorEl) return;
+                                  openMonthlyListMenu(m.id, anchorEl.getBoundingClientRect());
+                                }}
+                              >
+                                <MenuIcon style={{ width: 18, height: 18 }} />
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       )}
                     </li>
@@ -11808,10 +12096,11 @@ export default function App({ onAppReady }) {
                     <div className="task-dropdown-preview">
                       <TaskMetaChips
                         hourKey={hourKey}
+                        endHour={taskNodeForMenu?.endHour || null}
                         category={category}
                         energyLevel={taskNodeForMenu?.energyLevel}
                         mode="details"
-                        showTime={tab === "plan"}
+                        showTime={tab === "plan" || !!taskNodeForMenu?.endHour}
                         inline
                         dayKey={tKey}
                         realTodayKey={realTodayKey}
@@ -11834,7 +12123,17 @@ export default function App({ onAppReady }) {
                           className="input task-edit-input task-edit-input--time"
                           value={editTaskDraft.hourKey}
                           onChange={(e) => setEditTaskDraft((d) => ({ ...d, hourKey: e.target.value }))}
-                          aria-label="Task time"
+                          aria-label="Task start time"
+                        />
+                      </label>
+                      <label className="task-edit-row">
+                        <span className="task-edit-label">Ends</span>
+                        <input
+                          type="time"
+                          className="input task-edit-input task-edit-input--time"
+                          value={editTaskDraft.endHour || ""}
+                          onChange={(e) => setEditTaskDraft((d) => ({ ...d, endHour: e.target.value }))}
+                          aria-label="Task end time (optional)"
                         />
                       </label>
                       <label className="task-edit-row">

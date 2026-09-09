@@ -4,7 +4,7 @@ const INSTRUCTIONS = {
   today: (
     <>
       <p>
-        <strong>Add tasks:</strong> Use <em>Type</em> with a time (e.g. 4pm) and optional day (tomorrow, Friday, 3/26/26). <em>Details</em> uses the time picker, category, repeat, energy, and optional workout type.
+        <strong>Add tasks:</strong> Use <em>Type</em> with a time (e.g. 4pm), a range (e.g. <em>numen group 10am to 5pm</em>, <em>dinner 5-7pm</em>), and optional day (tomorrow, Friday, 3/26/26). <em>Details</em> uses the time picker, category, repeat, energy, and optional workout type.
       </p>
       <p>
         <strong>Task notes:</strong> On Today, tap the small <strong>▸ / ▾</strong> arrow on a task row to open details; notes live there only. The <strong>⋯</strong> menu is for move, delete, time, lists, etc.
@@ -32,10 +32,10 @@ const INSTRUCTIONS = {
   plan: (
     <>
       <p>
-        <strong>Monthly objectives</strong> also live on the Goals tab; here on Plan they stay separate from your hourly timeline until you turn them into tasks.
+        Tap a day on the <strong>month calendar</strong> to open a preview of what&apos;s planned, quick-add a task to that day, or <strong>Go to this day</strong> on Home.
       </p>
       <p>
-        <strong>Today&apos;s list</strong> (or the day you pick in the <strong>month calendar</strong> at the bottom) is a flat checklist of incomplete tasks, sorted with heavier energy first. No timeline or quick-add here; that lives on Today. Use <strong>⋯</strong> for options; tap a date on the calendar to change days, or <strong>double-tap</strong> a day to jump to Today and add a task on that date. Expand <strong>Search past tasks</strong> to see how often you&apos;ve scheduled something and when you last did it.
+        Double-tap a day to jump straight to Home for that date. While you&apos;re viewing another day on Home, use <strong>Back to today</strong> at the top.
       </p>
     </>
   ),
@@ -169,7 +169,7 @@ const INSTRUCTIONS = {
         <strong>Monthly objectives</strong> are a few big outcomes for the calendar month. They do not appear on your hourly Today timeline until you break them into tasks.
       </p>
       <p>
-        The same objectives also appear at the top of <strong>Plan</strong>. Coach can reference neglected goals when suggesting next steps.
+        Unfinished objectives <strong>auto-carry</strong> into the new month. You&apos;ll get a notice that last month is over so you can <strong>Keep</strong> or <strong>Let go</strong> each one. Use <strong>Review month</strong> to browse older months.
       </p>
     </>
   ),
