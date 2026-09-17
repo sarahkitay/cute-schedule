@@ -61,3 +61,28 @@ export async function verifyFirebaseIdTokenDetails(idToken) {
     return null;
   }
 }
+
+/**
+ * Server-trusted account metadata used for trial calculations.
+ * Firebase Auth account creation is the authoritative start for the 30-day app trial.
+ * @param {string | null | undefined} uid
+ * @returns {Promise<{ uid: string, email: string | null, creationTime: string | null } | null>}
+ */
+export async function getFirebaseUserAccountDetails(uid) {
+  if (!uid || typeof uid !== "string") return null;
+  const adm = getFirebaseAdmin();
+  if (!adm) return null;
+  try {
+    const user = await adm.auth().getUser(uid);
+    return {
+      uid: user.uid,
+      email: typeof user.email === "string" ? user.email : null,
+      creationTime: typeof user.metadata?.creationTime === "string" ? user.metadata.creationTime : null,
+    };
+  } catch (e) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("Firebase Admin getUser failed:", e?.message || e);
+    }
+    return null;
+  }
+}
