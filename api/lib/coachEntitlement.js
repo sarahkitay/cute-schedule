@@ -1,8 +1,10 @@
-import { verifyFirebaseIdTokenDetails } from "./firebaseAdminApp.js";
+import { getFirebaseUserAccountDetails, verifyFirebaseIdTokenDetails } from "./firebaseAdminApp.js";
 import { verifyRevenueCatPro } from "./revenueCatVerify.js";
 import { kv } from "./redisClient.js";
 
-const FREE_COACH_PROMPTS_PER_DAY = 2;
+const FREE_COACH_PROMPTS_PER_DAY = 2; // Legacy helper compatibility; no longer grants post-trial access.
+export const COACH_TRIAL_DAYS = 30;
+const TRIAL_MS = COACH_TRIAL_DAYS * 24 * 60 * 60 * 1000;
 
 const BUILTIN_ADMIN_EMAILS = new Set(["sdkitay605@gmail.com"]);
 
@@ -47,7 +49,21 @@ export function subjectKey(req, body, uid) {
   return `ip:${ip || "unknown"}`;
 }
 
-/** True when this request must not consume the free daily coach quota. */
+export function trialStatusFromCreationTime(creationTime, nowMs = Date.now()) {
+  const createdMs = typeof creationTime === "string" ? Date.parse(creationTime) : Number(creationTime);
+  if (!Number.isFinite(createdMs)) {
+    return { active: false, daysLeft: 0, startedAt: null, endsAt: null };
+  }
+  const endsMs = createdMs + TRIAL_MS;
+  const active = nowMs < endsMs;
+  return {
+    active,
+    daysLeft: active ? Math.max(1, Math.ceil((endsMs - nowMs) / 86400000)) : 0,
+    startedAt: new Date(createdMs).toISOString(),
+    endsAt: new Date(endsMs).toISOString(),
+  };
+}
+
 export function isUnlimitedCoachEntitlement({
   isPro = false,
   appTrialActive = false,
@@ -57,10 +73,111 @@ export function isUnlimitedCoachEntitlement({
   return Boolean(isPro || appTrialActive || testPilotActive || adminActive);
 }
 
+function isServerPilot(uid) {
+  if (!uid) return false;
+  const pilots = String(process.env.PROYOU_TEST_PILOT_UIDS || "")
+    .split(/[,;\s]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return pilots.includes(uid);
+}
+
 /**
- * Pure quota decision against a stored count (Redis or local).
- * @param {number} used
+ * Authoritative Coach access rules:
+ * - authenticated Firebase account required
+ * - first 30 days from Firebase account creation are unlimited
+ * - active RevenueCat Pro is unlimited after trial
+ * - server-configured pilot UIDs are unlimited
+ * - admin email is permanently unlimited
+ *
+ * Client-sent `isPro`, `appTrialActive`, and `testPilotActive` are deliberately ignored.
  */
+export async function assertCoachEntitlement(req, body) {
+  const idToken = extractIdToken(req, body);
+  const auth = idToken ? await verifyFirebaseIdTokenDetails(idToken) : null;
+  if (!auth?.uid) {
+    return { ok: false, code: "AUTH_REQUIRED", status: 401 };
+  }
+
+  const uid = auth.uid;
+  const subject = subjectKey(req, body, uid);
+  const account = await getFirebaseUserAccountDetails(uid);
+  const email = account?.email || auth.email || null;
+  const adminActive = isAdminEmailServer(email);
+  const testPilotActive = isServerPilot(uid);
+
+  if (adminActive || testPilotActive) {
+    return {
+      ok: true,
+      uid,
+      subject,
+      isPro: adminActive || testPilotActive,
+      appTrialActive: false,
+      testPilotActive,
+      adminActive,
+      accessSource: adminActive ? "admin" : "pilot",
+      coachQuota: null,
+    };
+  }
+
+  if (!account?.creationTime) {
+    return { ok: false, code: "ACCOUNT_LOOKUP_UNAVAILABLE", status: 503, uid, subject };
+  }
+
+  const trial = trialStatusFromCreationTime(account.creationTime);
+  if (trial.active) {
+    return {
+      ok: true,
+      uid,
+      subject,
+      isPro: false,
+      appTrialActive: true,
+      testPilotActive: false,
+      adminActive: false,
+      accessSource: "trial",
+      trial,
+      coachQuota: null,
+    };
+  }
+
+  const revenueCat = await verifyRevenueCatPro(uid);
+  if (!revenueCat.verified) {
+    return {
+      ok: false,
+      code: "SUBSCRIPTION_CHECK_UNAVAILABLE",
+      status: 503,
+      uid,
+      subject,
+      trial,
+    };
+  }
+
+  if (revenueCat.isPro) {
+    return {
+      ok: true,
+      uid,
+      subject,
+      isPro: true,
+      appTrialActive: false,
+      testPilotActive: false,
+      adminActive: false,
+      accessSource: "subscription",
+      trial,
+      coachQuota: null,
+    };
+  }
+
+  return {
+    ok: false,
+    code: "SUBSCRIPTION_REQUIRED",
+    status: 402,
+    uid,
+    subject,
+    trial,
+  };
+}
+
+// Legacy quota helpers remain exported while client quota-display code is retired.
 export function evaluateStoredCoachPromptCount(used) {
   const n = Math.max(0, Math.round(Number(used) || 0));
   if (n >= FREE_COACH_PROMPTS_PER_DAY) {
@@ -75,78 +192,7 @@ export function evaluateStoredCoachPromptCount(used) {
   return { ok: true, used: n, limit: FREE_COACH_PROMPTS_PER_DAY };
 }
 
-/**
- * Resolve Pro status, preferring server-side RevenueCat verification over the
- * client-sent flag. Falls back to the client flag only when RevenueCat cannot be
- * checked (no secret key, anonymous user, or API/network error).
- * @param {string | null} uid
- * @param {object} body
- */
-async function resolveIsPro(uid, body) {
-  const clientIsPro = Boolean(body?.subscription?.isPro);
-  if (!uid) return clientIsPro; // anonymous: cannot verify, trust client (still rate-limited)
-  const rc = await verifyRevenueCatPro(uid);
-  return rc.verified ? rc.isPro : clientIsPro;
-}
-
-/**
- * Enforce free-tier coach prompt limits (2/day). The quota is only *checked* here;
- * it is consumed via `consumeCoachPrompt` after a successful response so that failed
- * requests do not burn a prompt. Pro is verified server-side via RevenueCat when possible.
- * @param {import('http').IncomingMessage} req
- * @param {object} body
- */
-export async function assertCoachEntitlement(req, body) {
-  const idToken = extractIdToken(req, body);
-  const auth = idToken ? await verifyFirebaseIdTokenDetails(idToken) : null;
-  const uid = auth?.uid ?? null;
-  const subject = subjectKey(req, body, uid);
-  const isPro = await resolveIsPro(uid, body);
-  const appTrialActive = Boolean(body?.subscription?.appTrialActive);
-  const clientTestPilot = Boolean(body?.subscription?.testPilotActive);
-  const adminActive = isAdminEmailServer(auth?.email);
-  const envPilots = String(process.env.PROYOU_TEST_PILOT_UIDS || "")
-    .split(/[,;\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const serverTestPilot = Boolean(uid && envPilots.includes(uid));
-  const testPilotActive = clientTestPilot || serverTestPilot;
-
-  if (isUnlimitedCoachEntitlement({ isPro, appTrialActive, testPilotActive, adminActive })) {
-    return {
-      ok: true,
-      uid,
-      isPro: isPro || testPilotActive || adminActive || false,
-      appTrialActive,
-      testPilotActive,
-      adminActive,
-      subject,
-      quotaDay: resolveQuotaDayKey(body),
-    };
-  }
-
-  if (!kv) {
-    return { ok: true, uid, isPro: false, subject, quotaDay: resolveQuotaDayKey(body) };
-  }
-
-  const day = resolveQuotaDayKey(body);
-  const key = `coach:prompts:${subject}:${day}`;
-
-  try {
-    const used = Number(await kv.get(key)) || 0;
-    const decision = evaluateStoredCoachPromptCount(used);
-    if (!decision.ok) {
-      return { ...decision, quotaDay: day };
-    }
-    return { ok: true, uid, isPro: false, subject, key, used: decision.used, limit: decision.limit, quotaDay: day };
-  } catch (e) {
-    console.warn("coach entitlement redis error", e?.message || e);
-    return { ok: true, uid, isPro: false, subject, redisError: true };
-  }
-}
-
 export function buildCoachQuotaPayload(entitlement, usedOverride = null) {
-  const limit = FREE_COACH_PROMPTS_PER_DAY;
   if (
     !entitlement ||
     entitlement.isPro ||
@@ -162,17 +208,12 @@ export function buildCoachQuotaPayload(entitlement, usedOverride = null) {
       : Math.max(0, Math.round(Number(entitlement.used) || 0));
   return {
     used,
-    limit,
-    remaining: Math.max(0, limit - used),
+    limit: FREE_COACH_PROMPTS_PER_DAY,
+    remaining: Math.max(0, FREE_COACH_PROMPTS_PER_DAY - used),
     dayKey: entitlement.quotaDay || undefined,
   };
 }
 
-/**
- * Consume one free coach prompt. Call this only after a successful coach response.
- * No-op for Pro users, when Redis is unavailable, or when no key was reserved.
- * @param {{ isPro?: boolean, key?: string } | null | undefined} entitlement
- */
 export async function consumeCoachPrompt(entitlement) {
   if (
     !entitlement ||
