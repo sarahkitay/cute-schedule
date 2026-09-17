@@ -2,11 +2,12 @@
  * Server-side RevenueCat entitlement verification.
  *
  * The client configures RevenueCat with the Firebase uid as the app user id, so we
- * can confirm Pro status against RevenueCat's REST API instead of trusting the
- * client-sent `subscription.isPro` flag.
+ * can confirm Pro status against RevenueCat's REST API instead of trusting any
+ * client-sent subscription flag.
  *
- * Requires REVENUECAT_SECRET_KEY (a RevenueCat *secret* API key) in env. When it is
- * not configured, callers fall back to the client flag (documented, pre-existing behavior).
+ * Requires REVENUECAT_SECRET_KEY (a RevenueCat secret API key) in env. Callers must
+ * treat `verified=false` as an unavailable entitlement check, not as permission to
+ * trust the client.
  */
 
 const PRO_ENTITLEMENT_ID = process.env.REVENUECAT_PRO_ENTITLEMENT_ID || "pro";
@@ -14,8 +15,8 @@ const PRO_ENTITLEMENT_ID = process.env.REVENUECAT_PRO_ENTITLEMENT_ID || "pro";
 /**
  * @param {string | null | undefined} appUserId Firebase uid used as the RevenueCat app user id.
  * @returns {Promise<{ verified: boolean, isPro: boolean }>}
- *   `verified=false` means we could not check (no key / no id / network/API error) and the
- *   caller should fall back. `verified=true` means `isPro` is authoritative.
+ *   `verified=false` means the server could not check RevenueCat (missing key,
+ *   missing id, network error, or API error). `verified=true` is authoritative.
  */
 export async function verifyRevenueCatPro(appUserId) {
   const secret = process.env.REVENUECAT_SECRET_KEY;
