@@ -6,6 +6,41 @@ import { clientSafeDetail, logServerError } from "./lib/safeJsonError.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
+const QUOTA_DENIAL_BODY_ERROR = "Daily coach prompt limit reached";
+
+/**
+ * Map an entitlement denial onto an HTTP response.
+ * AUTH_REQUIRED (missing or invalid Firebase ID token) is 401.
+ * Quota, subscription, and prompt-limit denials keep their entitlement status, or 402 when unset.
+ * @param {{ ok?: boolean, code?: string, status?: number, limit?: number, used?: number }} entitlement
+ */
+export function mapCoachEntitlementFailure(entitlement) {
+  const code = entitlement?.code;
+  const status = Number(entitlement?.status);
+  if (code === "AUTH_REQUIRED" || status === 401) {
+    return {
+      status: 401,
+      body: {
+        error: "Authentication required",
+        code: "AUTH_REQUIRED",
+      },
+    };
+  }
+
+  const httpStatus = Number.isInteger(status) && status >= 400 && status <= 599 ? status : 402;
+  return {
+    status: httpStatus,
+    body: {
+      error: QUOTA_DENIAL_BODY_ERROR,
+      code,
+      limit: entitlement?.limit,
+      used: entitlement?.used,
+      coachQuota: buildCoachQuotaPayload(entitlement),
+      upgrade: true,
+    },
+  };
+}
+
 export default async function handler(req, res) {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -35,14 +70,8 @@ export default async function handler(req, res) {
   const bodyPreview = typeof req.body === "object" && req.body != null ? req.body : {};
   const entitlement = await assertCoachEntitlement(req, bodyPreview);
   if (!entitlement.ok) {
-    return res.status(402).json({
-      error: "Daily coach prompt limit reached",
-      code: entitlement.code,
-      limit: entitlement.limit,
-      used: entitlement.used,
-      coachQuota: buildCoachQuotaPayload(entitlement),
-      upgrade: true,
-    });
+    const denied = mapCoachEntitlementFailure(entitlement);
+    return res.status(denied.status).json(denied.body);
   }
 
   // Pro is verified server-side (Firebase ID token + RevenueCat) in assertCoachEntitlement.
