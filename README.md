@@ -2,7 +2,7 @@
 
 GitHub slug is `cute-schedule` (legacy); npm/iOS brand is Pro You.
 
-A planning and accountability app for schedule, habits, health, finance, and an AI coach — on the web and on iOS.
+A planning and accountability app for schedule, habits, health, finance, and an AI coach, on the web and on iOS.
 
 Pro You is a full product (web + Capacitor iOS), not a toy schedule demo. The web client is Vite and React. The iOS client is Capacitor (`app.proyou.proyou`). The same product includes Vercel serverless APIs, Firebase Auth/Firestore, RevenueCat subscriptions, and Upstash Redis rate limits.
 
