@@ -1,8 +1,29 @@
 # Pro You
 
-Pro You is a planning and accountability application: daily schedule, habits, health, finance, social accountability, and an AI coach. It ships as a Vite/React web app and a Capacitor iOS client (`app.proyou.proyou`), with Vercel serverless APIs, Firebase Auth/Firestore, RevenueCat subscriptions, and Upstash Redis rate limits.
+GitHub slug is `cute-schedule` (legacy); npm/iOS brand is Pro You.
 
-The GitHub repository is still named `cute-schedule` (legacy). The npm package is **proyou**; iOS display name and product copy are **Pro You** / **PROYOU**. Local storage keys such as `cute-schedule-data` must not be renamed.
+A planning and accountability app for schedule, habits, health, finance, and an AI coach — on the web and on iOS.
+
+Pro You is a full product (web + Capacitor iOS), not a toy schedule demo. The web client is Vite and React. The iOS client is Capacitor (`app.proyou.proyou`). The same product includes Vercel serverless APIs, Firebase Auth/Firestore, RevenueCat subscriptions, and Upstash Redis rate limits.
+
+**Live app:** [https://cute-schedule.vercel.app](https://cute-schedule.vercel.app)
+
+<table>
+  <tr>
+    <td width="25%"><img src="docs/screenshots/home.png" alt="Pro You home on the live web app: time-blocked tasks, daily progress, and focus" width="200"></td>
+    <td width="25%"><img src="docs/screenshots/plan.png" alt="Pro You plan on the live web app: September calendar and today's task list" width="200"></td>
+    <td width="25%"><img src="docs/screenshots/health.png" alt="Pro You health on the live web app: a workout program with moves and sets" width="200"></td>
+    <td width="25%"><img src="docs/screenshots/you.png" alt="Pro You profile on the live web app: habits, routines, and the module list" width="200"></td>
+  </tr>
+  <tr>
+    <td align="center">Home</td>
+    <td align="center">Plan</td>
+    <td align="center">Health</td>
+    <td align="center">You</td>
+  </tr>
+</table>
+
+Screenshots are the live web app in a guest session (September 2026). The three Home tasks were typed in that session so the schedule UI is visible. Storage keys such as `cute-schedule-data` are unchanged and must not be renamed.
 
 ## Product capabilities
 
