@@ -1627,11 +1627,71 @@ function extractNlTargetDayKey(workingStr, referenceDayKey) {
   return { targetDayKey: targetKey, working };
 }
 
-/** Simple NL parse for quick add: "Call Martin 11am", "dinner 5-7pm", "numen group 10am to 5pm", etc. */
+/**
+ * Extract multi-day / repeat phrases before single-day targeting.
+ * e.g. "every day this week", "weekdays", "mon wed fri", "daily"
+ * @returns {{ weekdays: number[] | null, working: string }}
+ */
+function extractNlRepeatWeekdays(workingStr) {
+  let working = String(workingStr || "").trim();
+  let weekdays = null;
+
+  const strip = (re) => {
+    working = working.replace(re, " ").replace(/\s+/g, " ").trim();
+  };
+
+  if (
+    /\b(every\s*day|everyday|daily|all\s+week)\s+this\s+week\b/i.test(working) ||
+    (/\bthis\s+week\b/i.test(working) && /\b(every\s*day|everyday|daily|all\s+week)\b/i.test(working))
+  ) {
+    strip(/\b(every\s*day|everyday|daily|all\s+week)\s+this\s+week\b/gi);
+    strip(/\b(every\s*day|everyday|daily|all\s+week|this\s+week)\b/gi);
+    weekdays = [0, 1, 2, 3, 4, 5, 6];
+  } else if (/\bweekdays?\b/i.test(working)) {
+    strip(/\bweekdays?\b/gi);
+    weekdays = [1, 2, 3, 4, 5];
+  } else if (/\bweekends?\b/i.test(working)) {
+    strip(/\bweekends?\b/gi);
+    weekdays = [0, 6];
+  } else if (/\b(every\s*day|everyday|daily)\b/i.test(working)) {
+    strip(/\b(every\s*day|everyday|daily)\b/gi);
+    strip(/\bfor\s+\d+\s+(weeks?|days?)\b/gi);
+    weekdays = [0, 1, 2, 3, 4, 5, 6];
+  } else {
+    const dayWord =
+      "sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat";
+    const everyOne = working.match(new RegExp(`\\bevery\\s+(${dayWord})\\b`, "i"));
+    if (everyOne) {
+      const dow = dowFromDayWord(everyOne[1]);
+      if (dow != null) {
+        weekdays = [dow];
+        strip(new RegExp(`\\bevery\\s+(${dayWord})\\b`, "gi"));
+      }
+    } else {
+      const found = [];
+      const re = new RegExp(`\\b(${dayWord})\\b`, "gi");
+      let m;
+      while ((m = re.exec(working))) {
+        const dow = dowFromDayWord(m[1]);
+        if (dow != null && !found.includes(dow)) found.push(dow);
+      }
+      if (found.length >= 2) {
+        weekdays = found.sort((a, b) => a - b);
+        strip(new RegExp(`\\b(${dayWord})\\b`, "gi"));
+        strip(/\b(and|,)\b/gi);
+      }
+    }
+  }
+
+  return { weekdays, working };
+}
+
+/** Simple NL parse for quick add: "Call Martin 11am", "wake up 8am every day this week", etc. */
 function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES, referenceDayKey = null) {
   const s = String(str || "").trim();
   if (!s) return null;
-  const { targetDayKey, working: afterDate } = extractNlTargetDayKey(s, referenceDayKey);
+  const repeatExtract = extractNlRepeatWeekdays(s);
+  const { targetDayKey, working: afterDate } = extractNlTargetDayKey(repeatExtract.working, referenceDayKey);
   const cats = Array.isArray(categories) && categories.length ? categories : DEFAULT_CATEGORIES;
   let hour = currentTimeKey();
   let endHour = null;
@@ -1688,6 +1748,9 @@ function parseQuickAddNL(str, categories = DEFAULT_CATEGORIES, referenceDayKey =
     if (timeKeyToMinutes(ek) > timeKeyToMinutes(out.hour)) out.endHour = ek;
   }
   if (targetDayKey && /^\d{4}-\d{2}-\d{2}$/.test(targetDayKey)) out.targetDayKey = targetDayKey;
+  if (Array.isArray(repeatExtract.weekdays) && repeatExtract.weekdays.length) {
+    out.repeatWeekdays = [...repeatExtract.weekdays];
+  }
   return out;
 }
 
@@ -3596,6 +3659,13 @@ export default function App({ onAppReady }) {
   const [dockNavDragOverId, setDockNavDragOverId] = useState(null);
   const dockNavDragSourceRef = useRef(null);
   const [repeatWeekdayModal, setRepeatWeekdayModal] = useState(null);
+  const [chatInboxSyncEnabled, setChatInboxSyncEnabled] = useState(() => {
+    try {
+      return localStorage.getItem("proyou_sync_enabled") === "1";
+    } catch {
+      return false;
+    }
+  });
   const [moveTaskDayModal, setMoveTaskDayModal] = useState(null);
   /** Module id opened from You → show “add to nav bar” prompt on that tab. */
   const [youOpenedModuleId, setYouOpenedModuleId] = useState(null);
@@ -3641,6 +3711,76 @@ export default function App({ onAppReady }) {
   useEffect(() => {
     setAppState((prev) => syncRepeatSeriesWindow(prev));
   }, [syncRepeatSeriesWindow]);
+
+  // Pull tasks queued by ChatGPT / Claude Actions into local calendar
+  useEffect(() => {
+    if (!chatInboxSyncEnabled) return undefined;
+    let cancelled = false;
+
+    async function pullInbox() {
+      try {
+        const token = localStorage.getItem("proyou_api_key") || "";
+        if (!token) return;
+        const r = await fetch("/api/schedule/inbox", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: "claim" }),
+        });
+        if (!r.ok || cancelled) return;
+        const data = await r.json();
+        const claimed = Array.isArray(data.claimed) ? data.claimed : [];
+        if (!claimed.length) return;
+
+        for (const item of claimed) {
+          if (!item?.text) continue;
+          const cats = customCategories.length ? customCategories : DEFAULT_CATEGORIES;
+          const category = cats.includes(item.category) ? item.category : cats[0] || "Personal";
+          const hourKey = normalizeTimeKey(item.hour || "09:00");
+          if (item.dayKey && /^\d{4}-\d{2}-\d{2}$/.test(item.dayKey)) {
+            const extras = { targetDayKey: item.dayKey };
+            if (Array.isArray(item.repeatWeekdays) && item.repeatWeekdays.length) {
+              extras.repeatWeekdays = item.repeatWeekdays;
+            }
+            addTask(hourKey, category, item.text, REPEAT_OPTIONS.NONE, null, extras);
+          } else if (item.days) {
+            const parsed = parseQuickAddNL(
+              `${item.text} ${item.hour || ""} ${item.days}`.replace(/\s+/g, " ").trim(),
+              cats,
+              realTodayKey
+            );
+            if (parsed?.text) {
+              const extras = {};
+              if (parsed.repeatWeekdays?.length) extras.repeatWeekdays = parsed.repeatWeekdays;
+              if (parsed.targetDayKey) extras.targetDayKey = parsed.targetDayKey;
+              addTask(parsed.hour || hourKey, category, parsed.text, REPEAT_OPTIONS.NONE, null, extras);
+            }
+          } else {
+            addTask(hourKey, category, item.text, REPEAT_OPTIONS.NONE, null, { targetDayKey: realTodayKey });
+          }
+        }
+        if (!cancelled) {
+          setToastNotification({
+            message: `Synced ${claimed.length} task${claimed.length === 1 ? "" : "s"} from chat`,
+            type: "added",
+          });
+          setTimeout(() => setToastNotification(null), 3500);
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    pullInbox();
+    const id = setInterval(pullInbox, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatInboxSyncEnabled, customCategories, realTodayKey]);
 
   useEffect(() => {
     if (!showSettings) setDockNavEditorMenuId(null);
@@ -5678,6 +5818,22 @@ export default function App({ onAppReady }) {
         if (ex.sourceTaskId) nextTask.sourceTaskId = String(ex.sourceTaskId);
         if (typeof ex.coachSuggestionEdited === "boolean") nextTask.coachSuggestionEdited = ex.coachSuggestionEdited;
       }
+
+      const nlWeekdays = Array.isArray(ex.repeatWeekdays)
+        ? [...new Set(ex.repeatWeekdays.map((d) => Number(d)).filter((d) => d >= 0 && d <= 6))].sort((a, b) => a - b)
+        : [];
+      if (nlWeekdays.length) {
+        try {
+          const series = createRepeatSeriesFromTask(nextTask, dayKeyForAdd, hourKey, category, nlWeekdays);
+          nextTask.repeat = REPEAT_OPTIONS.WEEKLY;
+          nextTask.repeatUntil = null;
+          nextTask.repeatSeriesId = series.id;
+          nextTask.repeatWeekdays = [...series.repeatWeekdays];
+        } catch (_) {
+          /* ignore invalid series */
+        }
+      }
+
       const nextByCat = { ...byCat, [category]: [...(byCat[category] || []), nextTask] };
 
       hours[hourKey] = nextByCat;
@@ -5693,7 +5849,7 @@ export default function App({ onAppReady }) {
           localStorage.setItem("repeatedTasks", JSON.stringify(repeatedTasks));
         } catch {}
       }
-      return {
+      const nextState = {
         ...prev,
         days: {
           ...prev.days,
@@ -5703,6 +5859,7 @@ export default function App({ onAppReady }) {
           },
         },
       };
+      return nextTask.repeatSeriesId ? syncRepeatSeriesWindow(nextState) : nextState;
     });
   }
 
@@ -6602,6 +6759,9 @@ export default function App({ onAppReady }) {
         ? { targetDayKey: String(parsed.targetDayKey).trim() }
         : {};
     if (parsed.endHour) nlExtras.endHour = parsed.endHour;
+    if (Array.isArray(parsed.repeatWeekdays) && parsed.repeatWeekdays.length) {
+      nlExtras.repeatWeekdays = parsed.repeatWeekdays;
+    }
     const isMedApptNl = showPeriodFeatures && isMedicalAppointmentTask(taskText);
     if (isMedApptNl && periodState?.profile?.lastPeriodStart) {
       const note = appendLastPeriodToTaskNote("", periodState.profile.lastPeriodStart);
@@ -8344,6 +8504,9 @@ export default function App({ onAppReady }) {
             : cats[0] || "Work";
       const extras = { targetDayKey: dayKey };
       if (usedNlTime && parsed?.endHour) extras.endHour = parsed.endHour;
+      if (Array.isArray(parsed?.repeatWeekdays) && parsed.repeatWeekdays.length) {
+        extras.repeatWeekdays = parsed.repeatWeekdays;
+      }
       addTask(hk, cat, clean, REPEAT_OPTIONS.NONE, null, extras);
     },
     [planDayPreviewKey, customCategories]
@@ -9081,7 +9244,7 @@ export default function App({ onAppReady }) {
                       name="quickAddTask"
                       value={quickAddValue}
                       onChange={(e) => setQuickAddValue(e.target.value)}
-                      placeholder="Add a task… e.g. Meeting 4pm tomorrow, Doctor 2pm 3/26/26"
+                      placeholder="e.g. wake up 8am every day this week, Meeting 4pm tomorrow"
                       aria-label="Quick add task"
                       autoComplete="off"
                     />
@@ -13938,6 +14101,52 @@ export default function App({ onAppReady }) {
                       placeholder="e.g. Sarah"
                       aria-label="Your name"
                     />
+                  </div>
+                  <div className="settings-section">
+                    <label className="label">ChatGPT / Claude → PROYOU</label>
+                    <p className="settings-hint">
+                      Connect a Custom GPT or Claude project so you can say “build my week in PROYOU” and tasks land here.
+                    </p>
+                    <label className="check" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                      <input
+                        type="checkbox"
+                        checked={chatInboxSyncEnabled}
+                        onChange={(e) => {
+                          const on = e.target.checked;
+                          setChatInboxSyncEnabled(on);
+                          try {
+                            localStorage.setItem("proyou_sync_enabled", on ? "1" : "0");
+                          } catch (_) {}
+                        }}
+                      />
+                      <span>Pull tasks from chat inbox while app is open</span>
+                    </label>
+                    <label className="label">API key (same as Vercel PROYOU_API_KEY)</label>
+                    <input
+                      className="input modal-input"
+                      type="password"
+                      autoComplete="off"
+                      defaultValue={(() => {
+                        try {
+                          return localStorage.getItem("proyou_api_key") || "";
+                        } catch {
+                          return "";
+                        }
+                      })()}
+                      onBlur={(e) => {
+                        try {
+                          localStorage.setItem("proyou_api_key", e.target.value.trim());
+                        } catch (_) {}
+                      }}
+                      placeholder="Paste PROYOU_API_KEY"
+                      aria-label="PROYOU API key"
+                    />
+                    <p className="settings-hint" style={{ marginTop: 8 }}>
+                      Actions schema:{" "}
+                      <code style={{ wordBreak: "break-all" }}>
+                        {typeof window !== "undefined" ? `${window.location.origin}/api/openapi` : "/api/openapi"}
+                      </code>
+                    </p>
                   </div>
                   <div className="settings-section">
                     <label className="label">Birthday (for greetings)</label>
